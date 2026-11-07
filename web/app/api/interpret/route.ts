@@ -75,7 +75,8 @@ export async function POST(req: NextRequest) {
   try {
     const msg = await client.messages.create({
       model: "claude-sonnet-5-5",
-      max_tokens: 1024,
+      max_tokens: 4096,
+      thinking: { type: "between_tools" },
       system: SYSTEM,
       messages: [{ role: "user", content: `Current inputs: ${JSON.stringify(inputs)}\nCurrent design: ${JSON.stringify(design)}\nSentence: ${sentence}` }],
       output_config: { format: { type: "json_schema", schema } },

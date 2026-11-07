@@ -32,7 +32,7 @@ function Value({ value, unit, was, version }: { value: number | null; unit: stri
 
 const clean = (x: number | null | undefined) => x == null ? "" : String(Math.round(x * 100) / 100);
 
-function Fix({ field, current, unit, step, overrides, setOverride }: {
+export function Fix({ field, current, unit, step, overrides, setOverride }: {
   field: keyof Design; current: number | null; unit: string; step: number;
   overrides: Overrides; setOverride: Props["setOverride"];
 }) {

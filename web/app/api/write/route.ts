@@ -17,11 +17,11 @@ const SYSTEM = {
   planner: `You are the drafting agent inside a solar installer's planning tool, writing for the planner. From the facts only:
 text: two sentences, at most 45 words in all, in the first person. The first says what you would offer, in sizes (solar kWp, battery kWh, and any heat pump or wallbox); never mention the inverter. The second gives the one fact that drives the design most, preferring what similar homes got or the household's demand. Leave out battery cycles, clipping and roof area.
 lines: for each component (pv, battery, heatpump, wallbox) one plain sentence of at most 14 words the planner can say to the homeowner about it; when it is not offered, say why in plain words.
-Rules: British English. Copy every number exactly as written in the facts; use no number that is not in the facts. No adjectives of quality (great, ideal, perfect, optimal). No em dashes. No sales talk.`,
+Rules: British English. Copy every number exactly as written in the facts; use no number that is not in the facts. No adjectives of quality (great, ideal, perfect, optimal). No em dashes. No sales talk. Never mention laws, permits, registration, the grid operator, subsidies, feed-in rules, tariffs or liability.`,
   homeowner: `You write for the homeowner who received this offer, from the facts only.
 text: two or three short sentences in the second person, saying what the system is and what it does for their home.
 lines: for each component (pv, battery, heatpump, wallbox) one plain sentence of at most 14 words; when it is not offered, say why.
-Rules: British English. Copy every number exactly as written in the facts; use no number that is not in the facts. No adjectives of quality. No em dashes. No sales talk.`,
+Rules: British English. Copy every number exactly as written in the facts; use no number that is not in the facts. No adjectives of quality. No em dashes. No sales talk. Never mention laws, permits, registration, the grid operator, subsidies, feed-in rules, tariffs or liability.`,
 };
 
 export async function POST(req: NextRequest) {
