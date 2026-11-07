@@ -198,18 +198,43 @@ export class SpatialScene {
     this.renderer.domElement.style.width = "100%";
     this.renderer.domElement.style.height = "100%";
     this.persp.aspect = w / h;
+    // The house centres in the canvas area the overlays leave free: shift both cameras' principal point there.
+    const f = this.free();
+    this.persp.setViewOffset(w, h, w / 2 - f.cx, h / 2 - f.cy, w, h);
+    this.ortho.setViewOffset(w, h, w / 2 - f.cx, h / 2 - f.cy, w, h);
     this.persp.updateProjectionMatrix();
     this.setOrtho(w / h);
     this.svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
     this.fit(false);
   }
 
+  // Overlays on the model (the number card, the shading strip) in canvas pixels from each edge. The fit uses the
+  // rest: the house and its poses frame inside it with a margin, re-fitted whenever the stack changes.
+  private insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  setInsets(i: { top: number; right: number; bottom: number; left: number }) {
+    const r = (x: number) => Math.max(0, Math.round(x));
+    const n = { top: r(i.top), right: r(i.right), bottom: r(i.bottom), left: r(i.left) };
+    const o = this.insets;
+    if (n.top === o.top && n.right === o.right && n.bottom === o.bottom && n.left === o.left) return;
+    this.insets = n;
+    this.resize();
+  }
+  // The free area: never under 45% of the canvas either way, so a tall stack cannot squeeze the house to nothing.
+  private free() {
+    const W = this.host.clientWidth || 1, H = this.host.clientHeight || 1, { top, right, bottom, left } = this.insets;
+    const fw = Math.max(W * 0.45, W - left - right), fh = Math.max(H * 0.45, H - top - bottom);
+    const cx = Math.min(Math.max(left + fw / 2, fw / 2), W - fw / 2), cy = Math.min(Math.max(top + fh / 2, fh / 2), H - fh / 2);
+    return { W, H, fw, fh, cx, cy, kW: W / fw, kH: H / fh };
+  }
+
   private setOrtho(a: number) {
     // Top-down on the house itself with a margin of street around it.
     const c = this.box.isEmpty() ? this.centre : this.box.getCenter(new THREE.Vector3());
     const sz = this.box.isEmpty() ? new THREE.Vector3(this.span, 0, this.span) : this.box.getSize(new THREE.Vector3());
-    const half = this.plan ? Math.max(sz.x, sz.z) * 0.62 + 4 : Math.max(sz.x, sz.z) * 1.1 + 4;
-    const hh = a >= 1 ? half : half / a, hw = hh * a;
+    // Margin inside the free area: the overlays' room is added on top, so the street margin stays modest.
+    const half = this.plan ? Math.max(sz.x, sz.z) * 0.62 + 4 : Math.max(sz.x, sz.z) * 0.8 + 3;
+    const f = this.free();
+    const hh = Math.max(half * f.kH, (half * f.kW) / a), hw = hh * a; // the plan fits the free area, not the canvas
     Object.assign(this.ortho, { left: -hw, right: hw, top: hh, bottom: -hh });
     this.ortho.position.set(c.x, 120, c.z);
     this.ortho.up.set(0, 0, -1); // north up
@@ -230,8 +255,10 @@ export class SpatialScene {
 
   private fit(reset: boolean) {
     const a = this.persp.aspect, vfov = (this.persp.fov * Math.PI) / 180;
-    const half = this.span / 2, need = Math.max(half / Math.tan(vfov / 2), half / (Math.tan(vfov / 2) * a));
-    const d = need * 1.6;
+    const f = this.free(), t = Math.tan(vfov / 2);
+    const half = this.span / 2, need = Math.max((half * f.kH) / t, (half * f.kW) / (t * a));
+    // The mesh cap keeps the photo crisp; a tall free area, or one narrowed by overlays, still gets the room it needs.
+    const d = Math.min(need * 1.6, this.fitCap * Math.max(1, 1.3 / (f.fw / f.fh)) * Math.max(f.kW, f.kH));
     if (reset || !this.fitted) {
       const dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
       this.persp.position.copy(this.centre).addScaledVector(dir, d);
@@ -257,6 +284,14 @@ export class SpatialScene {
     return { tgt, pos: tgt.clone().addScaledVector(poseOffset(p), this.fitD * p.dist) };
   }
   private fitted = false;
+  // The photo mesh is only crisp up close: it caps the fitted distance (stage poses scale with it); null lifts it.
+  private fitCap = Infinity;
+  setFitCap(m: number | null) {
+    const cap = m ?? Infinity;
+    if (cap === this.fitCap) return;
+    this.fitCap = cap;
+    if (this.fitted) this.fit(false);
+  }
 
   // Moves the camera to a stage's pose on one smooth spring (0.6 s, bounce 0) from wherever it is now, keeping
   // its velocity if a new stage arrives mid-flight. A top-down pose ends in the 2D plan. Reduce Motion: a cut.

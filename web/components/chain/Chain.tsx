@@ -288,7 +288,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   const overlays = (
     <>
-      <div className={s.sim}>
+      <div className={s.sim} data-cover>
         <p className={s.simH}><Bolt /> Simulation{pending && waited > 2 ? <span className={s.waited}>Redrafting, {n1(waited)} s</span> : null}</p>
         <dl className={s.kpis} data-pending={!!pending}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd><Fig v={x.v} arrow={edit} /></dd></div>)}</dl>
         {address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div>}

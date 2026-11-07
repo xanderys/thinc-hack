@@ -48,17 +48,33 @@ function hull(pts: [number, number][]) {
 type Inner = {
   scene: THREE.Scene; renderer: THREE.WebGLRenderer; camera: THREE.Camera;
   placeholder: THREE.Object3D; glbRoot?: THREE.Object3D | null; box: THREE.Box3; panels: THREE.Group;
+  outlines: THREE.Group; overlay: HTMLElement; setFitCap: (m: number | null) => void;
   targets: { p: RoofPlane }[]; ctxLines?: THREE.Group;
 };
+// desktop: a desktop browser; touch: iOS, iPadOS and visionOS Safari (tighter memory); phone: a small screen.
+export type Profile = "desktop" | "touch" | "phone";
 type Opts = {
-  root: string; anchor: Anchor; phone: boolean;
-  onReady: () => void; onFail: (why: string) => void; onCredit: (text: string) => void;
+  root: string; anchor: Anchor; profile: Profile; planes: RoofPlane[];
+  onReady: () => void; onFail: (why: string) => void; onCredit: (text: string) => void; onSharp: () => void;
 };
 
 const DRACO = "https://www.gstatic.com/draco/versioned/decoders/1.5.7/";
-const RADIUS = 45;      // the mesh loads only this far around the house (metres), at full detail
+const RADIUS = 60;      // the mesh loads only this far around the house (metres)
+const HOUSE_ERR = 0.05; // geometric error target inside the house's sphere: the finest level Google has
+const SHARP_ERR = 1;    // a house tile with children is sharp enough at or below this geometric error (metres)
+const SHARP_MS = 15000; // sharpening takes longer than this: show the panels on what is there
+const CLOSE = 40;       // fitted camera distance cap with the mesh on (metres): the landing pose ends about 34 m out
+const SINK = 0.8;       // our ground plate drops this far under the mesh ground, which then shows
+const FLAT = 0.5;       // neighbours' mesh is pressed down to this height above the ground
+const DILATE = 1.5;     // metres added around each neighbour's outline before pressing
 const READY_MS = 6000;  // no mesh by then: the LoD2 model stays
 const LIFT = 0.12;      // modules sit this far above the mesh roof
+// Far-field error target and tile cache (MB) per device; the house itself always refines to HOUSE_ERR.
+const BUDGET: Record<Profile, { err: number; min: number; max: number }> = {
+  desktop: { err: 12, min: 200, max: 320 },
+  touch: { err: 16, min: 110, max: 180 },
+  phone: { err: 20, min: 90, max: 150 },
+};
 
 // A WebGL context that can show the photo mesh without choking.
 export function photoCapable(sc: SpatialScene) {
@@ -111,6 +127,7 @@ export class PhotoLayer {
   private draco = new DRACOLoader().setDecoderPath(DRACO);
   private ray = new THREE.Raycaster();
   private fits = 0;
+  private frames = 0;
   private fitting = false;
   private panelsSeen: THREE.Object3D[] = [];
   fit: Fit | null = null;
@@ -123,9 +140,8 @@ export class PhotoLayer {
     const { anchor } = o;
     const tiles = new TilesRenderer(new URL(o.root, window.location.href).href);
     this.tiles = tiles;
-    tiles.errorTarget = o.phone ? 24 : 12;
-    tiles.lruCache.minBytesSize = (o.phone ? 120 : 200) * 2 ** 20;
-    tiles.lruCache.maxBytesSize = (o.phone ? 180 : 300) * 2 ** 20;
+    const budget = BUDGET[o.profile];
+    tiles.errorTarget = budget.err;
     tiles.registerPlugin(new ReorientationPlugin({ lat: anchor.lat, lon: anchor.lon, height: anchor.height, recenter: true }));
     tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: this.draco }));
     const centre = WGS84_ELLIPSOID.getCartographicToPosition(anchor.lat, anchor.lon, anchor.height, new THREE.Vector3());
@@ -138,7 +154,8 @@ export class PhotoLayer {
       const b = this.inner.box.isEmpty() ? new THREE.Box3(new THREE.Vector3(-8, 0, -8), new THREE.Vector3(8, 9, 8)) : this.inner.box;
       const c = b.getCenter(new THREE.Vector3()), r = b.getSize(new THREE.Vector3()).length() / 2 + 6;
       const toEcef = tiles.group.matrixWorld.clone().invert();
-      region.addRegion(new SphereRegion({ sphere: new THREE.Sphere(c.applyMatrix4(toEcef), r), errorTarget: 1.5 }));
+      this.houseLocal = new THREE.Sphere(c.applyMatrix4(toEcef), r);
+      region.addRegion(new SphereRegion({ sphere: this.houseLocal, errorTarget: HOUSE_ERR }));
     });
 
     this.holder.rotation.y = Math.PI + anchor.beta;
@@ -148,7 +165,14 @@ export class PhotoLayer {
     const house = this.inner.box.isEmpty() ? new THREE.Vector3() : this.inner.box.getCenter(new THREE.Vector3());
     this.white.setNeighbours(this.inner.ctxLines?.userData.edges ?? [], [house.x, house.z]);
     tiles.addEventListener("load-model", ({ scene }: { scene: THREE.Object3D }) => { try { this.white.apply(scene); } catch (e) { this.fail(e); } });
-    this.lodOff = applyTileLod(tiles, house, { phone: o.phone });
+    this.lodOff = applyTileLod(tiles, house, { phone: o.profile !== "desktop" });
+    // tileLod sizes the cache for the white look; the sharp house needs room for its finest tiles. A full cache
+    // refuses new tiles, which is what left the house a coarse lump on Safari.
+    tiles.lruCache.minBytesSize = budget.min * 2 ** 20;
+    tiles.lruCache.maxBytesSize = budget.max * 2 ** 20;
+    // Up close, and nothing drawn on the house until it is sharp.
+    this.inner.setFitCap?.(CLOSE);
+    this.marks(false);
     this.holder.visible = false;
     this.inner.scene.add(this.holder);
 
@@ -271,10 +295,102 @@ export class PhotoLayer {
     if (this.dead || this.ready) return;
     this.ready = true;
     clearTimeout(this.timer); clearTimeout(this.early);
-    for (const x of [glbOf(this.inner), this.inner.placeholder]) if (x) { this.hidden.push({ o: x, v: x.visible }); x.visible = false; }
+    const p = this.inner.placeholder;
+    this.hidden.push({ o: p, v: p.visible }); p.visible = false;
     this.holder.visible = true;
-    this.white.attach(glbOf(this.inner)); // real look: our ground and slabs around the mesh house
+    // The real surroundings stay (streets, gardens, trees); the neighbours are pressed flat so they never hide the
+    // facade. Our glb is dressed now, or in frame() when it lands after the mesh.
+    this.white.uniforms.uWcKeep.value = 1;
+    this.dress();
+    this.sharpBy = setTimeout(() => { if (!this.sharp) { console.warn("Mesh view: house still sharpening after 15 s"); this.markSharp(); } }, SHARP_MS);
     this.o.onReady();
+  }
+
+  // Our LoD2 glb around the mesh house (real look: satellite ground dropped under the mesh ground, neighbour slabs);
+  // its roof hides and its walls are clipped (whiteContext.ts). The flatten mask needs its ground height.
+  private dressed: THREE.Object3D | null = null;
+  private dress() {
+    const glb = glbOf(this.inner);
+    if (glb === this.dressed) return;
+    if (glb) { this.hidden.push({ o: glb, v: glb.visible }); glb.visible = false; }
+    this.white.detach();
+    this.white.attach(glb);
+    this.dressed = glb;
+    this.sinkGround(false);
+    this.sinkGround(true);
+    this.flatten();
+  }
+
+  // Panels, outlines and labels hide while the house tiles are coarse (they would float beside a lump).
+  private marksOn = true;
+  private marks(on: boolean) {
+    this.marksOn = on;
+    this.inner.panels.children.forEach((g) => { g.visible = on; });
+    this.inner.outlines?.children.forEach((g) => { g.visible = on; });
+    if (this.inner.overlay) this.inner.overlay.style.visibility = on ? "" : "hidden";
+  }
+
+  private sunk: { o: THREE.Object3D; y: number }[] = [];
+  private groundY: number | null = null;
+  private sinkGround(down: boolean) {
+    if (!down) { this.sunk.forEach(({ o, y }) => { o.position.y = y; }); this.sunk = []; return; }
+    const glb = glbOf(this.inner);
+    glb?.traverse((m) => {
+      if (!(m as THREE.Mesh).isMesh || !(m.name || m.parent?.name || "").toLowerCase().startsWith("ground")) return;
+      if (this.groundY == null) this.groundY = new THREE.Box3().setFromObject(m).max.y;
+      this.sunk.push({ o: m, y: m.position.y }); m.position.y -= SINK;
+    });
+  }
+
+  // A top-down mask of the neighbours' roof outlines (not the target's) for the tile shader to press down.
+  private flatten() {
+    const U = this.white.uniforms;
+    const g = this.groundY ?? 0, size = 2 * RADIUS + 20, W = 512;
+    const c = this.inner.box.isEmpty() ? new THREE.Vector3() : this.inner.box.getCenter(new THREE.Vector3());
+    const x0 = c.x - size / 2, z0 = c.z - size / 2;
+    const cv = document.createElement("canvas"); cv.width = cv.height = W;
+    const cx = cv.getContext("2d");
+    if (!cx) return;
+    const px = ([x, y]: number[]) => [((x - x0) / size) * W, ((-y - z0) / size) * W] as const;
+    const draw = (poly: number[][], fill: string) => {
+      cx.beginPath(); poly.forEach((p, i) => { const [a, b] = px(p); if (i) cx.lineTo(a, b); else cx.moveTo(a, b); }); cx.closePath();
+      cx.fillStyle = fill; cx.fill();
+    };
+    // Photogrammetry edges spill past the modelled outline: grow each neighbour by DILATE metres.
+    cx.lineJoin = "round"; cx.lineWidth = ((2 * DILATE) / size) * W; cx.strokeStyle = "#fff";
+    this.o.planes.filter((p) => !p.is_target && p.polygon.length > 2).forEach((p) => { draw(p.polygon, "#fff"); cx.stroke(); });
+    // The target and a metre around it always stay real (shared walls, attached garages).
+    cx.lineWidth = (2 / size) * W; cx.strokeStyle = "#000";
+    this.o.planes.filter((p) => p.is_target && p.polygon.length > 2).forEach((p) => { draw(p.polygon, "#000"); cx.stroke(); });
+    const tex = new THREE.DataTexture(new Uint8Array(cx.getImageData(0, 0, W, W).data.buffer), W, W);
+    tex.needsUpdate = true;
+    (U.uWcFlat.value as THREE.Texture).dispose();
+    U.uWcFlat.value = tex;
+    U.uWcFlatBox.value.set(x0, z0, size, 0);
+    U.uWcFlatY.value = g + FLAT;
+  }
+
+  // Sharp: no tile over the house still waiting to refine (each is a leaf or fine enough). Then refit, drape, and
+  // show the panels and labels.
+  private sharp = false;
+  private sharpBy: ReturnType<typeof setTimeout> | undefined;
+  private houseLocal: THREE.Sphere | null = null;
+  private checkSharp() {
+    if (this.sharp || !this.ready || !this.houseLocal) return;
+    type T = { children: unknown[]; geometricError: number; engineData?: { boundingVolume?: { intersectsSphere: (s: THREE.Sphere) => boolean } } };
+    let n = 0, coarse = 0;
+    for (const t of (this.tiles as unknown as { visibleTiles: Set<T> }).visibleTiles) {
+      if (!t.engineData?.boundingVolume?.intersectsSphere(this.houseLocal)) continue;
+      n++;
+      if (t.children.length > 0 && t.geometricError > SHARP_ERR) coarse++;
+    }
+    if (n > 0 && coarse === 0) this.markSharp();
+  }
+  private markSharp() {
+    if (this.sharp || this.dead) return;
+    this.sharp = true; clearTimeout(this.sharpBy);
+    this.fits = Math.min(this.fits, 2);
+    this.align().then(() => { if (this.dead) return; this.drape(true); this.marks(true); this.o.onSharp(); }).catch((e) => this.fail(e));
   }
 
   // Any failure in the mesh path ends the mesh only: the hook disposes this layer and the LoD2 model returns.
@@ -304,7 +420,9 @@ export class PhotoLayer {
     camera.updateMatrixWorld();
     this.tiles.update();
     this.white.sync(meshFrame);
-    if (this.ready) this.drape();
+    if (this.ready) { this.drape(); if (this.frames % 30 === 0) this.dress(); }
+    if (!this.marksOn) this.marks(false); // panels the scene adds meanwhile stay hidden too
+    if (++this.frames % 20 === 0) this.checkSharp();
     const text = [...this.credits.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k).join("; ");
     if (text !== this.creditText) { this.creditText = text; this.o.onCredit(text); }
   };
@@ -321,7 +439,9 @@ export class PhotoLayer {
     this.inner.scene.remove(this.holder);
     if (meshFrame.holder === this.holder) Object.assign(meshFrame, { anchor: null, fit: null, holder: null, offset: [0, 0, 0], version: meshFrame.version + 1 });
     this.inner.renderer.domElement.removeEventListener("webglcontextlost", this.lost);
-    for (const f of [() => this.lodOff(), () => this.white.dispose(), () => this.tiles.dispose(), () => this.draco.dispose()]) {
+    clearTimeout(this.sharpBy);
+    const U = this.white.uniforms;
+    for (const f of [() => this.marks(true), () => this.sinkGround(false), () => { U.uWcKeep.value = 0; U.uWcFlatBox.value.set(0, 0, 0, 0); }, () => this.inner.setFitCap?.(null),() => this.lodOff(), () => this.white.dispose(), () => this.tiles.dispose(), () => this.draco.dispose()]) {
       try { f(); } catch (e) { console.warn(`Mesh view teardown: ${(e as Error)?.message ?? e}`); }
     }
   }
