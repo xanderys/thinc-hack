@@ -360,4 +360,21 @@ def inbox(limit: int = 20):
 @app.get("/api/eval")
 def evaluation():
     engine()
-    return STATE["eval"]
+    out = dict(STATE["eval"])
+    rep = synthetic_report()
+    if rep is not None:
+        out["synthetic"] = rep
+    return out
+
+
+def synthetic_report():
+    """eval.synthetic (v1.4) from engine/synthetic when that package and its report exist; absent otherwise."""
+    try:
+        from synthetic.report import load_report  # engine/ is the working directory
+    except ImportError:
+        return None
+    try:
+        return load_report()
+    except Exception as e:
+        log.warning("synthetic report unavailable: %s", e)
+        return None
