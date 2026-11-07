@@ -1,4 +1,4 @@
-# Engine API contract (v2.5)
+# Engine API contract (v2.6)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -175,6 +175,9 @@ State lives in the engine (in-memory plus JSON under `engine/.cache/leads/`). Th
 ## v2.5: homeowner decision (demo acceptance, not a qualified e-signature)
 - `PUT /api/leads/{lead_id}/approve` header `X-Intake-Secret`, body `{ variant?: Variant["key"] }` → `{ status: "approved", approved_at, approved_variant, proposal_hash }` (sha256 over `{design, variant, investment_eur}`, engine-owned; every lead read carries the current `proposal_hash`; a planner change after approval drops the lead to `done` and it must be approved again). Sign before approval returns 409.
 - `POST /api/leads/{lead_id}/decision` body `{ action: "sign" | "decline" | "question", name?: string, accepted?: boolean, signature_png?: string (data URL, under 200 KB), question?: string, proposal_hash: string }` → `{ ok, status, decided_at, proposal_hash }`. Open to the homeowner site (no secret), rate limited; the engine stores the signature image under `engine/.cache/leads/sig/<lead_id>.png`, never in the API response beyond `has_signature`. Lead status becomes `signed`, `declined` or `question`; `decision: { action, name, decided_at, proposal_hash, has_signature, matches_current, question? }` appears on GET /api/leads and /api/leads/{id}. `proposal_hash` = sha256 of the design, variant key and investment the homeowner saw; the planner's card shows a warning if the current draft's hash differs.
+
+## v2.6: working-shown bars
+- `POST /api/explain/layers` adds `bars: { key: "roof" | "heat_loss" | "day" | "charging"; title; total; unit; segments: { name; value; unit; source_tag: "lead" | "rina" | "address" | "default"; citation?: string }[]; sentence: string; sources: string[] }[]` in chain order and `checks: { name; value; unit; pass: boolean; band: string }[]` (payback, autarky band, DC/AC, roof fit). Additive read of existing fields; no grid or radiator check.
 
 Natural-language refinement ("the family buys an EV next year") is handled in `web/` (`POST /api/interpret` → `{ changes: { field, from, to, note }[], inputs: HomeInputs }`) with the Claude API, then `web/` calls `/api/refine`. The engine has no LLM.
 
