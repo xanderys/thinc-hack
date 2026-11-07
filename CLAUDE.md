@@ -2,6 +2,14 @@
 
 From a few facts about a home, propose PV, battery and heat pump the way an experienced planner would, let the planner refine it, and prove it against real expert designs. Judges: Reonic (technical depth, user fit, business impact, demo) then a VC jury (creativity, realisability, usability, pitch).
 
+## The demo moment (the goal; every unit serves these four steps, in Reonic's words)
+1. **A home is described:** a planner enters a few basic facts about a project.
+2. **A complete system appears:** PV, battery and heat pump as appropriate, with a short explanation of why.
+3. **The design is refined:** for example, "the family is buying an electric car next year", and the design adapts sensibly.
+4. **It is checked against reality:** the proposal is compared with the expert design for the same project, and you show how well your system does across many projects.
+
+Before any change, ask which step it makes better or safer on stage. If none, it waits.
+
 ## Run it
 - Engine: `cd engine && uv sync && REONIC_DATA_DIR="/path/to/Project Data" uv run uvicorn app.main:app --port 8000`
 - Web: `cd web && npm install && npm run dev` (http://localhost:3000, needs `ENGINE_URL` and `ANTHROPIC_API_KEY` in `web/.env.local`)
