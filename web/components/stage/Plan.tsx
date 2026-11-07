@@ -7,7 +7,7 @@ import Why from "./Why";
 import { INSTALLER_NAME } from "@/lib/api";
 import { designLine, evidence, KEYS, n0, n2, NAME, named, pct, size } from "@/lib/stage";
 
-export type Variant = { name: string; tag: string; design: Design; e: Economics | null; overrides: Overrides | null; current: boolean };
+export type Variant = { name: string; tag: string; design: Design; e: Economics | null; overrides: Overrides | null; current: boolean; note?: string };
 
 type Props = {
   res: DesignResponse; prev: DesignResponse | null; inputs: HomeInputs;
@@ -96,7 +96,7 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
 
       {variants.length > 1 && (
         <div className="s-variants">
-          <h3 className="s-h3">Variants</h3>
+          <h3 className="s-h3">Offer variants</h3>
           <div className="vrow">
             {variants.map((v) => (
               <button key={v.name} className={v.current ? "v on" : "v"} aria-pressed={v.current} disabled={v.current || !v.overrides} onClick={() => onVariant(v)}>
@@ -110,6 +110,7 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
                     <span><span className="dt">Payback</span><span className="dd">{v.e.payback_years == null ? "None" : `${n2(Math.round(v.e.payback_years * 10) / 10)} years`}</span></span>
                   </span>
                 ) : <span className="s-wait">Simulating</span>}
+                {v.note && <span className="vnote">{v.note}</span>}
               </button>
             ))}
           </div>

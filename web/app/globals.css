@@ -217,6 +217,15 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .s-fact .seg button { padding: 3px 10px; font-size: 13.5px; }
 .s-more { padding: 10px 0; border-bottom: 1px solid var(--rule); font-size: 13.5px; }
 .s-more p { margin: 6px 0 0; color: var(--ink-2); }
+.s-more .s-fact { border-bottom: 0; padding-bottom: 0; }
+.s-fh { font-size: 13px; font-weight: 600; margin: 20px 0 0; padding-bottom: 6px; border-bottom: 1.5px solid var(--ink); }
+.s-fh:first-child { margin-top: 0; }
+.s-pref { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--ink-3); margin: 10px 0 4px; }
+.s-pref button { background: var(--sheet); border: 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 8px 10px; text-align: left; font: inherit; font-size: 13.5px; color: var(--ink); cursor: pointer; min-height: 44px; border-radius: 0; }
+.s-pref button:nth-child(2n) { border-right: 0; }
+.s-pref button:nth-child(n+3) { border-bottom: 0; }
+.s-pref button[aria-pressed="true"] { background: var(--accent); color: var(--paper); }
+.s-variants .vnote { display: block; font-size: 12.5px; color: var(--ink-2); margin: 10px 0 0; }
 .s-ask { margin-top: 22px; }
 .s-ask p { font-family: var(--font-serif), serif; font-size: 22px; line-height: 1.2; margin: 0 0 12px; }
 .s-ask .seg button { padding: 7px 12px; }
@@ -444,3 +453,6 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
   .s-der .srcs > div { grid-template-columns: 1fr; gap: 0; }
   .s-der .more { min-height: 44px; }
 }
+.s-variants .vh { flex-direction: column-reverse; align-items: flex-start; gap: 2px; }
+.s-variants .tagr { white-space: nowrap; min-height: 1em; }
+.s-variants .dd { white-space: nowrap; }

@@ -10,7 +10,11 @@ type Props = {
   setInstaller: (i: InstallerId) => void;
   roof: RoofResult | null;
   question: AskQuestion | null; answer: unknown; onAnswer: (v: unknown) => void; askError: string | null;
+  pref: Pref; setPref: (p: Pref) => void;
 };
+
+export type Pref = "expert" | "independence" | "payback" | "upfront";
+const PREFS: [Pref, string][] = [["independence", "Most independence"], ["payback", "Best payback"], ["upfront", "Lowest upfront cost"], ["expert", "As planners design it"]];
 
 // The lead with every quoted span underlined.
 function Marked({ text, quotes }: { text: string; quotes: string[] }) {
@@ -40,7 +44,7 @@ function shortAddress(s: string) {
 
 export default function Lead(p: Props) {
   const { read, inputs: i } = p;
-  const quote = (f: keyof HomeInputs) => read?.found.find((x) => x.field === f)?.quote;
+  const quote = (f: keyof HomeInputs | "wants") => read?.found.find((x) => x.field === f)?.quote;
   const src = (f: keyof HomeInputs) => {
     const q = quote(f);
     if (q) return `"${q}"`;
@@ -48,11 +52,11 @@ export default function Lead(p: Props) {
     return f === "annual_demand_kwh" ? "Assumed: not in the lead" : "Not in the lead";
   };
   const evWas = "has_ev" in p.changed && read && read.inputs.has_ev !== p.changed.has_ev ? (read.inputs.has_ev ? "yes" : "no") : undefined;
+  const addr = read?.inputs.address ? (p.roof && p.roof.source !== "none" ? `${read.inputs.address} (matched)` : read.inputs.address) : null;
   const more = [
+    addr,
     i.house_size_sqm ? `${n0(i.house_size_sqm)} m²` : null,
     i.house_built_year ? `built ${i.house_built_year}` : null,
-    i.heating_cost_per_year_eur ? `heating ${n0(i.heating_cost_per_year_eur)} EUR a year` : null,
-    i.electricity_price_ct_kwh ? `${i.electricity_price_ct_kwh} ct/kWh` : null,
     i.has_solar ? `solar ${i.existing_solar_kwp ?? ""} kWp already` : "no solar",
     i.has_storage ? `battery ${i.existing_storage_kwh ?? ""} kWh already` : "no battery",
   ].filter(Boolean).join(", ");
@@ -72,19 +76,28 @@ export default function Lead(p: Props) {
 
       {read && (
         <div className="s-facts s-in">
-          {read.inputs.address && <Fact k="Address" v={read.inputs.address} src={p.roof == null ? `"${quote("address") ?? read.inputs.address}"` : p.roof.source === "none" ? `Not found: ${p.roof.notes[0] ?? "no match"}` : `Matched: ${shortAddress(p.roof.matched_address)}`} />}
+          <h3 className="s-fh">Consumption</h3>
           <Fact k="Annual use" v={<span className={p.answer !== undefined && !quote("annual_demand_kwh") ? "num asked" : "num"}>{quote("annual_demand_kwh") || p.answer !== undefined || p.question == null ? `${n0(i.annual_demand_kwh)} kWh` : "Not known yet"}</span>} src={src("annual_demand_kwh")} />
-          <Fact k="Heating" v={HEATING_WORD[i.heating_type]} src={src("heating_type")} />
+          <Fact k="Heating" v={<>{HEATING_WORD[i.heating_type]}{i.heating_cost_per_year_eur ? <>, <span className="num">{n0(i.heating_cost_per_year_eur)} EUR</span> a year</> : null}</>} src={src("heating_type")} />
+          {i.electricity_price_ct_kwh != null && <Fact k="Price" v={<><span className="num">{i.electricity_price_ct_kwh} ct</span> per kWh</>} src={src("electricity_price_ct_kwh")} />}
+          <h3 className="s-fh">Demand</h3>
           <Fact k="Electric car" v={i.has_ev ? <>Yes{i.ev_annual_km ? <>, <span className="num">{n0(i.ev_annual_km)} km</span> a year</> : null}</> : "No"} src={evWas ? "Changed in a sentence" : src("has_ev")} was={evWas} />
           <Fact k="Household" v={i.num_inhabitants ? `${i.num_inhabitants} people` : "Not known"} src={src("num_inhabitants")} />
-          <div className="s-fact">
-            <span className="fk">Installer</span>
-            <span className="fv"><span className="seg" role="group" aria-label="Installer style">
-              {(Object.keys(INSTALLER_NAME) as InstallerId[]).map((id) => <button key={id} type="button" aria-pressed={i.installer_id === id} onClick={() => p.setInstaller(id)}>{INSTALLER_NAME[id]}</button>)}
-            </span></span>
-            <span className="fq">Design style to follow</span>
+          <h3 className="s-fh">Preferences</h3>
+          {quote("wants") && <Fact k="Wants" v={String(read.found.find((x) => x.field === "wants")?.value ?? "").replace(/^./, (c) => c.toUpperCase())} src={`"${quote("wants")}"`} />}
+          <div className="s-pref" role="group" aria-label="Preference">
+            {PREFS.map(([k, label]) => <button key={k} type="button" aria-pressed={p.pref === k} onClick={() => p.setPref(k)}>{label}</button>)}
           </div>
-          <details className="s-more"><summary>More details</summary><p>{more}</p></details>
+          <details className="s-more"><summary>More details</summary>
+            <p>{more}</p>
+            <div className="s-fact">
+              <span className="fk">Installer</span>
+              <span className="fv"><span className="seg" role="group" aria-label="Installer style">
+                {(Object.keys(INSTALLER_NAME) as InstallerId[]).map((id) => <button key={id} type="button" aria-pressed={i.installer_id === id} onClick={() => p.setInstaller(id)}>{INSTALLER_NAME[id]}</button>)}
+              </span></span>
+              <span className="fq">Design style to follow</span>
+            </div>
+          </details>
         </div>
       )}
 

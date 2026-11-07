@@ -21,6 +21,7 @@ export interface HomeInputs {
   has_solar: boolean; existing_solar_kwp?: number;
   has_storage: boolean; existing_storage_kwh?: number;
   address?: string;   // v1.6
+  preference?: "independence" | "payback" | "upfront";   // v1.7, reorders variants only
   roof?: RoofResult;  // v1.6
 }
 
@@ -81,6 +82,11 @@ export interface Optimum {               // v1.2
 
 export type ComponentKey = "pv" | "battery" | "heatpump" | "wallbox";
 
+export interface Variant {   // v1.7
+  key: "expert" | "independence" | "payback" | "upfront";
+  label: string; design: Design; economics: Economics; note: string;
+}
+
 export interface DesignResponse {
   design: Design;
   explanation: string[];
@@ -88,6 +94,7 @@ export interface DesignResponse {
   plausibility: Plausibility[];
   economics: Economics;
   optimum?: Optimum;
+  variants?: Variant[];   // v1.7
   model_version: string;
 }
 
@@ -150,7 +157,7 @@ export interface InboxRow {
 }
 
 // LLM edge, web only
-export interface ReadFact { field: keyof HomeInputs; value: unknown; quote: string; }
+export interface ReadFact { field: keyof HomeInputs | "wants"; value: unknown; quote: string; }
 export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; }
 export interface WriteResponse { text: string; grounded: boolean; lines: Partial<Record<ComponentKey, string | null>>; cached?: boolean; }
 
