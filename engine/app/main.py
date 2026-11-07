@@ -70,12 +70,14 @@ def startup():
         STATE["error"] = str(e)
         log.exception("startup failed")
         return
-    try:  # warm the hourly simulation (cold call about 1 s); failure falls back to the annual lookup per request
-        from . import hourly
-        hourly.simulate({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
-        hourly.replay_2025({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
-    except Exception:
-        log.exception("hourly warm-up failed")
+    def warm_hourly():  # cold call about 1 s; after /health is up, so the Funnel answers within seconds of a restart
+        try:
+            from . import hourly
+            hourly.simulate({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
+            hourly.replay_2025({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
+        except Exception:
+            log.exception("hourly warm-up failed")
+    threading.Thread(target=warm_hourly, daemon=True).start()
     if STATE.get("inbox") is None:
         threading.Thread(target=warm_inbox, daemon=True).start()
     leads.load_all()  # before anything can create or step a lead
