@@ -140,7 +140,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const nSteps = ids.length;
   const L = ids.includes(layer) ? layer : 1;
   // In 3D the Google mesh replaces the LoD2 house when it loads (PhotoView.tsx); never on the plan layer.
-  const photo = usePhoto(address, ready ? scene.current : null, view === "3d" && L !== 8);
+  const photo = usePhoto((model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32, ready ? scene.current : null, view === "3d" && L !== 8, { creditBottom: bare ? 22 : 104 });
 
   // Panels change with the design: re-place them (animated only when the panels layer is showing).
   const panelKey = panelList.length + ":" + JSON.stringify(Object.values(counts));
