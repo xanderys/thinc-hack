@@ -495,10 +495,10 @@ export class SpatialScene {
     });
   }
 
-  // The Google satellite ground for this address, once the glb is in (satGround.ts).
-  groundFor(address: string) {
+  // The Google satellite ground at the engine origin (UTM 32N E, N, Z), once the glb is in (satGround.ts).
+  groundFor(origin: [number, number, number]) {
     if (!this.glbRoot) return;
-    this.ctxOff.push(googleGround(this.glbRoot, this.renderer, address));
+    this.ctxOff.push(googleGround(this.glbRoot, this.renderer, origin));
   }
 
   setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on; }
