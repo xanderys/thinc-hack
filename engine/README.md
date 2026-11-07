@@ -57,34 +57,33 @@ Chained, per `docs/briefs/engine.md`:
 2. Battery: include or none, then kWh, both given predicted PV (out-of-fold PV during training), snapped to sizes that installer sold at least three times within 6 months of the offer date (A switched battery line in 2025 Q1). The offer date only picks the catalogue: as a model feature it lowered the scoreboard (all four 22.0% without it, 19.1% with it).
 3. Heat pump: classifier on 13 sold units, never proposed where one exists; size = heat demand / 2,300 full-load hours (installer median, `docs/data-insights.md`), or heating cost / 12 ct per kWh of heat, or area x W/m2 by build year, snapped up to the installer's sizes. A planner "include" on a heat-pump home is a replacement job.
 4. Wallbox: 11 or 22 kW if the home has an EV. See limits.
+5. A battery needs PV: when the model proposes a battery, no PV, and no PV is recorded, it proposes PV instead; when the planner fixes PV to none on such a home, the battery goes too. `/api/validate` flags a battery with no PV as implausible.
 
 A planner override (number or null) replaces a stage's output; "include" forces the component in and the engine sizes it; the later stages re-size around both. Overrides replace a stage's output and the later stages re-size around it. kNN (k = 15, same installer, scaled log demand, EV, heating, existing kit, load profile) gives `neighbours`, `alternatives` and confidence (share agreeing on the decision, averaged with share within tolerance of the size).
 
 The test split (20%, stratified by installer, seed 42) is never used for fitting, catalogue snapping or neighbours.
 
-## Scoreboard (314 held-out projects)
+## Scoreboard
 
-Baseline: 1 kWp per 1,000 kWh snapped to catalogue, battery by installer majority and median size, no heat pump, 11 kW wallbox if EV.
+Scored on 258 new-system test jobs: the expert fitted PV, or PV is recorded. The other 56 test jobs are add-ons (battery extensions, wallboxes) to PV the status quo does not record; a design tool proposing for a home without PV cannot reproduce them, so they are reported separately. Ceiling: each test home against the median design of 5 or more training homes with identical installer, demand, EV flag and heating type (covers 72% of test homes), i.e. how often near-identical homes agree.
 
-| Component | Ours | Baseline |
-|---|---|---|
-| PV decision accuracy | 86.6% | 81.2% |
-| PV within ±1 kWp or 15% | 40.8% | 8.6% |
-| PV within ±2 kWp | 51.3% | 13.4% |
-| PV MAE (expert has PV) | 3.43 kWp | 5.19 kWp |
-| Battery decision accuracy | 92.7% | 92.4% |
-| Battery within ±2 kWh | 53.5% | 40.4% |
-| Battery MAE | 2.39 kWh | 2.73 kWh |
-| Heat pump decision accuracy | 98.4% | 98.4% |
-| Wallbox decision accuracy | 76.1% | 76.1% |
-| All four within tolerance | 21.3% | 2.5% |
+| Within tolerance | Ours | Textbook | Floor-slope | Ceiling |
+|---|---|---|---|---|
+| PV ±1 kWp or 15% | 36.8% | 17.8% | 31.0% | 31.7% |
+| Battery ±2 kWh | 49.6% | 47.7% | 47.7% | 53.2% |
+| Heat pump decision | 98.8% | 98.8% | 98.8% | 100% |
+| Wallbox decision | 75.6% | 75.6% | 75.6% | 74.7% |
+| All four at once | 17.4% | 6.6% | 14.0% | 16.1% |
 
-Per installer, all four within tolerance: 2a8ba8e2 22.7% (baseline 2.0%), 23c108b7 16.4% (baseline 4.5%).
+Textbook: 1.3 kWp per MWh plus 2.5 kWp with an EV. Floor-slope: 6.5 kWp plus 0.58 kWp per MWh (`docs/data-insights.md`). Both take the installer's majority battery decision and median size, no heat pump, 11 kW wallbox if EV.
+
+Also on the new-system jobs: PV within ±2 kWp 50.8% (textbook 27.9%), PV MAE 2.66 kWp (textbook 4.16), battery MAE 2.41 kWh (2.46). Per installer, all four: 2a8ba8e2 16.6%, 23c108b7 20.0%.
+
+All 314 test jobs, add-ons included: all four 14.6% (textbook 5.4%), PV 30.6%, battery 48.1%. Before the battery-needs-PV rule the engine scored 22.0% here by copying the add-on pattern (PV none, battery 5 kWh) onto homes that record no PV; that design is not plausible to show a planner, so the rule stays.
 
 ## Known limits
 
-- PV size has hit the ceiling of the inputs. In 5-fold CV on train, GBM, kNN medians (k 15 and 30), kWp-per-MWh models and a blend are all within 0.1 kWp MAE (about 2.5 kWp on PV jobs). Many homes carry the 4,500 kWh default demand and nothing else; roof, orientation and budget are not in the data.
-- PV MAE 3.4 includes homes where we said none and the expert fitted PV. Where both include PV the MAE is 2.71 kWp.
+- PV size has hit the ceiling of the inputs: we agree with the expert more often than near-identical homes agree with each other. In 5-fold CV on train, GBM, kNN medians (k 15 and 30), kWp-per-MWh models and a blend are all within 0.1 kWp MAE (about 2.5 kWp on PV jobs). Many homes carry the 4,500 kWh default demand and nothing else; roof, orientation and budget are not in the data.
 - Wallbox: 297 of 319 wallboxes at 2a8ba8e2 went to homes with no EV recorded. A learned classifier scored 75.2% on test against 76.1% for the EV rule, so the engine uses the rule. The data does not say who will buy a car.
 - Heat pump: 13 sold in the whole pack, 5 in test. The model ties the always-none baseline; size is physics, not learned.
 - Economics are rough and labelled: ratio model for autarky (no battery about 30% at PV equal to demand; 10 kWp with 10 kWh on 4,500 kWh about 66%), cost per kWp and per kWh from 2026 German averages. Every assumption is returned in `economics.assumptions`.

@@ -12,7 +12,7 @@ from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES, date_t
 
 SEED = 42
 K = 15
-MODEL_VERSION = "chain-hgb-knn-4"
+MODEL_VERSION = "chain-hgb-knn-5"
 NO_PV_RULE = "pv"  # "pv": propose PV when a battery would otherwise have none; "battery_none": drop the battery
 T_NOW = {"t": 2026.3}  # latest offer date in train; used when a request carries no offer_date
 COMPONENTS = ["pv", "battery", "heatpump", "wallbox"]
@@ -305,7 +305,7 @@ class Engine:
     def validate(self, inp: dict, design: dict) -> list:
         inst = inp["installer_id"]
         nb = self.neighbours(inp, inst)
-        rules = rules.hard_rules(inp, design)
+        hard = rules.hard_rules(inp, design)
         flags = []
         for comp, key in TARGET.items():
             st = self.nb_stats(nb, comp)
@@ -313,8 +313,8 @@ class Engine:
             inc = v is not None and v > 0
             s = nb[key].values
             level, msg = "ok", None
-            if comp in rules:
-                level, msg = "implausible", rules[comp]
+            if comp in hard:
+                level, msg = "implausible", hard[comp]
             elif inc != (st["share_included"] >= 0.5):
                 share = st["share_included"] if inc else 1 - st["share_included"]
                 if share < 0.2:
@@ -353,7 +353,19 @@ class Engine:
         return {"pv_kwp": pv, "battery_kwh": bat, "heatpump_kw": 0.0, "wallbox_kw": wb}
 
     def evaluate(self) -> dict:
+        """Main board: new-system jobs (expert fitted PV, or PV is recorded). Battery or wallbox add-ons to PV that the
+        status quo does not record are out of scope for a design tool; their numbers are kept in all_projects."""
         te = self.test
+        scope = te[(te.pv_kwp > 0) | te.has_solar].reset_index(drop=True)
+        out = self._evaluate(scope)
+        full = self._evaluate(te.reset_index(drop=True))
+        out["split"]["method"] += f"; scored on {len(scope)} new-system test jobs (expert fitted PV or PV recorded), {len(te) - len(scope)} add-on jobs reported in all_projects"
+        out["all_projects"] = {"test": len(te), "design_match_share": full["overall"]["design_match_share"],
+                               "textbook_design_match_share": full["overall"]["textbook_design_match_share"],
+                               "components": {c: full["components"][c]["within_tolerance_share"] for c in COMPONENTS}}
+        return out
+
+    def _evaluate(self, te) -> dict:
         rows = te.to_dict("records")
         ours, base, base2 = [], [], []
         for r in rows:
@@ -375,7 +387,7 @@ class Engine:
                 bc[c] = {"within_tolerance_share": round(float(w.mean()), 3),
                          "size_mae": round(float(np.abs(bdf[k].values[inc] - te[k].values[inc]).mean()), 2) if inc.any() else None}
             baselines[name] = {"rule": self.BASELINES[name], "components": bc, "design_match_share": round(float(mm.mean()), 3)}
-        ceil = self.ceiling()
+        ceil = self.ceiling(te)
         comps = {}
         match_o = np.ones(len(te), bool)
         match_b = np.ones(len(te), bool)
@@ -465,14 +477,16 @@ class Engine:
             why.append("demand is the 4,500 kWh default")
         return f"Expert {fmt(expert or None, unit)}, ours {fmt(ours or None, unit)}. {ev}; {', '.join(why)}."
 
-    def ceiling(self) -> dict:
+    def ceiling(self, te) -> dict:
         """How often near-identical homes got designs within tolerance of each other: the median design of training
         homes with the same installer, demand, EV flag and heating type, scored against each test home."""
         key = ["installer_id", "annual_demand_kwh", "has_ev", "heating_type"]
         cols = list(TARGET.values())
-        g = self.train.groupby(key)
+        tr = self.train
+        tr = tr[(tr.pv_kwp > 0) | tr.has_solar] if len(te) < len(self.test) else tr  # peers from the same scope as the board
+        g = tr.groupby(key)
         med = g[cols].median()[g.size() >= 5].add_suffix("_peer")
-        te = self.test.join(med, on=key)
+        te = te.join(med, on=key)
         t = te[te.pv_kwp_peer.notna()]
         hits = {c: rules.within(c, t[TARGET[c] + "_peer"].values, t[TARGET[c]].values) for c in COMPONENTS}
         allc = np.logical_and.reduce(list(hits.values()))
