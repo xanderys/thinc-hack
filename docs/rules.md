@@ -51,8 +51,8 @@ Each step is one sourced assumption or structural rule, never a number tuned to 
 
 | # | Commit | Change | Source | Fit half: PV / battery / all four |
 |---|---|---|---|---|
-| 0a | next | Structural: no heat pump while the year's heat is only a default; heat load precedence demand, bill, envelope (upper bound) | REONIC ENGINE bug report; envelope uses unrenovated IWU U-values | pending |
-| 0 | c1bf388 | First end-to-end rules-2 (knee of the frontier, sourced 2026 prices) | as in the parameter table | pending |
+| 0a | fc6dae2 | Structural: no heat pump while the year's heat is only a default; heat load precedence demand, bill, envelope (upper bound) | REONIC ENGINE bug report; envelope uses unrenovated IWU U-values | pending |
+| 0 | c1bf388 | First end-to-end rules-2 (knee of the frontier, sourced 2026 prices) | as in the parameter table | 29.5% / 30.4% / 8.4% (own run, 654 jobs; rules-1 41.0 / 49.2 / 17.7). 20-year NPV at or above the expert's on 98% of homes, payback shorter on 75%; median battery 5 kWh against the experts' 10 |
 
 ## rules-1-calibrated (comparison column)
 
