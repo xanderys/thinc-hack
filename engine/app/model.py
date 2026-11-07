@@ -641,7 +641,12 @@ class Engine:
             kw, note = rules.heat_load_kw(inp)
             heat = inp.get("heating_demand_kwh") or (inp["heating_cost_per_year_eur"] / 0.12 if inp.get("heating_cost_per_year_eur") else None)
             axiom = "A heat pump runs about 2,300 full-load hours a year, so heat demand over 2,300 hours gives its size."
-            if heat:
+            env = inp.get("envelope") or {}
+            if not inp.get("heating_demand_kwh") and env.get("design_heat_load_kw"):
+                ax = round(float(env["design_heat_load_kw"]), 1)
+                ins = [{"name": "design heat load", "value": ax, "unit": "kW", "source": "envelope (LoD2, IWU)"}]
+                eq = f"design heat load {ax:g} kW from the walls, roof and windows of this house"
+            elif heat:
                 given = bool(inp.get("heating_demand_kwh"))
                 ins = [{"name": "heat demand", "value": round(heat), "unit": "kWh a year", "source": "lead" if given else "default"},
                        {"name": "full-load hours", "value": 2300, "unit": "h", "source": "installer history"}]

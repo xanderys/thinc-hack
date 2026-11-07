@@ -184,6 +184,20 @@ def model_info(address: str) -> dict:
     return info
 
 
+def envelope_cached(address: str):
+    """envelope block (per-face heat loss, design heat load) from an already built model; never builds one."""
+    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
+    path = MODEL_CACHE / f"{key}.json"
+    if not path.exists():
+        return None
+    try:
+        info = json.loads(path.read_text())
+        planes = json.loads(Path(info["planes_json_path"]).read_text())
+        return planes.get("envelope")
+    except Exception:
+        return None
+
+
 def warm_models():
     if not model_available():
         return

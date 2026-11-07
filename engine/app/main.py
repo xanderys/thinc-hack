@@ -230,6 +230,10 @@ def check_inputs(inp: dict):
             inp["roof"] = r if r.get("source") != "none" else None
         except Exception as e:
             log.warning("roof lookup failed: %s", e)
+    if inp.get("address") and inp.get("roof") and not inp.get("envelope"):
+        env = roofs.envelope_cached(inp["address"])
+        if env and env.get("design_heat_load_kw"):
+            inp["envelope"] = env  # heat load from the house's own walls and roof (REONIC MODEL); rules read it too
     r = inp.get("roof") or {}
     est = []
     if not inp.get("house_built_year") and r.get("build_year_estimate"):
