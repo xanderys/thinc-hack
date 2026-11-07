@@ -106,6 +106,10 @@ class Engine:
         self.excluded = {"outliers": int(out.sum()), "rule": "PV over 40 kWp, battery over 40 kWh, or demand outside 500 to 30,000 kWh"}
         df = df[~out].reset_index(drop=True)
         tr, te = train_test_split(df, test_size=0.2, random_state=SEED, stratify=df.installer_id)
+        return self.fit_on(tr, te)
+
+    def fit_on(self, tr: pd.DataFrame, te: pd.DataFrame):
+        """Fit on a given train frame; te is only stored (scored by evaluate). lab/cv.py calls this per fold."""
         self.train, self.test = tr.reset_index(drop=True), te.reset_index(drop=True)
         tr = self.train
         T_NOW["t"] = max(date_t(x) for x in tr.offer_date)
