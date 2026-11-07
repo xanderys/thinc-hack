@@ -61,13 +61,13 @@ footer: Marquee
 
 <!-- _class: ink -->
 
-<p class="label">Design: consistent decisions</p>
+<p class="label">Design: rules a planner can read</p>
 
-## Your best planner’s habits, on every offer.
+## Five rules, at most five printed constants.
 
-<div class="data">planners install <b>2.0 kWp per MWh</b>; the textbook under-sizes <b>82%</b><br><b>91%</b> of wallboxes went to homes with no EV on record</div>
+<div class="data"><b>PV</b> cover the year at this roof’s yield, then the installer’s oversize<br><b>battery</b> one evening’s use, snapped to the installer’s packs<br><b>heat pump</b> only for an old gas or oil boiler, heat demand over 2,300 hours<br><b>wallbox</b> 11 kW when an EV is real or planned<br><b>inverter</b> nearest 0.85 times PV</div>
 
-[UNCONFIRMED: both lines; sources docs/research/science.md and engine/README.md]
+[UNCONFIRMED: rule wording and count until REONIC PHYSICS confirms them; source docs/briefs/pivot.md, docs/rules.md]
 
 ---
 
