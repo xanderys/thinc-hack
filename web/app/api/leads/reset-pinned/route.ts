@@ -13,7 +13,7 @@ async function engine(method: string, path: string): Promise<{ ok: boolean; body
   try {
     const res = await fetch(`${ENGINE_URL}${path}`, {
       method, cache: "no-store", signal: AbortSignal.timeout(30000),
-      headers: { "X-Intake-Secret": process.env.INTAKE_SECRET ?? "" },
+      headers: { "X-Intake-Secret": process.env.INTAKE_SECRET ?? "", "X-Client-Route": "check reset demo leads" },
     });
     const text = await res.text();
     let body: any; try { body = JSON.parse(text); } catch { body = { error: text.trim() || `Engine answered ${res.status}` }; }

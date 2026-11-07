@@ -1,26 +1,18 @@
 // v2.5 client helpers: the planner releases a proposal, the homeowner signs, declines or asks.
-import { call, type Result } from "./client";
+import { send, type Result } from "./client";
 import type { ApproveResponse, DecisionBody, DecisionResponse, Variant } from "./api";
 
 const leadPath = (id: string) => `/api/leads/${encodeURIComponent(id)}`;
 
-/** PUT /api/leads/{id}/approve through the proxy, which adds the intake secret server side. */
-export async function approveLead(id: string, variant?: Variant["key"]): Promise<Result<ApproveResponse>> {
-  try {
-    const res = await fetch(`${leadPath(id)}/approve`, {
-      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(variant ? { variant } : {}),
-    });
-    const json = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` }));
-    if (!res.ok) return { ok: false, error: json?.error || `${res.status} ${res.statusText}`.trim() };
-    return { ok: true, data: json as ApproveResponse };
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
+/** PUT /api/leads/{id}/approve through the proxy, which adds the intake secret server side. base_version: the lead
+ * version the card was showing; the engine answers 409 when the lead changed since. */
+export function approveLead(id: string, variant?: Variant["key"], base?: number | string | null) {
+  return send<ApproveResponse>(`${leadPath(id)}/approve`, { ...(variant ? { variant } : {}), ...(base != null ? { base_version: base } : {}) }, "card approve", "PUT");
 }
 
 /** POST /api/leads/{id}/decision. Open route, no secret. Errors carry the engine's own words. */
 export function decide(id: string, body: DecisionBody): Promise<Result<DecisionResponse>> {
-  return call<DecisionResponse>(`${leadPath(id)}/decision`, body);
+  return send<DecisionResponse>(`${leadPath(id)}/decision`, body, "proposal decision");
 }
 
 /** Statuses after the planner released the proposal. */
