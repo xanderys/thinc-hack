@@ -376,7 +376,7 @@ export class SpatialScene {
       });
       // The target footprint comes with the roof model; until it is in, flatten later.
       this.glbRoot = gltf.scene; this.flattened = false;
-      if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene);
+      if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene); else this.massing();
       this.scene.add(gltf.scene);
       this.placeholder.visible = false;
       if (this.heat) this.setHeat(this.heat);
@@ -409,32 +409,31 @@ export class SpatialScene {
       pos.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
       m.geometry = g;
     });
+    this.massing();
   }
 
   // The walls as an architectural massing model: off-white, one flat shade per face, darker towards the ground
-  // (baked ambient occlusion per vertex) and thin edge lines. No invented windows.
+  // (ambient occlusion by height, in the shader, so any geometry the x-ray swaps in keeps it) and thin edge lines.
   private massing() {
     const wm = this.wallMesh;
     if (!wm) return;
-    const g = wm.geometry.index ? wm.geometry.toNonIndexed() : wm.geometry.clone();
-    g.computeVertexNormals();
     wm.updateWorldMatrix(true, false);
-    const pos = g.getAttribute("position") as THREE.BufferAttribute, v = new THREE.Vector3();
+    const pos = wm.geometry.getAttribute("position") as THREE.BufferAttribute, v = new THREE.Vector3();
     let ground = Infinity;
     for (let i = 0; i < pos.count; i++) ground = Math.min(ground, v.fromBufferAttribute(pos, i).applyMatrix4(wm.matrixWorld).y);
-    const base = new THREE.Color(WALL_MASS), col = new Float32Array(pos.count * 3);
-    for (let i = 0; i < pos.count; i++) {
-      const h = v.fromBufferAttribute(pos, i).applyMatrix4(wm.matrixWorld).y - ground;
-      const s = Math.min(1, Math.max(0, h / 2.5)), ao = 0.66 + 0.34 * s * s * (3 - 2 * s);
-      col.set([base.r * ao, base.g * ao, base.b * ao], i * 3);
-    }
-    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    wm.geometry = g;
-    this.wallGeo = g;
-    this.wallMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true });
-    if (!this.heat) wm.material = this.wallMat;
+    const mat = new THREE.MeshLambertMaterial({ color: WALL_MASS, side: THREE.DoubleSide, flatShading: true });
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uGround = { value: ground };
+      sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying float vWy;")
+        .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWy = (modelMatrix * vec4(transformed, 1.0)).y;");
+      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying float vWy;\nuniform float uGround;")
+        .replace("#include <opaque_fragment>", "outgoingLight *= 0.66 + 0.34 * smoothstep(0.0, 2.5, vWy - uGround);\n#include <opaque_fragment>");
+    };
+    this.wallGeo = wm.geometry;
+    this.wallMat = mat;
+    if (!this.heat) wm.material = mat;
     if (this.wallEdges) { this.wallEdges.removeFromParent(); this.wallEdges.geometry.dispose(); }
-    this.wallEdges = new THREE.LineSegments(new THREE.EdgesGeometry(g, 25), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.32 }));
+    this.wallEdges = new THREE.LineSegments(new THREE.EdgesGeometry(wm.geometry, 25), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.32 }));
     wm.add(this.wallEdges);
   }
 
