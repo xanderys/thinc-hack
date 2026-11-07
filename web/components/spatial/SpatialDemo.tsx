@@ -21,7 +21,8 @@ type Props = {
   response?: DesignResponse | null;   // optional: the heat layer reads the heat pump derivation from it
 };
 
-const STEPS = ["Roof", "Sun", "Panels", "A day", "Battery", "Value", "Heat"];
+// Layer ids are fixed (7 Heat, 8 Plan); a step shows only when its data is present.
+const STEPS = ["Roof", "Sun", "Panels", "A day", "Battery", "Value", "Heat", "Plan"];
 const LICENCE = "Bayerische Vermessungsverwaltung, www.geodaten.bayern.de, CC BY 4.0";
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
 const n1 = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
@@ -62,6 +63,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
 
   const host = useRef<HTMLDivElement>(null), overlay = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), compass = useRef<HTMLDivElement>(null);
   const scene = useRef<SpatialScene | null>(null);
+  const modelRef = useRef<RoofModel | null>(null);
+  const [modelGen, setModelGen] = useState(0);
+  const [retryGlb, setRetryGlb] = useState(0);
   const prevLayer = useRef(0);
 
   const kwp = design.pv_kwp;
@@ -99,16 +103,18 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layersKey, layersUrl, tick, modelTry]);
 
+  modelRef.current = model;
+  const hasModel = !!model;
   // 3. three.js, loaded only once there is a model to show.
   useEffect(() => {
-    if (!model || !host.current || !overlay.current || !svg.current) return;
+    if (!hasModel || !host.current || !overlay.current || !svg.current) return;
     let dead = false;
     import("./scene").then(({ SpatialScene }) => {
       if (dead || !host.current || !overlay.current || !svg.current) return;
       const sc = new SpatialScene(host.current, overlay.current, svg.current, {
         reduce, compass: compass.current, onHour: (h, playing) => setHour({ h, playing }),
       });
-      sc.setModel(model);
+      if (modelRef.current) sc.setModel(modelRef.current);
       scene.current = sc;
       setReady(true);
       setGlbErr(null);
@@ -116,18 +122,24 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     });
     return () => { dead = true; scene.current?.dispose(); scene.current = null; setReady(false); setGlbOk(false); prevLayer.current = 0; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, glbUrl, reduce]);
+  }, [hasModel, glbUrl, reduce, retryGlb]);
+
+  // A new design or build year re-requests the model; the scene keeps its glb and camera and only re-reads the planes.
+  useEffect(() => { modelRef.current = model; if (model && scene.current && ready) { scene.current.setModel(model); setModelGen((x) => x + 1); } }, [model, ready]);
 
   // Panels: the layers' planes carry this design's modules; the model (asked with this kWp) is the fallback.
   const planes: RoofPlane[] = useMemo(() => {
-    const lp = planesOf(layers?.planes);
+    // The layers' planes only when they were computed for this design's kWp; otherwise the model asked with this kWp.
+    const lp = layers && Math.abs((layers.chosen?.pv_kwp ?? -1) - (design.pv_kwp ?? -2)) < 0.01 ? planesOf(layers.planes) : [];
     return lp.length ? lp : model?.planes ?? [];
-  }, [layers, model]);
+  }, [layers, model, design.pv_kwp]);
   const panelList = useMemo(() => planes.filter((p) => p.is_target).flatMap((p) => p.chosen_panels.map((r: PanelRect) => ({ p, r }))), [planes]);
   const counts = useMemo(() => Object.fromEntries(planes.filter((p) => p.is_target).map((p) => [p.id, p.chosen_panels.length])), [planes]);
   const envelope: Envelope | null = (model?.envelope && model.envelope.faces?.length ? model.envelope : null);
-  const nSteps = envelope ? 7 : 6;
-  const L = Math.min(layer, nSteps);
+  const plan = model?.plan && model.plan.outline?.length ? model.plan : null;
+  const ids = [1, 2, 3, 4, 5, 6, ...(envelope ? [7] : []), ...(plan ? [8] : [])];
+  const nSteps = ids.length;
+  const L = ids.includes(layer) ? layer : 1;
 
   // Panels change with the design: re-place them (animated only when the panels layer is showing).
   const panelKey = panelList.length + ":" + JSON.stringify(Object.values(counts));
@@ -136,7 +148,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     if (!sc || !ready) return;
     sc.setPanels(panelList, !reduce && L === 3);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panelKey, ready]);
+  }, [panelKey, ready, modelGen]);
 
   // Apply the layer.
   useEffect(() => {
@@ -155,9 +167,10 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     else if (L === 7) sc.setLabels(sc.setHeat(envelope));
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [L, ready, layers, panelKey, glbOk, !!envelope]);
+  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen]);
 
-  useEffect(() => { scene.current?.setView(view); }, [view, ready]);
+  // The plan layer is always top-down; the other layers keep the planner's choice.
+  useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);
 
   const seek = useCallback((h: number) => { scene.current?.seek(h); setHour({ h, playing: false }); }, []);
 
@@ -243,6 +256,18 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
           sources: (envelope.sources ?? ["IWU German building typology (TABULA)", "DIN EN 12831 heat load"]).map((x, i) => typeof x === "string" ? { key: `e${i}`, citation: x } : { key: x.key ?? `e${i}`, citation: x.citation, url: x.url }),
         };
       }
+      case 8: {
+        if (!plan) return null;
+        const notes = [plan.note, ...(Array.isArray(plan.notes) ? plan.notes : plan.notes ? [plan.notes] : [])].filter(Boolean) as string[];
+        const facts = [plan.floor_area_m2 != null ? `${n0(plan.floor_area_m2)} m² floor area` : "", plan.storeys != null ? `${plan.storeys} storeys` : "", plan.orientation != null ? `ridge ${typeof plan.orientation === "number" ? `${Math.round(plan.orientation)}°` : plan.orientation}` : ""].filter(Boolean);
+        const run = !Array.isArray(plan.cable_run) && plan.cable_run?.length_m ? `; cable run ${n1(plan.cable_run.length_m)} m` : "";
+        return {
+          sentence: "The footprint with where the equipment goes.",
+          second: notes.length ? notes.join(" ") : null,
+          eq: facts.join(", ") + run,
+          sources: Array.isArray(plan.sources) ? (plan.sources as (string | { key?: string; citation: string; url?: string })[]).map((x, i) => typeof x === "string" ? { key: `p${i}`, citation: x } : { key: x.key ?? `p${i}`, citation: x.citation, url: x.url }) : [{ key: "lod2", citation: "LoD2 footprint, Bayerische Vermessungsverwaltung", url: "https://www.geodaten.bayern.de" }],
+        };
+      }
     }
     return null;
   })();
@@ -265,9 +290,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   return (
     <section className={s.wrap} aria-label="How the design is computed, over the house">
       <div className={s.strip} style={{ ["--n" as string]: nSteps }} role="group" aria-label="Layers">
-        {STEPS.slice(0, nSteps).map((t, i) => (
-          <button key={t} type="button" className={s.step} aria-pressed={L === i + 1} onClick={() => setLayer(i + 1)}>
-            <span className={s.k}>{i + 1}</span><span className={s.t}>{t}</span>
+        {ids.map((id, i) => (
+          <button key={id} type="button" className={s.step} aria-pressed={L === id} onClick={() => setLayer(id)}>
+            <span className={s.k}>{i + 1}</span><span className={s.t}>{STEPS[id - 1]}</span>
           </button>
         ))}
       </div>
@@ -279,7 +304,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {!ready && !absent && !modelErr && <div className={s.wait}>Loading the house</div>}
         {modelErr && !model && <div className={s.err}>{modelErr}<button type="button" onClick={() => setModelTry((x) => x + 1)}>Retry</button></div>}
         {ready && !glbOk && !glbErr && <div className={s.wait}>Loading the aerial photo</div>}
-        {glbErr && <div className={s.err}>{glbErr}<button type="button" onClick={() => { setModel((m) => (m ? { ...m } : m)); }}>Retry</button></div>}
+        {glbErr && <div className={s.err}>{glbErr}<button type="button" onClick={() => setRetryGlb((x) => x + 1)}>Retry</button></div>}
         {needsLayers && layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTick((x) => x + 1)}>Retry</button></div>}
         {needsLayers && !layers && !layersErr && <div className={s.wait}>Simulating the year</div>}
 
@@ -291,8 +316,8 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
 
         <div className={s.tools}>
           <div className={s.toggle} role="group" aria-label="View">
-            <button type="button" aria-pressed={view === "3d"} onClick={() => setView("3d")}>3D</button>
-            <button type="button" aria-pressed={view === "2d"} onClick={() => setView("2d")}>2D</button>
+            <button type="button" aria-pressed={L !== 8 && view === "3d"} onClick={() => { setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
+            <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => setView("2d")}>2D</button>
           </div>
           <div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div>
         </div>

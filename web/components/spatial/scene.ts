@@ -4,8 +4,8 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { DayHour, Envelope, PanelRect, RoofModel, RoofPlane, V3 } from "./types";
-import { flowsOf, lerpHour } from "./types";
+import type { DayHour, Envelope, PanelRect, Plan, RoofModel, RoofPlane, V3 } from "./types";
+import { flowsOf, lerpHour, p2 } from "./types";
 import { facing } from "./facing";
 
 const PAPER = new THREE.Color("#F4F1EA");
@@ -114,6 +114,8 @@ export class SpatialScene {
   private wallMat: THREE.Material | null = null;
   private box = new THREE.Box3();
   private heat: Envelope | null = null;
+  private plan: Plan | null = null;
+  private planG: SVGGElement | null = null;
 
   constructor(private host: HTMLElement, private overlay: HTMLElement, private svg: SVGSVGElement, private opts: SceneOpts) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
@@ -254,9 +256,11 @@ export class SpatialScene {
     this.sunGroup.add(arc, this.sunDot);
     this.sunGroup.visible = false;
 
-    this.fit(true);
+    this.fit(!this.modelSet); // keep the planner's camera when only the design changes
+    this.modelSet = true;
     this.setOrtho(this.persp.aspect);
   }
+  private modelSet = false;
 
   // A spring weekday in Munich: sunrise about 06:00, sunset about 20:00 (summer time), noon height about 55 degrees.
   private sunPos(h: number) {
@@ -396,6 +400,64 @@ export class SpatialScene {
     return labels;
   }
 
+  // Plan layer: dimensioned footprint, equipment, clearances and cable run, drawn in SVG over the 2D view.
+  setPlan(plan: Plan | null) {
+    this.plan = plan;
+    if (!plan) { this.planG?.remove(); this.planG = null; return; }
+    if (!this.planG) { this.planG = document.createElementNS("http://www.w3.org/2000/svg", "g"); this.planG.setAttribute("class", "sp-plan"); this.svg.appendChild(this.planG); }
+  }
+
+  private drawPlan() {
+    const plan = this.plan, g = this.planG;
+    if (!plan || !g) return;
+    const pr = (q: [number, number], z = 0.05) => this.project(new THREE.Vector3(q[0], z, -q[1]));
+    const f = (v: number) => v.toFixed(1);
+    const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const out: string[] = [];
+    const pts = plan.outline.map(p2).filter(Boolean) as [number, number][];
+    if (pts.length > 2) {
+      const sp = pts.map((q) => pr(q));
+      out.push(`<polygon class="pl-outline" points="${sp.map((p) => `${f(p.x)},${f(p.y)}`).join(" ")}"/>`);
+      // Dimension lines, offset outward from each edge.
+      const cx = pts.reduce((a, q) => a + q[0], 0) / pts.length, cy = pts.reduce((a, q) => a + q[1], 0) / pts.length;
+      pts.forEach((a, i) => {
+        const b = pts[(i + 1) % pts.length];
+        const given = plan.edges?.[i]?.length_m ?? plan.edge_lengths_m?.[i];
+        const len = given ?? Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (len < 1.5) return;
+        let nx = b[1] - a[1], ny = -(b[0] - a[0]); const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
+        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+        if ((mx - cx) * nx + (my - cy) * ny < 0) { nx = -nx; ny = -ny; }
+        const o = 1.4, A = pr([a[0] + nx * o, a[1] + ny * o]), B = pr([b[0] + nx * o, b[1] + ny * o]), A0 = pr(a), B0 = pr(b);
+        out.push(`<line class="pl-ext" x1="${f(A0.x)}" y1="${f(A0.y)}" x2="${f(A.x)}" y2="${f(A.y)}"/><line class="pl-ext" x1="${f(B0.x)}" y1="${f(B0.y)}" x2="${f(B.x)}" y2="${f(B.y)}"/>`);
+        out.push(`<line class="pl-dim" x1="${f(A.x)}" y1="${f(A.y)}" x2="${f(B.x)}" y2="${f(B.y)}"/>`);
+        let ang = (Math.atan2(B.y - A.y, B.x - A.x) * 180) / Math.PI; if (ang > 90) ang -= 180; if (ang < -90) ang += 180;
+        const L = pr([mx + nx * (o + 0.9), my + ny * (o + 0.9)]);
+        out.push(`<text class="pl-len" x="${f(L.x)}" y="${f(L.y)}" transform="rotate(${ang.toFixed(1)} ${f(L.x)} ${f(L.y)})" text-anchor="middle" dominant-baseline="middle">${len.toFixed(1)} m</text>`);
+      });
+    }
+    const run = Array.isArray(plan.cable_run) ? plan.cable_run : plan.cable_run?.points ?? plan.cable_run?.path ?? null;
+    const rp = (run ?? []).map(p2).filter(Boolean) as [number, number][];
+    if (rp.length > 1) out.push(`<polyline class="pl-cable" points="${rp.map((q) => pr(q)).map((p) => `${f(p.x)},${f(p.y)}`).join(" ")}"/>`);
+    (plan.clearances ?? []).forEach((c) => {
+      const at = p2(c.at ?? c.center ?? c.centre), r = c.r_m ?? c.radius_m;
+      if (!at || !r) return;
+      const C = pr(at), E = pr([at[0] + r, at[1]]);
+      out.push(`<circle class="pl-clear" cx="${f(C.x)}" cy="${f(C.y)}" r="${f(Math.hypot(E.x - C.x, E.y - C.y))}"/>`);
+    });
+    [...(plan.equipment ?? []), ...(plan.markers ?? [])].forEach((m) => {
+      const at = p2(m.at ?? m.position ?? (m.x != null && m.y != null ? [m.x, m.y] : null));
+      if (!at) return;
+      const P = pr(at), r = m.clearance_m ?? m.radius_m;
+      if (r) { const E = pr([at[0] + r, at[1]]); out.push(`<circle class="pl-clear" cx="${f(P.x)}" cy="${f(P.y)}" r="${f(Math.hypot(E.x - P.x, E.y - P.y))}"/>`); }
+      out.push(`<rect class="pl-mark" x="${f(P.x - 5)}" y="${f(P.y - 5)}" width="10" height="10"/>`);
+      out.push(`<text class="pl-label" x="${f(P.x + 9)}" y="${f(P.y - 1)}">${esc(m.label ?? m.kind ?? "")}</text>`);
+      if (m.note) out.push(`<text class="pl-note" x="${f(P.x + 9)}" y="${f(P.y + 11)}">${esc(m.note)}</text>`);
+    });
+    const html = out.join("");
+    if (g.innerHTML !== html) g.innerHTML = html;
+  }
+
   setLabels(l: Label[]) {
     this.labels = l;
     const keep = new Set(l.map((x) => x.key));
@@ -533,6 +595,7 @@ export class SpatialScene {
       el.style.visibility = p.ok ? "visible" : "hidden";
     });
 
+    if (this.plan) this.drawPlan();
     if (this.opts.compass) {
       // Screen direction of north (local -z in three).
       const a = this.project(this.centre), b = this.project(this.centre.clone().add(new THREE.Vector3(0, 0, -5)));
@@ -549,6 +612,7 @@ export class SpatialScene {
     this.controls.dispose();
     this.labelEls.forEach((el) => el.remove());
     Object.values(this.flowPaths).forEach((el) => el.remove());
+    this.planG?.remove();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();

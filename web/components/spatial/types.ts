@@ -20,8 +20,22 @@ export interface RoofModel {
   model_url?: string; glb_url?: string; planes: RoofPlane[];
   neighbours?: number; triangles?: number; height_m?: number; footprint_m2?: number;
   envelope?: Envelope | null;
+  plan?: Plan | null;
   sun_source?: string; layout?: { requested_kwp: number | null; panels: number; kwp: number; kwh_per_year: number; short_by_panels: number };
 }
+
+// Floor plan block (footprint, equipment, clearances, cable run). Points are local metres, x east, y north.
+export type P2 = [number, number] | [number, number, number] | { x: number; y: number; z?: number };
+export interface PlanItem { kind?: string; label?: string; note?: string; at?: P2; position?: P2; x?: number; y?: number; clearance_m?: number | null; radius_m?: number | null }
+export interface Plan {
+  outline: P2[]; edges?: { from?: P2; to?: P2; length_m: number; a?: P2; b?: P2 }[]; edge_lengths_m?: number[];
+  floor_area_m2?: number | null; storeys?: number | null; orientation?: string | number | null;
+  equipment?: PlanItem[]; markers?: PlanItem[]; clearances?: { at?: P2; center?: P2; centre?: P2; r_m?: number; radius_m?: number; label?: string }[];
+  cable_run?: P2[] | { points?: P2[]; path?: P2[]; length_m?: number; label?: string } | null;
+  rooms?: unknown; note?: string | null; notes?: string[] | string | null; sources?: unknown;
+}
+export const p2 = (p: P2 | undefined | null): [number, number] | null =>
+  !p ? null : Array.isArray(p) ? [p[0], p[1]] : typeof p.x === "number" ? [p.x, p.y] : null;
 
 // Winter heat loss per face (DIN EN 12831 design point), when the engine sends it.
 export interface EnvelopeFace { kind: string; azimuth: number | null; area_m2: number; u_value: number; source?: string; loss_w: number }
