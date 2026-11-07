@@ -14,6 +14,9 @@ dependencies = [
     "pyproj>=3.8.0",
     "shapely>=2.2.0",
     "lxml>=6.1.3",
+    "trimesh>=5.2.0",
+    "pillow>=13.0.0",
+    "mapbox-earcut>=2.1.0",
 ]
 
 [tool.uv]
