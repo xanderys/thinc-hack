@@ -198,3 +198,6 @@ The envelope block on `/api/explain/layers` (`planes.envelope`) and `/api/roof/m
 
 ## v2.8 (engine 1510b93, additive): imagery vintage
 `RoofResult` (`/api/roof`) and the roof model (`/api/roof/model`) carry `imagery: { dop20_flown: "YYYY-MM-DD" | null, lod2_stand: "YYYY-MM-DD" | null, source_note: string }`. `dop20_flown` is the DOP20 date from the LDBV WMS info layer (`by_dop20_info`, field `ua`). `lod2_stand` is the matched building's LoD2 CityGML `creationDate`. A date missing from the source is null and `source_note` says why (postcode only, no building, or tile still being read). No date is ever estimated.
+
+## v2.9 (engine 47dd147, additive): test leads
+`POST /api/leads` accepts `test: boolean` (default false), stored on the lead. `GET /api/leads` leaves test leads out unless `include_test=1`, and its rows carry `test`. `GET /api/leads/{id}` serves test leads as usual. Agents create scratch leads with `test: true`. Every write to a pinned lead is logged server-side (route, client, user agent); nothing is blocked.
