@@ -1,5 +1,6 @@
 {
   "agent_id": "agent_4201m6v70wckem7sd6nq4mkt40s4",
   "voice_id": "lcMyyd2HUfFzxdCaC4Ta",
-  "llm": "claude-haiku-5-5"
+  "llm": "claude-haiku-5-5",
+  "step_tool_id": "tool_0401m6vb1qfjf33b25jc74mkdz4y"
 }

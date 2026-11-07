@@ -44,6 +44,8 @@ export default function Stage() {
   const [pref, setPref] = useState<Pref>("expert");
   const last = useRef<DesignResponse | null>(null);
   const cause = useRef<string | null>(null);
+  // The homeowner's lead when the stage was opened from a call: refinements write back to it.
+  const leadRef = useRef<string | null>(null);
   const [moved, setMoved] = useState<Moved | null>(null);
   const [llm, setLlm] = useState<boolean | null>(null);
   const [sayBusy, setSayBusy] = useState(false);
@@ -84,6 +86,7 @@ export default function Stage() {
   // Facts from the call: everything was said, so nothing is asked.
   // Facts from a homeowner call, each tagged form, call or estimated; nothing is asked.
   function onCall(l: CallLead) {
+    leadRef.current = l.conversation_id;
     const { preference, ...rest } = l.inputs as Partial<HomeInputs>;
     if (rest.installer_id) setInstaller(rest.installer_id as InstallerId);
     setPref(preference ?? "expert");
@@ -92,6 +95,7 @@ export default function Stage() {
   }
 
   async function begin(data: ReadResponse) {
+    if (data.source !== "call") leadRef.current = null;
     const r = { data };
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(null); setPrev(null); last.current = null;
     setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
@@ -197,7 +201,7 @@ export default function Stage() {
   const snap = (): Snap => ({ changed, overrides, chips, ovChips });
   const remember = (why: string) => { setHistory((h) => [...h, snap()]); cause.current = why; setApprovedAt(null); };
 
-  async function onSay(sentence: string): Promise<boolean> {
+  async function onSay(sentence: string, quiet = false): Promise<boolean> {
     if (!res) return false;
     setSayBusy(true); setSayErr(null);
     const typical = Object.fromEntries(KEYS.map((k) => [COMPONENT_DESIGN_FIELD[k], res.components[k].neighbours.median_size]));
@@ -205,7 +209,7 @@ export default function Stage() {
     setSayBusy(false);
     if (!r.ok) { setSayErr(r.error); return false; }
     const ovs = r.data.overrides ?? [];
-    if (r.data.changes.length === 0 && ovs.length === 0) { setSayErr("Nothing in that sentence changes the home."); return false; }
+    if (r.data.changes.length === 0 && ovs.length === 0) { if (!quiet) setSayErr("Nothing in that sentence changes the home."); return false; }
     remember(`After "${sentence}":`);
     const add: Partial<HomeInputs> = {};
     for (const c of r.data.changes) (add as Record<string, unknown>)[c.field] = c.to;
@@ -213,6 +217,8 @@ export default function Stage() {
     setChips((c) => [...c.filter((x) => !r.data.changes.some((y) => y.field === x.field)), ...r.data.changes]);
     setOvChips((c) => [...c.filter((x) => !ovs.some((y) => y.field === x.field)), ...ovs]);
     if (ovs.length) setOverrides((o) => { const n = { ...o }; for (const v of ovs) n[v.field] = v.to; return n; });
+    // Tell the homeowner's lead, so their phone shows the updated design.
+    if (leadRef.current && r.data.changes.length) call("/api/intake/step", { lead_id: leadRef.current, facts_so_far: add }).then((x) => { if (!x.ok) setSayErr(`Applied here; the homeowner's copy did not update: ${x.error}`); });
     return true;
   }
 

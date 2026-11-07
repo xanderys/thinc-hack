@@ -1,0 +1,56 @@
+{
+ "_meta": {
+  "per_use_slope": {
+   "unit": "",
+   "source": "fitted with base_kwp: most PV designs within tolerance on the fit half"
+  },
+  "base_kwp": {
+   "unit": "kWp",
+   "source": "fitted with per_use_slope: most PV designs within tolerance on the fit half"
+  },
+  "battery_kwh_per_kwp": {
+   "unit": "kWh/kWp",
+   "source": "fitted: most battery sizes within tolerance on the fit half, given rule 1's PV"
+  },
+  "battery_packages": {
+   "unit": "kWh",
+   "fitted": false,
+   "source": "catalogue, not fitted: the engine passes the packages on sale at the offer date; without one, sizes sold 3 or more times in the fit half"
+  }
+ },
+ "_fitted_on": {
+  "2a8ba8e2": "fit half (seed 42, same ids as engine/lab/split), 491 new-system jobs, offers 2024-06-17 to 2026-04-17",
+  "23c108b7": "fit half (seed 42, same ids as engine/lab/split), 163 new-system jobs, offers 2025-07-01 to 2026-04-20"
+ },
+ "2a8ba8e2": {
+  "per_use_slope": 0.95,
+  "base_kwp": 4.95,
+  "battery_kwh_per_kwp": 0.8,
+  "battery_packages": [
+   4.6,
+   5.0,
+   7.0,
+   9.2,
+   10.0,
+   14.0,
+   15.0,
+   20.0,
+   21.0
+  ]
+ },
+ "23c108b7": {
+  "per_use_slope": 0.0,
+  "base_kwp": 11.7,
+  "battery_kwh_per_kwp": 0.85,
+  "battery_packages": [
+   5.0,
+   6.0,
+   9.0,
+   9.84,
+   10.0,
+   12.0,
+   15.0,
+   18.0
+  ]
+ }
+}

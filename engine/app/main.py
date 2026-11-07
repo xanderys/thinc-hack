@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import pickle
 import threading
@@ -9,7 +10,7 @@ from typing import Literal, Optional, Union
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import os
@@ -22,7 +23,8 @@ from . import model as model_mod
 
 def _load_env():
     """INTAKE_SECRET from ~/.config/marquee/intake.env (shared with the voice builder; never in git)."""
-    for p in (Path.home() / ".config" / "marquee" / "intake.env", Path(__file__).resolve().parent.parent / ".env"):
+    for p in (Path.home() / ".config" / "marquee" / "intake.env", Path.home() / ".config" / "marquee" / "google.env",
+              Path(__file__).resolve().parent.parent / ".env"):
         if p.exists():
             for line in p.read_text().splitlines():
                 k, _, v = line.partition("=")
@@ -75,6 +77,10 @@ def startup():
         log.exception("hourly warm-up failed")
     if STATE.get("inbox") is None:
         threading.Thread(target=warm_inbox, daemon=True).start()
+    leads.load_all()  # before anything can create or step a lead
+    leads.expire_stale()
+    model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
+    threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models()), daemon=True).start()
     threading.Thread(target=warm_rules_eval, daemon=True).start()
 
 
@@ -92,9 +98,6 @@ def warm_rules_eval():
     except Exception as e:
         log.exception("recommenders eval failed")
         STATE["rules_eval"] = {"error": str(e)}
-    threading.Thread(target=roofs.warm, daemon=True).start()
-    leads.load_all()
-    model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
 
 
 INBOX_MAX = 60
@@ -148,6 +151,7 @@ class HomeInputs(BaseModel):
     roof_azimuth_deg: Optional[float] = None
     roof_tilt_deg: Optional[float] = None
     roof_orientation: Optional[str] = None
+    boiler_age_years: Optional[float] = None  # v2.0: rule 3 replaces a gas or oil boiler older than boiler_age (default 20)
     offer_date: Optional[str] = None
     preference: Optional[Literal["independence", "payback", "upfront"]] = None  # v1.7: reorders variants only
     address: Optional[str] = None   # v1.6: the engine looks the roof up
@@ -226,6 +230,10 @@ def check_inputs(inp: dict):
             inp["roof"] = r if r.get("source") != "none" else None
         except Exception as e:
             log.warning("roof lookup failed: %s", e)
+    if inp.get("address") and inp.get("roof") and not inp.get("envelope"):
+        env = roofs.envelope_cached(inp["address"])
+        if env and env.get("design_heat_load_kw"):
+            inp["envelope"] = env  # heat load from the house's own walls and roof (REONIC MODEL); rules read it too
     r = inp.get("roof") or {}
     est = []
     if not inp.get("house_built_year") and r.get("build_year_estimate"):
@@ -420,6 +428,66 @@ def roof(address: str = "", postcode: str = ""):
     if postcode.strip():
         return roofs.postcode_lookup(postcode)
     return err(422, "address or postcode is missing.")
+
+
+@app.get("/api/roof/photo")
+def roof_photo(address: str = ""):
+    """v2.2: Street View of the house; the Google key stays on the server; 404 with Google's words when no imagery."""
+    if not address.strip():
+        return err(422, "address is missing.")
+    try:
+        img, msg = roofs.photo(address)
+    except Exception as e:
+        return err(502, f"Street View request failed: {e}")
+    if img is None:
+        return err(404, msg)
+    from fastapi.responses import Response
+    return Response(img, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/api/roof/model")
+def roof_model(address: str = ""):
+    """v2.1: the planes of the actual house (LoD2, per-plane sun yield, panel layout) and a URL to its 3D model."""
+    if not address.strip():
+        return err(422, "address is missing.")
+    try:
+        info = roofs.model_info(address)
+    except RuntimeError as e:
+        return err(503, str(e))
+    planes = {}
+    p = info.get("planes_json_path")
+    if p and Path(p).exists():
+        planes = json.loads(Path(p).read_text())
+    return {**(planes if isinstance(planes, dict) else {"planes": planes}), "glb_url": roofs.model_url(address),
+            "textured": info.get("textured"), "licence": info.get("licence"), "source": info.get("source")}
+
+
+@app.get("/api/roof/model/file")
+def roof_model_file(address: str = ""):
+    if not address.strip():
+        return err(422, "address is missing.")
+    try:
+        info = roofs.model_info(address)
+    except RuntimeError as e:
+        return err(503, str(e))
+    g = info.get("glb_path")
+    if not g or not Path(g).exists():
+        return err(404, f"No 3D model file for {address}.")
+    return FileResponse(g, media_type="model/gltf-binary", headers={"Cache-Control": "public, max-age=86400"})
+
+
+class LayersReq(BaseModel):
+    inputs: HomeInputs
+    design: Optional[Design] = None
+
+
+@app.post("/api/explain/layers")
+def explain_layers(req: LayersReq):
+    """v2.3: the data behind the spatial demonstration (planes, one day, the night, the cost-to-value frontier)."""
+    from . import layers
+    inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
+    check_inputs(inp)
+    return layers.explain(engine(), inp, req.design.model_dump() if req.design else None)
 
 
 class AskReq(BaseModel):
@@ -634,8 +702,9 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     step = lead["questions_asked"] + 1
     t = leads.now()
     field_asked = asked if asked in ans else (next(iter(ans)) if ans else None)
+    was_done = lead.get("status") == "done"  # a planner refinement after the call keeps the lead done
     lead.update(inputs=inp, unknown=unknown, draft=draft, next_question=nq, questions_asked=step, updated_at=t,
-                status="done" if nq is None else "in_call")
+                status="done" if (nq is None or was_done) else "in_call")
     if not lead.get("customer_name") and meta.get("customer_name"):
         lead["customer_name"] = meta["customer_name"]
     if not lead.get("address_or_postcode") and (ans.get("address") or ans.get("postcode")):
@@ -664,6 +733,7 @@ def _lead_out(lead: dict) -> dict:
 def get_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
+    leads.expire_stale()
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
@@ -685,6 +755,7 @@ def delete_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
 def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
+    leads.expire_stale()
     rows = sorted(leads.LEADS.values(), key=lambda l: l["updated_at"], reverse=True)[: max(1, min(limit, 200))]
     return [{"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
              "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],

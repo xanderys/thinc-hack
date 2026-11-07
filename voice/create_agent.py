@@ -5,20 +5,49 @@ HERE = pathlib.Path(__file__).parent
 API = "https://api.elevenlabs.io"
 VOICE_ID = "lcMyyd2HUfFzxdCaC4Ta"  # Lucy, Fresh & Casual (young British female, library voice added as "Rina (Lucy)")
 LLM = "claude-haiku-5-5"
-FIRST = "Hi, it's Rina from Reonic, with a few quick questions for your design. What's the address of the house?"
+FIRST = "Hi, it's Rina from your installer, with a few quick questions for your design. What's the address of the house?"
 # No required dynamic variables, so the agent also runs on the ElevenLabs talk-to page. The widget overrides the first
 # message and sends the form answers as a contextual update (web/app/start/intake.ts formNote).
-ASR_KEYWORDS = ["Reonic", "kilowatt hours", "square metres", "wallbox", "heat pump", "solar", "battery", "boiler", "postcode", "Strasse"]
+ASR_KEYWORDS = ["kilowatt hours", "square metres", "wallbox", "heat pump", "solar", "battery", "boiler", "postcode", "Strasse"]
 OVERRIDES = {"conversation_config_override": {"agent": {"first_message": True}}}
 
 
-def key():
-    for p in (HERE / ".env", pathlib.Path.home() / ".config/marquee/elevenlabs.env"):
+def env(name):
+    for p in (HERE / ".env", pathlib.Path.home() / ".config/marquee/elevenlabs.env", pathlib.Path.home() / ".config/marquee/intake.env"):
         if p.exists():
             for line in p.read_text().splitlines():
-                if line.startswith("ELEVENLABS_API_KEY="):
+                if line.startswith(name + "="):
                     return line.split("=", 1)[1].strip().strip('"')
-    return os.environ["ELEVENLABS_API_KEY"]
+    return os.environ.get(name)
+
+
+def key():
+    return env("ELEVENLABS_API_KEY")
+
+
+def step_tool():
+    """intake_step: the engine picks the next question. Enabled when voice/.env has INTAKE_STEP_URL and INTAKE_SECRET."""
+    fields = json.loads((HERE / "intake_fields.json").read_text())
+    keep = ("address", "num_inhabitants", "home_office", "house_size_sqm", "monthly_bill_eur", "annual_demand_kwh", "heating_type",
+            "heating_age", "heating_cost_per_year_eur", "ev", "ev_annual_km", "has_solar", "has_storage", "has_wallbox", "preference")
+    facts = {k: {kk: fields[k][kk] for kk in ("type", "description", "enum") if kk in fields[k]} for k in keep}  # the engine contract, nothing else
+    facts.update(postcode={"type": "string", "description": "Postcode."},
+                 customer_name={"type": "string", "description": "Customer's name."},
+                 installer_name={"type": "string", "description": "Installer's name, from the note."})
+    return {"tool_config": {
+        "type": "webhook", "name": "intake_step",
+        "description": "Call after every answer with all facts known so far. Returns next_question (field, question, why, options, expected_swing) and done.",
+        "response_timeout_secs": 5, "tool_error_handling_mode": "hide", "pre_tool_speech": "off",
+        "api_schema": {
+            "url": env("INTAKE_STEP_URL"), "method": "POST",
+            "request_headers": {"X-Intake-Secret": env("INTAKE_SECRET")},
+            "request_body_schema": {"type": "object", "required": ["lead_id", "facts_so_far"], "properties": {
+                "lead_id": {"type": "string", "dynamic_variable": "system__conversation_id"},
+                "facts_so_far": {"type": "object", "description": "Every fact known so far, from the note and the call. Leave out unknowns.",
+                                 "properties": facts},
+            }},
+        },
+    }}
 
 
 def call(method, path, body=None):
@@ -37,6 +66,15 @@ def main():
     # Facts are extracted after the call by ElevenLabs data collection (no client tool), so any page can end a call cleanly.
     fields = json.loads((HERE / "intake_fields.json").read_text())
     state.pop("tool_id", None)
+    prompt = (HERE / "prompt.md").read_text()
+    tool_ids = []
+    if env("INTAKE_STEP_URL") and env("INTAKE_SECRET"):
+        if state.get("step_tool_id"):
+            call("PATCH", f"/v1/convai/tools/{state['step_tool_id']}", step_tool())
+        else:
+            state["step_tool_id"] = call("POST", "/v1/convai/tools", step_tool())["id"]
+        tool_ids = [state["step_tool_id"]]
+        prompt += "\n" + (HERE / "prompt_step.md").read_text()
 
     config = {
         "name": "Marquee intake",
@@ -45,10 +83,10 @@ def main():
                 "first_message": FIRST,
                 "language": "en",
                 "prompt": {
-                    "prompt": (HERE / "prompt.md").read_text(),
+                    "prompt": prompt,
                     "llm": LLM,
                     "temperature": 0.6,
-                    "tool_ids": [],
+                    "tool_ids": tool_ids,
                     "built_in_tools": {"end_call": {"type": "system", "name": "end_call", "description": "",
                                                     "params": {"system_tool_type": "end_call"}}},
                 },

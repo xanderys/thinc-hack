@@ -102,7 +102,7 @@ export interface DesignResponse {
 }
 
 // v2.0: the named planner rules that produced a design.
-export interface RuleConstant { name: string; value: number | string; unit: string; source: string; fitted_on?: string | null; }
+export interface RuleConstant { name: string; value: number | string | (number | string)[]; unit: string; source: string; fitted_on?: string | null; }
 export interface Rule { name: string; sentence: string; constants: RuleConstant[]; }
 export interface RecommenderScore { design_match_share: number; pv_within: number; battery_within: number; wallbox_decision: number; }
 export interface DeviationQuality { n_differ: number; ours_better_payback: number; expert_better_payback: number; ours_better_autarky: number; expert_better_autarky: number; method: string; }

@@ -54,6 +54,31 @@ def save(lead: dict):
     tmp.replace(DIR / f"lead-{lead['lead_id']}.json")
 
 
+STALE_S = 600  # a call with no step for 10 minutes has ended
+
+
+def expire_stale() -> int:
+    """In-call leads with no step for 10 minutes end: "done" if they have a design, else "ended"; no pending question."""
+    n = 0
+    t = datetime.now(timezone.utc)
+    for lead in list(LEADS.values()):
+        if lead.get("status") != "in_call":
+            continue
+        try:
+            last = datetime.strptime(lead["updated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+        if (t - last).total_seconds() < STALE_S:
+            continue
+        has = bool(((lead.get("draft") or {}).get("design") or {}).get("pv_kwp"))
+        lead.update(status="done" if has else "ended", next_question=None)
+        lead.setdefault("history", []).append({"step": None, "field": None, "answer": {}, "changed": [],
+                                               "note": "no step for 10 minutes: call ended", "at": now()})
+        save(lead)
+        n += 1
+    return n
+
+
 def delete(lead_id: str):
     """Remove a lead from memory and disk; its lines in steps.jsonl stay (the priors keep what the call taught)."""
     LEADS.pop(lead_id, None)
@@ -144,7 +169,7 @@ def normalise(answers, dropped: list | None = None) -> dict:
     return out
 
 
-META = ("customer_name", "installer_name", "heating_age")
+META = ("customer_name", "installer_name")
 
 
 def map_intake(f: dict, dropped: list | None = None) -> tuple[dict, dict]:
@@ -167,6 +192,8 @@ def map_intake(f: dict, dropped: list | None = None) -> tuple[dict, dict]:
             if dropped is None:
                 raise
             dropped.append({"field": "home_office", "value": v, "reason": str(e)})
+    if "heating_age" in f:  # the boiler's age in years feeds rule 3 (heat pump)
+        f["boiler_age_years"] = f.pop("heating_age")
     bill = f.pop("monthly_bill_eur", None)
     out.update(normalise(f, dropped))
     if bill is not None and not out.get("annual_demand_kwh"):

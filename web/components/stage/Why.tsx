@@ -2,6 +2,7 @@
 import { useLayoutEffect, useRef } from "react";
 import type { ComponentKey, Derivation } from "@/lib/api";
 import { n2, named } from "@/lib/stage";
+import { CONST, human } from "./Rules";
 
 const SRC: Record<string, string> = {
   lead: "lead", answer: "you answered", pvgis: "PVGIS", lod2: "LoD2 roof", iwu: "IWU",
@@ -15,24 +16,26 @@ const num = (s: string) => Number(s.replace(/,/g, ""));
 const fmt = (x: number) => n2(Math.round(x * 100) / 100);
 
 // "5,000 kWh / 907 kWh per kWp = 5.51 kWp" into rows; ";" chains a second sum that starts from the first result.
-function terms(d: Derivation, answered: boolean): Term[] {
+function terms(d: Derivation, answered: boolean, installer: string): Term[] {
   const out: Term[] = [];
   let carry: string | null = null;
   // "(5,000 + 3,000 EV) kWh" becomes "5,000 kWh + 3,000 kWh".
   const eq = d.equation.replace(/\(([^)]*)\)\s*([A-Za-z]+)/g, (_, inner: string, u: string) =>
     inner.split(/\s*\+\s*/).map((t) => t.replace(/^([\d,.]+).*$/, `$1 ${u}`)).join(" + "));
-  for (const seg of eq.split(";").map((s) => s.trim()).filter(Boolean)) {
+  // v2.0: "10.18 kWp -> 10.35 kWp, 23 modules of 450 W" reads as a second "=" that snaps.
+  for (const seg of eq.split(";").map((s) => s.trim().replace(/\s*->\s*/g, " = ")).filter(Boolean)) {
     const parts = seg.split(/\s+(\/|x|×|=|\+)\s+/);
     for (let i = 0; i < parts.length; i += 2) {
       const o = parts[i - 1], op = i === 0 ? "" : o === "/" ? "÷" : o === "=" ? "=" : o === "+" ? "+" : "×";
       const m = parts[i].match(/^(EUR\s+)?(-?[\d,]*\.?\d+)(%?)\s*(.*)$/);
       if (!m) continue;
-      const v = m[2] + m[3], u = (m[1] ? "EUR " : "") + m[4];
+      const [unit, ...rest] = m[4].split(",");
+      const v = m[2] + m[3], u = (m[1] ? "EUR " : "") + unit.trim(), note = rest.join(",").trim() || undefined;
       if (i === 0 && carry === v) continue;
       const x = num(m[2]) / (m[3] ? 100 : 1);
       const inp = d.inputs.find((p) => typeof p.value === "number" && Math.abs(p.value - x) < 1e-6 * Math.max(1, Math.abs(x)) + 0.005);
-      const src = inp ? (inp.name === "household use" && answered ? "you answered" : SRC[inp.source] ?? inp.source) : undefined;
-      out.push({ op, v, u, name: inp?.name, src });
+      const src = inp ? (inp.name === "household use" && answered ? "you answered" : /^fitted/i.test(inp.source) ? `fitted on half of ${installer}'s projects` : SRC[inp.source] ?? inp.source) : undefined;
+      out.push({ op, v, u, name: inp ? human(inp.name, CONST) : note, src });
       if (op === "=") carry = v;
     }
   }
@@ -45,7 +48,7 @@ export default function Why({ k, d, level, onMore, answered, installer, closing,
   const ref = useRef<HTMLDivElement>(null);
   // Grow out of the tapped number: transform origin sits under it.
   useLayoutEffect(() => { const el = ref.current; if (el) el.style.setProperty("--ox", `${ox - el.getBoundingClientRect().left}px`); }, [ox]);
-  const rows = terms(d, answered);
+  const rows = terms(d, answered, installer);
   const last = rows.length - 1;
   const adj = d.adjustment;
   const lands = d.final != null && d.axiom_result != null && Math.abs(d.final - d.axiom_result) < 0.005;
@@ -68,7 +71,7 @@ export default function Why({ k, d, level, onMore, answered, installer, closing,
               <span key={`o${i}`} className="op">{t.op}</span>,
               <span key={`v${i}${t.v}`} className={`v s-mark${sub ? " sub" : ""}`}>{t.v}</span>,
               <span key={`u${i}`} className="u">{t.u}</span>,
-              <span key={`w${i}`} className={sub ? "w sub" : "w"}>{t.name ?? (t.op === "=" ? (i === last ? "what the physics alone asks for" : "") : "")}{t.src && <span className="src">{t.src}</span>}</span>,
+              <span key={`w${i}`} className={sub ? "w sub" : "w"}>{t.name ?? (t.op === "=" ? (i === last ? "what the physics alone asks for" : "what the rule gives") : "")}{t.src && <span className="src">{t.src}</span>}</span>,
             ];
           })}
           {level >= 3 && adj && (adj.value > 0 && d.final != null ? <>
@@ -84,7 +87,7 @@ export default function Why({ k, d, level, onMore, answered, installer, closing,
       {level >= 4 && (
         <dl className="srcs s-step">
           {d.inputs.map((p) => (
-            <div key={p.name}><dt>{p.name}</dt><dd><span className="num">{typeof p.value === "number" ? (p.value < 1 && p.unit === "" ? `${Math.round(p.value * 100)}%` : fmt(p.value)) : p.value}</span>{p.unit && ` ${p.unit}`}<span className="src">{p.name === "household use" && answered ? "you answered" : SRC[p.source] ?? p.source}</span></dd></div>
+            <div key={p.name}><dt>{human(p.name, CONST)}</dt><dd><span className="num">{typeof p.value === "number" ? (p.value < 1 && p.unit === "" ? `${Math.round(p.value * 100)}%` : fmt(p.value)) : p.value}</span>{p.unit && ` ${p.unit}`}<span className="src">{p.name === "household use" && answered ? "you answered" : /^fitted/i.test(p.source) ? `fitted on half of ${installer}'s projects` : SRC[p.source] ?? p.source}</span></dd></div>
           ))}
         </dl>
       )}

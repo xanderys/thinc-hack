@@ -2,6 +2,7 @@
 // A call shows as "in_progress" from the moment it starts (name and address from the session's user_id
 // "<customer_name>|<address_or_postcode>"), and as "done" once ElevenLabs' post-call data collection is in
 // (name and address then from the dynamic variables). Open a done call with /start/lead/<id>.
+// Finished calls shorter than 45 s or without a customer name are left out.
 export const dynamic = "force-dynamic";
 
 const AGENT_ID = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID || "agent_4201m6v70wckem7sd6nq4mkt40s4";
@@ -54,6 +55,8 @@ export async function GET() {
       customer_name: p.name, address_or_postcode: p.address, title: (c.call_summary_title as string) ?? null, lead_id: p.lead,
     };
   }));
-  cache = { at: Date.now(), body: leads };
-  return Response.json(leads);
+  // Real calls only: live calls always show; finished ones need a name and at least 45 s.
+  const real = leads.filter((l: Lead) => l.status === "in_progress" || (!!l.customer_name && (l.call_secs ?? 0) >= 45));
+  cache = { at: Date.now(), body: real };
+  return Response.json(real);
 }

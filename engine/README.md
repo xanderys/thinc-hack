@@ -19,6 +19,44 @@ cd engine && uv sync && REONIC_DATA_DIR="/path/to/Project Data" uv run uvicorn a
 
 `./run.sh` keeps it up on port 8000 and restarts it in 2 s if it exits. The first start trains (about 35 s); later starts load the model from `engine/.cache/` (gitignored, keyed on data files and engine code) in about 4 s. Contract: `docs/api.md` v1.3 (`/api/ask`, `/api/inbox`; refine overrides take a number, null or "include"; eval carries textbook, floor-slope and near-identical-homes shares; economics from the hourly simulation; `optimum`). Extra fields beyond the contract: `/api/ask` takes optional `unknown: string[]`; `HomeInputs.roof_area_sqm`, `roof_azimuth_deg`, `roof_tilt_deg`, `roof_orientation` (read by the simulation), `HomeInputs.offer_date` (optional ISO date, picks the battery catalogue of that time; default latest); `/api/eval` adds `baselines` (full detail per rule), `ceiling.covered_test_share`, `all_projects` (all 314 test jobs), `size_mae_when_both_include`, `within_2kwp_share` (PV) and per-installer `baseline_design_match_share`; `/api/projects/{id}` adds `split`; `/api/projects` items add a one-line `label` and come in a varied order (both installers; battery, heat pump, EV, PV only, wallbox, no PV).
 
+## Two recommenders (v2.0)
+
+`RECOMMENDER=rules|ml` (in `~/.config/marquee/engine.env` on the mini, read by `run.sh`; default `ml`) picks what designs, refines, asks and runs the call. `rules` is the transparent formula in `app/planner_rules/` (REONIC PHYSICS; full detail in `docs/rules.md`): five plain rules on the hourly physics, four fitted constants per installer. `ml` is the learned chain below, kept as the black box to compare against. Either way the same neighbour evidence, hourly economics, plausibility, optimum and variants wrap the design, and `/health` says which one is live.
+
+The formula is a reading of what planners do, measured against 1,619 real designs: it reproduces their habits where the data shows a habit, and the physics says where those habits cost the homeowner.
+
+Rules:
+1. PV is the installer's base array plus enough to cover annual use at this roof's yield, times the installer's ratio, capped by the roof, in whole 450 W modules.
+2. The battery follows the array at the installer's kWh per kWp, snapped up to its packages on sale at the offer date; one evening's use is shown beside it as the physics check.
+3. A heat pump when gas or oil heats the home and the boiler is 20 years or older (`boiler_age_years`, from the call's `heating_age`), or the planner asks; heat over 2,300 full-load hours, next size up.
+4. An 11 kW wallbox when an electric car is real or planned.
+5. The inverter nearest 0.85 times the PV kWp.
+
+Constants, fitted on half of each installer's projects (seed 42), scored on the other half; the rule sentences in `DesignResponse.rules` and `docs/rules.md` come from the same `rules_table()` and carry each installer's numbers:
+
+| Constant | 2a8ba8e2 / 23c108b7 | Source |
+|---|---|---|
+| `base_kwp` | 4.95 / 11.7 kWp | fitted |
+| `per_use_slope` | 0.95 / 0 | fitted; 23c108b7 sells one array whatever the use |
+| `battery_kwh_per_kwp` | 0.80 / 0.85 kWh per kWp | fitted |
+| `boiler_age_years` | 20 | default, not in the data |
+| `battery_packages` | the installer's packages on sale at the offer date | catalogue, not fitted |
+| `evening_share` | 0.52 | BDEW H25 against the PVGIS Munich TMY, not fitted |
+
+Side by side, `/api/eval.recommenders`, on the 126 held-out homes that neither the black box nor the fitted constants saw (all four within tolerance / PV / battery):
+
+| Recommender | All four | PV | Battery |
+|---|---|---|---|
+| Formula (rules) | 23.8% | 38.9% | 50.0% |
+| Black box (ml) | 19.0% | 34.9% | 48.4% |
+| Textbook | 6.3% | 18.3% | 47.6% |
+
+On the full 258 board (half of it in the formula's fit half): 20.9% / 17.1% / 6.6%. 126 homes is small (about ±4 points). Where the formula's PV or battery differs from the expert's (92 of the 126), both designs go through the same hourly simulation: the formula pays back sooner in 52 homes and the expert in 38; the formula gives more autarky in 51 and the expert in 39 (`deviation_quality`; ties under 0.1 years or 1 point left out; costs are our 2026 averages, not installer prices). The lab's report (`engine/lab/reports/rules_scoreboard.md`, branch engine-lab) counts the same on the whole 633-home test half, wallbox differences included: 519 differ, payback ours 277 / expert 233, autarky ours 315 / expert 200.
+
+## If the mini is unreachable
+
+If the mini is unreachable, run `engine/fallback.sh` on the MacBook and set `ENGINE_URL` to its Tailscale address. It finds the data pack under `.handoff`, reads the same `~/.config/marquee/*.env` switches, copies the bundled hero roof (`engine/fallback/roof2`, public LoD2 and Zensus figures only), and serves on port 8000 with `RECOMMENDER=rules` unless the env file says otherwise; the first start trains for about a minute, later starts load `engine/.cache`. The intake step needs `~/.config/marquee/intake.env` copied from the mini (it holds the secret, so copy it by hand, never through git).
+
 ## Data
 
 | | 2a8ba8e2 | 23c108b7 |

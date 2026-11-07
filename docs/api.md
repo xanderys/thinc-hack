@@ -1,4 +1,4 @@
-# Engine API contract (v2.0)
+# Engine API contract (v2.3)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -161,6 +161,15 @@ State lives in the engine (in-memory plus JSON under `engine/.cache/leads/`). Th
 - `DesignResponse.explanation[]` are the rule sentences that fired; `components.<k>.derivation.axiom` is the rule, `adjustment.label` names the fitted constant and its source, `final` the result.
 - `DesignResponse.rules?: { name, sentence, constants: { name, value, unit, source, fitted_on }[] }[]` lists every rule applied.
 - `Eval.recommenders?: Record<"formula" | "blackbox" | "textbook", { design_match_share: number; pv_within: number; battery_within: number; wallbox_decision: number }>` on the same test homes; `Eval.deviation_quality?: { n_differ: number; ours_better_payback: number; expert_better_payback: number; ours_better_autarky: number; expert_better_autarky: number; method: string }`.
+
+## v2.1: real house model
+- `GET /api/roof/model?address=...` → `{ address, source: "lod2", textured: boolean, licence: string, model_url: string, planes: { id, polygon: [number, number, number][], pitch, azimuth, area_m2, is_target, yield_kwh_per_kwp, sun, max_panels, chosen_panels: { x, y, w, h, angle }[] }[], neighbours: number, triangles: number }`; `GET /api/roof/model/file?address=...` serves the .glb (cache for a day). `RoofResult.model_url` points at the first. Absent when no LoD2 hit; the UI keeps the line drawing.
+
+## v2.2: front photo (optional, Google key on the engine host only)
+- `GET /api/roof/photo?address=...` proxies a Street View Static image (cached by address; 404 with Google's words when there is none). `RoofResult.photo_url?` points at it; `RoofResult.google_panels?` (Solar API maxArrayPanelsCount) when available. Never a dependency.
+
+## v2.3: explanation layers for the spatial demonstration
+- `POST /api/explain/layers` body `{ inputs: HomeInputs, design?: Design }` → `{ planes: (as /api/roof/model, with chosen_panels for this design), day: { date: string; hours: { h: number; pv_kw: number; load_kw: number; battery_kw: number; grid_kw: number; soc_kwh: number }[] }, night: { evening_kwh: number; night_hours: number; battery_kwh: number; htw_cap_kwh: number }, frontier: { kwp: number; kwh: number; capex_eur: number; npv_20y_eur: number; autarky_share: number; payback_years: number | null; chosen: boolean; label?: string }[], chosen: Design, objective: { name: string; sentence: string; sources: string[] }, sources: { key: string; citation: string; url?: string }[] }`. Day = a representative spring weekday from the hourly year. Cached per inputs hash.
 
 Natural-language refinement ("the family buys an EV next year") is handled in `web/` (`POST /api/interpret` → `{ changes: { field, from, to, note }[], inputs: HomeInputs }`) with the Claude API, then `web/` calls `/api/refine`. The engine has no LLM.
 
