@@ -8,11 +8,12 @@ from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostin
 from sklearn.model_selection import cross_val_predict, train_test_split
 
 from . import physics
-from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES
+from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES, date_t
 
 SEED = 42
 K = 15
-MODEL_VERSION = "chain-hgb-knn-2"
+MODEL_VERSION = "chain-hgb-knn-3"
+T_NOW = {"t": 2026.3}  # latest offer date in train; used when a request carries no offer_date
 COMPONENTS = ["pv", "battery", "heatpump", "wallbox"]
 UNITS = {"pv": "kWp", "battery": "kWh", "heatpump": "kW", "wallbox": "kW"}
 TARGET = {"pv": "pv_kwp", "battery": "battery_kwh", "heatpump": "heatpump_kw", "wallbox": "wallbox_kw"}
@@ -37,6 +38,8 @@ def base_features(inp: dict, installer: str) -> dict:
         "price": inp.get("electricity_price_ct_kwh") if inp.get("electricity_price_ct_kwh") is not None else np.nan,
         "inhabitants": inp.get("num_inhabitants") if inp.get("num_inhabitants") is not None else np.nan,
         "sqm": inp.get("house_size_sqm") if inp.get("house_size_sqm") is not None else np.nan,
+        "t": date_t(inp["offer_date"]) if inp.get("offer_date") else T_NOW["t"],
+        "demand_default": float(d in (0.0, 4500.0)),
     }
     for lp in LOAD_PROFILES:
         f[f"lp_{lp}"] = float(inp.get("load_profile") == lp)
@@ -87,6 +90,7 @@ class Engine:
         tr, te = train_test_split(df, test_size=0.2, random_state=SEED, stratify=df.installer_id)
         self.train, self.test = tr.reset_index(drop=True), te.reset_index(drop=True)
         tr = self.train
+        T_NOW["t"] = max(date_t(x) for x in tr.offer_date)
         X = pd.DataFrame([base_features(r, r["installer_id"]) for r in tr.to_dict("records")])
         self.cols = list(X.columns)
 
@@ -96,7 +100,7 @@ class Engine:
             vc_b = t[t.battery_kwh > 0].battery_kwh.value_counts()
             vc_hp = t[t.heatpump_kw > 0].heatpump_kw.value_counts()
             vc_wb = t[t.wallbox_kw > 0].wallbox_kw.value_counts()
-            self.catalogue[inst] = {
+            cat = self.catalogue[inst] = {
                 "pv": np.sort(vc_pv[vc_pv >= 2].index.values.astype(float)),
                 "battery": np.sort(vc_b[vc_b >= 3].index.values.astype(float)),
                 "heatpump": np.sort(vc_hp.index.values.astype(float)) if len(vc_hp) else np.array([5.5, 7.5, 10.5, 12.5]),
@@ -107,6 +111,9 @@ class Engine:
             }
             V = np.array([knn_vec(base_features(r, inst)) for r in t.to_dict("records")])
             mu, sd = V.mean(0), V.std(0) + 1e-6
+            tb = t[t.battery_kwh > 0]
+            cat["bat_t"] = np.array([date_t(x) for x in tb.offer_date])
+            cat["bat_s"] = tb.battery_kwh.values.astype(float)
             self.knn[inst] = {"V": (V - mu) / sd * KNN_W, "mu": mu, "sd": sd, "rows": t.reset_index(drop=True)}
 
         y = {c: tr[TARGET[c]].values for c in COMPONENTS}
@@ -177,7 +184,7 @@ class Engine:
         if "battery_kwh" in ov:
             bat, src = ov["battery_kwh"] or 0.0, "planner"
         else:
-            bat = snap(float(self.models["bat_size"].predict(X1)[0]), cat["battery"]) if p_b >= 0.5 else 0.0
+            bat = snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"])) if p_b >= 0.5 else 0.0
             src = "model"
         comps["battery"] = self._detail("battery", bat, p_b, nb, inp, src, pv=pv)
         X2 = X1.assign(battery=bat)
@@ -303,10 +310,23 @@ class Engine:
             flags.append({"component": comp, "level": level, "message": msg, "neighbours": st})
         return flags
 
+    def battery_catalogue(self, inst, t):
+        """Battery sizes this installer sold at least 3 times within 6 months of the offer date (catalogue changes, e.g. 2025 Q1)."""
+        cat = self.catalogue[inst]
+        m = np.abs(cat["bat_t"] - t) <= 0.5
+        vc = pd.Series(cat["bat_s"][m]).value_counts()
+        sizes = np.sort(vc[vc >= 3].index.values.astype(float))
+        return sizes if len(sizes) else cat["battery"]
+
     # ---------- eval ----------
-    def baseline(self, inp: dict) -> dict:
+    BASELINES = {"textbook": "1.3 kWp per MWh plus 2.5 kWp with an EV (docs/domain.md rule 1)",
+                 "floor_slope": "6.5 kWp plus 0.58 kWp per MWh (median fit, docs/data-insights.md)"}
+
+    def baseline(self, inp: dict, kind: str = "textbook") -> dict:
         cat = self.catalogue[inp["installer_id"]]
-        pv = snap(inp["annual_demand_kwh"] / 1000, cat["pv"])
+        mwh = inp["annual_demand_kwh"] / 1000
+        raw = 1.3 * mwh + (2.5 if inp.get("has_ev") else 0) if kind == "textbook" else 6.5 + 0.58 * mwh
+        pv = snap(raw, cat["pv"])
         bat = cat["battery_median"] if cat["battery_share"] >= 0.5 else 0.0
         bat = snap(bat, cat["battery"]) if bat else 0.0
         wb = 11.0 if inp.get("has_ev") else 0.0
@@ -315,13 +335,26 @@ class Engine:
     def evaluate(self) -> dict:
         te = self.test
         rows = te.to_dict("records")
-        ours, base = [], []
+        ours, base, base2 = [], [], []
         for r in rows:
             inp = row_inputs(r)
             d = self.predict(inp)["design"]
             ours.append({k: (d[k] or 0.0) for k in TARGET.values()})
             base.append(self.baseline(inp))
-        ours, base = pd.DataFrame(ours), pd.DataFrame(base)
+            base2.append(self.baseline(inp, "floor_slope"))
+        ours, base, base2 = pd.DataFrame(ours), pd.DataFrame(base), pd.DataFrame(base2)
+        baselines = {}
+        for name, bdf in (("textbook", base), ("floor_slope", base2)):
+            mm = np.ones(len(te), bool)
+            bc = {}
+            for c in COMPONENTS:
+                k = TARGET[c]
+                w = physics.within(c, bdf[k].values, te[k].values)
+                mm &= w
+                inc = te[k].values > 0
+                bc[c] = {"within_tolerance_share": round(float(w.mean()), 3),
+                         "size_mae": round(float(np.abs(bdf[k].values[inc] - te[k].values[inc]).mean()), 2) if inc.any() else None}
+            baselines[name] = {"rule": self.BASELINES[name], "components": bc, "design_match_share": round(float(mm.mean()), 3)}
         comps = {}
         match_o = np.ones(len(te), bool)
         match_b = np.ones(len(te), bool)
@@ -372,13 +405,33 @@ class Engine:
                         "baseline_design_match_share": round(float(match_b.mean()), 3),
                         "definition": "PV, battery, heat pump and wallbox all within tolerance at once"},
             "per_installer": per,
+            "baselines": baselines,
+            "ceiling": self.ceiling(),
             "deviations": dev,
         }
+
+    def ceiling(self) -> dict:
+        """How often near-identical homes got designs within tolerance of each other: the median design of training
+        homes with the same installer, demand, EV flag and heating type, scored against each test home."""
+        key = ["installer_id", "annual_demand_kwh", "has_ev", "heating_type"]
+        g = self.train.groupby(key)
+        med = g[["pv_kwp", "battery_kwh"]].median()
+        size = g.size()
+        med = med[size >= 5]
+        te = self.test.join(med, on=key, rsuffix="_peer")
+        cov = te.pv_kwp_peer.notna()
+        t = te[cov]
+        pv = physics.within("pv", t.pv_kwp_peer.values, t.pv_kwp.values)
+        bat = physics.within("battery", t.battery_kwh_peer.values, t.battery_kwh.values)
+        return {"pv_agreement_share": round(float(pv.mean()), 3), "battery_agreement_share": round(float(bat.mean()), 3),
+                "covered_test_share": round(float(cov.mean()), 3),
+                "method": "Each test home against the median design of 5 or more training homes with identical installer, "
+                          "demand, EV flag and heating type; same tolerance bands as the scoreboard."}
 
 
 def row_inputs(r: dict) -> dict:
     from .data import INPUT_KEYS
-    out = {"installer_id": r["installer_id"]}
+    out = {"installer_id": r["installer_id"], "offer_date": r.get("offer_date")}
     for k in INPUT_KEYS:
         v = r.get(k)
         if isinstance(v, float) and np.isnan(v):

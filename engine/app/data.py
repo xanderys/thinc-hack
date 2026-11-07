@@ -37,7 +37,8 @@ def _pv(rows: pd.DataFrame):
     name = rows.component_name.fillna("")
     mod = rows[rows.component_type == "Module"]
     if len(mod):
-        wp = [(_num(WATT, n) or MODULE_WP_DEFAULT) for n in mod.component_name]
+        # module_watt_peak column (450) is what the packages follow; names say 463 in most rows
+        wp = [c if pd.notna(c) else (_num(WATT, n) or MODULE_WP_DEFAULT) for c, n in zip(mod.module_watt_peak, mod.component_name)]
         return float(np.sum(np.array(wp) * mod.quantity.values) / 1000), "module rows"
     pkg = rows[name.str.startswith("Complete Package")]
     if len(pkg):
@@ -71,6 +72,9 @@ def _design(rows: pd.DataFrame) -> dict:
     for _, r in rows[rows.component_type == "BatteryStorage"].iterrows():
         k = _num(KWH, r.component_name)
         if k:
+            # columns are swapped in the pack: battery Wh sits in inverter_power_kw. FoxESS names understate it.
+            if pd.notna(r.inverter_power_kw) and r.inverter_power_kw > 0:
+                k = r.inverter_power_kw / 1000
             bat += k * (r.quantity or 1)
     if bat == 0:
         pkg = rows[name.str.startswith("Complete Package")]
@@ -79,7 +83,8 @@ def _design(rows: pd.DataFrame) -> dict:
     inv = None
     invr = rows[rows.component_type == "Inverter"]
     if len(invr):
-        inv = sum((_num(KW, n) or 0) for n in invr.component_name) or None
+        # inverter W sits in battery_capacity_kwh (swapped columns)
+        inv = sum((c / 1000 if pd.notna(c) else (_num(KW, n) or 0)) for c, n in zip(invr.battery_capacity_kwh, invr.component_name)) or None
     hp = 0.0
     for _, r in rows[rows.component_type == "Heatpump"].iterrows():
         hp = max(hp, _num(KW, r.component_name) or (r.heatpump_nominal_power_kw or 0) / 1000)
@@ -106,9 +111,23 @@ def load() -> tuple[pd.DataFrame, dict]:
         sq = sq[sq.project_id.isin(designs)]
         for r in sq.itertuples():
             d = designs[r.project_id]
-            out.append(dict(project_id=r.project_id, installer_id=inst, **inputs_from_row(r), **d))
+            out.append(dict(project_id=r.project_id, installer_id=inst, offer_date=offer_date(r), **inputs_from_row(r), **d))
     df = pd.DataFrame(out)
     return df, stats
+
+
+def offer_date(r):
+    for v in (r.offer_created_at, r.first_signed_at):
+        t = pd.to_datetime(v, errors="coerce")
+        if pd.notna(t):
+            return t.strftime("%Y-%m-%d")
+    return None
+
+
+def date_t(d) -> float:
+    """Offer date as fractional year, e.g. 2025.25 for 1 April 2025."""
+    t = pd.to_datetime(d, errors="coerce")
+    return float(t.year + (t.dayofyear - 1) / 365.25) if pd.notna(t) else float("nan")
 
 
 def _f(x):
@@ -138,7 +157,7 @@ def inputs_from_row(r) -> dict:
         has_solar=bool(r.has_solar),
         existing_solar_kwp=_f(r.solar_size_kwp),
         has_storage=bool(r.has_storage),
-        existing_storage_kwh=_f(r.storage_size_kwh),
+        existing_storage_kwh=_f(r.storage_size_kwh) / 1000 if _f(r.storage_size_kwh) else None,  # pack stores Wh
     )
 
 

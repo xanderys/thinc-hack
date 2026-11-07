@@ -78,6 +78,7 @@ class HomeInputs(BaseModel):
     existing_solar_kwp: Optional[float] = None
     has_storage: bool = False
     existing_storage_kwh: Optional[float] = None
+    offer_date: Optional[str] = None  # ISO date; picks the installer catalogue of that time. Default: latest.
 
 
 class Design(BaseModel):
@@ -141,6 +142,10 @@ def check_inputs(inp: dict):
         v = inp.get(k)
         if v is not None and not (lo <= v <= hi):
             bad.append(f"{k} is {v:g}; it must be between {lo:,} and {hi:,}{' ' + unit if unit else ''}.")
+    if inp.get("offer_date"):
+        import pandas as pd
+        if pd.isna(pd.to_datetime(inp["offer_date"], errors="coerce")):
+            bad.append(f"offer_date {inp['offer_date']!r} is not a date; use YYYY-MM-DD.")
     if bad:
         raise InputError(" ".join(bad))
 
