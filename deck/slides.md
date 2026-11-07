@@ -36,7 +36,9 @@ footer: Marquee
 
 # “The family buys an EV next year.”
 
-<div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>10.35 kWp</b>, <b>10 kWh</b>, payback <b>10.3 years</b>, independence <b>76%</b><br>the car adds an <b>11 kW</b> wallbox and changes the year: independence <b>76%</b> to <b>60%</b><br>the physics variant beside it: a larger array would earn more<br>[UNCONFIRMED: v5 hero numbers, final digits at 08:00]</div>
+<div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>10.35 kWp</b> (<b>23</b> modules on the real roof), <b>10 kWh</b>, payback <b>10.3 years</b><br>the planners’ design is already the best 20-year value on this roof<br>the car adds an <b>11 kW</b> wallbox: independence <b>76%</b> to <b>60%</b>, payback <b>9.6 years</b></div>
+
+[UNCONFIRMED: final hero numbers]
 
 [UNCONFIRMED: screenshot of the house card opened into the full design, from the live build]
 
@@ -80,11 +82,11 @@ footer: Marquee
 
 <p class="label">The exam: 633 sealed test homes</p>
 
-## Named rules a planner can read match a black box trained on the same data.
+## Transparent rules match the experts as well as the black box, and explain every number.
 
-<div class="data">all four right, sealed half / clean 126: rules <b>18.6%</b> / <b>23.0%</b><br>black box <b>19.0%</b> on its 126 unseen homes, a tie (p 0.33 to 1.00)<br>textbook <b>6.8%</b> / <b>6.3%</b><br>where we differ, our design earns more over 20 years on <b>327</b> homes, the expert’s on <b>180</b></div>
+<div class="data">all four parts right: rules <b>18.6%</b> sealed, <b>23.0%</b> on the clean 126<br>black box <b>19.0%</b> on the same 126, statistically tied; textbook <b>6.8%</b> / <b>6.3%</b><br>where they differ, ours earns the homeowner more over 20 years<br>on <b>327</b> homes, the expert’s on <b>180</b>, median <b>+430 EUR</b></div>
 
-[UNCONFIRMED: final scoreboard from engine/lab/reports/final_test.md; about 19 to 23% is the ceiling the export's inputs allow; never "rules beat ML"]
+[UNCONFIRMED: final scoreboard, THINC HACK MASTER final note]
 
 <p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
 
