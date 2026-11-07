@@ -53,6 +53,12 @@ export interface FrontierPoint {
   payback_years: number | null; chosen: boolean; label?: string; on_frontier?: boolean;
 }
 
+// The engine's own check that the roof, the design and the economics came from one run.
+export interface Consistency {
+  modules_on_roof?: number; modules_in_design?: number; pv_yield_kwh_used?: number; layout_kwh_per_year?: number;
+  shaded?: boolean; battery_kwh_used?: number | null; heat_load_kw_used?: number | null; same_run_id?: string; design_economics_match?: boolean;
+}
+
 export interface Layers {
   planes: RoofModel | RoofPlane[];   // the engine sends the whole model object
   day: { date: string; hours: DayHour[] };
@@ -61,6 +67,7 @@ export interface Layers {
   chosen: Design;
   objective: { name: string; sentence: string; sources: string[] };
   sources: { key: string; citation: string; url?: string }[];
+  consistency?: Consistency;
   economics?: { capex_eur: number; annual_saving_eur: number; payback_years: number | null; self_consumption_share: number; autarky_share: number; annual?: { pv_yield_kwh: number; npv_20y_eur: number | null; [k: string]: unknown } };
 }
 

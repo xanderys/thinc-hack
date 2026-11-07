@@ -12,7 +12,10 @@ import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
 import s from "./spatial.module.css";
 
-export type Endpoints = { model?: string; glb?: string; layers?: string };
+export type Endpoints = { glb?: string; layers?: string };
+
+const modelOf = (x: Layers["planes"] | null | undefined): RoofModel | null =>
+  !x ? null : Array.isArray(x) ? { address: "", planes: x } : x.planes ? x : null;
 
 type Props = {
   inputs: HomeInputs; design: Design; address: string;
@@ -48,18 +51,16 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const layer = ctrl ?? own;
   const setLayer = (n: number) => { if (onLayerChange) onLayerChange(n); if (ctrl == null) setOwn(n); };
 
-  const [model, setModel] = useState<RoofModel | null>(null);
-  const [absent, setAbsent] = useState(false);
-  const [modelErr, setModelErr] = useState<string | null>(null);
-  const [modelTry, setModelTry] = useState(0);
   const [layers, setLayers] = useState<Layers | null>(null);
+  const [absent, setAbsent] = useState(false);
   const [layersErr, setLayersErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [tryN, setTryN] = useState(0);
   const [glbErr, setGlbErr] = useState<string | null>(null);
   const [glbOk, setGlbOk] = useState(false);
   const [ready, setReady] = useState(false);
   const [hour, setHour] = useState<{ h: number; playing: boolean }>({ h: 12, playing: false });
   const [view, setView] = useState<"3d" | "2d">("3d");
-  const [tick, setTick] = useState(0);
 
   const host = useRef<HTMLDivElement>(null), overlay = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), compass = useRef<HTMLDivElement>(null);
   const scene = useRef<SpatialScene | null>(null);
@@ -70,42 +71,34 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
 
   const kwp = design.pv_kwp;
   const enc = encodeURIComponent(address);
-  const by = inputs.house_built_year;
-  const modelUrl = endpoints?.model ?? `/api/roof/model?address=${enc}${kwp ? `&kwp=${kwp}` : ""}${by ? `&build_year=${by}` : ""}`;
   const glbUrl = endpoints?.glb ?? `/spatial-demo/glb?address=${enc}`;
   const layersUrl = endpoints?.layers ?? "/api/explain/layers";
   const layersKey = JSON.stringify([inputs, design, address]);
 
-  // 1. The model JSON (planes, shade, envelope). No model: render nothing.
+  // One call for everything on screen: POST /api/explain/layers for this design (planes with its modules, shade,
+  // envelope, plan, day, night, frontier), re-run whenever the design changes. No roof planes: render nothing.
   useEffect(() => {
     const ac = new AbortController();
-    setAbsent(false); setModelErr(null);
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // 404 or no roof planes: no model for this address. Any other failure is shown with a retry (and retried once after 20 s).
-    fetch(modelUrl, { signal: ac.signal }).then(async (res) => {
-      const body = await res.json().catch(() => null);
-      if (res.status === 404 || (res.ok && !body?.planes?.some((p: RoofPlane) => p.is_target))) { setAbsent(true); setModel(null); onAvailable?.(false); return; }
-      if (!res.ok) { setModelErr(body?.error || `Engine answered ${res.status}`); if (modelTry < 1) timer = setTimeout(() => setModelTry((x) => x + 1), 20000); return; }
-      setModel(body as RoofModel); onAvailable?.(true);
-    }).catch((e) => { if ((e as Error).name !== "AbortError") setModelErr((e as Error).message); });
+    setLayersErr(null); setBusy(true);
+    fetch(layersUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ inputs: { ...inputs, address }, design }), signal: ac.signal })
+      .then(async (res) => {
+        const body = await res.json().catch(() => null);
+        setBusy(false);
+        const m = body ? modelOf(body.planes) : null;
+        if (res.status === 404 || (res.ok && !m?.planes?.some((p) => p.is_target))) { setAbsent(true); setLayers(null); onAvailable?.(false); return; }
+        if (!res.ok) { setLayersErr(body?.error || `Engine answered ${res.status}`); if (tryN < 1) timer = setTimeout(() => setTryN((x) => x + 1), 20000); return; }
+        setAbsent(false); setLayers(body as Layers); onAvailable?.(true);
+      })
+      .catch((e) => { if ((e as Error).name !== "AbortError") { setBusy(false); setLayersErr((e as Error).message); } });
     return () => { ac.abort(); if (timer) clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelUrl, modelTry]);
+  }, [layersKey, layersUrl, tryN]);
 
-  // 2. The explanation layers for this design.
-  useEffect(() => {
-    const ac = new AbortController();
-    setLayersErr(null);
-    call<Layers>(layersUrl, { inputs: { ...inputs, address }, design }, ac.signal).then((r) => {
-      if (r.ok) setLayers(r.data); else { setLayers(null); setLayersErr(r.error); }
-    }).catch(() => {});
-    return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layersKey, layersUrl, tick, modelTry]);
-
+  const model = useMemo(() => (layers ? modelOf(layers.planes) : null), [layers]);
   modelRef.current = model;
   const hasModel = !!model;
-  // 3. three.js, loaded only once there is a model to show.
+  // three.js, loaded only once there is a model to show.
   useEffect(() => {
     if (!hasModel || !host.current || !overlay.current || !svg.current) return;
     let dead = false;
@@ -124,15 +117,10 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasModel, glbUrl, reduce, retryGlb]);
 
-  // A new design or build year re-requests the model; the scene keeps its glb and camera and only re-reads the planes.
-  useEffect(() => { modelRef.current = model; if (model && scene.current && ready) { scene.current.setModel(model); setModelGen((x) => x + 1); } }, [model, ready]);
+  // A new design re-reads the planes; the scene keeps its glb and camera.
+  useEffect(() => { if (model && scene.current && ready) { scene.current.setModel(model); setModelGen((x) => x + 1); } }, [model, ready]);
 
-  // Panels: the layers' planes carry this design's modules; the model (asked with this kWp) is the fallback.
-  const planes: RoofPlane[] = useMemo(() => {
-    // The layers' planes only when they were computed for this design's kWp; otherwise the model asked with this kWp.
-    const lp = layers && Math.abs((layers.chosen?.pv_kwp ?? -1) - (design.pv_kwp ?? -2)) < 0.01 ? planesOf(layers.planes) : [];
-    return lp.length ? lp : model?.planes ?? [];
-  }, [layers, model, design.pv_kwp]);
+  const planes: RoofPlane[] = model?.planes ?? [];
   const panelList = useMemo(() => planes.filter((p) => p.is_target).flatMap((p) => p.chosen_panels.map((r: PanelRect) => ({ p, r }))), [planes]);
   const counts = useMemo(() => Object.fromEntries(planes.filter((p) => p.is_target).map((p) => [p.id, p.chosen_panels.length])), [planes]);
   const envelope: Envelope | null = (model?.envelope && model.envelope.faces?.length ? model.envelope : null);
@@ -198,7 +186,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
       case 2:
         return {
           sentence: "Each face of the roof gets a different amount of sun in a year.",
-          eq: target.map((p) => `${facing(p.azimuth)} ${Math.round(p.pitch)}° → ${n0(p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp)} kWh per kWp a year${p.shade_loss_share != null ? `, ${n1(p.shade_loss_share * 100)}% lost to shade${p.shade_reason ? ` (${p.shade_reason})` : ""}` : ""}`).join("; "),
+          eq: target.map((p) => `${facing(p.azimuth)} ${Math.round(p.pitch)}° → ${n0(p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp)} kWh per kWp a year${p.yield_shaded_kwh_per_kwp != null ? " after shade" : ""}${p.shade_loss_share != null ? `, ${n1(p.shade_loss_share * 100)}% lost to shade${p.shade_reason ? ` (${p.shade_reason})` : ""}` : ""}`).join("; "),
           sources: src(["pvgis", "pvlib", "yield"]).length ? src(["pvgis", "pvlib", "yield"]) : [{ key: "pvgis", citation: model?.sun_source ?? "PVGIS typical meteorological year", url: "https://re.jrc.ec.europa.eu/pvg_tools/en/" }],
         };
       case 3: {
@@ -287,6 +275,23 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     if (four.y != null) numbers.push({ k: "Yield", v: n0(four.y), u: "kWh" });
     numbers.push({ k: "Autarky", v: pct(four.a), u: "" }, { k: "Investment", v: n0(four.c), u: "EUR" }, { k: "Payback", v: four.p == null ? "none" : n1(four.p), u: four.p == null ? "" : "years" });
   }
+  // One run check: modules on the roof against the design, and the yield the economics used against the numbers shown.
+  const cs = layers?.consistency;
+  const shownYield = response?.economics?.annual?.pv_yield_kwh ?? four?.y ?? null;
+  const check = (() => {
+    if (!cs || L < 2 || L > 6) return null;
+    const bad: string[] = [];
+    if (cs.modules_on_roof != null && cs.modules_in_design != null && cs.modules_on_roof !== cs.modules_in_design)
+      bad.push(`${cs.modules_on_roof} modules on the roof, ${cs.modules_in_design} in the design`);
+    if (cs.pv_yield_kwh_used != null && shownYield != null && Math.abs(cs.pv_yield_kwh_used - shownYield) > 1)
+      bad.push(`yield ${n0(cs.pv_yield_kwh_used)} kWh here, ${n0(shownYield)} kWh in the design's numbers`);
+    if (cs.pv_yield_kwh_used != null && cs.layout_kwh_per_year != null && Math.abs(cs.pv_yield_kwh_used - cs.layout_kwh_per_year) > 1)
+      bad.push(`economics used ${n0(cs.pv_yield_kwh_used)} kWh, the roof gives ${n0(cs.layout_kwh_per_year)} kWh`);
+    if (cs.design_economics_match === false) bad.push("economics are not for this design");
+    if (bad.length) return { bad: true, text: `Mismatch: ${bad.join("; ")}` };
+    const m = cs.modules_on_roof != null ? `${cs.modules_on_roof} modules on the roof, ${cs.modules_in_design ?? "?"} in the design` : "";
+    return { bad: false, text: `${m}${m ? ", " : ""}same run${cs.shaded ? ", yield after shade" : ""}` };
+  })();
   if (L === 7 && envelope) numbers.push({ k: "Heat load", v: n1(envelope.design_heat_load_kw), u: "kW" });
 
   const battery = layers && L === 5 ? <BatteryChart layers={layers} battery={design.battery_kwh} reduce={reduce} /> : null;
@@ -307,17 +312,21 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         <div ref={host} className={s.host} />
         <svg ref={svg} className={s.flows} aria-hidden="true" />
         <div ref={overlay} className={s.overlay} aria-hidden="true" />
-        {!ready && !absent && !modelErr && <div className={s.wait}>Loading the house</div>}
-        {modelErr && !model && <div className={s.err}>{modelErr}<button type="button" onClick={() => setModelTry((x) => x + 1)}>Retry</button></div>}
+        {!ready && !absent && !layersErr && <div className={s.wait}>Loading the house</div>}
+        {ready && busy && <div className={s.wait}>Updating for this design</div>}
         {ready && !glbOk && !glbErr && <div className={s.wait}>Loading the aerial photo</div>}
         {glbErr && <div className={s.err}>{glbErr}<button type="button" onClick={() => setRetryGlb((x) => x + 1)}>Retry</button></div>}
-        {needsLayers && layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTick((x) => x + 1)}>Retry</button></div>}
-        {needsLayers && !layers && !layersErr && <div className={s.wait}>Simulating the year</div>}
+        {layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTryN((x) => x + 1)}>Retry</button></div>}
 
-        {numbers.length > 0 && (
-          <dl className={s.numbers}>
-            {numbers.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}{x.u && <span>{x.u}</span>}</dd></div>)}
-          </dl>
+        {(numbers.length > 0 || check) && (
+          <div className={s.nwrap}>
+            {numbers.length > 0 && (
+              <dl className={s.numbers}>
+                {numbers.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}{x.u && <span>{x.u}</span>}</dd></div>)}
+              </dl>
+            )}
+            {check && <p className={check.bad ? `${s.check} ${s.bad}` : s.check} role={check.bad ? "alert" : undefined}>{check.text}</p>}
+          </div>
         )}
 
         <div className={s.tools}>
@@ -331,7 +340,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {L === 2 && (
           <div className={s.legend}>
             <div className={s.bar} style={{ background: "linear-gradient(90deg, #F4F1EA, #0D1BFE)" }} />
-            <div className={s.ends}><span>{n0(Math.min(...planes.map((p) => p.yield_kwh_per_kwp)))}</span><span>{n0(Math.max(...planes.map((p) => p.yield_kwh_per_kwp)))} kWh/kWp</span></div>
+            <div className={s.ends}><span>{n0(Math.min(...planes.map((p) => p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp)))}</span><span>{n0(Math.max(...planes.map((p) => p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp)))} kWh/kWp</span></div>
           </div>
         )}
         {L === 7 && envelope && (
