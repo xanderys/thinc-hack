@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marquee stage mockup</title>
+<link rel="stylesheet" href="base.css">
+<style>
+.stage { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 0 44px; padding-top: 24px; }
+.lead { border-right: 1px solid var(--rule); padding-right: 28px; }
+.mo { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
+.mail { font: 13.5px/1.5 "Sans"; color: var(--ink-2); background: var(--sheet); border: 1px solid var(--rule); padding: 10px 12px; max-height: 128px; overflow: hidden; position: relative; }
+.mail::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 36px; background: linear-gradient(transparent, var(--sheet)); }
+.mail mark { background: none; color: var(--ink); box-shadow: inset 0 -1.5px 0 var(--accent); }
+.facts { margin: 18px 0 0; }
+.fact { display: grid; grid-template-columns: 112px 1fr; gap: 2px 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); }
+.fact:first-child { border-top: 1.5px solid var(--ink); }
+.fact .k { font-size: 13px; color: var(--ink-3); padding-top: 2px; }
+.fact .fv { font-size: 15px; }
+.fact .fq { grid-column: 2; font-size: 12px; color: var(--ink-3); }
+.fact.asked .fv { color: var(--accent); }
+.fact .chg { font-family: "Mono"; font-size: 12px; color: var(--accent); margin-left: 8px; }
+.more { font-size: 13.5px; padding: 10px 0; color: var(--ink); border-bottom: 1px solid var(--rule); }
+.ask { margin-top: 22px; }
+.ask p { font: 22px/1.2 "Serif", serif; margin: 0 0 12px; }
+.ask .seg button { padding: 7px 12px; }
+
+.plan { min-width: 0; }
+.prose { font: 25px/1.28 "Serif", serif; margin: 0 0 22px; max-width: 46ch; }
+.prose .flag { color: var(--accent); }
+.top { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+.house svg { width: 100%; height: auto; display: block; }
+.house .ground { fill: #ECE8DE; stroke: none; }
+.house .wall { fill: var(--sheet); stroke: var(--ink); stroke-width: 1.3; stroke-linejoin: round; }
+.house .wall.side { fill: #EAE6DC; }
+.house .roof, .house .roof.back { fill: #E2DDD1; stroke: var(--ink); stroke-width: 1.3; stroke-linejoin: round; }
+.house .roof.back { fill: #D8D2C4; }
+.house .edge { stroke: var(--ink); stroke-width: 1.3; }
+.house .win { fill: none; stroke: var(--ink-3); stroke-width: 1; }
+.house .panel { fill: var(--ink); stroke: var(--paper); stroke-width: .6; }
+.house .box { fill: var(--paper); stroke: var(--ink); stroke-width: 1.3; }
+.house .ghost { fill: none; stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; opacity: .7; }
+.house .car { fill: var(--sheet); stroke: var(--ink); stroke-width: 1.1; }
+.house .car.top { fill: #E2DDD1; }
+.house .cable { fill: none; stroke: var(--ink); stroke-width: 1; }
+.house .lead { stroke: var(--ink-3); stroke-width: .8; }
+.house .tag { font: 500 13px "Mono"; fill: var(--ink); }
+.house .tag.off { fill: var(--ink-3); font-weight: 400; }
+.est { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1.5px solid var(--ink); }
+.est div { padding: 12px 0 14px; border-bottom: 1px solid var(--rule); }
+.est div:nth-child(odd) { padding-right: 16px; border-right: 1px solid var(--rule); }
+.est div:nth-child(even) { padding-left: 16px; }
+.est dt { font-size: 12.5px; color: var(--ink-3); }
+.est dd { margin: 4px 0 0; font: 500 28px/1 "Mono"; letter-spacing: -0.02em; }
+.est dd .u { font-size: 14px; color: var(--ink-3); margin-left: 4px; font-weight: 400; }
+.est dd .was { display: block; font-size: 12px; color: var(--accent); margin-top: 6px; letter-spacing: 0; font-weight: 400; }
+.estnote { font-size: 12px; color: var(--ink-3); margin: 8px 0 0; }
+.flow { margin-top: 22px; }
+.flow h3, .h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.flow svg { width: 100%; height: auto; display: block; }
+.flow .node { fill: var(--sheet); stroke: var(--ink); stroke-width: 1; }
+.flow .node.sun { stroke: var(--sun); stroke-width: 1.5; }
+.flow .nk { font: 12px "Sans"; fill: var(--ink-3); }
+.flow .nv { font: 500 15px "Mono"; fill: var(--ink); }
+.flow .nv.moved { fill: var(--accent); }
+.flow .stream { fill: none; stroke: var(--sun); stroke-linecap: butt; opacity: .85; }
+.flow .grid { fill: none; stroke: var(--ink-3); stroke-dasharray: 4 3; stroke-width: 2; }
+.flowcap { font-size: 13.5px; color: var(--ink-2); margin: 6px 0 0; }
+
+.comps { margin-top: 30px; border-top: 1.5px solid var(--ink); }
+.comp { display: grid; grid-template-columns: 150px 150px minmax(0, 1fr) auto; gap: 4px 24px; padding: 15px 0; border-bottom: 1px solid var(--rule); align-items: baseline; }
+.comp .n { font-weight: 600; }
+.comp .s { font: 500 26px/1 "Mono"; letter-spacing: -0.02em; white-space: nowrap; }
+.comp .s .u { font-size: 13px; color: var(--ink-3); margin-left: 4px; font-weight: 400; }
+.comp .s.none { color: var(--ink-3); font-size: 19px; font-weight: 400; }
+.comp .s .was { display: block; font-size: 12px; color: var(--accent); margin-top: 6px; font-weight: 400; letter-spacing: 0; }
+.comp .say { font-size: 15px; }
+.comp .why { font-size: 13px; color: var(--ink); border-bottom: 1px solid var(--ink-3); background: none; border-top: 0; border-left: 0; border-right: 0; padding: 0; }
+.comp .ev { grid-column: 3 / 5; font-size: 13px; color: var(--ink-2); background: var(--sheet); border-left: 2px solid var(--ink); padding: 8px 10px; margin-top: 6px; }
+
+.variants { margin-top: 30px; }
+.vrow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--rule); }
+.v { padding: 14px 16px 16px; border-right: 1px solid var(--rule); background: var(--sheet); }
+.v:last-child { border-right: 0; }
+.v.on { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--paper); }
+.v .vh { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.v .vn { font-weight: 600; }
+.v .tagr { font-size: 12px; color: var(--accent); }
+.v .vs { font: 13px "Mono"; color: var(--ink-2); margin: 4px 0 12px; }
+.v dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 0; }
+.v dt { font-size: 12px; color: var(--ink-3); }
+.v dd { margin: 1px 0 0; font: 500 16px "Mono"; }
+.v .gap { display: inline-block; width: 64px; height: 12px; background: var(--rule); vertical-align: middle; }
+
+.refine { margin-top: 34px; padding: 18px 0 0; border-top: 1.5px solid var(--ink); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 24px; }
+.sayrow { display: flex; gap: 8px; }
+.sayrow input { flex: 1; min-width: 0; font: 15px "Sans"; background: var(--sheet); border: 1px solid var(--ink-3); border-radius: 0; padding: 9px 12px; color: var(--ink-3); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.chip { border: 1px solid var(--accent); padding: 3px 8px; font-size: 13px; }
+.moved { list-style: none; padding: 0; margin: 12px 0 0; font-size: 15px; }
+.moved li { padding: 5px 0; }
+.moved .num { font-size: 14px; }
+.moved .ar { color: var(--accent); }
+.moved .why2 { color: var(--ink-3); font-size: 13.5px; margin-left: 6px; }
+.decide { display: flex; gap: 8px; align-items: start; }
+.manual { font-size: 13.5px; margin-top: 4px; }
+
+.phonebar { display: none; }
+.mocknote { font: 11.5px "Mono"; color: var(--accent); margin: 8px 0 0; }
+@media (max-width: 640px) {
+  .masthead { padding: 12px 16px 10px; gap: 14px; flex-wrap: wrap; }
+  .masthead .engine { display: none; }
+  .wrap { padding: 0 16px 120px; }
+  .stephead { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .stephead h1 { font-size: 32px; margin: 0; }
+  .steps { gap: 16px; font-size: 13px; overflow: hidden; }
+  .stage { grid-template-columns: 1fr; }
+  .lead { border-right: 0; padding-right: 0; padding-bottom: 22px; border-bottom: 1.5px solid var(--ink); margin-bottom: 22px; }
+  .prose { font-size: 22px; }
+  .top { grid-template-columns: 1fr; gap: 12px; }
+  .comp { grid-template-columns: 1fr auto; }
+  .comp .say, .comp .why { grid-column: 1 / -1; }
+  .comp .why { justify-self: start; }
+  .comp .ev { grid-column: 1 / -1; }
+  .vrow { grid-template-columns: 1fr; }
+  .v { border-right: 0; border-bottom: 1px solid var(--rule); }
+  .refine { grid-template-columns: 1fr; }
+  .desk { display: none; }
+  .phonebar { display: block; position: sticky; bottom: 0; background: var(--paper); border-top: 1.5px solid var(--ink); padding: 10px 16px 14px; }
+  .phonebar .btn { min-height: 44px; }
+  .wrap { padding-bottom: 24px; }
+  .sayrow input { min-height: 44px; }
+}
+</style></head>
+<body>
+<header class="masthead"><span class="title">Planner</span><nav><span class="on">Plan</span><span>Check</span></nav><span class="engine">Model chain-hgb-knn-5, trained on 1,256 signed projects</span></header>
+<div class="wrap">
+  <div class="stephead">
+    <h1>Plan system</h1>
+    <div class="steps"><span class="done"><i>1</i>Lead</span><span class="on"><i>2</i>Plan system</span><span><i>3</i>Approve</span><span><i>4</i>Check</span></div>
+  </div>
+
+  <div class="stage">
+    <section class="lead" aria-label="The lead">
+      <h2 class="mo">From the lead</h2>
+      <div class="mail">Hello, we are a <mark>family of four</mark> in a <mark>140 m² house built in 1985</mark>. We heat with <mark>gas</mark>, about <mark>2,400 euros a year</mark>, and pay <mark>37 cents</mark> per kWh. <mark>No electric car yet</mark>, no solar, no battery. We would like an offer for solar with storage. Katrin Huber</div>
+      <div class="facts">
+        <div class="fact asked"><span class="k">Annual use</span><span class="fv num">5,000 kWh</span><span class="fq">You answered</span></div>
+        <div class="fact"><span class="k">Heating</span><span class="fv">Gas</span><span class="fq">"We heat with gas"</span></div>
+        <div class="fact"><span class="k">Electric car</span><span class="fv">Yes, from next year<span class="chg">was no</span></span><span class="fq">"No electric car yet"</span></div>
+        <div class="fact"><span class="k">Household</span><span class="fv">4 people</span><span class="fq">"family of four"</span></div>
+        <div class="fact"><span class="k">Installer</span><span class="fv">Installer A</span><span class="fq">Design style to follow</span></div>
+      </div>
+      <div class="more">More details: 140 m², built 1985, gas 2,400 EUR a year, 37 ct/kWh, no solar, no battery</div>
+      <div class="ask">
+        <p>How much electricity does the house use a year? It changes the design most.</p>
+        <span class="seg"><button class="num">3,000</button><button class="num on">5,000</button><button class="num">6,500</button></span>
+        <span class="label" style="margin-left:8px">kWh</span>
+      </div>
+    </section>
+
+    <section class="plan" aria-label="Plan system">
+      <p class="prose">I would offer 10.35 kWp of solar, a 10 kWh battery and an 11 kW wallbox. With the car the house needs about 8,000 kWh a year, and 13 of 15 similar homes from this installer got solar near 9.9 kWp. <span class="flag">Check one thing: the roof needs about 57 m².</span></p>
+
+      <div class="top">
+        <div class="house" id="house" data-scale="21"></div>
+        <div>
+          <dl class="est">
+            <div><dt>Solar yield a year</dt><dd>11,465<span class="u">kWh</span><span class="was">was 8,478</span></dd></div>
+            <div><dt>Autarky</dt><dd>63<span class="u">%</span><span class="was">was 75</span></dd></div>
+            <div><dt>Investment</dt><dd>17,530<span class="u">EUR</span><span class="was">was 14,150</span></dd></div>
+            <div><dt>Payback</dt><dd>9.9<span class="u">years</span><span class="was">was 10.6</span></dd></div>
+          </dl>
+          <p class="estnote">Estimates from an hourly simulation of a typical Munich year.</p>
+          <div class="flow">
+            <h3>Where does the power go</h3>
+            <svg viewBox="0 0 460 250" aria-label="Solar to battery, home and car, and grid">
+              <path class="stream" stroke-width="10" d="M206 58 V120 Q206 140 186 140 H128"/>
+              <path class="stream" stroke-width="22" d="M230 58 V188"/>
+              <path class="stream" stroke-width="26" d="M254 58 V120 Q254 140 274 140 H332"/>
+              <path class="grid" d="M388 162 V205 Q388 214 379 214 H312"/>
+              <rect class="node sun" x="170" y="10" width="120" height="48"/><text class="nk" x="182" y="29">Solar</text><text class="nv moved" x="182" y="48">11,465 kWh</text>
+              <rect class="node" x="10" y="116" width="118" height="48"/><text class="nk" x="22" y="135">Battery</text><text class="nv moved" x="22" y="154">2,790 kWh</text>
+              <rect class="node" x="332" y="116" width="118" height="48"/><text class="nk" x="344" y="135">Sold to grid</text><text class="nv moved" x="344" y="154">6,309 kWh</text>
+              <rect class="node" x="150" y="190" width="160" height="48"/><text class="nk" x="162" y="209">Home and car</text><text class="nv moved" x="162" y="228">5,156 kWh</text>
+              <text class="nk" x="322" y="236">Bought 2,856</text>
+            </svg>
+            <p class="flowcap">The car needs 2,700 kWh a year; 2,856 kWh still comes from the grid.</p><p class="mocknote">Mock note: the battery figure and a home versus car split need two engine fields.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="comps">
+        <div class="comp"><span class="n">Solar</span><span class="s">10.35<span class="u">kWp</span><span class="was">was 7.65</span></span><span class="say">Sized for the house and the car together, about 57 m² of roof.</span><button class="why">Why</button></div>
+        <div class="comp"><span class="n">Battery</span><span class="s">10<span class="u">kWh</span></span><span class="say">Stores the afternoon surplus for the evening and the car.</span><button class="why">Why</button>
+          <div class="ev">14 of 15 similar homes from this installer chose a battery, most between 7.5 and 10 kWh.</div></div>
+        <div class="comp"><span class="n">Heat pump</span><span class="s none">None</span><span class="say">The gas boiler stays; none of 15 similar homes added one.</span><button class="why">Why</button></div>
+        <div class="comp"><span class="n">Wallbox</span><span class="s">11<span class="u">kW</span><span class="was">was none</span></span><span class="say">Charges the car at home at 11 kW.</span><button class="why">Why</button></div>
+      </div>
+
+      <div class="variants">
+        <h3 class="h3">Variants</h3>
+        <div class="vrow">
+          <div class="v on"><div class="vh"><span class="vn">PV + storage</span><span class="tagr">Recommended</span></div><div class="vs">10.35 kWp, 10 kWh, 11 kW wallbox</div>
+            <dl><div><dt>Yield</dt><dd>11,465 kWh</dd></div><div><dt>Autarky</dt><dd>63%</dd></div><div><dt>Investment</dt><dd>17,530 EUR</dd></div><div><dt>Payback</dt><dd>9.9 years</dd></div></dl></div>
+          <div class="v"><div class="vh"><span class="vn">PV + larger storage</span><span class="tagr">Earns most</span></div><div class="vs">10.35 kWp, 15 kWh, 11 kW wallbox</div>
+            <dl><div><dt>Yield</dt><dd>11,465 kWh</dd></div><div><dt>Autarky</dt><dd>73%</dd></div><div><dt>Investment</dt><dd>19,780 EUR</dd></div><div><dt>Payback</dt><dd>10.0 years</dd></div></dl></div>
+          <div class="v"><div class="vh"><span class="vn">PV only</span><span class="tagr">Cheapest</span></div><div class="vs">10.35 kWp, 11 kW wallbox</div>
+            <dl><div><dt>Yield</dt><dd><span class="gap"></span></dd></div><div><dt>Autarky</dt><dd><span class="gap"></span></dd></div><div><dt>Investment</dt><dd><span class="gap"></span></dd></div><div><dt>Payback</dt><dd><span class="gap"></span></dd></div></dl></div>
+        </div>
+        <p class="mocknote">Mock note: PV only numbers missing because the engine was restarting while this was made.</p>
+      </div>
+
+      <div class="refine">
+        <div>
+          <h3 class="h3">Change it in a sentence</h3>
+          <div class="desk"><div class="sayrow"><input value="The family buys an EV next year" readonly aria-label="Describe a change"><button class="btn">Apply</button></div></div>
+          <div class="chips"><span class="chip">Electric car: no to yes, 15,000 km a year</span></div>
+          <ul class="moved">
+            <li>Wallbox: <span class="num">none</span> <span class="ar">→</span> <span class="num">11 kW</span><span class="why2">for the new car</span></li>
+            <li>Solar: <span class="num">7.65</span> <span class="ar">→</span> <span class="num">10.35 kWp</span><span class="why2">re-sized around the car's 2,700 kWh</span></li>
+            <li>Inverter: <span class="num">6</span> <span class="ar">→</span> <span class="num">8 kW</span><span class="why2">matches the larger array</span></li>
+          </ul>
+          <div class="manual">Change by hand</div>
+        </div>
+        <div class="decide"><button class="btn ghost">Undo</button><button class="btn">Approve</button></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="phonebar"><div class="sayrow"><input value="The family buys an EV next year" readonly aria-label="Describe a change"><button class="btn">Apply</button></div></div>
+<script src="house.js"></script>
+<script>drawHouse(document.getElementById("house"), { pv: 10.35, battery: 10, heatpump: null, wallbox: 11 });</script>
+</body></html>
