@@ -15,9 +15,15 @@ CACHE = HERE.parent.parent / ".cache" / "pvgis"
 LOCATIONS = {"Munich": (48.137, 11.575)}
 YEAR = 2025
 
-PRICE_CT = 32.0             # docs/api.md default
+PRICE_CT = 37.0             # BDEW Strompreisanalyse Aug 2026: households 37.0 ct/kWh at 3,500 kWh
 FEEDIN_LOW, FEEDIN_HIGH = rules.FEEDIN_LOW, rules.FEEDIN_HIGH
-BAT_EUR_KWH = 450
+BAT_EUR_KWH = 500           # Verbraucherzentrale via 42watt 2026: 300 to 700 EUR/kWh installed, midpoint
+BAT_LIFE_YEARS = 15         # Verbraucherzentrale: 10 to 15 years
+BAT_LIFE_CYCLES = 6000      # LFP to 80% capacity (42watt, reduco 2026)
+PV_FIXED_EUR, PV_EUR_KWP = 2333.0, 883.0  # line through 5 kWp at 1,350 and 20 kWp at 1,000 EUR/kWp (reduco 2026 size table midpoints)
+HP_GROSS_EUR = 33_500       # air-water in an existing home incl. installation, 27,000 to 40,000 (reduco 2026), midpoint
+HP_SUBSIDY, HP_ELIGIBLE_CAP = 0.30, 28_000  # BEG base subsidy 30% on eligible cost up to 28,000 EUR per first dwelling (KfW 458, 2026)
+BOILER_AVOIDED_EUR = 10_000 # new gas boiler avoided, 8,000 to 12,000 (docs/domain.md 3)
 BAT_USABLE = 0.90           # usable share of nominal
 BAT_RTE = 0.90              # round trip, AC to AC
 BAT_C_RATE = 0.5            # kW per kWh nominal, floor 2.5 kW
@@ -105,6 +111,8 @@ def pv_per_kwp(loc="Munich", tilt=35.0, azimuth=180.0, year=None) -> np.ndarray:
 
 
 def orientation(inputs):
+    if inputs.get("pv_planes"):  # [(tilt, azimuth, share[, yield scale])], filled best plane first by planner_rules
+        return [tuple(map(float, x)) for x in inputs["pv_planes"]]
     tilt = inputs.get("roof_tilt_deg")
     az = inputs.get("roof_azimuth_deg")
     if inputs.get("roof_orientation") == "east-west":
@@ -113,7 +121,7 @@ def orientation(inputs):
 
 
 def pv_profile(inputs, loc, year=None):
-    return sum(share * pv_per_kwp(loc, float(t), float(a), year) for t, a, share in orientation(inputs))
+    return sum(o[2] * (o[3] if len(o) > 3 else 1.0) * pv_per_kwp(loc, float(o[0]), float(o[1]), year) for o in orientation(inputs))
 
 
 # ---------- loads ----------
@@ -260,8 +268,49 @@ def _feedin_eur_kwh(kwp):
 def _capex(inputs, design):
     """(total capex, PV plus battery capex)."""
     pv, bat, hp, wb = (design.get(k) or 0 for k in ("pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"))
-    solar = pv * rules.pv_cost_per_kwp(pv) + bat * BAT_EUR_KWH
-    return solar + (rules.hp_net_capex(inputs) if hp else 0) + (rules.WALLBOX_COST if wb else 0), solar
+    solar = pv_cost(pv) + bat * BAT_EUR_KWH
+    return solar + (hp_net_capex(inputs) if hp else 0) + (rules.WALLBOX_COST if wb else 0), solar
+
+
+def pv_cost(kwp):
+    return PV_FIXED_EUR + PV_EUR_KWP * kwp if kwp else 0.0
+
+
+def hp_net_capex(inputs) -> float:
+    net = HP_GROSS_EUR - HP_SUBSIDY * min(HP_GROSS_EUR, HP_ELIGIBLE_CAP)
+    if inputs.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable"):
+        net -= BOILER_AVOIDED_EUR
+    return net
+
+
+def hp_capex_note(inputs) -> str:
+    s = f"Heat pump EUR {HP_GROSS_EUR:,} less the {HP_SUBSIDY:.0%} BEG base subsidy on up to EUR {HP_ELIGIBLE_CAP:,}"
+    if inputs.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable"):
+        s += f", less EUR {BOILER_AVOIDED_EUR:,} for the boiler replacement it avoids"
+    return s + f": EUR {hp_net_capex(inputs):,.0f} counted."
+
+
+def battery_life_years(kwh, discharged_kwh):
+    """Calendar life, or sooner if the cycles run out."""
+    if not kwh:
+        return None
+    cycles = discharged_kwh / (kwh * BAT_USABLE)
+    return min(BAT_LIFE_YEARS, BAT_LIFE_CYCLES / cycles) if cycles > 0 else BAT_LIFE_YEARS
+
+
+def battery_replacement_pv(kwh, life):
+    """Present value of replacing the battery at end of life within 20 years, less the residual value of the
+    replacement at year 20 (straight line). Same real price as today."""
+    if not kwh or not life or life >= YEARS:
+        return 0.0
+    cost, t, pv = kwh * BAT_EUR_KWH, life, 0.0
+    while t < YEARS:
+        pv += cost / (1 + DISCOUNT) ** t
+        left = min(life, YEARS - t)
+        resid = cost * (1 - left / life) if t + life > YEARS else 0.0
+        pv -= resid / (1 + DISCOUNT) ** YEARS
+        t += life
+    return pv
 
 
 @lru_cache(maxsize=4)
@@ -296,10 +345,18 @@ def _npv(capex, energy_saving, income, opex):
 
 def simulate(inputs: dict, design: dict, location="Munich", year=None) -> SimResult:
     """year None: one typical year (PVGIS TMY), the pinned economics. year "2025": real 2025 weather and negative prices."""
+    after = _flows(inputs, design, location, year)
+    before = _flows(inputs, before_design(design), location, year)
+    return SimResult(economics(inputs, design, after, before, location, year), after)
+
+
+def before_design(design):
+    return {"pv_kwp": 0, "battery_kwh": 0, "heatpump_kw": None, "wallbox_kw": design.get("wallbox_kw")}
+
+
+def economics(inputs, design, after, before, location="Munich", year=None) -> dict:
+    """Economics v1.2 block from the hourly flows with and without the design (planner_rules reuses 'before')."""
     loc = location
-    after = _flows(inputs, design, loc, year)
-    before_design = {"pv_kwp": 0, "battery_kwh": 0, "heatpump_kw": None, "wallbox_kw": design.get("wallbox_kw")}
-    before = _flows(inputs, before_design, loc, year)
     price = _price(inputs)
     imp_b, inc_b = _bill(inputs, before, 0, loc, year)
     imp_a, income = _bill(inputs, after, design.get("pv_kwp") or 0, loc, year)
@@ -320,13 +377,16 @@ def simulate(inputs: dict, design: dict, location="Munich", year=None) -> SimRes
     covered = (after["direct"] + after["discharge"]).sum()
     sc = sc_kwh / pv_y if pv_y else 0.0
     aut = covered / load if load else 0.0
-    npv = _npv(capex, imp_b + fuel - imp_a, income - inc_b, opex) if capex else None
+    bat_new = design.get("battery_kwh") or 0
+    life = battery_life_years(after["bat"], after["discharge"].sum()) if bat_new else None
+    repl = battery_replacement_pv(bat_new, life)
+    npv = _npv(capex, imp_b + fuel - imp_a, income - inc_b, opex) - repl if capex else None
 
     a = [f"Hourly simulation over one typical year ({location} PVGIS TMY, pvlib), household load BDEW H25 with single-home scatter."
          if year is None else f"Hourly replay of {year} ({location} Open-Meteo weather, pvlib), household load BDEW H25 with single-home scatter."]
     a.append(f"Electricity {price * 100:.0f} ct/kWh" + ("" if inputs.get("electricity_price_ct_kwh") else " (default)")
              + f", rising {PRICE_RISE:.0%} a year; feed-in {FEEDIN_LOW} ct up to 10 kWp, {FEEDIN_HIGH} ct above.")
-    t, az, _ = orientation(inputs)[0]
+    t, az = orientation(inputs)[0][:2]
     a.append("Roof east-west." if inputs.get("roof_orientation") == "east-west" else f"Roof {az:.0f} degrees azimuth, {t:.0f} degrees tilt"
              + ("" if inputs.get("roof_azimuth_deg") is not None else " (assumed south)") + ".")
     a.append(f"Battery {BAT_USABLE:.0%} usable, {BAT_RTE:.0%} round trip, greedy self-consumption.")
@@ -335,14 +395,15 @@ def simulate(inputs: dict, design: dict, location="Munich", year=None) -> SimRes
     if after["hp"].any():
         _, src = heat_demand_kwh(inputs, design)
         if design.get("heatpump_kw"):
-            a.append(rules.hp_capex_note(inputs))
+            a.append(hp_capex_note(inputs))
         a.append(f"Heat pump {after['hp'].sum():,.0f} kWh a year: {after['heat']:,.0f} kWh heat ({src}) at JAZ {JAZ}.")
     if year is None:
         a.append(f"No feed-in pay in the {NEG_PRICE_HOURS} sunniest hours (negative prices, 2025); upkeep {OPEX_SHARE:.1%} of PV and battery cost a year.")
     else:
         a.append(f"No feed-in pay in the real {year} negative day-ahead price intervals (DE-LU); upkeep {OPEX_SHARE:.1%} of PV and battery cost a year.")
-    a.append(f"NPV over {YEARS} years at {DISCOUNT:.0%} discount, {DEGRADATION:.1%} a year PV degradation, no battery replacement.")
-    a.append("PV EUR 1,350 per kWp at 5 kWp falling to EUR 1,000 at 20 kWp; battery EUR 450 per kWh.")
+    a.append(f"NPV over {YEARS} years at {DISCOUNT:.0%} discount, {DEGRADATION:.1%} a year PV degradation"
+             + (f"; battery replaced after {life:.0f} years ({BAT_LIFE_YEARS} years or {BAT_LIFE_CYCLES:,} cycles)." if life and life < YEARS else "."))
+    a.append(f"PV EUR {PV_FIXED_EUR:,.0f} plus EUR {PV_EUR_KWP:,.0f} per kWp (EUR 1,350 per kWp at 5 kWp, 1,000 at 20 kWp); battery EUR {BAT_EUR_KWH} per kWh.")
 
     # PV used in each hour (direct or from the battery), shared across loads by their share of that hour
     covered_h = after["direct"] + after["discharge"]
@@ -365,7 +426,7 @@ def simulate(inputs: dict, design: dict, location="Munich", year=None) -> SimRes
             "heatpump_kwh": float(round(after["hp"].sum())), "heatpump_from_pv_kwh": float(round(from_pv["hp"])), "npv_20y_eur": round(npv, -1) if npv is not None else None,
         },
     }
-    return SimResult(econ, after)
+    return econ
 
 
 REPLAY_NOTES = [
