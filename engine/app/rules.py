@@ -4,7 +4,7 @@ import numpy as np
 YIELD = 950  # kWh per kWp per year, Germany (domain.md 1: 880 to 1,350)
 PRICE_CT = 32.0
 FEEDIN_LOW, FEEDIN_HIGH = 7.70, 6.66  # ct/kWh, up to 10 kWp / 10 to 40 kWp portion, EEG from 1 Aug 2026
-EV_KWH_PER_KM = 0.2
+EV_KWH_PER_KM = 0.18  # 18 kWh per 100 km, same as the hourly simulation
 HP_COST = 36_400  # mean of 160 real offers, before subsidy
 WALLBOX_COST = 1_200
 HP_SUBSIDY = 0.30            # BEG base subsidy; bonuses up to 70% exist but depend on the household (docs/domain.md 3)

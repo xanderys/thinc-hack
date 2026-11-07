@@ -1,4 +1,4 @@
-# Engine API contract (v1.7)
+# Engine API contract (v1.7.1)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -36,7 +36,11 @@ interface RoofResult {                  // v1.6, from GET /api/roof?address=... 
   segments: { azimuth: number; pitch: number; area_m2: number }[];
   max_panels: number | null; max_kwp: number | null;      // usable_area_m2 / 5.5
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
+  floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";          // v1.6.1: LoD2 footprint x storeys x 0.8, upper bound
+  build_year_class?: string | null; build_year_estimate?: number | null; heating_class?: string | null; // v1.6.1: Zensus 2022 100 m cell; heating_class is the system type (central, district, floor, stoves), never the fuel
+  zensus_confidence?: string;                                                                          // "estimated from address (Zensus 2022, 100 m cell)"
 }
+// Web rule: when the lead lacks build year or floor area, the facts panel shows these labelled "estimated from address"; heating_class is never used to set heating_type.
 // Preferences (v1.7): HomeInputs.preference?: "independence" | "payback" | "upfront" only reorders `variants` (first = preferred); the learned expert design stays `design`. The export has no preference data, so preference never changes the learned model.
 // Engine behaviour with a roof: pv_kwp = min(model, max_kwp); plausibility gets one line ("the roof fits 57 modules, about 145 m2 at 25 degrees east-west, measured from Bavarian LoD2 data"); components.pv.derivation.inputs cites the roof source.
 

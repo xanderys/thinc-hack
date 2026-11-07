@@ -388,7 +388,10 @@ class Engine:
         """Held-out new-system jobs in demo order: a PV and battery hit first, then varied installers and kinds."""
         if getattr(self, "_inbox", None) is None:
             te = self.test
-            te = te[(te.pv_kwp > 0) | te.has_solar].reset_index(drop=True)
+            te = te[(te.pv_kwp > 0) | te.has_solar]
+            # show real new-system homes with real inputs: no sub-2 kWp leftovers, no untouched 4,500 kWh defaults
+            te = te[~((te.pv_kwp < 2) & ~te.has_solar) & ~((te.annual_demand_kwh == 4500) & (te.heating_type == "Unknown"))]
+            te = te.reset_index(drop=True)
             rows = te.to_dict("records")
             drafts = self.sizes_batch([row_inputs(r) for r in rows])
             items = []
@@ -425,11 +428,20 @@ class Engine:
             note = ""
             if not w["all"]:
                 c = next(c for c in ("pv", "battery", "wallbox", "heatpump") if not w[c])
-                note = self._deviation_note(c, r, d[TARGET[c]] or 0.0, float(r[TARGET[c]]))
+                note = self._inbox_note(c, r, d[TARGET[c]] or 0.0, float(r[TARGET[c]]))
             out.append({"project_id": r["project_id"], "installer_id": r["installer_id"], "inputs": inp,
-                        "draft": full["design"], "confidence": round(float(np.mean([c["confidence"] for c in inc])), 2) if inc else 0.0,
+                        "draft": full["design"], "confidence": self.agreement(inp, full["design"]),
                         "expert": row_design(r), "within": w, "note": note, "_row": r})
-        return out
+        return sorted(out, key=lambda x: x["confidence"])  # least sure first: the planner's review queue
+
+    def agreement(self, inp, draft) -> float:
+        """Share of the 15 most similar past homes whose design is within tolerance of the draft on all four components."""
+        nb = self.neighbours(inp, inp["installer_id"])
+        hit = np.ones(len(nb), bool)
+        for c in COMPONENTS:
+            k = TARGET[c]
+            hit &= rules.within(c, np.full(len(nb), draft.get(k) or 0.0), nb[k].values)
+        return round(float(hit.mean()), 2)
 
     def _derivation(self, comp, inp, design, detail, nb) -> dict:
         """Why this number (v1.5): one physical axiom with this home's numbers, then the learned adjustment that
@@ -437,7 +449,9 @@ class Engine:
         key = TARGET[comp]
         final = design.get(key)
         n = len(nb)
-        src_of = lambda k: "lead" if inp.get(k) not in (None, False, "Unknown") else "default"
+        given = inp.get("_given")
+        src_of = (lambda k: "lead" if k in given else "default") if given is not None else \
+                 (lambda k: "lead" if inp.get(k) not in (None, False, "Unknown") else "default")
         planner = detail["reason"].startswith(("Set by the planner", "Included by the planner"))
         s = nb[key].values
         sim_in = roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")})
@@ -840,13 +854,31 @@ class Engine:
             "deviations": dev,
         }
 
+    NOTE_NAME = {"pv": "Solar", "battery": "Battery", "heatpump": "Heat pump", "wallbox": "Wallbox"}
+
+    def _inbox_note(self, comp, r, ours, expert) -> str:
+        """One plain sentence, no quotes or line breaks: what the expert fitted, the draft, and what similar homes got."""
+        unit = UNITS[comp]
+        s = self.neighbours(row_inputs(r), r["installer_id"])[TARGET[comp]].values
+        inc = s[s > 0]
+        g = lambda x: f"{x:g}" if x else "none"
+        tail = ""
+        if len(inc):
+            med = float(np.median(inc))
+            k = int((np.abs(inc - med) <= rules.tolerance(comp, med)).sum())
+            tail = f"; {k} of {len(s)} similar homes got about {med:g}"
+        else:
+            tail = f"; none of {len(s)} similar homes got one"
+        e = f"{expert:g} {unit}" if expert else "none"
+        return f"{self.NOTE_NAME[comp]}: expert fitted {e}, draft {g(ours)}{tail}."
+
     def _deviation_note(self, comp, r, ours, expert) -> str:
         """Neighbour evidence plus the missing input that explains the gap."""
         unit = UNITS[comp]
         inp = row_inputs(r)
         nb = self.neighbours(inp, r["installer_id"])
         s = nb[TARGET[comp]].values
-        near = int((np.abs(s - expert) <= rules.tolerance(comp, expert or 1)).sum()) if expert else int((s == 0).sum())
+        near = int(((s > 0) & (np.abs(s - expert) <= rules.tolerance(comp, expert or 1))).sum()) if expert else int((s == 0).sum())
         ev = (f"{near} of {len(s)} similar homes got about {fmt(expert, unit)}" if expert else f"{near} of {len(s)} similar homes got none")
         ev += f", median {fmt(float(np.median(s[s > 0])), unit)}" if (s > 0).any() else ""
         why = []
@@ -865,7 +897,7 @@ class Engine:
                 why.append("battery follows the PV size, which the inputs only weakly predict")
         if r["annual_demand_kwh"] == 4500:
             why.append("demand is the 4,500 kWh default")
-        return f"Expert {fmt(expert or None, unit)}, ours {fmt(ours or None, unit)}. {ev}; {', '.join(why)}."
+        return f"Expert fitted {fmt(expert or None, unit)}, draft {fmt(ours or None, unit)}; {ev}; {', '.join(why)}."
 
     def ceiling(self, te) -> dict:
         """How often near-identical homes got designs within tolerance of each other: the median design of training

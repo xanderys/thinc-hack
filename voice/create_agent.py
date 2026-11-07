@@ -5,7 +5,7 @@ HERE = pathlib.Path(__file__).parent
 API = "https://api.elevenlabs.io"
 VOICE_ID = "iP95p4xoKVk53GoZ742B"  # Chris: casual, down-to-earth, conversational
 LLM = "claude-haiku-5-5"
-FIRST = "Hi, it's Sam from the solar team. I'll ask a few quick things about your home so your planner can sketch a first design. Takes about three minutes, is now okay?"
+FIRST = "Hi, it's Sam from the solar team, with a few quick questions for your design. Which postcode is the house in?"
 
 
 def key():
@@ -51,7 +51,7 @@ def main():
                                                     "params": {"system_tool_type": "end_call"}}},
                 },
             },
-            "tts": {"voice_id": VOICE_ID, "model_id": "eleven_v4_turbo", "stability": 0.4, "similarity_boost": 0.8, "speed": 1.0},
+            "tts": {"voice_id": VOICE_ID, "model_id": "eleven_v4_turbo", "stability": 0.4, "similarity_boost": 0.8, "speed": 1.15},
             "conversation": {"max_duration_seconds": 420},
         },
     }

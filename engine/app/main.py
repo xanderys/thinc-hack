@@ -29,18 +29,21 @@ def startup():
         key = cache_key()
         path = CACHE / f"engine-{key}.pkl"
         if path.exists():
-            STATE["engine"], STATE["eval"] = pickle.loads(path.read_bytes())
+            loaded = pickle.loads(path.read_bytes())
+            STATE["engine"], STATE["eval"] = loaded[0], loaded[1]
             STATE["engine"].restore_globals()
+            STATE["inbox"] = loaded[2] if len(loaded) > 2 else None
             log.warning("loaded cached model %s in %.1fs", key, time.time() - t)
         else:
             df, stats = data.load()
             eng = Engine(df, stats).fit()
             STATE["engine"] = eng
             STATE["eval"] = eng.evaluate()
+            warm_inbox()  # the overnight drafts: built once, stored with the model, served from memory
             CACHE.mkdir(exist_ok=True)
             for old in CACHE.glob("engine-*.pkl"):
                 old.unlink()
-            path.write_bytes(pickle.dumps((eng, STATE["eval"])))
+            path.write_bytes(pickle.dumps((eng, STATE["eval"], STATE.get("inbox"))))
             log.warning("trained in %.1fs on %d projects", time.time() - t, len(eng.train))
     except Exception as e:  # keep serving /health with the reason
         STATE["error"] = str(e)
@@ -51,7 +54,8 @@ def startup():
         hourly.simulate({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
     except Exception:
         log.exception("hourly warm-up failed")
-    threading.Thread(target=warm_inbox, daemon=True).start()
+    if STATE.get("inbox") is None:
+        threading.Thread(target=warm_inbox, daemon=True).start()
     threading.Thread(target=roofs.warm, daemon=True).start()
 
 
@@ -228,7 +232,7 @@ def health():
 
 @app.post("/api/design")
 def design(req: DesignReq):
-    inp = req.inputs.model_dump()
+    inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
     check_inputs(inp)
     return engine().predict(inp)
 
@@ -239,7 +243,7 @@ FIELDS = {"pv_kwp": "pv", "battery_kwh": "battery", "heatpump_kw": "heatpump", "
 @app.post("/api/refine")
 def refine(req: RefineReq):
     eng = engine()
-    inp = req.inputs.model_dump()
+    inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
     check_inputs(inp)
     bad = [k for k in (req.overrides or {}) if k not in FIELDS]
     if bad:
@@ -272,7 +276,7 @@ def refine(req: RefineReq):
 
 @app.post("/api/validate")
 def validate(req: ValidateReq):
-    inp, d = req.inputs.model_dump(), req.design.model_dump()
+    inp, d = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}, req.design.model_dump()
     check_inputs(inp)
     check_design(d)
     return {"flags": engine().validate(inp, d)}
@@ -363,7 +367,7 @@ class AskReq(BaseModel):
 
 @app.post("/api/ask")
 def ask(req: AskReq):
-    inp = req.inputs.model_dump()
+    inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
     check_inputs(inp)
     return {"questions": engine().ask(inp, req.unknown)}
 
