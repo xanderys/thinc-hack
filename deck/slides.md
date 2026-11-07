@@ -21,6 +21,8 @@ footer: Marquee
 
 ## Enter a home. Get the design an experienced planner would draw, with the reasons.
 
+<div class="data">PV, then battery given PV, then heat pump, then wallbox. Change one and the rest re-size.</div>
+
 [UNCONFIRMED: screenshot of the planner from https://marquee-reonic.vercel.app as `img/planner.png` with class panel]
 
 ---
@@ -35,11 +37,13 @@ footer: Marquee
 
 <p class="label">Unseen homes, PV within 1 kWp or 15%</p>
 
-<div class="stat">38.9%</div>
+<!-- Provisional figures: final digits from the engine Sunday morning -->
+
+<div class="stat">38.5%</div>
 
 ## As often as two planners agree on identical homes.
 
-<div class="data">two planners, identical homes <b>39 to 43%</b><br>textbook rule <b>16.8%</b></div>
+<div class="data">two planners, identical homes <b>40.3%</b><br>textbook rule <b>14.6%</b><br>all four components <b>19.1%</b>, planner ceiling <b>22.7%</b></div>
 
 ---
 

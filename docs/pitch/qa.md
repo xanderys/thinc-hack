@@ -2,8 +2,8 @@
 
 Draft v1. Every number here must match the final deck.
 
-1. **38.9% sounds low. Why is that good?**
-   Two planners agree on identical homes only 39 to 43% of the time, so that is the ceiling the data allows. We reach it; the textbook rule reaches 16.8%.
+1. **38.5% sounds low. Why is that good?**
+   Two planners agree on identical homes only 40.3% of the time, so that is the ceiling the data allows. We reach 38.5%; the textbook rule reaches 14.6%. On all four components: 19.1% against a ceiling of 22.7%.
 
 2. **How do you know it is not overfitting?**
    20% of projects are held out, stratified by installer, fixed seed, and never used for fitting, size snapping or neighbours. Every score is on those homes.
