@@ -1,0 +1,1461 @@
+{
+ "n": 10000,
+ "generated_at": "2026-11-07T14:34:34Z",
+ "seed": 20261107,
+ "train_rows": 1256,
+ "split": {
+  "in_distribution": 0.7,
+  "edge": 0.2,
+  "adversarial": 0.1
+ },
+ "n_normal": 8918,
+ "n_adversarial": 1000,
+ "n_rejected": 582,
+ "n_physics_errors": 0,
+ "plausible_share": 0.9955,
+ "monotonicity_violations": 740,
+ "invariants": [
+  {
+   "name": "Raising demand never lowers PV",
+   "group": "monotonicity",
+   "description": "Demand +20%, rest fixed: pv_kwp must not fall.",
+   "n_checked": 8918,
+   "n_failed": 19,
+   "pass_share": 0.9979,
+   "worst": [
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 3620.0,
+      "load_profile": "H0",
+      "heating_type": "Gas",
+      "heating_cost_per_year_eur": 2284.2,
+      "heating_demand_kwh": 24942.8,
+      "electricity_price_ct_kwh": 31.8,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 9.0,
+      "inverter_kw": 8.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": 10.5,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "annual_demand_kwh": 4344.0
+     },
+     "changed_design": {
+      "pv_kwp": null,
+      "inverter_kw": null,
+      "battery_kwh": null,
+      "heatpump_kw": 10.5,
+      "wallbox_kw": null
+     },
+     "note": "Demand up 20%: PV 9 to 0 kWp."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 3020.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_cost_per_year_eur": 0.8,
+      "heating_demand_kwh": 14793.8,
+      "electricity_price_ct_kwh": 20.0,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 10.35,
+      "inverter_kw": 8.0,
+      "battery_kwh": 9.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "annual_demand_kwh": 3624.0
+     },
+     "changed_design": {
+      "pv_kwp": 9.45,
+      "inverter_kw": 8.0,
+      "battery_kwh": 9.7,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Demand up 20%: PV 10.35 to 9.45 kWp."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 5130.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 34900.0,
+      "heating_type": "Heatpump",
+      "electricity_price_ct_kwh": 30.3,
+      "_split": "edge",
+      "_kind": "heatpump_and_ev"
+     },
+     "design": {
+      "pv_kwp": 13.5,
+      "inverter_kw": 12.0,
+      "battery_kwh": 14.76,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "changed_inputs": {
+      "annual_demand_kwh": 6156.0
+     },
+     "changed_design": {
+      "pv_kwp": 12.6,
+      "inverter_kw": 10.0,
+      "battery_kwh": 14.76,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "Demand up 20%: PV 13.5 to 12.6 kWp."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 4500.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 11500.0,
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 37.3,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 11.4,
+      "inverter_kw": 10.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "changed_inputs": {
+      "annual_demand_kwh": 5400.0
+     },
+     "changed_design": {
+      "pv_kwp": 10.8,
+      "inverter_kw": 10.0,
+      "battery_kwh": 9.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "Demand up 20%: PV 11.4 to 10.8 kWp."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 12260.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 36.9,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 14.4,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "annual_demand_kwh": 14712.0
+     },
+     "changed_design": {
+      "pv_kwp": 13.95,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Demand up 20%: PV 14.4 to 13.95 kWp."
+    }
+   ]
+  },
+  {
+   "name": "Adding an EV never removes a wallbox",
+   "group": "monotonicity",
+   "description": "EV added at 12,000 km: a wallbox stays.",
+   "n_checked": 7822,
+   "n_failed": 0,
+   "pass_share": 1.0,
+   "worst": []
+  },
+  {
+   "name": "Adding an EV never lowers PV",
+   "group": "monotonicity",
+   "description": "EV added at 12,000 km: pv_kwp must not fall.",
+   "n_checked": 7822,
+   "n_failed": 25,
+   "pass_share": 0.9968,
+   "worst": [
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 15470.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 40.7,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 14.85,
+      "inverter_kw": 12.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "has_ev": true,
+      "ev_annual_km": 12000.0
+     },
+     "changed_design": {
+      "pv_kwp": 14.4,
+      "inverter_kw": 12.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "EV added: PV 14.85 to 14.4 kWp, wallbox 0 to 11 kW."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 18720.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 41.2,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 14.85,
+      "inverter_kw": 12.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "has_ev": true,
+      "ev_annual_km": 12000.0
+     },
+     "changed_design": {
+      "pv_kwp": 14.4,
+      "inverter_kw": 12.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "EV added: PV 14.85 to 14.4 kWp, wallbox 0 to 11 kW."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 16200.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 42.5,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 14.85,
+      "inverter_kw": 12.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "has_ev": true,
+      "ev_annual_km": 12000.0
+     },
+     "changed_design": {
+      "pv_kwp": 14.4,
+      "inverter_kw": 12.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "EV added: PV 14.85 to 14.4 kWp, wallbox 0 to 11 kW."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 17550.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 37.4,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 14.85,
+      "inverter_kw": 12.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "has_ev": true,
+      "ev_annual_km": 12000.0
+     },
+     "changed_design": {
+      "pv_kwp": 14.4,
+      "inverter_kw": 12.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "EV added: PV 14.85 to 14.4 kWp, wallbox 0 to 11 kW."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 16700.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 42.1,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 14.85,
+      "inverter_kw": 12.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "has_ev": true,
+      "ev_annual_km": 12000.0
+     },
+     "changed_design": {
+      "pv_kwp": 14.4,
+      "inverter_kw": 12.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "EV added: PV 14.85 to 14.4 kWp, wallbox 0 to 11 kW."
+    }
+   ]
+  },
+  {
+   "name": "A heat pump never lowers PV",
+   "group": "monotonicity",
+   "description": "Fossil or unknown heating replaced by a heat pump: pv_kwp must not fall.",
+   "n_checked": 7600,
+   "n_failed": 39,
+   "pass_share": 0.9949,
+   "worst": [
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 16270.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 22200.0,
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 28.7,
+      "has_solar": true,
+      "existing_solar_kwp": 14.8,
+      "_split": "edge",
+      "_kind": "existing_solar"
+     },
+     "design": {
+      "pv_kwp": 17.1,
+      "inverter_kw": 15.0,
+      "battery_kwh": 14.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "changed_inputs": {
+      "heating_type": "Heatpump"
+     },
+     "changed_design": {
+      "pv_kwp": 16.65,
+      "inverter_kw": 15.0,
+      "battery_kwh": 14.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "Heating Unknown to heat pump: PV 17.1 to 16.65 kWp."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 9840.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 18600.0,
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 26.8,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 14.4,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "changed_inputs": {
+      "heating_type": "Heatpump"
+     },
+     "changed_design": {
+      "pv_kwp": 13.95,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "Heating Unknown to heat pump: PV 14.4 to 13.95 kWp."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 12900.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 28.5,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 15.3,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "heating_type": "Heatpump"
+     },
+     "changed_design": {
+      "pv_kwp": 14.85,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Heating Unknown to heat pump: PV 15.3 to 14.85 kWp."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 13240.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 28.0,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 15.3,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "heating_type": "Heatpump"
+     },
+     "changed_design": {
+      "pv_kwp": 14.85,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Heating Unknown to heat pump: PV 15.3 to 14.85 kWp."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 11870.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 26300.0,
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 25.1,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 15.3,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "changed_inputs": {
+      "heating_type": "Heatpump"
+     },
+     "changed_design": {
+      "pv_kwp": 14.85,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "Heating Unknown to heat pump: PV 15.3 to 14.85 kWp."
+    }
+   ]
+  },
+  {
+   "name": "A higher tariff never shrinks the battery",
+   "group": "monotonicity",
+   "description": "Electricity price +30%: battery_kwh must not fall.",
+   "n_checked": 8918,
+   "n_failed": 657,
+   "pass_share": 0.9263,
+   "worst": [
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 3970.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 10135.4,
+      "electricity_price_ct_kwh": 34.6,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 12.15,
+      "inverter_kw": 10.0,
+      "battery_kwh": 14.76,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "electricity_price_ct_kwh": 45.0
+     },
+     "changed_design": {
+      "pv_kwp": 10.8,
+      "inverter_kw": 10.0,
+      "battery_kwh": 9.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Tariff +30%: battery 14.76 to 9 kWh."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 4000.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 12004.7,
+      "electricity_price_ct_kwh": 37.5,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 12.15,
+      "inverter_kw": 10.0,
+      "battery_kwh": 14.76,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "electricity_price_ct_kwh": 48.8
+     },
+     "changed_design": {
+      "pv_kwp": 10.8,
+      "inverter_kw": 10.0,
+      "battery_kwh": 9.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Tariff +30%: battery 14.76 to 9 kWh."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 3910.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 16660.0,
+      "electricity_price_ct_kwh": 33.6,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 11.9,
+      "inverter_kw": 10.0,
+      "battery_kwh": 14.76,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "electricity_price_ct_kwh": 43.7
+     },
+     "changed_design": {
+      "pv_kwp": 10.8,
+      "inverter_kw": 10.0,
+      "battery_kwh": 9.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Tariff +30%: battery 14.76 to 9 kWh."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 7500.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 35.9,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 11.4,
+      "inverter_kw": 10.0,
+      "battery_kwh": 15.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "electricity_price_ct_kwh": 46.7
+     },
+     "changed_design": {
+      "pv_kwp": 10.8,
+      "inverter_kw": 10.0,
+      "battery_kwh": 9.7,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Tariff +30%: battery 15 to 9.7 kWh."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 2850.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 30000.0,
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 17570.0,
+      "electricity_price_ct_kwh": 36.3,
+      "_split": "edge",
+      "_kind": "ev_30000_km"
+     },
+     "design": {
+      "pv_kwp": 12.15,
+      "inverter_kw": 10.0,
+      "battery_kwh": 15.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "changed_inputs": {
+      "electricity_price_ct_kwh": 47.2
+     },
+     "changed_design": {
+      "pv_kwp": 10.8,
+      "inverter_kw": 10.0,
+      "battery_kwh": 9.84,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "Tariff +30%: battery 15 to 9.84 kWh."
+    }
+   ]
+  },
+  {
+   "name": "Adding an EV changes the wallbox or PV",
+   "group": "coupling",
+   "description": "EV added: wallbox or pv_kwp must change.",
+   "n_checked": 7822,
+   "n_failed": 0,
+   "pass_share": 1.0,
+   "worst": []
+  },
+  {
+   "name": "No battery without PV",
+   "group": "coupling",
+   "description": "has_solar false: a battery needs proposed PV.",
+   "n_checked": 8918,
+   "n_failed": 0,
+   "pass_share": 1.0,
+   "worst": []
+  },
+  {
+   "name": "A 5% demand change moves PV at most one catalogue step",
+   "group": "stability",
+   "description": "Demand +5%: |change in pv_kwp| at most one step of the installer's sizes.",
+   "n_checked": 8918,
+   "n_failed": 568,
+   "pass_share": 0.9363,
+   "worst": [
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 4500.0,
+      "load_profile": "H0",
+      "heating_type": "Oil",
+      "heating_cost_per_year_eur": 2638.4,
+      "heating_demand_kwh": 43116.6,
+      "electricity_price_ct_kwh": 33.8,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": null,
+      "inverter_kw": null,
+      "battery_kwh": null,
+      "heatpump_kw": 10.5,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "annual_demand_kwh": 4725.0
+     },
+     "changed_design": {
+      "pv_kwp": 9.9,
+      "inverter_kw": 8.0,
+      "battery_kwh": 15.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Demand +5%: PV 0 to 9.9 kWp, 42 catalogue steps."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 4500.0,
+      "load_profile": "H0",
+      "heating_type": "Oil",
+      "heating_cost_per_year_eur": 3894.6,
+      "heating_demand_kwh": 28549.8,
+      "electricity_price_ct_kwh": 34.8,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": null,
+      "inverter_kw": null,
+      "battery_kwh": null,
+      "heatpump_kw": 10.5,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "annual_demand_kwh": 4725.0
+     },
+     "changed_design": {
+      "pv_kwp": 9.9,
+      "inverter_kw": 8.0,
+      "battery_kwh": 15.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Demand +5%: PV 0 to 9.9 kWp, 42 catalogue steps."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 4500.0,
+      "load_profile": "H0",
+      "heating_type": "Oil",
+      "heating_cost_per_year_eur": 3770.1,
+      "heating_demand_kwh": 40788.3,
+      "electricity_price_ct_kwh": 32.3,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": null,
+      "inverter_kw": null,
+      "battery_kwh": null,
+      "heatpump_kw": 10.5,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "annual_demand_kwh": 4725.0
+     },
+     "changed_design": {
+      "pv_kwp": 9.45,
+      "inverter_kw": 8.0,
+      "battery_kwh": 15.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Demand +5%: PV 0 to 9.45 kWp, 42 catalogue steps."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 4500.0,
+      "load_profile": "H0",
+      "heating_type": "Oil",
+      "heating_cost_per_year_eur": 4737.8,
+      "heating_demand_kwh": 39920.1,
+      "electricity_price_ct_kwh": 32.9,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": null,
+      "inverter_kw": null,
+      "battery_kwh": null,
+      "heatpump_kw": 10.5,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "annual_demand_kwh": 4725.0
+     },
+     "changed_design": {
+      "pv_kwp": 9.9,
+      "inverter_kw": 8.0,
+      "battery_kwh": 15.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Demand +5%: PV 0 to 9.9 kWp, 42 catalogue steps."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 4500.0,
+      "load_profile": "H0",
+      "heating_type": "Oil",
+      "heating_cost_per_year_eur": 3136.5,
+      "heating_demand_kwh": 32736.5,
+      "electricity_price_ct_kwh": 32.0,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": null,
+      "inverter_kw": null,
+      "battery_kwh": null,
+      "heatpump_kw": 10.5,
+      "wallbox_kw": null
+     },
+     "changed_inputs": {
+      "annual_demand_kwh": 4725.0
+     },
+     "changed_design": {
+      "pv_kwp": 9.45,
+      "inverter_kw": 8.0,
+      "battery_kwh": 15.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Demand +5%: PV 0 to 9.45 kWp, 42 catalogue steps."
+    }
+   ]
+  },
+  {
+   "name": "No implausible flag",
+   "group": "plausibility",
+   "description": "Proposed design: no hard rule (the /api/validate 'implausible' level).",
+   "n_checked": 8918,
+   "n_failed": 40,
+   "pass_share": 0.9955,
+   "worst": [
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 1070.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 16684.3,
+      "electricity_price_ct_kwh": 28.5,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 9.0,
+      "inverter_kw": 8.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "9 kWp is 8.4 kWp per 1,000 kWh of demand; above 5 almost all of it is exported. 10 kWh is more than 3 days of household demand (2.9 kWh a day)."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 1000.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 17134.7,
+      "electricity_price_ct_kwh": 27.8,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 9.0,
+      "inverter_kw": 8.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "9 kWp is 9.0 kWp per 1,000 kWh of demand; above 5 almost all of it is exported. 10 kWh is more than 3 days of household demand (2.7 kWh a day)."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 800.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 16006.0,
+      "electricity_price_ct_kwh": 28.6,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 8.55,
+      "inverter_kw": 8.0,
+      "battery_kwh": 7.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "8.55 kWp is 10.7 kWp per 1,000 kWh of demand; above 5 almost all of it is exported. 7 kWh is more than 3 days of household demand (2.2 kWh a day)."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 1000.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 17587.5,
+      "electricity_price_ct_kwh": 29.4,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 8.55,
+      "inverter_kw": 8.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "8.55 kWp is 8.6 kWp per 1,000 kWh of demand; above 5 almost all of it is exported. 10 kWh is more than 3 days of household demand (2.7 kWh a day)."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 1070.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 25023.0,
+      "electricity_price_ct_kwh": 29.2,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 8.55,
+      "inverter_kw": 8.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "8.55 kWp is 8.0 kWp per 1,000 kWh of demand; above 5 almost all of it is exported. 10 kWh is more than 3 days of household demand (2.9 kWh a day)."
+    }
+   ]
+  },
+  {
+   "name": "Physics checks pass",
+   "group": "plausibility",
+   "description": "validate_physics: no warning (clipping, cycles, oversized battery, heat pump hours, autarky, self-consumption).",
+   "n_checked": 8918,
+   "n_failed": 355,
+   "pass_share": 0.9602,
+   "worst": [
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 1010.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 18.4,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 6.16,
+      "inverter_kw": 5.0,
+      "battery_kwh": 6.4,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "5.8 kWh usable against 1.9 kWh of evening and night load on a typical day: oversized. Autarky 98%: the system is sized past the point where more kit pays. Only 15% of the PV is used in the house; the rest is exported at feed-in rates."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 1310.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 18.3,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 6.16,
+      "inverter_kw": 5.0,
+      "battery_kwh": 6.4,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "5.8 kWh usable against 2.6 kWh of evening and night load on a typical day: oversized. Autarky 96%: the system is sized past the point where more kit pays. Only 20% of the PV is used in the house; the rest is exported at feed-in rates."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 1000.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 17.9,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 6.16,
+      "inverter_kw": 5.0,
+      "battery_kwh": 6.4,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "5.8 kWh usable against 1.9 kWh of evening and night load on a typical day: oversized. Autarky 98%: the system is sized past the point where more kit pays. Only 15% of the PV is used in the house; the rest is exported at feed-in rates."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 1190.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 20.8,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 6.16,
+      "inverter_kw": 5.0,
+      "battery_kwh": 6.4,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "5.8 kWh usable against 2.3 kWh of evening and night load on a typical day: oversized. Autarky 97%: the system is sized past the point where more kit pays. Only 18% of the PV is used in the house; the rest is exported at feed-in rates."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 1250.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 40.2,
+      "has_storage": true,
+      "existing_storage_kwh": 5.0,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 6.3,
+      "inverter_kw": 5.0,
+      "battery_kwh": 9.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "8.1 kWh usable against 2.5 kWh of evening and night load on a typical day: oversized. Autarky 99%: the system is sized past the point where more kit pays. Only 19% of the PV is used in the house; the rest is exported at feed-in rates."
+    }
+   ]
+  },
+  {
+   "name": "DC/AC within 0.8 to 1.3",
+   "group": "plausibility",
+   "description": "pv_kwp / inverter_kw on designs with PV.",
+   "n_checked": 8913,
+   "n_failed": 0,
+   "pass_share": 1.0,
+   "worst": []
+  },
+  {
+   "name": "Battery within HTW cap",
+   "group": "plausibility",
+   "description": "Usable kWh at most the smaller of 1.5 per kWp and 1.5 per MWh (HTW 2025); installers often exceed it.",
+   "n_checked": 8907,
+   "n_failed": 6503,
+   "pass_share": 0.2699,
+   "worst": [
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 3670.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 34500.0,
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 20282.0,
+      "electricity_price_ct_kwh": 35.1,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 12.15,
+      "inverter_kw": 10.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "16.2 kWh usable; HTW cap 5.5 kWh."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 1940.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 26770.8,
+      "electricity_price_ct_kwh": 29.6,
+      "_split": "edge",
+      "_kind": "demand_low"
+     },
+     "design": {
+      "pv_kwp": 9.45,
+      "inverter_kw": 8.0,
+      "battery_kwh": 14.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "12.6 kWh usable; HTW cap 2.9 kWh."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 2050.0,
+      "load_profile": "FamilyOfFour",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 25352.2,
+      "electricity_price_ct_kwh": 31.6,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 9.45,
+      "inverter_kw": 8.0,
+      "battery_kwh": 14.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "12.6 kWh usable; HTW cap 3.1 kWh."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 4500.0,
+      "load_profile": "H0",
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 20882.1,
+      "electricity_price_ct_kwh": 37.1,
+      "_split": "in_distribution",
+      "_kind": "perturbed"
+     },
+     "design": {
+      "pv_kwp": 11.7,
+      "inverter_kw": 10.0,
+      "battery_kwh": 18.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "16.2 kWh usable; HTW cap 6.8 kWh."
+    },
+    {
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 2850.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 30000.0,
+      "heating_type": "Heatpump",
+      "heating_demand_kwh": 17570.0,
+      "electricity_price_ct_kwh": 36.3,
+      "_split": "edge",
+      "_kind": "ev_30000_km"
+     },
+     "design": {
+      "pv_kwp": 12.15,
+      "inverter_kw": 10.0,
+      "battery_kwh": 15.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "note": "13.5 kWh usable; HTW cap 4.3 kWh."
+    }
+   ]
+  },
+  {
+   "name": "Proposal NPV within 10% or EUR 1,000 of the optimum",
+   "group": "optimum gap",
+   "description": "Same catalogue, same simulator, 20-year NPV.",
+   "n_checked": 8882,
+   "n_failed": 2597,
+   "pass_share": 0.7076,
+   "worst": [
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 11880.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 12000.0,
+      "heating_type": "Heatpump",
+      "electricity_price_ct_kwh": 47.3,
+      "_split": "edge",
+      "_kind": "heatpump_and_ev"
+     },
+     "design": {
+      "pv_kwp": 14.4,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "optimum": {
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0,
+      "pv_kwp": 22.05,
+      "inverter_kw": 20.0,
+      "battery_kwh": 20.0
+     },
+     "npv_eur": 39760.0,
+     "optimum_npv_eur": 53190.0,
+     "note": "Optimum NPV EUR 53,190, proposal EUR 39,760, gap EUR 13,430."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 13140.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 30000.0,
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 39.1,
+      "_split": "edge",
+      "_kind": "ev_30000_km"
+     },
+     "design": {
+      "pv_kwp": 15.3,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "optimum": {
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0,
+      "pv_kwp": 16.65,
+      "inverter_kw": 15.0,
+      "battery_kwh": 30.0
+     },
+     "npv_eur": 27500.0,
+     "optimum_npv_eur": 40190.0,
+     "note": "Optimum NPV EUR 40,190, proposal EUR 27,500, gap EUR 12,690."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 1640.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 30000.0,
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 45.6,
+      "_split": "edge",
+      "_kind": "ev_30000_km"
+     },
+     "design": {
+      "pv_kwp": 7.65,
+      "inverter_kw": 6.0,
+      "battery_kwh": 5.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "optimum": {
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0,
+      "pv_kwp": 8.55,
+      "inverter_kw": 8.0,
+      "battery_kwh": 20.0
+     },
+     "npv_eur": 6500.0,
+     "optimum_npv_eur": 18960.0,
+     "note": "Optimum NPV EUR 18,960, proposal EUR 6,500, gap EUR 12,460."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 11800.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 30000.0,
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 40.5,
+      "_split": "edge",
+      "_kind": "ev_30000_km"
+     },
+     "design": {
+      "pv_kwp": 14.85,
+      "inverter_kw": 12.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "optimum": {
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0,
+      "pv_kwp": 14.85,
+      "inverter_kw": 12.0,
+      "battery_kwh": 30.0
+     },
+     "npv_eur": 27300.0,
+     "optimum_npv_eur": 39240.0,
+     "note": "Optimum NPV EUR 39,240, proposal EUR 27,300, gap EUR 11,940."
+    },
+    {
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 4500.0,
+      "load_profile": "H0",
+      "has_ev": true,
+      "ev_annual_km": 30000.0,
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 51.9,
+      "_split": "edge",
+      "_kind": "ev_30000_km"
+     },
+     "design": {
+      "pv_kwp": 10.8,
+      "inverter_kw": 10.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0
+     },
+     "optimum": {
+      "heatpump_kw": null,
+      "wallbox_kw": 11.0,
+      "pv_kwp": 12.15,
+      "inverter_kw": 10.0,
+      "battery_kwh": 20.0
+     },
+     "npv_eur": 24330.0,
+     "optimum_npv_eur": 36230.0,
+     "note": "Optimum NPV EUR 36,230, proposal EUR 24,330, gap EUR 11,900."
+    }
+   ],
+   "distribution_eur": {
+    "p10": 0.0,
+    "p25": 0.0,
+    "p50": 400.0,
+    "p75": 1320.0,
+    "p90": 2450.0,
+    "p99": 6170.0,
+    "max": 13430.0
+   },
+   "at_optimum_share": 0.3919
+  },
+  {
+   "name": "Proposal never scores above the optimum",
+   "group": "optimum gap",
+   "description": "Proposal NPV at most the simulator's optimum NPV.",
+   "n_checked": 8882,
+   "n_failed": 0,
+   "pass_share": 1.0,
+   "worst": []
+  },
+  {
+   "name": "Energy balance closes",
+   "group": "energy balance",
+   "description": "Every simulation (proposal and optimum grid): yield = self-consumed + fed in, load = direct + battery + grid, battery within capacity; within 1 kWh.",
+   "n_checked": 9418,
+   "n_failed": 0,
+   "pass_share": 1.0,
+   "worst": [],
+   "simulations": 853351,
+   "simulations_failed": 0,
+   "max_residual_kwh": 7.275957614183426e-12
+  },
+  {
+   "name": "Adversarial inputs get an error or a flag",
+   "group": "honesty",
+   "description": "Contradictory or placeholder inputs: a plain-word error or a flag, never a silent design.",
+   "n_checked": 1000,
+   "n_failed": 243,
+   "pass_share": 0.757,
+   "worst": [
+    {
+     "kind": "ev_km_without_ev",
+     "inputs": {
+      "installer_id": "23c108b7",
+      "annual_demand_kwh": 3030.0,
+      "load_profile": "H0",
+      "ev_annual_km": 30000.0,
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 36.8,
+      "_split": "adversarial",
+      "_kind": "ev_km_without_ev"
+     },
+     "design": {
+      "pv_kwp": 8.1,
+      "inverter_kw": 8.0,
+      "battery_kwh": 9.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Designed with no error and no flag."
+    },
+    {
+     "kind": "storage_without_solar",
+     "inputs": {
+      "installer_id": "2a8ba8e2",
+      "annual_demand_kwh": 5470.0,
+      "load_profile": "H0",
+      "heating_type": "Unknown",
+      "electricity_price_ct_kwh": 44.7,
+      "has_storage": true,
+      "existing_storage_kwh": 10.0,
+      "_split": "adversarial",
+      "_kind": "storage_without_solar"
+     },
+     "design": {
+      "pv_kwp": 9.0,
+      "inverter_kw": 8.0,
+      "battery_kwh": 10.0,
+      "heatpump_kw": null,
+      "wallbox_kw": null
+     },
+     "note": "Designed with no error and no flag."
+    }
+   ],
+   "by_kind": {
+    "demand_0": 1.0,
+    "demand_50000": 1.0,
+    "ev_km_without_ev": 0.024,
+    "negative_demand": 1.0,
+    "price_0": 1.0,
+    "small_house_high_demand": 1.0,
+    "solar_kwp_without_solar": 1.0,
+    "storage_without_solar": 0.032
+   }
+  }
+ ],
+ "coverage": {
+  "real_cells": 92,
+  "real_cells_covered_share": 0.9783,
+  "synthetic_cells": 198,
+  "new_cells": 108
+ },
+ "real_htw_share": 0.3424,
+ "runtime_s": 262.0,
+ "workers": 10
+}
