@@ -1,15 +1,15 @@
 "use client";
-// Web call with the Marquee intake agent. Needs `npm i @elevenlabs/react@1.21.1` in web/.
+// Planner-side web call with the Marquee intake agent (no form). Needs `npm i @elevenlabs/react@1.21.1` in web/.
 // Renders nothing without an agent id, so it can sit behind an env flag.
 import { useRef, useState } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
-import { toHomeInputs, type IntakeFacts, type InstallerId } from "./intake";
+import type { toHomeInputs, IntakeFacts, InstallerId } from "@/app/start/intake";
 
 export interface MarqueeCallProps {
   agentId?: string; // NEXT_PUBLIC_ELEVENLABS_AGENT_ID
   installerId: InstallerId;
-  address?: string; // planner's address wins over the one said on the call
-  onIntake: (facts: IntakeFacts, inputs: ReturnType<typeof toHomeInputs>) => void;
+  // Called once the call is analysed (a few seconds after it ends), from GET /start/lead/<conversation_id>.
+  onIntake: (facts: IntakeFacts, inputs: ReturnType<typeof toHomeInputs>, design: unknown) => void;
 }
 
 export default function MarqueeCall(props: MarqueeCallProps) {
@@ -21,26 +21,35 @@ export default function MarqueeCall(props: MarqueeCallProps) {
   );
 }
 
-type Line = { who: "Homeowner" | "Sam"; text: string };
+type Line = { who: "Homeowner" | "Rina"; text: string };
 
-function Call({ agentId, installerId, address, onIntake }: MarqueeCallProps & { agentId: string }) {
+function Call({ agentId, installerId, onIntake }: MarqueeCallProps & { agentId: string }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const onIntakeRef = useRef(onIntake);
   onIntakeRef.current = onIntake;
 
+  const convId = useRef<string | null>(null);
+
+  const fetchLead = async (id: string) => {
+    for (let i = 0; i < 30; i++) {
+      const r = await fetch(`/start/lead/${id}`, { cache: "no-store" });
+      const body = await r.json().catch(() => ({ error: `lead returned ${r.status}` }));
+      if (r.status === 202) { await new Promise((ok) => setTimeout(ok, 3000)); continue; }
+      if (!r.ok) return setError(body.error ?? `lead returned ${r.status}`);
+      onIntakeRef.current(body.facts, body.inputs, body.design);
+      return setSent(true);
+    }
+    setError("The call is still being analysed. Try again in a minute.");
+  };
+
   const conversation = useConversation({
-    clientTools: {
-      submit_intake: (facts: IntakeFacts) => {
-        onIntakeRef.current(facts, toHomeInputs(facts, installerId, address ?? facts.address));
-        setSent(true);
-        return "Sent to the planner.";
-      },
-    },
+    onConnect: ({ conversationId }) => { convId.current = conversationId; },
+    onDisconnect: () => { if (convId.current) fetchLead(convId.current); },
     onMessage: ({ message, role }) => {
       const text = message.replace(/\[[^\]]*\]\s*/g, "").trim();
-      const who: Line["who"] = role === "user" ? "Homeowner" : "Sam";
+      const who: Line["who"] = role === "user" ? "Homeowner" : "Rina";
       if (text) setLines((l) => [...l, { who, text }].slice(-6));
     },
     onError: (message) => setError(String(message)),
@@ -53,7 +62,8 @@ function Call({ agentId, installerId, address, onIntake }: MarqueeCallProps & { 
     setError(null);
     setLines([]);
     setSent(false);
-    conversation.startSession({ agentId, connectionType: "webrtc" });
+    convId.current = null;
+    conversation.startSession({ agentId, connectionType: "webrtc", dynamicVariables: { installer_id: installerId } });
   };
 
   return (
@@ -63,10 +73,10 @@ function Call({ agentId, installerId, address, onIntake }: MarqueeCallProps & { 
       </button>
       {live && (
         <span style={{ marginLeft: 10, fontSize: 13, color: "var(--ink-2, #4A4C55)" }}>
-          {conversation.status === "connecting" ? "Connecting" : conversation.isSpeaking ? "Sam is speaking" : "Listening"}
+          {conversation.status === "connecting" ? "Connecting" : conversation.isSpeaking ? "Rina is speaking" : "Listening"}
         </span>
       )}
-      {sent && <span style={{ marginLeft: 10, fontSize: 13 }}>Facts sent to the planner</span>}
+      {sent && <span style={{ marginLeft: 10, fontSize: 13 }}>Design ready</span>}
       {error && (
         <p role="alert" style={{ fontSize: 13 }}>
           {error} <button type="button" onClick={toggle}>Retry</button>
