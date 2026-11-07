@@ -2,7 +2,7 @@
 // The open card's reasoning chain: the house is the hero for the whole page, eight stages build on it.
 // Each stage adds one sentence to the rail, a working-shown bar or check list where the engine has one,
 // and moves the camera to the part of the house it explains. A change re-runs the chain from the stage it moved.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
 import { INSTALLER_NAME } from "@/lib/api";
@@ -22,10 +22,16 @@ const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
 const pc = (x: number) => `${Math.round(x * 100)} %`;
 const eur = (x: number) => `${x < 0 ? "-" : ""}€${n0(Math.abs(x))}`;
 
-const TITLES = ["Site", "Load", "Future", "Solar", "Storage", "Extras", "Sanity", "Offer"];
-const VIEWS: StageView[] = ["site", "load", "future", "solar", "storage", "extras", "sanity", "offer"];
-const BAR_AT: Record<Bar["key"], number> = { roof: 1, heat_loss: 3, day: 5, charging: 6 };
-const WHY_AT: Partial<Record<number, ComponentKey>> = { 4: "pv", 5: "battery", 6: "wallbox" };
+// Four components and the offer, in Reonic's names and colours; the old eight-stage path stays behind NEXT_PUBLIC_CHAIN=8.
+const FIVE = process.env.NEXT_PUBLIC_CHAIN !== "8";
+const TITLES = FIVE ? ["Panels", "Battery storage", "Wallbox", "Heat pump", "Offer"] : ["Site", "Load", "Future", "Solar", "Storage", "Extras", "Sanity", "Offer"];
+const VIEWS: StageView[] = FIVE ? ["solar", "storage", "extras", "heatpump", "offer"] : ["site", "load", "future", "solar", "storage", "extras", "sanity", "offer"];
+const BAR_AT: Record<Bar["key"], number> = FIVE ? { roof: 1, day: 2, charging: 3, heat_loss: 4 } : { roof: 1, heat_loss: 3, day: 5, charging: 6 };
+const WHY_AT: Partial<Record<number, ComponentKey>> = FIVE ? { 1: "pv", 2: "battery", 3: "wallbox", 4: "heatpump" } : { 4: "pv", 5: "battery", 6: "wallbox" };
+const N = TITLES.length;
+const CHECK_AT = FIVE ? 5 : 7;
+const STEP_COLOUR = ["#ffc043", "#24a148", "#1c71ef", "#e3634f", "#071b71"];
+const stepStyle = (i: number) => ({ ["--step" as string]: STEP_COLOUR[i], ["--step-ink" as string]: i === 0 ? "#071b71" : "#fff" }) as CSSProperties;
 const TAG: Record<string, string> = { lead: "lead", rina: "Rina", address: "address", default: "assumed" };
 // One muted palette for every bar, in Reonic's heat-load order; component colours where the segment is a component.
 const PALETTE = ["#f5c35a", "#5b8def", "#4fb477", "#a58bea", "#e3634f", "#f0924a", "#a1a1aa", "#71717b"];
@@ -57,7 +63,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
   });
   useEffect(() => { if (leadId) try { localStorage.setItem(`marquee.chain.seen.${leadId}`, "1"); } catch { /* storage blocked: the chain plays again next time */ } }, [leadId]);
   const [expanded, setExpanded] = useState(first);
-  const [stage, setStage] = useState(first ? 1 : 8);
+  const [stage, setStage] = useState(first ? 1 : N);
   const [auto, setAuto] = useState(first);
   const [updated, setUpdated] = useState<number | null>(null);
   const [, tick] = useState(0);
@@ -85,8 +91,8 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
 
   // The chain builds one stage at a time; a tap on the rail takes over.
   useEffect(() => {
-    if (!auto || stage >= 8) return;
-    const t = setTimeout(() => setStage((x) => Math.min(8, x + 1)), reduce ? 900 : 1700);
+    if (!auto || stage >= N) return;
+    const t = setTimeout(() => setStage((x) => Math.min(N, x + 1)), reduce ? 900 : 1700);
     return () => clearTimeout(t);
   }, [auto, stage, reduce]);
 
@@ -111,15 +117,16 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
     const bk = (x: Layers) => Object.fromEntries((x.bars ?? []).map((b) => [b.key, JSON.stringify([b.total, b.segments.map((g) => g.value)])]));
     const a = bk(was), b = bk(l);
     (Object.keys(BAR_AT) as Bar["key"][]).forEach((k) => { if (a[k] !== b[k]) m.add(BAR_AT[k]); });
-    if (JSON.stringify(was.checks) !== JSON.stringify(l.checks)) m.add(7);
-    if (JSON.stringify(was.economics?.capex_eur) !== JSON.stringify(l.economics?.capex_eur) || was.economics?.autarky_share !== l.economics?.autarky_share) m.add(8);
+    if (JSON.stringify(was.checks) !== JSON.stringify(l.checks)) m.add(CHECK_AT);
+    if (JSON.stringify(was.economics?.capex_eur) !== JSON.stringify(l.economics?.capex_eur) || was.economics?.autarky_share !== l.economics?.autarky_share) m.add(N);
     const d0 = was.chosen, d1 = l.chosen;
     if (d0 && d1) {
-      if (d0.pv_kwp !== d1.pv_kwp) m.add(4);
-      if (d0.battery_kwh !== d1.battery_kwh) m.add(5);
-      if (d0.wallbox_kw !== d1.wallbox_kw || d0.heatpump_kw !== d1.heatpump_kw) m.add(6);
+      if (d0.pv_kwp !== d1.pv_kwp) m.add(FIVE ? 1 : 4);
+      if (d0.battery_kwh !== d1.battery_kwh) m.add(FIVE ? 2 : 5);
+      if (d0.wallbox_kw !== d1.wallbox_kw) m.add(FIVE ? 3 : 6);
+      if (d0.heatpump_kw !== d1.heatpump_kw) m.add(FIVE ? 4 : 6);
     }
-    if (JSON.stringify(was.ev ?? null) !== JSON.stringify(l.ev ?? null)) { m.add(2); m.add(3); }
+    if (JSON.stringify(was.ev ?? null) !== JSON.stringify(l.ev ?? null)) { if (FIVE) { m.add(1); m.add(3); } else { m.add(2); m.add(3); } }
     if (!m.size || redraftRef.current === consumed.current) return;
     consumed.current = redraftRef.current;
     // A refinement redrafts in place: the changed layers light up and the camera goes to the first; no replay.
@@ -133,7 +140,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
   const hasEnv = !!model?.envelope?.faces?.length, hasPlan = !!model?.plan?.outline?.length;
   // The planner's pick on the model (3D or Photo over the plan) holds until the stage changes.
   const [pick, setPick] = useState<{ stage: number; layer: number } | null>(null);
-  const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, hasPlan ? 8 : 3, hasPlan ? 8 : 3][stage - 1];
+  const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : (FIVE ? [3, 5, 5, hasEnv ? 7 : 1, hasPlan ? 8 : 3] : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, hasPlan ? 8 : 3, hasPlan ? 8 : 3])[stage - 1];
   const bars = useMemo(() => Object.fromEntries((layers?.bars ?? []).map((b) => [BAR_AT[b.key], b])) as Record<number, Bar>, [layers]);
   // The four numbers come from the same run as the bars and checks when it is in; the design's own until then.
   const le = layers?.economics;
@@ -142,16 +149,40 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
   const d = res.design;
   const rot = rotLine(findRot(res.components.pv?.derivation, layers, res));
 
-  const head: string[] = [
+  const checkHead = (() => { const c = layers?.checks ?? []; const bad = c.filter(isFail).length, out = c.filter(refOut).length; return c.length ? (bad ? `${bad} of ${c.length} checks flag` : out ? "Checks pass; battery above Reonic’s guide" : `All ${c.length} checks pass`) : "Checks"; })();
+  const rule = (k: string) => res.rules?.find((r) => r.name === k);
+  const ruleText = (k: string) => { const r = rule(k); return r?.rule?.text ?? null; };
+  const head5: string[] = [
+    `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}`,
+    d.battery_kwh ? `${n1(d.battery_kwh)} kWh` : "None",
+    d.wallbox_kw ? `${n1(d.wallbox_kw)} kW` : inputs.has_ev ? "None" : "None, no EV",
+    d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : "None, not asked",
+    `${eur(e.capex_eur)}${breakEven ? `, break-even in ${breakEven} years` : ""}`,
+  ];
+  const head8: string[] = [
     bars[1] ? `${n2(bars[1].total)} kWp on ${bars[1].segments.filter((g) => g.unit === "kWp").length} faces` : address && spatial !== false ? "Roof being measured" : address ? "No 3D model here, roof assumed standard face" : "No street given, roof assumed standard face",
     `${n0(inputs.annual_demand_kwh ?? 0)} kWh a year${layers?.ev ? ` plus ${n0(layers.ev.annual_kwh)} kWh for the car` : ""}`,
     `${inputs.has_ev ? `Electric car${inputs.ev_annual_km ? `, ${n0(inputs.ev_annual_km)} km a year` : ""}` : "No electric car planned"}${model?.envelope ? `; heat load up to ${n1(model.envelope.design_heat_load_kw)} kW` : ""}`,
     `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh battery` : "No battery",
     [d.wallbox_kw ? `${n1(d.wallbox_kw)} kW wallbox` : "No wallbox", d.heatpump_kw ? `${n1(d.heatpump_kw)} kW heat pump` : "no heat pump"].join(", "),
-    (() => { const c = layers?.checks ?? []; const bad = c.filter(isFail).length, out = c.filter(refOut).length; return c.length ? (bad ? `${bad} of ${c.length} checks flag` : out ? "Checks pass; battery above Reonic’s guide" : `All ${c.length} checks pass`) : "Checks"; })(),
+    checkHead,
     `${eur(e.capex_eur)}${breakEven ? `, break-even in ${breakEven} years` : ""}`,
   ];
+  const head = FIVE ? head5 : head8;
+  // Panels: what the roof takes against what the house will use, the size, the cap, the rule and how many signed designs agree.
+  const useBar: Bar = { key: "roof", title: "Use", unit: "kWh", total: (inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0),
+    segments: [{ name: "household", value: inputs.annual_demand_kwh ?? 0, unit: "kWh", source_tag: "lead" }, ...(layers?.ev ? [{ name: "electric car", value: layers.ev.annual_kwh, unit: "kWh", source_tag: "default" as const }] : [])],
+    sentence: layers?.ev ? "Sized for today's use plus the car." : "Sized for today's use.", sources: [] };
+  const capKwp = Number(rule("cap")?.sentence.match(/(\d+)\s*kWp/)?.[1] ?? 30);
+  const agree = (() => {
+    const m = ruleText("pv")?.match(/\((\d[\d,]*) of (\d[\d,]*)/);
+    if (m) return `${m[1]} of ${m[2]} similar signed designs`;
+    const nb = res.components.pv?.neighbours;
+    return nb?.n ? `${Math.round(nb.share_included * nb.n)} of ${nb.n} similar signed designs` : null;
+  })();
+  const shade = layers?.checks?.find((c) => /shad/i.test(c.name));
+  const ratio = d.battery_kwh && d.pv_kwp ? d.battery_kwh / d.pv_kwp : null;
 
   const view = VIEWS[stage - 1];
   const kpis = [
@@ -189,7 +220,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
         <p className={s.simH}><Bolt /> Simulation</p>
         <dl className={s.kpis}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}</dd></div>)}</dl>
       </div>
-      {stage === 8 && variants.length > 0 && (
+      {stage === N && variants.length > 0 && (
         <div className={s.variants}>
           <p className={s.varH}>Variants</p>
           <p className={s.varC}>the residential version of Reonic&apos;s optimiser sliders</p>
@@ -211,7 +242,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
         <div className={s.collapsed}>
           <div className={s.scrub} role="group" aria-label="How the design was reached">
             {TITLES.map((t, i) => (
-              <button key={t} type="button" aria-pressed={stage === i + 1} className={moved.has(i + 1) ? s.hot : undefined} onClick={() => go(i + 1)}>
+              <button key={t} type="button" aria-pressed={stage === i + 1} className={moved.has(i + 1) ? s.hot : undefined} onClick={() => go(i + 1)} style={FIVE ? stepStyle(i) : undefined}>
                 <span className={s.num}>{i + 1}</span>{t}
               </button>
             ))}
@@ -220,7 +251,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
             <span className={s.draft}>{stamp}</span>
             <button type="button" className={s.showR} onClick={() => setExpanded(true)}>Show reasoning</button>
           </div>
-          {stage === 8 && variants.length > 0 && (
+          {stage === N && variants.length > 0 && (
             <div className={s.varList}>
               {variants.map((v) => (
                 <div key={v.name} className={s.vrow}>
@@ -235,22 +266,51 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
         </div>
       )}
       {expanded && <ol className={s.rail} aria-label="How the design was reached">
-        <li className={s.stampRow}><span className={s.draft}>{stamp}</span>{!auto || stage >= 8 ? <button type="button" className={s.showR} onClick={() => setExpanded(false)}>Hide reasoning</button> : null}</li>
+        <li className={s.stampRow}><span className={s.draft}>{stamp}</span>{!auto || stage >= N ? <button type="button" className={s.showR} onClick={() => setExpanded(false)}>Hide reasoning</button> : null}</li>
         {TITLES.map((t, i) => {
           const n = i + 1, open = n === stage, built = n <= stage || !auto;
           const bar = bars[n];
           return (
-            <li key={t} className={`${s.item} ${open ? s.open : ""} ${built ? "" : s.pending}`}>
+            <li key={t} className={`${s.item} ${open ? s.open : ""} ${built ? "" : s.pending}`} style={FIVE ? stepStyle(i) : undefined}>
               <button type="button" className={s.ih} onClick={() => go(n)} aria-expanded={open}>
                 <span className={s.num}>{n}</span>
                 <span className={s.it}>{t}{moved.has(n) && <span className={s.moved}>Moved</span>}</span>
                 <span className={s.ihead}>{head[i]}</span>
               </button>
-              {built && bar && (open ? <BarView bar={bar} /> : <BarStrip bar={bar} />)}
-              {open && n === 4 && rot && <p className={s.rot}>{rot}</p>}
-              {open && n === 7 && layers?.checks && <Checks checks={layers.checks} />}
-              {open && n === 8 && a && <Offer res={{ ...res, economics: e }} />}
-              {open && n === 8 && variants.length > 0 && (
+              {FIVE && open && n === N && layers?.checks && <CheckRow checks={layers.checks} />}
+              {built && bar && !(FIVE && n === 3 && !d.wallbox_kw && !layers?.ev) && (open ? <BarView bar={bar} /> : <BarStrip bar={bar} />)}
+              {FIVE && open && n === 1 && (
+                <>
+                  <BarView bar={useBar} />
+                  <div className={s.facts}>
+                    <p><b>{n2(d.pv_kwp ?? 0)} kWp</b>{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}</p>
+                    {ruleText("pv") && !bars[1]?.sentence.includes(ruleText("pv")!) && <p className={s.ruleS}>{ruleText("pv")}</p>}
+                    {agree && <span className={s.conf}>{agree}</span>}
+                  </div>
+                </>
+              )}
+              {FIVE && open && n === 2 && (
+                <div className={s.facts}>
+                  {ratio != null ? (
+                    <p className={ratio >= 0.7 && ratio <= 1.0 ? s.passS : s.refS}>{n2(ratio)} kWh per kWp: {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0</p>
+                  ) : <p>No battery in this design.</p>}
+                  {ruleText("battery") && <p className={s.ruleS}>{ruleText("battery")}</p>}
+                </div>
+              )}
+              {FIVE && open && n === 3 && (
+                <div className={s.facts}>
+                  {ruleText("wb") && <p className={s.ruleS}>{ruleText("wb")}</p>}
+                </div>
+              )}
+              {FIVE && open && n === 4 && (
+                <div className={s.facts}>
+                  {ruleText("hp") && <p className={s.ruleS}>{ruleText("hp")}</p>}
+                </div>
+              )}
+              {open && n === (FIVE ? 1 : 4) && rot && <p className={s.rot}>{rot}</p>}
+              {!FIVE && open && n === 7 && layers?.checks && <Checks checks={layers.checks} />}
+              {open && n === N && a && <Offer res={{ ...res, economics: e }} />}
+              {open && n === N && variants.length > 0 && (
                 <div className={s.varList}>
                   <p className={s.varC}>the residential version of Reonic&apos;s optimiser sliders</p>
                   {variants.map((v) => (
@@ -262,7 +322,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
                   ))}
                 </div>
               )}
-              {open && n === 8 && decide && <div className={s.decide}>{decide}</div>}
+              {open && n === N && decide && <div className={s.decide}>{decide}</div>}
               {open && WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation && (
                 <div className={s.whyrow}>
                   <button type="button" className={s.whyb} aria-expanded={why?.k === WHY_AT[n]} onClick={() => setWhy((w) => (w?.k === WHY_AT[n] ? null : { k: WHY_AT[n]!, level: 1 }))}>Why</button>
@@ -394,6 +454,24 @@ function Checks({ checks }: { checks: Check[] }) {
           <p className={s.gNote}>Module to inverter power {n0(dc)} %</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// The offer opens with the sanity ticks in one row; Reonic's battery guide sits under it as a reference line.
+function CheckRow({ checks }: { checks: Check[] }) {
+  const val = (c: Check) => c.value == null ? "" : typeof c.value !== "number" ? String(c.value) : c.unit === "share" ? pc(c.value) : c.unit === "%" ? `${n0(c.value)} %` : `${c.value >= 100 ? n0(c.value) : n2(c.value)}${c.unit && c.unit.length < 8 ? ` ${c.unit}` : ""}`;
+  const ref = checks.find(isRef);
+  const refMsg = ref && (ref.message ?? `${n2(Number(ref.value))} kWh per kWh of daily use: ${refOut(ref) ? "above" : "inside"} Reonic's guide`);
+  return (
+    <div className={s.tickRow}>
+      <ul>
+        {checks.filter((c) => !isRef(c)).map((c) => {
+          const tone = isFail(c) ? "fail" : isInfo(c) ? "info" : "pass";
+          return <li key={c.name} className={s[`t_${tone}`]} title={c.band}><i aria-hidden="true">{tone === "fail" ? "!" : tone === "pass" ? "✓" : "i"}</i>{cap(c.name)} <b>{val(c)}</b></li>;
+        })}
+      </ul>
+      {refMsg && <p className={refOut(ref!) ? s.refS : s.passS}>{refMsg}</p>}
     </div>
   );
 }
