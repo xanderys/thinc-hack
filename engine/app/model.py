@@ -104,24 +104,34 @@ R5_DESIGN = {"pv": ("pv_kwp", "kWp"), "battery": ("battery_kwh", "kWh"), "bat_kw
              "cap": ("pv_kwp", "kWp")}
 
 
-def rules5_rows(R5, inst, design, rec_in, catalogue, ov):
-    """rules-5's Rules block (textbook, planners per rule) plus this home's design per rule and the planner correction it fell in."""
-    rows = R5.rules_table(inst)
-    try:
-        fired = (R5.recommend(rec_in, catalogue, ov) or {}).get("rules_fired") or {}
-    except Exception:
-        fired = {}
-    for r in rows:
-        key, unit = R5_DESIGN.get(r.get("name"), (None, None))
+R5_COMP = {"pv": "pv", "battery": "battery", "inv": "inverter", "hp": "heatpump", "wb": "wallbox"}
+
+
+def rules5_rows(R5, eng, inp, out):
+    """Rules block while production is rules-4: per row Reonic's textbook line with its source, the rules-4 rule that
+    produced this number, the planners' overall figure (PV), and the design value. rules-5's per-group constants are
+    kept out of the block (they go to rules_applied_rules5 for the Check page)."""
+    table = R5.rules_table(inp["installer_id"])
+    design, comps = out.get("design") or {}, out.get("components") or {}
+    rows = []
+    for r in table:
+        name = r.get("name")
+        row = {"name": name, "textbook": r.get("textbook")}
+        tb = r.get("textbook") or {}
+        row["sentence"] = f"Reonic textbook: {tb.get('source')}." if tb.get("source") else r.get("sentence")
+        c = comps.get(R5_COMP.get(name, ""), {}) if isinstance(comps, dict) else {}
+        if c.get("reason"):
+            row["rule"] = {"engine": "rules-4", "text": c["reason"]}
+        if name == "pv":
+            row["planners"] = eng.rule_of_thumb_comparison(inp, design)
+        if name == "inv" and design.get("inverter_kw") and design.get("pv_kwp"):
+            row["rule"] = {"engine": "rules-4", "text": f"{design['inverter_kw']:g} kW: the stocked size for {design['pv_kwp']:g} kWp, "
+                                                        f"DC/AC {design['pv_kwp'] / design['inverter_kw']:.2f}."}
+        key, unit = R5_DESIGN.get(name, (None, None))
         if key:
-            r["design"] = {"value": design.get(key) or 0, "unit": unit}
-        if r.get("name") in fired:
-            f = fired[r["name"]]
-            r["fired"] = f
-            hit = next((c for c in r.get("constants") or [] if c.get("name") == f), None)
-            r["applied"] = (f"Your planners' figure for a home like this: {hit['value']:g} {hit['unit']}." if hit
-                            else "Reonic's textbook figure applies to this home." if f == "textbook" else None)
-    return rows
+            row["design"] = {"value": design.get(key) or 0, "unit": unit}
+        rows.append(row)
+    return rows, table
 
 
 @dataclass
@@ -316,7 +326,7 @@ class Engine:
                 from .planner_rules import rules5 as R5
                 if hasattr(R5, "rules_table"):
                     out["rules_applied"] = out["rules"]
-                    out["rules"] = rules5_rows(R5, inst, out.get("design") or {}, rec_in, self.rules_catalogue(inst, t), ov)
+                    out["rules"], out["rules_applied_rules5"] = rules5_rows(R5, self, inp, out)
             except ImportError:
                 pass
             except Exception as e:
