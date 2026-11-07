@@ -21,6 +21,8 @@ Read figures off the screen; say none we have not seen live.
 3. "Here is the design: [read PV, battery and payback off the screen]. Every number opens its source."
 4. "The family buys an EV next year." [type it] "Planners here keep the same array and battery. The car adds the wallbox and changes the year: independence drops from 76 to 60 percent. And the physics variant beside it says a larger array would earn more. That is an offer ready to send."
 [UNCONFIRMED: demo steps follow the board-of-cards product; check against the live build in about three hours]
+If Reonic's AI chat comes up: "Your chat sizes from the catalogue when the planner asks. Marquee proposes the complete design unprompted, explains each rule, and publishes how often it matches the experts on held-out homes." Never "no product proposes the full design".
+[UNCONFIRMED: Reonic contrast line, Xander's card]
 
 ## 1:50 to 2:20, slide 4, Xander
 "Why only one question? The usual intake explains just 15% of PV size. Reonic's own rule is: when in doubt, ask the user. So the agent asks for the one fact that would move the design most, and stays silent when nothing would."
