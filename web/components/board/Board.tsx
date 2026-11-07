@@ -9,6 +9,7 @@ import House from "@/components/stage/House";
 import type { Live, Seed } from "@/components/stage/Stage";
 import AddSheet from "./AddSheet";
 import HousePhoto from "./HousePhoto";
+import ModelThumb from "./ModelThumb";
 import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
 import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
 import { VerdictChip, VerdictLine } from "@/components/qualify/Verdict";
@@ -261,7 +262,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
                 <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{STATUS[st]}</span><VerdictChip verdict={c.q?.verdict ?? null} /></span>
                 <span className="b-name">{c.name}</span>
                 <span className="b-place">{c.place}</span>
-                {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><HousePhoto address={c.place} /></span>}
+                {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><ModelThumb lead={designs[c.id]?.lead} design={c.design} /></span>}
                 <span className="b-line num">{c.line}</span>
                 {c.q && <span className={`${qs.cardValue} num`}>{offerEur(c.q.expected_offer_eur)}</span>}
                 {c.q && c.q.verdict !== "visit" && <span className={qs.cardWhy}>{cap(c.q.sentence.split(": ").slice(1).join(": "))}</span>}
