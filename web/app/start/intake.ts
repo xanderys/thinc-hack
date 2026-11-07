@@ -1,4 +1,4 @@
-// Facts from the homeowner form and the submit_intake tool, merged, and mapped to the engine's HomeInputs (docs/api.md v1.7).
+// Facts from the homeowner form and the call (ElevenLabs post-call data collection), merged, and mapped to the engine's HomeInputs (docs/api.md v1.7).
 // Shared by web/app/start (widget, lead route) and voice/MarqueeCall.tsx.
 
 export interface IntakeFacts {
@@ -12,6 +12,7 @@ export interface IntakeFacts {
   house_size_sqm?: number;
   house_built_year?: number;
   monthly_bill_eur?: number;
+  bill_currency?: "EUR" | "GBP" | "other";
   annual_demand_kwh?: number;
   heating_type?: "Gas" | "Oil" | "Heatpump" | "OtherNonRenewable" | "OtherRenewable" | "Unknown";
   heating_age?: "under_20" | "over_20" | "unknown";
@@ -99,13 +100,13 @@ export const NOT_GIVEN = "not given";
 
 const kwhFromBill = (eur: number) => Math.round((eur * 12 * 100) / PRICE_CT / 100) * 100;
 
-/** Dynamic variables for the agent. The planner-side call (no form) sends the same keys as NOT_GIVEN. */
+/** Form answers stored with the conversation as dynamic variables (the agent's prompt does not reference them; the lead route reads them back). */
 export function formVariables(a?: Partial<FormAnswers>, installer_id: InstallerId = "2a8ba8e2"): Record<string, string> {
   const v = (x?: string) => (x && x.trim() ? x.trim() : NOT_GIVEN);
   const eur = a?.bill_band ? BILL_EUR[a.bill_band] : undefined;
   return {
     installer_id,
-    first_name: v(a?.first_name) === NOT_GIVEN ? "there" : v(a?.first_name),
+    first_name: v(a?.first_name),
     postcode: v(a?.postcode),
     house_type: a?.house_type ? a.house_type : NOT_GIVEN,
     people: a?.people ?? NOT_GIVEN,
@@ -114,8 +115,20 @@ export function formVariables(a?: Partial<FormAnswers>, installer_id: InstallerI
     heating: a?.heating ?? NOT_GIVEN,
     ev: a?.ev ?? NOT_GIVEN,
     interests: a?.interests?.length ? a.interests.join(", ") : NOT_GIVEN,
-    first_question: a?.postcode ? "Roughly how big is the house inside, and when was it built?" : "Which postcode is the house in?",
   };
+}
+
+/** First line and the note Rina gets at the start of a widget call, so she never re-asks the form. */
+export function firstMessage(a: Partial<FormAnswers>) {
+  const name = a.first_name?.trim();
+  return `Hi${name ? ` ${name}` : ""}, it's Rina from Reonic, with a few quick questions for your design. Roughly how big is it inside?`;
+}
+
+export function formNote(a: Partial<FormAnswers>) {
+  const v = formVariables(a);
+  return `Form answers (never ask these again): postcode ${v.postcode}; house type ${v.house_type}; people ${v.people}; ` +
+    `electricity bill about ${v.monthly_bill_eur} EUR a month, about ${v.kwh_estimate} kWh a year; heating ${v.heating}; ` +
+    `electric car ${v.ev}; interested in ${v.interests}. You have already asked how big the house is inside.`;
 }
 
 export type Source = "form" | "call" | "estimated";
@@ -125,7 +138,7 @@ export function factsFromVariables(d: Record<string, unknown>): Partial<IntakeFa
   const g = (k: string) => (typeof d[k] === "string" && d[k] !== NOT_GIVEN ? (d[k] as string) : undefined);
   const heating = g("heating");
   const f: Partial<IntakeFacts> = {
-    first_name: g("first_name") === "there" ? undefined : g("first_name"),
+    first_name: g("first_name"),
     address: g("postcode"),
     property_type: g("house_type") as IntakeFacts["property_type"],
     num_inhabitants: g("people") ? Number(g("people")) : undefined,
@@ -136,6 +149,19 @@ export function factsFromVariables(d: Record<string, unknown>): Partial<IntakeFa
     interests: g("interests")?.split(", "),
   };
   return Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined));
+}
+
+/** Call facts from the conversation's analysis.data_collection_results (voice/intake_fields.json). */
+export function factsFromAnalysis(results: Record<string, { value?: unknown }> | undefined): Partial<IntakeFacts> | undefined {
+  if (!results) return undefined;
+  const f: Record<string, unknown> = {};
+  for (const [k, r] of Object.entries(results)) {
+    const v = r?.value;
+    if (v === null || v === undefined || v === "") continue;
+    f[k] = k === "estimated_fields" ? String(v).split(",").map((x) => x.trim()).filter(Boolean) : v;
+  }
+  if (!f.estimated_fields) f.estimated_fields = [];
+  return f as Partial<IntakeFacts>;
 }
 
 /** Call facts win over form facts (the homeowner may correct the form). Each field is marked form, call or estimated. */

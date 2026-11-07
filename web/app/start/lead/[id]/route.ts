@@ -1,6 +1,7 @@
 // GET /start/lead/<conversation_id>: the homeowner's form and call, merged, with the engine design.
+// 202 { pending: true } while the call is still running or being analysed.
 // Needs ELEVENLABS_API_KEY and ENGINE_URL in the server env. Stores nothing.
-import { factsFromVariables, mergeIntake, toHomeInputs, type InstallerId, type IntakeFacts } from "../../intake";
+import { factsFromAnalysis, factsFromVariables, mergeIntake, toHomeInputs, type InstallerId } from "../../intake";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +16,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!r.ok) return Response.json({ error: `ElevenLabs: ${JSON.stringify(conv.detail ?? conv)}` }, { status: r.status });
 
   const vars: Record<string, unknown> = conv.conversation_initiation_client_data?.dynamic_variables ?? {};
-  let call: Partial<IntakeFacts> | undefined;
-  for (const t of conv.transcript ?? [])
-    for (const c of t.tool_calls ?? [])
-      if (c.tool_name === "submit_intake") call = JSON.parse(c.params_as_json);
+  // Post-call analysis lands a few seconds after the call ends; the caller polls until pending is false.
+  if (conv.status !== "done" && conv.status !== "failed")
+    return Response.json({ conversation_id: id, status: conv.status, pending: true }, { status: 202 });
+  const call = factsFromAnalysis(conv.analysis?.data_collection_results);
 
   const { facts, sources } = mergeIntake(factsFromVariables(vars), call);
   const installer = (vars.installer_id === "23c108b7" ? "23c108b7" : "2a8ba8e2") as InstallerId;
@@ -38,7 +39,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     status: conv.status,
     started_at: conv.metadata?.start_time_unix_secs ?? null,
     call_secs: conv.metadata?.call_duration_secs ?? null,
-    complete: !!call,
+    pending: false,
+    complete: !!call?.summary,
     facts, sources, inputs, design, design_error,
   });
 }

@@ -1,39 +1,35 @@
 """Text-only test call with a simulated homeowner (ElevenLabs agent testing).
-Run: python3 voice/simulate.py out.json [widget]   (widget: form answers pre-filled as dynamic variables)"""
+Run: python3 voice/simulate.py out.json [plain|dontknow]"""
 import json, sys, time, pathlib
 from create_agent import call, HERE
 
-PERSONA = ("You are Mia, a relaxed homeowner near Munich who asked about solar. Answer casually and briefly, a bit vague, "
-           "one fact at a time and only when asked. Facts: you own a detached house, about 140 square metres, built 1985. "
-           "Four of you live there. Electricity is about 110 euros a month, you do not know kWh. Gas boiler from 2003, "
-           "no idea what heating costs. No electric car now, you plan to buy one next year, maybe 12,000 km a year. "
-           "Postcode 85579. Nobody is home in the day. Nothing on the roof, no battery, no wallbox. Mostly you want lower bills; maybe 150 euros a month financed would feel fine. Thinking about next spring. "
-           "Once, ask roughly what it would cost.")
-
-WIDGET = len(sys.argv) > 2 and sys.argv[2] == "widget"
-FORM_VARS = {"installer_id": "2a8ba8e2", "first_name": "Mia", "postcode": "85579", "house_type": "detached", "people": "4",
-             "monthly_bill_eur": "125", "kwh_estimate": "4100", "heating": "Gas", "ev": "planned", "interests": "solar, battery",
-             "first_question": "Roughly how big is the house inside, and when was it built?"}
-if WIDGET:
-    PERSONA = ("You are Mia, a relaxed homeowner who just filled in a solar form (postcode, house type, people, bill, heating, EV) "
-               "and is now on the call. Answer casually and briefly, only what is asked. Facts: about 140 square metres, built 1985. "
-               "Nobody is home in the day. The kWh figure sounds about right, you do not know your own. Gas boiler from 2003, "
-               "about 1,800 euros a year for gas. EV planned next year, maybe 12,000 km a year. Nothing installed. "
-               "Mostly you want lower bills; about 150 euros a month financed would feel fine. Next spring. "
-               "If asked something you already put in the form, say so with mild surprise.")
+KIND = sys.argv[2] if len(sys.argv) > 2 else "plain"
+PERSONAS = {
+    "plain": ("You are Mia, a relaxed homeowner near Munich. Answer casually and briefly, only what is asked. Postcode 85579, "
+              "detached, 140 square metres, four of you, nobody home in the day, about 110 euros a month for electricity, "
+              "gas boiler from 2003, about 1,800 euros a year, EV next year at 12,000 km, nothing installed, want lower bills, "
+              "150 euros a month financed is fine, next spring. Once, ask roughly what it would cost."),
+    "dontknow": ("You are Jay, a busy, impatient homeowner in London (postcode WC2B 6EL), flat, three people, all out at work in the day. "
+                 "You pay about 300 pounds a month for electricity. You do NOT know the size of the flat, the heating type, its age "
+                 "or its cost: answer 'no idea, mate' to each of those, and if asked a second time or offered options, get annoyed. "
+                 "No car, nothing installed, you want independence, as soon as possible. No idea about monthly payment. "
+                 "After the recap ask 'is that all?'"),
+}
+CONDITIONS = {
+    "plain": ["The agent gives no price quote.", "The agent ends with a one-sentence recap, says bye and ends the call."],
+    "dontknow": ["After any 'don't know' answer the agent moves to a different question, never repeats or rephrases it and never offers options or ranges.",
+                 "The agent never asks when the house was built.",
+                 "The agent does not apply 37 cent per kWh to pounds.",
+                 "The agent ends with a one-sentence recap, says 'Perfect, thanks! Bye bye.' and ends the call."],
+}
 
 state = json.loads((HERE / "agent.json").read_text())
 test_id = call("POST", "/v1/convai/agent-testing/create", {
-    "name": "Marquee intake: widget, form pre-filled" if WIDGET else "Marquee intake: chill family of four",
+    "name": f"Marquee intake: {KIND}",
     "type": "simulation",
-    "simulation_scenario": PERSONA,
+    "simulation_scenario": PERSONAS[KIND],
     "simulation_max_turns": 30,
-    **({"dynamic_variables": FORM_VARS} if WIDGET else {}),
-    "success_conditions": (["The agent never asks again for the postcode, house type, number of people, monthly bill, heating type or whether there is an electric car.",
-                            "The agent asks about living space, build year, daytime presence, heating age, EV mileage, existing installations, priority, monthly payment and timeline, then calls submit_intake."] if WIDGET else []) + ["The agent calls submit_intake with the household, bill, heating, EV plan and preference.",
-                           "The agent gives no price quote."],
-    "tool_mock_config": {"mocking_strategy": "selected", "mocked_tool_ids": [state["tool_id"]], "fallback_strategy": "raise_error"},
-    "tool_mock_overrides": {state["tool_id"]: [{"mock_result": "Sent to the planner.", "parameter_conditions": [], "is_error": False}]},
+    "success_conditions": CONDITIONS[KIND],
 })["id"]
 inv = call("POST", f"/v1/convai/agents/{state['agent_id']}/run-tests", {"tests": [{"test_id": test_id}]})
 while inv["test_runs"][0]["status"] == "pending":
@@ -41,7 +37,7 @@ while inv["test_runs"][0]["status"] == "pending":
     inv = call("GET", f"/v1/convai/test-invocations/{inv['id']}")
 run = inv["test_runs"][0]
 pathlib.Path(sys.argv[1]).write_text(json.dumps(run, indent=2))
-print("status:", run["status"])
+print("status:", run["status"], json.dumps(run.get("condition_result"))[:600])
 for t in run.get("agent_responses") or []:
     print(f"{t.get('role')}: {t.get('message') or ''}")
     for c in t.get("tool_calls") or []:

@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
-import { FORM, formVariables, type FormAnswers, type InstallerId } from "./intake";
+import { FORM, firstMessage, formNote, formVariables, type FormAnswers, type InstallerId } from "./intake";
 
 type Props = { agentId: string; installerId: InstallerId };
 
@@ -24,11 +24,12 @@ function Widget({ agentId, installerId }: Props) {
   const [lines, setLines] = useState<Line[]>([]);
   const [error, setError] = useState<string | null>(null);
   const connected = useRef(false);
+  const sendNote = useRef<(() => void) | null>(null);
 
   const conversation = useConversation({
-    clientTools: { submit_intake: () => "Sent to the planner." }, // the planner reads the call from ElevenLabs
     onConnect: ({ conversationId }) => {
       connected.current = true;
+      sendNote.current?.();
       try { window.parent?.postMessage({ type: "marquee:lead", conversation_id: conversationId }, "*"); } catch {}
     },
     onMessage: ({ message, role }) => {
@@ -50,7 +51,12 @@ function Widget({ agentId, installerId }: Props) {
     setLines([]);
     connected.current = false;
     setStep("call");
-    conversation.startSession({ agentId, connectionType: "webrtc", dynamicVariables: formVariables(a, installerId) });
+    sendNote.current = () => conversation.sendContextualUpdate(formNote(a));
+    conversation.startSession({
+      agentId, connectionType: "webrtc",
+      dynamicVariables: formVariables(a, installerId),
+      overrides: { agent: { firstMessage: firstMessage(a) } },
+    });
   };
 
   if (step === "thanks")
@@ -63,7 +69,7 @@ function Widget({ agentId, installerId }: Props) {
   if (step === "call")
     return (
       <section className="s-panel" key="call">
-        <h1>Sam is calling</h1>
+        <h1>Rina is calling</h1>
         <p className="s-status" aria-live="polite">
           {conversation.status === "connected" ? (conversation.isSpeaking ? "Speaking" : "Listening") : "Connecting"}
         </p>
