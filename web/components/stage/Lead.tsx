@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import type { AskQuestion, HomeInputs, InstallerId, ReadResponse, RoofResult } from "@/lib/api";
 import { INSTALLER_NAME } from "@/lib/api";
 import { HEATING_WORD, n0, optionLabel, QUESTION } from "@/lib/stage";
@@ -44,11 +45,16 @@ function shortAddress(s: string) {
 
 export default function Lead(p: Props) {
   const { read, inputs: i } = p;
-  const quote = (f: keyof HomeInputs | "wants") => read?.found.find((x) => x.field === f)?.quote;
+  const [bill, setBill] = useState<{ eur: number; kwh: number } | null>(null);
+  const [billIn, setBillIn] = useState("");
+  const price = i.electricity_price_ct_kwh ?? 37;
+  const fromBill = bill && p.answer === bill.kwh ? bill : null;
+  const quote = (f: keyof HomeInputs | "wants" | "monthly_bill_eur") => read?.found.find((x) => x.field === f)?.quote;
   const src = (f: keyof HomeInputs) => {
     const q = quote(f);
+    if (q && f === "annual_demand_kwh" && q === quote("monthly_bill_eur")) return `From "${q}" at ${price} ct`;
     if (q) return `"${q}"`;
-    if (f === p.question?.field && p.answer !== undefined) return "You answered";
+    if (f === p.question?.field && p.answer !== undefined) return fromBill && f === "annual_demand_kwh" ? `About ${n0(fromBill.kwh)} kWh from ${n0(fromBill.eur)} EUR a month at ${price} ct` : "You answered";
     return f === "annual_demand_kwh" ? "Assumed: not in the lead" : "Not in the lead";
   };
   const evWas = "has_ev" in p.changed && read && read.inputs.has_ev !== p.changed.has_ev ? (read.inputs.has_ev ? "yes" : "no") : undefined;
@@ -112,6 +118,13 @@ export default function Lead(p: Props) {
             ))}
           </span>
           {p.question.field.endsWith("_kwh") && <span className="label s-unit">kWh</span>}
+          {p.question.field === "annual_demand_kwh" && (
+            <form className="s-bill" onSubmit={(e) => { e.preventDefault(); const eur = Number(billIn.replace(",", ".")); if (!(eur > 0)) return;
+              const kwh = Math.round((eur * 12) / (price / 100) / 100) * 100; setBill({ eur, kwh }); p.onAnswer(kwh); }}>
+              <label>Or the monthly bill <input inputMode="decimal" className="num" value={billIn} onChange={(e) => setBillIn(e.target.value)} aria-label="Monthly bill in EUR" /> EUR</label>
+              <button className="btn ghost" type="submit" disabled={!(Number(billIn.replace(",", ".")) > 0)}>Use</button>
+            </form>
+          )}
         </div>
       )}
       {read && p.askError && <p className="s-quiet" role="status"><span className="src">Engine said </span>{p.askError}</p>}
