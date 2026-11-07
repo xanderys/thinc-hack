@@ -65,9 +65,9 @@ footer: Marquee
 
 ## The rules the experts follow, written down.
 
-<div class="data"><b>PV</b> a base of <b>4.95 kWp</b> plus <b>0.95 kWp</b> per 1,000 kWh, at this roof’s yield<br><b>battery</b> <b>0.8 kWh</b> per kWp, snapped to the package on sale<br><b>heat pump</b> only for an old gas or oil boiler<br><b>wallbox</b> 11 kW when an EV is real or planned</div>
+<div class="data"><b>PV</b> a base of <b>4.95 kWp</b>, plus <b>0.95</b> times the kWp<br>that covers the year’s use at this roof’s yield<br><b>battery</b> <b>0.8 kWh</b> per kWp of array, snapped up to the package on sale<br><b>heat pump</b> only for an old gas or oil boiler<br><b>wallbox</b> 11 kW when an EV is real or planned</div>
 
-[UNCONFIRMED: v3 rule lines from THINC HACK MASTER; heat pump and wallbox lines from docs/briefs/pivot.md]
+[UNCONFIRMED: v3 rule lines for installer A (B: battery 0.85), check against docs/rules.md once on main; heat pump and wallbox lines from docs/briefs/pivot.md]
 
 ---
 
