@@ -8,6 +8,7 @@ import { call } from "@/lib/client";
 import type { Envelope, Layers, PanelRect, RoofModel, RoofPlane } from "./types";
 import { labelOf, p2, planesOf } from "./types";
 import type { SpatialScene } from "./scene";
+import { POSES, type StageView } from "./camera";
 import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
 import s from "./spatial.module.css";
@@ -22,6 +23,7 @@ type Props = {
   layer?: number; onLayerChange?: (n: number) => void; onAvailable?: (ok: boolean) => void;
   endpoints?: Endpoints;
   response?: DesignResponse | null;   // optional: the heat layer reads the heat pump derivation from it
+  view?: StageView;                   // optional: the reasoning stage the camera should frame (camera.ts)
 };
 
 // Layer ids are fixed (7 Heat, 8 Plan); a step shows only when its data is present.
@@ -45,7 +47,7 @@ function useReduce() {
   return r;
 }
 
-export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response }: Props) {
+export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage }: Props) {
   const reduce = useReduce();
   const [own, setOwn] = useState(1);
   const layer = ctrl ?? own;
@@ -105,7 +107,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     import("./scene").then(({ SpatialScene }) => {
       if (dead || !host.current || !overlay.current || !svg.current) return;
       const sc = new SpatialScene(host.current, overlay.current, svg.current, {
-        reduce, compass: compass.current, onHour: (h, playing) => setHour({ h, playing }),
+        reduce, compass: compass.current, onHour: (h, playing) => setHour({ h, playing }), onView: (m) => setView(m),
       });
       if (modelRef.current) sc.setModel(modelRef.current);
       scene.current = sc;
@@ -159,6 +161,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
 
   // The plan layer is always top-down; the other layers keep the planner's choice.
   useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);
+
+  // The camera follows the reasoning: each stage flies to its pose; the 2D/3D pill still overrides afterwards.
+  useEffect(() => { if (stage && ready) scene.current?.flyTo(POSES[stage]); }, [stage, ready, modelGen]);
 
   const seek = useCallback((h: number) => { scene.current?.seek(h); setHour({ h, playing: false }); }, []);
 

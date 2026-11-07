@@ -7,6 +7,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { DayHour, Envelope, PanelRect, Plan, RoofModel, RoofPlane, V3 } from "./types";
 import { flowsOf, lerpHour, p2 } from "./types";
 import { facing } from "./facing";
+import { poseOffset, springStep, type Focus, type Pose } from "./camera";
 
 const PAPER = new THREE.Color("#F4F1EA");
 const BLUE = new THREE.Color("#0D1BFE");
@@ -71,7 +72,7 @@ function panelCorners(p: RoofPlane, r: PanelRect): THREE.Vector3[] {
   return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => c.clone().addScaledVector(u, (i * r.w) / 2).addScaledVector(v, (j * r.h) / 2));
 }
 
-export interface SceneOpts { reduce: boolean; onHour?: (h: number, playing: boolean) => void; compass?: HTMLElement | null }
+export interface SceneOpts { reduce: boolean; onHour?: (h: number, playing: boolean) => void; compass?: HTMLElement | null; onView?: (mode: "3d" | "2d") => void }
 
 export class SpatialScene {
   private renderer: THREE.WebGLRenderer;
@@ -97,6 +98,12 @@ export class SpatialScene {
   private centre = new THREE.Vector3();
   private span = 14;
   private anchors = { roof: new THREE.Vector3(), home: new THREE.Vector3(), batt: new THREE.Vector3(), grid: new THREE.Vector3() };
+  private focusPts: Record<Focus, THREE.Vector3> = { roof: new THREE.Vector3(), house: new THREE.Vector3(), drive: new THREE.Vector3(), battery: new THREE.Vector3(), wallbox: new THREE.Vector3(), west: new THREE.Vector3() };
+  private fitD = 40;
+  private fly: { pos: THREE.Vector3; tgt: THREE.Vector3; top: boolean } | null = null;
+  private pose: Pose | null = null;
+  private vPos = new THREE.Vector3();
+  private vTgt = new THREE.Vector3();
   private batteryBox!: THREE.Mesh;
   private labels: Label[] = [];
   private labelEls = new Map<string, HTMLDivElement>();
@@ -138,6 +145,8 @@ export class SpatialScene {
     this.controls.maxPolarAngle = Math.PI * 0.46;
     this.controls.minPolarAngle = Math.PI * 0.08;
     this.controls.autoRotate = false;
+    // A drag takes the camera back from the reasoning chain at once.
+    this.controls.addEventListener("start", () => { this.fly = null; this.pose = null; this.vPos.set(0, 0, 0); this.vTgt.set(0, 0, 0); this.controls.minPolarAngle = Math.PI * 0.08; });
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
@@ -190,12 +199,39 @@ export class SpatialScene {
       const cur = this.persp.position.clone().sub(this.controls.target).normalize();
       this.persp.position.copy(this.centre).addScaledVector(cur, d);
     }
-    this.controls.target.copy(this.centre);
+    this.fitD = d;
+    if (!this.fly) this.controls.target.copy(this.centre);
     this.controls.minDistance = d * 0.55;
     this.controls.maxDistance = d * 1.8;
+    // A stage pose survives a resize or a new design: re-aim at it (no animation unless already flying).
+    if (this.pose && this.fitted) {
+      const g = this.goalOf(this.pose);
+      if (this.fly) { this.fly.pos.copy(g.pos); this.fly.tgt.copy(g.tgt); }
+      else { this.persp.position.copy(g.pos); this.controls.target.copy(g.tgt); }
+    }
     this.controls.update();
   }
+  private goalOf(p: Pose) {
+    const tgt = this.focusPts[p.focus].clone();
+    return { tgt, pos: tgt.clone().addScaledVector(poseOffset(p), this.fitD * p.dist) };
+  }
   private fitted = false;
+
+  // Moves the camera to a stage's pose on one smooth spring (0.6 s, bounce 0) from wherever it is now, keeping
+  // its velocity if a new stage arrives mid-flight. A top-down pose ends in the 2D plan. Reduce Motion: a cut.
+  flyTo(p: Pose) {
+    this.pose = p;
+    const { pos, tgt } = this.goalOf(p);
+    if (this.mode === "2d" && !p.topDown) { this.setView("3d"); this.opts.onView?.("3d"); }
+    this.controls.minPolarAngle = p.topDown ? 0 : Math.PI * 0.08;
+    if (this.opts.reduce) {
+      this.persp.position.copy(pos); this.controls.target.copy(tgt); this.controls.update();
+      this.fly = null;
+      if (p.topDown) { this.setView("2d"); this.opts.onView?.("2d"); }
+      return;
+    }
+    this.fly = { pos, tgt, top: !!p.topDown };
+  }
 
   setModel(model: RoofModel) {
     this.targets = [];
@@ -247,6 +283,15 @@ export class SpatialScene {
     this.anchors.home.set((box.min.x + box.max.x) / 2, Math.max(1.6, box.min.y * 0.4), box.max.z);
     this.anchors.batt.set(bx, 1.5, bz);
     this.anchors.grid.set(gx, 7.1, gz);
+    const bc = box.getCenter(new THREE.Vector3()), midZ = (box.min.z + box.max.z) / 2;
+    this.focusPts.roof.copy(this.anchors.roof);
+    this.focusPts.house.set(bc.x, size.y * 0.4, bc.z);
+    // Close-up foci sit at mid-height, so the house stays in frame while the camera looks at its base.
+    const fy = size.y * 0.45;
+    this.focusPts.battery.set((bx + bc.x) / 2, fy, bz - 1);
+    this.focusPts.drive.set(box.max.x + 1.5, fy, box.max.z);
+    this.focusPts.wallbox.set(box.max.x, fy, box.max.z - 1.5);
+    this.focusPts.west.set(box.min.x, fy, midZ);
 
     // Sun path for the day layer.
     const path: THREE.Vector3[] = [];
@@ -528,6 +573,15 @@ export class SpatialScene {
     if (!this.alive) return;
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(0.05, this.clock.getDelta());
+    if (this.fly) {
+      const a = springStep(this.persp.position, this.vPos, this.fly.pos, dt);
+      const b = springStep(this.controls.target, this.vTgt, this.fly.tgt, dt);
+      if (a && b) {
+        const top = this.fly.top;
+        this.fly = null;
+        if (top && this.mode !== "2d") { this.setView("2d"); this.opts.onView?.("2d"); }
+      }
+    }
     this.controls.update();
 
     if (this.panelT >= 0) {

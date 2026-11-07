@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import SpatialDemo from "@/components/spatial/SpatialDemo";
 import { HERO_INPUTS } from "@/lib/demo";
+import { STAGE_VIEWS, type StageView } from "@/components/spatial/camera";
 import type { DesignResponse, HomeInputs } from "@/lib/api";
 import { call } from "@/lib/client";
 
@@ -13,6 +14,7 @@ export default function Page() {
   const [res, setRes] = useState<DesignResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [n, setN] = useState(0);
+  const [view, setView] = useState<StageView | undefined>(undefined);
   useEffect(() => {
     const address = new URLSearchParams(location.search).get("address") || HERO_INPUTS.address!;
     const i = { ...HERO_INPUTS, address };
@@ -23,7 +25,8 @@ export default function Page() {
   if (!inputs || !res) return null;
   return (
     <div style={{ paddingTop: 24, maxWidth: 980 }}>
-      <SpatialDemo inputs={inputs} design={res.design} response={res} address={inputs.address!} layer={layer} onLayerChange={setLayer} onAvailable={setOk} />
+      <SpatialDemo inputs={inputs} design={res.design} response={res} address={inputs.address!} layer={layer} onLayerChange={setLayer} onAvailable={setOk} view={view} />
+      <p style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{STAGE_VIEWS.map((v) => <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)}>{v}</button>)}</p>
       {ok === false && <p>No 3D model for this address.</p>}
     </div>
   );
