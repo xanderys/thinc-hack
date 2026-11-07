@@ -13,6 +13,7 @@ import type { Variant } from "@/components/stage/Plan";
 import House from "@/components/stage/House";
 import Why from "@/components/stage/Why";
 import s from "./chain.module.css";
+import ShadingPanel from "@/components/spatial/ShadingScrubber";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
 
@@ -188,6 +189,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
       <div className={s.sim}>
         <p className={s.simH}><Bolt /> Simulation</p>
         <dl className={s.kpis}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}</dd></div>)}</dl>
+        {address && spatial !== false && <ShadingPanel address={address} kwp={d.pv_kwp} solarStage={stage === 4} />}
       </div>
       {stage === 8 && variants.length > 0 && (
         <div className={s.variants}>

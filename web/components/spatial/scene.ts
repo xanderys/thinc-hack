@@ -8,6 +8,8 @@ import type { DayHour, Envelope, PanelRect, Plan, RoofModel, RoofPlane, V3 } fro
 import { flowsOf, lerpHour, p2 } from "./types";
 import { facing } from "./facing";
 import { poseOffset, springStep, type Focus, type Pose } from "./camera";
+import { ShadeLayer } from "./shading";
+import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
 const BLUE = new THREE.Color("#374be6");
@@ -129,6 +131,7 @@ export class SpatialScene {
   private heat: Envelope | null = null;
   private plan: Plan | null = null;
   private planG: SVGGElement | null = null;
+  private shade = new ShadeLayer();
 
   constructor(private host: HTMLElement, private overlay: HTMLElement, private svg: SVGSVGElement, private opts: SceneOpts) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
@@ -166,6 +169,7 @@ export class SpatialScene {
     this.controls2d.addEventListener("start", () => { this.fly = null; this.pose = null; });
     // Double tap or double click puts the house back in frame.
     this.renderer.domElement.addEventListener("pointerup", this.onTap);
+    this.shade.mount(overlay, this.renderer.domElement);
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
@@ -259,6 +263,7 @@ export class SpatialScene {
     this.targets = [];
     [this.placeholder, this.outlines, this.tints, this.kit, this.sunGroup].forEach((g) => g.clear());
     const target = model.planes.filter((p) => p.is_target);
+    this.shade.setPlanes(target);
     const ys = model.planes.map((p) => p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp).filter((x) => x > 0);
     this.yieldScale = [Math.min(...ys), Math.max(...ys)];
 
@@ -400,6 +405,7 @@ export class SpatialScene {
     this.panelAnim = [];
     const fill = new THREE.MeshBasicMaterial({ color: "#151826", side: THREE.DoubleSide });
     const edge = new THREE.LineBasicMaterial({ color: "#F4F1EA", transparent: true, opacity: 0.85 });
+    const per: Record<string, number> = {};
     list.forEach(({ p, r }, i) => {
       const f = planeFrame(p);
       const cs = panelCorners(p, r).map((q) => q.addScaledVector(f.n, 0.09));
@@ -411,6 +417,7 @@ export class SpatialScene {
       quad.renderOrder = 3;
       const ln = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(cs), mats[1]);
       grp.add(quad, ln);
+      grp.userData = { plane: p.id, idx: (per[p.id] = (per[p.id] ?? -1) + 1), cs, n: f.n }; // shading.ts reads these
       this.panels.add(grp);
       if (animate) {
         mats.forEach((m) => { m.transparent = true; m.opacity = 0; });
@@ -420,7 +427,10 @@ export class SpatialScene {
       }
     });
     this.panelT = animate ? 0 : -1;
+    this.shade.setPanels(this.panels);
   }
+
+  setShading(d: Shading | null, on: boolean, at: ShadeAt) { this.shade.set(d, on, at); }
 
   setTint(mode: "off" | "yield" | "sun") {
     this.tintMode = mode;
@@ -749,6 +759,7 @@ export class SpatialScene {
     });
 
     if (this.plan) this.drawPlan();
+    this.shade.frame(this.camera, this.mode, (v) => this.project(v), this.host.clientWidth);
     if (this.opts.compass) {
       // Screen direction of north (local -z in three).
       const a = this.project(this.centre), b = this.project(this.centre.clone().add(new THREE.Vector3(0, 0, -5)));
@@ -768,6 +779,7 @@ export class SpatialScene {
     this.labelEls.forEach((el) => el.remove());
     Object.values(this.flowPaths).forEach((el) => el.remove());
     this.planG?.remove();
+    this.shade.dispose();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();

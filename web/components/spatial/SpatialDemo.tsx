@@ -13,6 +13,8 @@ import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
 import { usePhoto } from "./PhotoView";
 import s from "./spatial.module.css";
+import ShadingPanel from "./ShadingScrubber";
+import { useShadeView, useShading } from "@/lib/shading";
 
 export type Endpoints = { glb?: string; layers?: string };
 
@@ -148,6 +150,10 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     sc.setPanels(panelList, !reduce && L === 3);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelKey, ready, modelGen]);
+
+  // Per-module shading (lib/shading.ts): tints only when the route is ready and the planner turned it on.
+  const shading = useShading(address, kwp), shadeView = useShadeView();
+  useEffect(() => { if (ready) scene.current?.setShading(shading, shadeView.on, shadeView.at); }, [shading, shadeView.on, shadeView.at, ready, panelKey, modelGen]);
 
   // Apply the layer.
   useEffect(() => {
@@ -369,6 +375,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         )}
         {!bare && L === 4 && layers && <div className={s.clock} aria-live="off">{hh(hour.h)}</div>}
         {!bare && chart && <div className={s.side}>{chart}</div>}
+        {!bare && <ShadingPanel address={address} kwp={kwp} float />}
         {photo.overlay}
         {children}
       </div>
