@@ -43,7 +43,10 @@ def _key(loc):
 
 
 @lru_cache(maxsize=8)
-def weather(loc="Munich") -> pd.DataFrame:
+def weather(loc="Munich", year=None) -> pd.DataFrame:
+    """year None: PVGIS typical year (the pinned numbers). year "2025": real 2025 Munich weather (app/hourly/replay.py)."""
+    if year is not None:
+        return _replay(loc, year)
     lat, lon = _key(loc)
     f = CACHE / f"{lat}_{lon}.csv"
     if f.exists():
@@ -61,14 +64,23 @@ def weather(loc="Munich") -> pd.DataFrame:
         raise
 
 
+def _replay(loc, year):
+    if str(year) != "2025":
+        raise ValueError(f"no replay for year {year}")
+    if _key(loc) != _key("Munich"):
+        raise ValueError("2025 replay has Munich weather only")
+    from . import replay
+    return replay.load()
+
+
 def _local_hours():
     """UTC hours of the sim year mapped to local Berlin clock time (DST aware)."""
     utc = pd.date_range(f"{YEAR}-01-01", periods=8760, freq="h", tz="UTC")
     return utc, utc.tz_convert("Europe/Berlin").tz_localize(None)
 
 
-@lru_cache(maxsize=32)
-def pv_per_kwp(loc="Munich", tilt=35.0, azimuth=180.0) -> np.ndarray:
+@lru_cache(maxsize=64)
+def pv_per_kwp(loc="Munich", tilt=35.0, azimuth=180.0, year=None) -> np.ndarray:
     """AC kWh per kWp for each UTC hour, unclipped, pvlib ModelChain (PVWatts DC, 14% system losses)."""
     import pvlib
     from pvlib.location import Location
@@ -77,8 +89,10 @@ def pv_per_kwp(loc="Munich", tilt=35.0, azimuth=180.0) -> np.ndarray:
     from pvlib.temperature import TEMPERATURE_MODEL_PARAMETERS
 
     lat, lon = _key(loc)
-    w = weather(loc).copy()
+    w = weather(loc, year)[["ghi", "dni", "dhi", "temp_air", "wind_speed"]].copy()
     w.index = _local_hours()[0]
+    if year is not None:  # 2025 radiation is the hour's mean: sun position at mid-hour
+        w.index = w.index + pd.Timedelta(minutes=30)
     system = PVSystem(surface_tilt=tilt, surface_azimuth=azimuth,
                       module_parameters={"pdc0": 1000.0, "gamma_pdc": -0.0035},
                       inverter_parameters={"pdc0": 1e6, "eta_inv_nom": INV_EFF},
@@ -98,8 +112,8 @@ def orientation(inputs):
     return [(35.0 if tilt is None else tilt, 180.0 if az is None else az, 1.0)]
 
 
-def pv_profile(inputs, loc):
-    return sum(share * pv_per_kwp(loc, float(t), float(a)) for t, a, share in orientation(inputs))
+def pv_profile(inputs, loc, year=None):
+    return sum(share * pv_per_kwp(loc, float(t), float(a), year) for t, a, share in orientation(inputs))
 
 
 # ---------- loads ----------
@@ -124,9 +138,9 @@ def household_shape() -> np.ndarray:
 
 
 @lru_cache(maxsize=4)
-def heat_shape(loc="Munich"):
+def heat_shape(loc="Munich", year=None):
     """(heat share per hour summing to 1, hourly COP scaled to seasonal JAZ)."""
-    t = weather(loc)["temp_air"].to_numpy()
+    t = weather(loc, year)["temp_air"].to_numpy()
     space = np.clip(HEAT_BASE_C - t, 0, None)
     shape = (1 - DHW_SHARE) * space / space.sum() + DHW_SHARE / 8760
     cop = np.clip(2.6 + 0.08 * t, 1.8, 5.5)          # air-water, falls about 0.08 per K colder
@@ -208,13 +222,13 @@ class SimResult:
     hourly: dict = field(repr=False)          # numpy arrays, UTC hours; not for the API
 
 
-def _flows(inputs, design, loc):
+def _flows(inputs, design, loc, year=None):
     pv_kwp = (design.get("pv_kwp") or 0) + (inputs.get("existing_solar_kwp") or 0 if inputs.get("has_solar") else 0)
     bat = (design.get("battery_kwh") or 0) + (inputs.get("existing_storage_kwh") or 0 if inputs.get("has_storage") else 0)
     inv = design.get("inverter_kw")
     if design.get("pv_kwp") and inv:
         inv = inv + (pv_kwp - design["pv_kwp"]) / 1.15
-    pv = pv_profile(inputs, loc) * pv_kwp
+    pv = pv_profile(inputs, loc, year) * pv_kwp
     if inv:
         pv = np.minimum(pv, inv)
     house = household_shape() * (inputs.get("annual_demand_kwh") or 0)
@@ -226,7 +240,7 @@ def _flows(inputs, design, loc):
     heat = 0.0
     if design.get("heatpump_kw") or inputs.get("heating_type") == "Heatpump":
         heat, _ = heat_demand_kwh(inputs, design)
-        shape, cop = heat_shape(loc)
+        shape, cop = heat_shape(loc, year)
         hp_el = heat * shape / cop
     load = house + ev + hp_el
     direct = np.minimum(pv, load)
@@ -251,17 +265,23 @@ def _capex(inputs, design):
 
 
 @lru_cache(maxsize=4)
-def _paid_hours(loc="Munich"):
-    """False in the NEG_PRICE_HOURS sunniest hours: proxy for negative spot prices, no feed-in pay (Solarspitzengesetz)."""
+def _paid_hours(loc="Munich", year=None):
+    """False in the NEG_PRICE_HOURS sunniest hours: proxy for negative spot prices, no feed-in pay (Solarspitzengesetz).
+    2025: the paid share of each real hour, 1 minus the share of its day-ahead intervals with a negative price."""
+    if year is not None:
+        return 1.0 - weather(loc, year)["neg_share"].to_numpy()
     pv = pv_per_kwp(loc, 35.0, 180.0)
     m = np.ones(8760, bool)
     m[np.argsort(pv)[-NEG_PRICE_HOURS:]] = False
     return m
 
 
-def _bill(inputs, f, new_kwp, loc):
+def _bill(inputs, f, new_kwp, loc, year=None):
     """(grid import cost, feed-in income) in EUR a year."""
     feed_rate = _feedin_eur_kwh(new_kwp) if new_kwp else _feedin_eur_kwh(f["pv_kwp"])
+    if year is not None:
+        income = (f["feed_in"] * _paid_hours(loc, year)).sum() * feed_rate
+        return f["grid_import"].sum() * _price(inputs), income
     income = f["feed_in"][_paid_hours(loc)].sum() * feed_rate
     return f["grid_import"].sum() * _price(inputs), income
 
@@ -274,14 +294,15 @@ def _npv(capex, energy_saving, income, opex):
     return float((flows / (1 + DISCOUNT) ** t).sum() - capex)
 
 
-def simulate(inputs: dict, design: dict, location="Munich") -> SimResult:
+def simulate(inputs: dict, design: dict, location="Munich", year=None) -> SimResult:
+    """year None: one typical year (PVGIS TMY), the pinned economics. year "2025": real 2025 weather and negative prices."""
     loc = location
-    after = _flows(inputs, design, loc)
+    after = _flows(inputs, design, loc, year)
     before_design = {"pv_kwp": 0, "battery_kwh": 0, "heatpump_kw": None, "wallbox_kw": design.get("wallbox_kw")}
-    before = _flows(inputs, before_design, loc)
+    before = _flows(inputs, before_design, loc, year)
     price = _price(inputs)
-    imp_b, inc_b = _bill(inputs, before, 0, loc)
-    imp_a, income = _bill(inputs, after, design.get("pv_kwp") or 0, loc)
+    imp_b, inc_b = _bill(inputs, before, 0, loc, year)
+    imp_a, income = _bill(inputs, after, design.get("pv_kwp") or 0, loc, year)
     bill_b, bill_a = imp_b - inc_b, imp_a - income
 
     fuel = 0.0
@@ -301,7 +322,8 @@ def simulate(inputs: dict, design: dict, location="Munich") -> SimResult:
     aut = covered / load if load else 0.0
     npv = _npv(capex, imp_b + fuel - imp_a, income - inc_b, opex) if capex else None
 
-    a = [f"Hourly simulation over one typical year ({location} PVGIS TMY, pvlib), household load BDEW H25 with single-home scatter."]
+    a = [f"Hourly simulation over one typical year ({location} PVGIS TMY, pvlib), household load BDEW H25 with single-home scatter."
+         if year is None else f"Hourly replay of {year} ({location} Open-Meteo weather, pvlib), household load BDEW H25 with single-home scatter."]
     a.append(f"Electricity {price * 100:.0f} ct/kWh" + ("" if inputs.get("electricity_price_ct_kwh") else " (default)")
              + f", rising {PRICE_RISE:.0%} a year; feed-in {FEEDIN_LOW} ct up to 10 kWp, {FEEDIN_HIGH} ct above.")
     t, az, _ = orientation(inputs)[0]
@@ -315,7 +337,10 @@ def simulate(inputs: dict, design: dict, location="Munich") -> SimResult:
         if design.get("heatpump_kw"):
             a.append(rules.hp_capex_note(inputs))
         a.append(f"Heat pump {after['hp'].sum():,.0f} kWh a year: {after['heat']:,.0f} kWh heat ({src}) at JAZ {JAZ}.")
-    a.append(f"No feed-in pay in the {NEG_PRICE_HOURS} sunniest hours (negative prices, 2025); upkeep {OPEX_SHARE:.1%} of PV and battery cost a year.")
+    if year is None:
+        a.append(f"No feed-in pay in the {NEG_PRICE_HOURS} sunniest hours (negative prices, 2025); upkeep {OPEX_SHARE:.1%} of PV and battery cost a year.")
+    else:
+        a.append(f"No feed-in pay in the real {year} negative day-ahead price intervals (DE-LU); upkeep {OPEX_SHARE:.1%} of PV and battery cost a year.")
     a.append(f"NPV over {YEARS} years at {DISCOUNT:.0%} discount, {DEGRADATION:.1%} a year PV degradation, no battery replacement.")
     a.append("PV EUR 1,350 per kWp at 5 kWp falling to EUR 1,000 at 20 kWp; battery EUR 450 per kWh.")
 
@@ -341,3 +366,31 @@ def simulate(inputs: dict, design: dict, location="Munich") -> SimResult:
         },
     }
     return SimResult(econ, after)
+
+
+REPLAY_NOTES = [
+    "Replay of calendar 2025: Munich hourly weather from the Open-Meteo historical API (ECMWF IFS, CC BY 4.0), PV through the same pvlib chain as the typical year.",
+    "Day-ahead prices DE-LU from Energy-Charts (Fraunhofer ISE; Bundesnetzagentur | SMARD.de, CC BY 4.0), 15-minute prices from October averaged per hour.",
+    "Retail price stays the fixed tariff in every hour (no dynamic tariff simulated); feed-in is the fixed EEG rate, the spot price only decides when it is paid.",
+    "No feed-in pay in negative-price intervals (EEG 2023 section 51 as amended by the Solarspitzengesetz, in force 25 Feb 2025, for new systems); "
+    "the lost intervals added to the end of the 20-year term (section 51a) are not counted.",
+    "Same load, battery, capex and upkeep as the typical year; payback is capex over the 2025 saving.",
+]
+
+
+def replay_2025(inputs: dict, design: dict, location="Munich"):
+    """(block, None) or (None, reason). Block: the six 2025 replay fields plus assumptions. Never raises."""
+    try:
+        r = simulate(inputs, design, location, year="2025")
+        e, a = r.economics, r.economics["annual"]
+        neg = weather(location, "2025")["neg_share"].to_numpy()
+        from . import replay
+        src = replay.load().attrs.get("source", "bundled")
+        return {
+            "pv_yield_kwh": a["pv_yield_kwh"], "autarky_share": e["autarky_share"], "feed_in_income_eur": a["feed_in_income_eur"],
+            "bill_after_eur": a["bill_after_eur"], "payback_years": e["payback_years"],
+            "negative_price_hours_curtailed_kwh": round(float((r.hourly["feed_in"] * neg).sum())),
+            "assumptions": REPLAY_NOTES + [f"{int((neg > 0).sum())} hours with a negative day-ahead interval in 2025; data read from the {src} file."],
+        }, None
+    except Exception as ex:  # omit the block, say why
+        return None, f"{type(ex).__name__}: {ex}"
