@@ -104,7 +104,13 @@ export interface DesignResponse {
 
 // v2.0: the named planner rules that produced a design.
 export interface RuleConstant { name: string; value: number | string | (number | string)[]; unit: string; source: string; fitted_on?: string | null; }
-export interface Rule { name: string; sentence: string; constants: RuleConstant[]; }
+// rules-5 (7 Nov evening): rows carry textbook, rule and design instead of constants; both shapes render.
+export interface Rule {
+  name: string; sentence: string; constants?: RuleConstant[];
+  textbook?: { value: number | null; unit: string; source: string; url?: string } | null;
+  rule?: { engine: string; text: string } | null;
+  design?: { value: number | null; unit: string } | null;
+}
 export interface RecommenderScore { design_match_share: number; pv_within: number; battery_within: number; wallbox_decision: number; }
 export interface DeviationQuality { n_differ: number; ours_better_payback: number; expert_better_payback: number; ours_better_autarky: number; expert_better_autarky: number; method: string; }
 
