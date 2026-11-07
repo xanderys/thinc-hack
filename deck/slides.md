@@ -12,23 +12,21 @@ footer: Marquee
 
 <p class="label">Marquee</p>
 
-# Planners spend hours on every single design.
+# At the same installer, near-identical homes get the same full design 16% of the time.
 
-<p>Reonic case brief</p>
+<p>258 held-out signed projects</p>
+
+[UNCONFIRMED: opener line; source engine/README.md, all four, near-identical homes 16.1%]
 
 ---
 
-<p class="label">What we built</p>
+<p class="label">Tuesday, 8:40</p>
 
-## Enter a home. Get the design an experienced planner would draw, with the reasons.
+## Six new enquiries. Two site visits this afternoon.
 
-<div class="data">PV, then battery given PV, then heat pump, then wallbox. Change one and the rest re-size.</div>
+<div class="data">“Family of four, detached house, want solar, maybe a battery. Bill attached.”<br>panel size <b>?</b>  battery <b>?</b>  heat pump <b>?</b>  charger <b>?</b><br>each depends on the others</div>
 
-[UNCONFIRMED: screenshot of the planner from https://marquee-reonic.vercel.app as `img/planner.png` with class panel]
-
-<p class="brief">Reonic minimum: “your system proposes a complete design, PV, battery and heat pump as appropriate, with a short explanation of why.”</p>
-
-[UNCONFIRMED: also tick stretch “Alternatives and confidence for every recommendation.” (live per THINC HACK MASTER)]
+[UNCONFIRMED: planner's day on this slide; source docs/pitch/planner-day.md]
 
 ---
 
@@ -36,23 +34,27 @@ footer: Marquee
 
 <p class="label">Live</p>
 
-# “The family is buying an electric car next year.”
+# “The family buys an EV next year.”
+
+<div class="data">paste the lead<br>one question: what heats the house<br>the offer, with its proof<br>change it in a sentence</div>
 
 <p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
 
+[UNCONFIRMED: demo slide follows the stage flow in docs/briefs/stage.md]
+
 ---
 
-<p class="label">Unseen homes, PV within 1 kWp or 15%</p>
+<p class="label">Why one question</p>
 
-<!-- Provisional figures: final digits from the engine Sunday morning -->
+<div class="stat">15%</div>
 
-<div class="stat">38.5%</div>
+## The share of PV size that the usual intake explains.
 
-## As often as two planners agree on identical homes.
+<div class="data">so the agent asks for the fact that would move the design most<br>and stays silent when nothing would</div>
 
-<div class="data">two planners, identical homes <b>40.3%</b><br>textbook rule <b>14.6%</b><br>all four components <b>19.1%</b>, planner ceiling <b>22.7%</b></div>
+<p class="brief">Reonic, Manuel Schneider: “Im Zweifelsfall sind unsere Produkte immer so entwickelt, den Nutzer zu fragen.” (pv magazine, 8 Jun 2026)</p>
 
-<p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
+[UNCONFIRMED: 15% from docs/data-insights.md, installer and demand band R2; Schneider quote on slide]
 
 ---
 
@@ -62,19 +64,23 @@ footer: Marquee
 
 ## Experts follow rules nobody wrote down.
 
-<div class="data">PV <b>6.5 kWp + 0.58 per MWh</b>; the textbook under-sizes <b>82%</b><br>battery in <b>95%</b> of PV designs, about <b>1 kWh per kWp</b><br><b>91%</b> of wallboxes go to homes flagged without an EV</div>
+<div class="data">planners install <b>2.0 kWp per MWh</b>; the textbook under-sizes <b>82%</b><br><b>91%</b> of wallboxes went to homes with no EV on record</div>
 
-[UNCONFIRMED: tick stretch “An analysis of where and why your designs deviate from the experts.” once /check ships it; line “Inputs explain 15% of PV size: the gap is intake data, not the model.”]
+[UNCONFIRMED: both lines; sources docs/research/science.md and engine/README.md]
 
 ---
 
-<p class="label">Value per installer</p>
+<p class="label">Checked on 258 held-out signed projects</p>
 
-<div class="stat">[UNCONFIRMED: € per installer per year]</div>
+<div class="stat">17.4%</div>
 
-## [UNCONFIRMED: headline]
+## Every component right, more often than near-identical homes agree.
 
-<div class="data">[UNCONFIRMED: from Jamon via Reonic experts: offers per planner per week, minutes per design, planner hourly cost, win-rate lift]</div>
+<div class="data">all four: ours <b>17.4%</b>, textbook <b>6.6%</b>, near-identical homes <b>16.1%</b><br>PV within 1 kWp or 15%: ours <b>36.8%</b>, textbook <b>17.8%</b>, near-identical homes <b>31.7%</b></div>
+
+<p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
+
+[UNCONFIRMED: scoreboard framing; source engine/README.md]
 
 ---
 
@@ -82,11 +88,11 @@ footer: Marquee
 
 <p class="label">Inside Reonic</p>
 
-## From first draft to checked offer.
+## A Propose design step in the offer.
 
-<div class="data"><b>1</b> learns each installer’s catalogue and defaults<br><b>2</b> roof area and household size at intake<br><b>3</b> flags a design unusual for homes like this one<br><b>4</b> homeowner switches the battery and sees the bill change</div>
+<div class="data">Reonic’s AI chat already sizes from past projects<br>this adds proof on every number, an honest score,<br>the one question, and changes by sentence</div>
 
-[UNCONFIRMED: if the validation view ships, tick stretch “A validation view for planners ... built on the same engine.” and move item 3 out of the roadmap]
+[UNCONFIRMED: naming Reonic's AI chat on a slide; source docs/research/icp-reonic.md]
 
 ---
 
@@ -95,8 +101,8 @@ footer: Marquee
 
 <p class="label">Marquee</p>
 
-## “Every home is different. The expertise to design for it should not be the bottleneck.”
-
-<p>Reonic case brief</p>
+## Planners sign off the exceptions. The machine drafts the rest. Every number has a source.
 
 <div class="data">Xander, Zi Yuan, Jamon</div>
+
+[UNCONFIRMED: close line; from the pitch beats in docs/briefs/stage.md]
