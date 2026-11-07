@@ -4,7 +4,7 @@ import pickle
 import threading
 import time
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -12,7 +12,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import data, roofs
+import os
+
+from fastapi import Header
+
+from . import data, leads, roofs
+from . import model as model_mod
+
+
+def _load_env():
+    """engine/.env (gitignored): MARQUEE_INTAKE_KEY for the intake step."""
+    p = Path(__file__).resolve().parent.parent / ".env"
+    if p.exists():
+        for line in p.read_text().splitlines():
+            k, _, v = line.partition("=")
+            if k.strip() and v.strip() and k.strip() not in os.environ:
+                os.environ[k.strip()] = v.strip().strip('"')
+
+
+_load_env()
 from .model import MODEL_VERSION, Engine, row_design, row_inputs
 
 log = logging.getLogger("engine")
@@ -58,6 +76,8 @@ def startup():
     if STATE.get("inbox") is None:
         threading.Thread(target=warm_inbox, daemon=True).start()
     threading.Thread(target=roofs.warm, daemon=True).start()
+    leads.load_all()
+    model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
 
 
 INBOX_MAX = 60
@@ -400,6 +420,169 @@ def inbox(limit: int = 20):
     if STATE.get("inbox") is None:
         return err(503, "The inbox could not be built; see the engine log.")
     return STATE["inbox"][: max(1, min(limit, INBOX_MAX))]
+
+
+# ---------- v1.9: the engine runs the call ----------
+
+class LeadReq(BaseModel):
+    customer_name: str = ""
+    address_or_postcode: str = ""
+    installer_id: Optional[Literal["2a8ba8e2", "23c108b7"]] = None
+    facts: Optional[dict] = None
+    source: Literal["form", "call"] = "form"
+
+
+class StepReq(BaseModel):
+    lead_id: str
+    answers: Union[dict, list] = {}
+    note: Optional[str] = None
+
+
+def _facts(raw: dict) -> dict:
+    """Validate merged facts as HomeInputs; returns inputs with _given (fields actually known)."""
+    try:
+        h = HomeInputs(**{k: v for k, v in raw.items() if not k.startswith("_")})
+    except Exception as e:
+        errs = getattr(e, "errors", lambda: [])()
+        msg = " ".join(f"{'.'.join(str(x) for x in er.get('loc', []))}: {er.get('msg')}." for er in errs) or str(e)
+        raise InputError(msg)
+    inp = {**h.model_dump(), "_given": sorted(set(raw.get("_given") or []) | h.model_fields_set)}
+    check_inputs(inp)
+    return inp
+
+
+def _question(eng, inp: dict, unknown: list):
+    if not unknown:
+        return None, 0.0
+    qs = [q for q in eng.ask(inp, unknown) if q["spread"] >= 1.0]  # below 1 the answer stays inside tolerance
+    if not qs:
+        return None, 0.0
+    q = qs[0]
+    text, why = leads.QUESTION.get(q["field"], (q["field"], ""))
+    base = eng.sizes_batch([inp])[0]
+    return {"field": q["field"], "question": text, "why": why,
+            "options": [{"value": o["value"], "label": o["label"]} for o in q["options"]],
+            "expected_swing": leads.swing_text(base, q["options"])}, q["spread"]
+
+
+def _public(inp: dict) -> dict:
+    return {k: v for k, v in inp.items() if not k.startswith("_") and k != "roof"}
+
+
+def _full_draft_later(lead_id: str, inp: dict):
+    """Optimum and variants for the planner's view, after the step has answered."""
+    def run():
+        try:
+            d = engine().predict(dict(inp))
+            lead = leads.LEADS.get(lead_id)
+            if lead and lead["draft"]["design"] == d["design"]:
+                lead["draft"] = d
+                leads.save(lead)
+        except Exception:
+            log.exception("full draft failed")
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _key_ok(key: Optional[str]) -> bool:
+    want = os.environ.get("MARQUEE_INTAKE_KEY")
+    return bool(want) and key == want
+
+
+@app.post("/api/leads")
+def create_lead(req: LeadReq, x_marquee_key: Optional[str] = Header(None)):
+    eng = engine()
+    raw = {"installer_id": req.installer_id or (req.facts or {}).get("installer_id") or "2a8ba8e2",
+           **leads.where(req.address_or_postcode), **leads.normalise(req.facts or {})}
+    raw["_given"] = [k for k in raw if k != "installer_id"] + (["installer_id"] if req.installer_id else [])
+    inp = _facts(raw)
+    unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
+    draft = eng.predict(dict(inp), extras=False)
+    nq, spread = _question(eng, inp, unknown)
+    t = leads.now()
+    lead = {"lead_id": leads.new_id(), "status": "draft", "source": req.source, "customer_name": req.customer_name,
+            "address_or_postcode": req.address_or_postcode, "inputs": inp, "unknown": unknown, "draft": draft,
+            "history": [], "next_question": nq, "next_spread": spread, "questions_asked": 0, "created_at": t, "updated_at": t,
+            "roof": inp.get("roof")}
+    leads.LEADS[lead["lead_id"]] = lead
+    leads.save(lead)
+    _full_draft_later(lead["lead_id"], inp)
+    return {"lead_id": lead["lead_id"], "draft": draft, "facts": _public(inp), "unknown": unknown, "next_question": nq}
+
+
+@app.post("/api/intake/step")
+def intake_step(req: StepReq, x_marquee_key: Optional[str] = Header(None)):
+    if not _key_ok(x_marquee_key):
+        return err(401, "Missing or wrong X-Marquee-Key header.")
+    eng = engine()
+    lead = leads.LEADS.get(req.lead_id)
+    if not lead:
+        return err(404, f"No lead with id {req.lead_id}")
+    try:
+        ans = leads.normalise(req.answers)
+    except ValueError as e:
+        return err(422, str(e))
+    unknown_fields = [k for k in ans if k not in HomeInputs.model_fields]
+    if unknown_fields:
+        return err(422, f"Unknown field: {', '.join(unknown_fields)}.")
+    asked = (lead.get("next_question") or {}).get("field")
+    raw = {**lead["inputs"], **ans, "_given": sorted(set(lead["inputs"].get("_given", [])) | set(ans))}
+    if ans.get("has_ev") is True and not ans.get("ev_annual_km") and not raw.get("ev_annual_km"):
+        raw["ev_annual_km"] = 12000.0
+    raw.pop("roof", None) if ("address" in ans or "postcode" in ans) else None
+    inp = _facts(raw)
+    before = lead["draft"]["design"]
+    draft = eng.predict(dict(inp), extras=False)
+    unknown = [c for c in lead["unknown"] if c not in ans]
+    nq, spread = _question(eng, inp, unknown)
+    changed = []
+    for k, comp in FIELDS.items():
+        a, b = before.get(k), draft["design"].get(k)
+        if a != b:
+            why = draft["components"][comp]["reason"] if comp in draft["components"] else "Follows the PV size."
+            changed.append({"component": comp, "from": a, "to": b, "why": why})
+    step = lead["questions_asked"] + 1
+    t = leads.now()
+    field_asked = asked if asked in ans else (next(iter(ans)) if ans else None)
+    lead.update(inputs=inp, unknown=unknown, draft=draft, next_question=nq, questions_asked=step, updated_at=t,
+                status="done" if nq is None else "in_call")
+    lead["history"].append({"step": step, "field": field_asked, "answer": {k: ans[k] for k in ans}, "changed": changed,
+                            "note": req.note, "at": t})
+    swing = lead.get("next_spread", 0.0) if field_asked == asked else 0.0
+    lead["next_spread"] = spread
+    leads.save(lead)
+    leads.log_step({"lead_id": lead["lead_id"], "step": step, "field_asked": field_asked, "answer": ans, "swing": swing, "at": t})
+    if field_asked:
+        model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
+    _full_draft_later(lead["lead_id"], inp)
+    return {"design": draft["design"], "draft": draft, "changed": changed, "next_question": nq, "done": nq is None, "step": step}
+
+
+def _lead_out(lead: dict) -> dict:
+    return {"lead_id": lead["lead_id"], "status": lead["status"], "customer_name": lead["customer_name"],
+            "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
+            "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"],
+            "created_at": lead["created_at"], "updated_at": lead["updated_at"]}
+
+
+@app.get("/api/leads/{lead_id}")
+def get_lead(lead_id: str, x_marquee_key: Optional[str] = Header(None)):
+    lead = leads.LEADS.get(lead_id)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    return _lead_out(lead)
+
+
+@app.get("/api/leads")
+def list_leads(limit: int = 20, x_marquee_key: Optional[str] = Header(None)):
+    rows = sorted(leads.LEADS.values(), key=lambda l: l["updated_at"], reverse=True)[: max(1, min(limit, 200))]
+    return [{"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
+             "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
+             "updated_at": l["updated_at"]} for l in rows]
+
+
+@app.get("/api/intake/priors")
+def intake_priors(x_marquee_key: Optional[str] = Header(None)):
+    return leads.priors()
 
 
 @app.get("/api/eval")

@@ -34,6 +34,7 @@ NAMES = {"pv": "PV", "battery": "a battery", "heatpump": "a heat pump", "wallbox
 GREYBOX = {"mode": None, "base": "argmax", "grid": None}
 _GRID = {}  # memo: (installer, inputs, catalogue) -> (pv sizes, battery sizes, NPV matrix)
 
+PRIORS: dict = {}  # field -> mean swing from engine/.cache/leads/steps.jsonl; tie-breaker in ask()
 MONO = True  # monotone in demand (PV) and price (battery); 4,500 kWh default imputed, missing price = 32 ct
 DEMAND_IMPUTE: dict = {}  # load profile -> median non-default demand in train
 
@@ -221,7 +222,7 @@ class Engine:
                 "median_size": q(50), "p25": q(25), "p75": q(75)}
 
     # ---------- prediction ----------
-    def predict(self, inp: dict, overrides: dict | None = None, full: bool = True) -> dict:
+    def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """full=False skips the hourly simulation and optimum (used by the scoreboard, which only needs sizes)."""
         inst = inp["installer_id"]
         if inst not in self.catalogue:
@@ -303,7 +304,7 @@ class Engine:
         inv = ov["inverter_kw"] if isinstance(ov.get("inverter_kw"), (int, float)) else rules.inverter_kw(pv)
         design = {"pv_kwp": pv or None, "inverter_kw": inv if pv else None, "battery_kwh": bat or None,
                   "heatpump_kw": hp or None, "wallbox_kw": wb or None}
-        econ, plaus, opt = self._physics(inp, design, inst, f["t"], full)
+        econ, plaus, opt = self._physics(inp, design, inst, f["t"], full, extras)
         if full:
             try:
                 for c in COMPONENTS:
@@ -314,7 +315,7 @@ class Engine:
                "components": comps, "plausibility": plaus, "economics": econ, "model_version": MODEL_VERSION}
         if opt:
             out["optimum"] = opt
-        if full and design.get("pv_kwp"):
+        if full and extras and design.get("pv_kwp"):
             try:
                 out["variants"] = self.variants(inp, design, econ)
             except Exception as e:
@@ -464,7 +465,8 @@ class Engine:
         given = inp.get("_given")
         no_use = (unknown is not None and "annual_demand_kwh" in unknown) or (given is not None and "annual_demand_kwh" not in given)
         # annual use is the prerequisite: when the lead gives none, it is asked first whatever the spread
-        return sorted(qs, key=lambda q: (not (no_use and q["field"] == "annual_demand_kwh"), -q["spread"]))[:3]
+        # priors from the intake log (v1.9) only break ties in spread
+        return sorted(qs, key=lambda q: (not (no_use and q["field"] == "annual_demand_kwh"), -q["spread"], -PRIORS.get(q["field"], 0.0)))[:3]
 
     def inbox(self, limit: int = 20) -> list:
         """Held-out new-system jobs in demo order: a PV and battery hit first, then varied installers and kinds."""
@@ -630,7 +632,7 @@ class Engine:
             adj = {"label": "set by the planner" if planner else detail["reason"], "value": (final or 0) / ax if ax else 0.0, "n_similar": n}
         return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax, "adjustment": adj, "final": final}
 
-    def _physics(self, inp, design, inst, t, full):
+    def _physics(self, inp, design, inst, t, full, extras=True):
         """Hourly simulation (app/hourly) when it runs; the annual ratio model otherwise. Economics.method says which."""
         lookup = rules.economics(inp, design)
         lookup["method"] = "annual-lookup"
@@ -659,7 +661,7 @@ class Engine:
             near = near[np.unique(np.linspace(0, len(near) - 1, min(8, len(near))).round().astype(int))] if len(near) else pvs
             cat = {"pv_kwp": sorted({float(x) for x in near} | {float(pv0)}),
                    "battery_kwh": [float(x) for x in self.battery_catalogue(inst, t)]}
-            opt = hourly.optimum(clean, cat, design) if design.get("pv_kwp") else None
+            opt = hourly.optimum(clean, cat, design) if design.get("pv_kwp") and extras else None
         except Exception as e:
             log.warning("optimum failed: %s", e)
         return econ, plaus, opt
