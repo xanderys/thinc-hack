@@ -51,7 +51,10 @@ def heat_load_kw(inp):
     sqm = inp.get("house_size_sqm")
     yr = inp.get("house_built_year")
     if inp.get("heating_demand_kwh"):
-        return inp["heating_demand_kwh"] / 2000 + 1.0, "heating demand over 2,000 full-load hours, plus 1 kW hot water"
+        return inp["heating_demand_kwh"] / 2300, f"{inp['heating_demand_kwh']:,.0f} kWh heat a year over 2,300 full-load hours, the installer's median"
+    if inp.get("heating_cost_per_year_eur"):
+        heat = inp["heating_cost_per_year_eur"] / 0.12
+        return heat / 2300, f"EUR {inp['heating_cost_per_year_eur']:,.0f} heating cost at 12 ct per kWh of heat, over 2,300 full-load hours"
     if sqm:
         wpm = 40 if yr and yr >= 2000 else 70 if yr and yr >= 1980 else 120 if yr else 90
         return sqm * wpm / 1000 + 1.0, f"{sqm:.0f} m2 at {wpm} W/m2, plus 1 kW hot water"
@@ -141,8 +144,8 @@ def hard_rules(inp, design):
     pv_all = pv + (inp.get("existing_solar_kwp") or 0)
     if bat and pv_all and bat > 2.5 * pv_all:
         out["battery"] = f"{bat:g} kWh on {pv_all:g} kWp: the PV cannot fill it on most days."
-    if hp and inp.get("heating_type") == "Heatpump":
-        out["heatpump"] = "The home already has a heat pump."
+    if hp and inp.get("heating_type") == "Heatpump" and not inp.get("_hp_replacement"):
+        out["heatpump"] = "The home already has a heat pump; treat this as a replacement."
     if hp and (hp < 3 or hp > 25):
         out["heatpump"] = f"{hp:g} kW is outside the single-family range of 3 to 25 kW."
     if wb and wb not in (3.7, 7.4, 11, 22):
