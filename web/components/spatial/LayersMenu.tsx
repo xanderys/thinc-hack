@@ -3,6 +3,7 @@
 // how old the pictures on screen are. Options live in whiteMode.ts so the scene and photo layer follow them.
 import { useEffect, useRef, useState } from "react";
 import { imageryLines, setGround, setWhite, useViewOpts } from "./whiteMode";
+import { setMeshWanted, useMeshPref } from "./meshPref";
 import m from "./LayersMenu.module.css";
 
 type Props = { className?: string; up?: boolean; heatmap?: { on: boolean; set: (on: boolean) => void } };
@@ -10,6 +11,7 @@ type Props = { className?: string; up?: boolean; heatmap?: { on: boolean; set: (
 export default function LayersMenu({ className, up, heatmap }: Props) {
   const [open, setOpen] = useState(false);
   const o = useViewOpts();
+  const mesh = useMeshPref();
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -28,6 +30,8 @@ export default function LayersMenu({ className, up, heatmap }: Props) {
         <div className={`${m.menu} ${up ? m.up : ""}`} role="menu" aria-label="Layers">
           {heatmap && <label className={m.row}><input type="checkbox" checked={heatmap.on} onChange={(e) => heatmap.set(e.target.checked)} />Sun heatmap</label>}
           <label className={m.row}><input type="checkbox" checked={o.white} onChange={(e) => setWhite(e.target.checked)} />White context</label>
+          <label className={m.row}><input type="checkbox" checked={mesh.want} onChange={(e) => setMeshWanted(e.target.checked)} />Photo mesh</label>
+          {mesh.note && <p className={m.age}>{mesh.note}</p>}
           {o.google && (
             <div className={m.ground} role="group" aria-label="Ground">
               <span>Ground</span>
