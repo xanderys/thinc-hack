@@ -55,11 +55,13 @@ PINNED_LOG = DIR / "pinned_writes.jsonl"
 
 def save(lead: dict):
     DIR.mkdir(parents=True, exist_ok=True)
+    lead["version"] = int(lead.get("version") or 0) + 1  # every write, background redrafts included
     if lead.get("pinned"):  # every write to a pinned (demo) lead, with who sent it
         try:
             ctx = REQUEST.get() or {"source": "engine background (refresh or roof redraft)"}
             d = (lead.get("draft") or {}).get("design") or {}
-            rec = {"at": now(), "lead_id": lead["lead_id"], "status": lead.get("status"), "steps": len(lead.get("history") or []),
+            rec = {"at": now(), "lead_id": lead["lead_id"], "version": lead["version"], "status": lead.get("status"),
+                   "steps": len(lead.get("history") or []),
                    "design": {k: v for k, v in d.items() if v}, **ctx}
             with _lock, PINNED_LOG.open("a") as f:
                 f.write(json.dumps(rec, ensure_ascii=False, default=float) + "\n")

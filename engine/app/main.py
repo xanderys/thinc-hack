@@ -11,6 +11,7 @@ from typing import Literal, Optional, Union
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -49,7 +50,8 @@ async def _who(request: Request, call_next):
         h = request.headers
         tok = leads.REQUEST.set({"route": f"{request.method} {request.url.path}", "client": request.client.host if request.client else None,
                                  "forwarded_for": h.get("x-forwarded-for"), "user_agent": h.get("user-agent"),
-                                 "origin": h.get("origin") or h.get("referer"), "with_secret": bool(h.get("x-intake-secret"))})
+                                 "origin": h.get("origin") or h.get("referer"), "with_secret": bool(h.get("x-intake-secret")),
+                                 "client_route": h.get("x-client-route")})
     try:
         return await call_next(request)
     finally:
@@ -247,6 +249,8 @@ class DesignReq(BaseModel):
 class RefineReq(BaseModel):
     inputs: HomeInputs
     overrides: Optional[dict] = None
+    lead_id: Optional[str] = None       # refine never writes a lead; with base_version it only checks freshness
+    base_version: Optional[int] = None
 
 
 class ValidateReq(BaseModel):
@@ -388,6 +392,11 @@ FIELDS = {"pv_kwp": "pv", "battery_kwh": "battery", "heatpump_kw": "heatpump", "
 
 @app.post("/api/refine")
 def refine(req: RefineReq):
+    if req.lead_id and req.base_version is not None:
+        lead = leads.LEADS.get(req.lead_id) or next((l for l in leads.LEADS.values() if req.lead_id in l.get("aliases", [])), None)
+        stale = _stale(lead, req.base_version)
+        if stale is not None:
+            return stale
     eng = engine()
     inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
     check_inputs(inp)
@@ -640,6 +649,7 @@ class StepReq(BaseModel):
     facts_so_far: Optional[dict] = None   # v1.9: voice intake names, latest value per field
     answers: Union[dict, list, None] = None  # older shape: HomeInputs fields or [{field, value}]
     note: Optional[str] = None
+    base_version: Optional[int] = None
 
 
 def _facts(raw: dict, block: bool = True) -> dict:
@@ -775,7 +785,7 @@ def create_lead(req: LeadReq, request: Request, x_intake_secret: Optional[str] =
         leads.save(lead)
     if meta:
         lead["meta"] = meta
-    return {"lead_id": lead["lead_id"], "draft": lead["draft"], "facts": _public(lead["inputs"]), "unknown": lead["unknown"],
+    return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "draft": lead["draft"], "facts": _public(lead["inputs"]), "unknown": lead["unknown"],
             "next_question": lead["next_question"]}
 
 
@@ -807,6 +817,9 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
             msg = e.errors()[0]["msg"] if hasattr(e, "errors") else str(e)
             dropped.append({"field": k, "value": ans.pop(k), "reason": msg})
     lead = leads.LEADS.get(req.lead_id) or next((l for l in leads.LEADS.values() if req.lead_id in l.get("aliases", [])), None)
+    stale = _stale(lead, req.base_version)
+    if stale is not None:
+        return stale
     if not lead:  # upsert: link to the homeowner page's lead by name and place, else start one from what is known
         name = meta.get("customer_name") or ""
         place = ans.get("address") or ans.get("postcode") or ""
@@ -820,7 +833,7 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
             lead["meta"] = meta
             lead["history"].append({"step": 0, "field": None, "answer": ans, "changed": [], "note": "call started", "at": lead["created_at"]})
             leads.save(lead)
-            return {"design": lead["draft"]["design"], "draft": lead["draft"], "changed": [], "next_question": lead["next_question"],
+            return {"version": int(lead.get("version") or 0), "design": lead["draft"]["design"], "draft": lead["draft"], "changed": [], "next_question": lead["next_question"],
                     "done": lead["next_question"] is None, "step": 0, "dropped": dropped}
     if meta:
         lead.setdefault("meta", {}).update(meta)
@@ -866,7 +879,7 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     if field_asked:
         model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
     _full_draft_later(lead["lead_id"], inp)
-    return {"design": draft["design"], "draft": draft, "changed": changed, "next_question": nq, "done": nq is None, "step": step,
+    return {"version": int(lead.get("version") or 0), "design": draft["design"], "draft": draft, "changed": changed, "next_question": nq, "done": nq is None, "step": step,
             "dropped": dropped}
 
 
@@ -925,12 +938,21 @@ def current_hash(lead: dict) -> str:
     return proposal_hash(*proposal_of(lead))
 
 
+def _stale(lead: dict, base_version) -> Optional[JSONResponse]:
+    """409 with the current lead when the client edited an older version; None (go ahead) when no base_version was sent."""
+    if base_version is None or lead is None or int(base_version) >= int(lead.get("version") or 0):
+        return None
+    return JSONResponse(status_code=409, content=jsonable_encoder({
+        "error": f"This lead changed since you loaded it (your version {base_version}, now {lead.get('version')}). Reload and try again.",
+        "version": lead.get("version"), "lead": _lead_out(lead)}))
+
+
 def _lead_out(lead: dict) -> dict:
     dec = lead.get("decision")
     if dec:
         dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(lead)}
-    return {"lead_id": lead["lead_id"], "status": lead["status"], "customer_name": lead["customer_name"],
-            "approved_at": lead.get("approved_at"), "approved_variant": lead.get("approved_variant"),
+    return {"lead_id": lead["lead_id"], "version": int(lead.get("version") or 0), "status": lead["status"],
+            "customer_name": lead["customer_name"], "approved_at": lead.get("approved_at"), "approved_variant": lead.get("approved_variant"),
             "proposal_hash": current_hash(lead), "decision": dec,
             "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
             "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"], "pinned": bool(lead.get("pinned")),
@@ -975,7 +997,7 @@ def pin_lead(lead_id: str, req: Optional[PinReq] = None, x_intake_secret: Option
         return err(404, f"No lead with id {lead_id}")
     lead["pinned"] = req.pinned if req else True
     leads.save(lead)
-    return {"lead_id": lead["lead_id"], "pinned": lead["pinned"]}
+    return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "pinned": lead["pinned"]}
 
 
 @app.put("/api/leads/{lead_id}/reset")
@@ -1001,7 +1023,7 @@ def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     lead.update(inputs=inp, draft=draft, unknown=unknown, next_question=nq, next_spread=spread, questions_asked=0, history=[],
                 status=snap.get("status") or "draft", updated_at=leads.now(), draft_stamp=engine_stamp())
     leads.save(lead)
-    return {"lead_id": lead["lead_id"], "status": lead["status"], "design": draft["design"], "reset_to": snap.get("at"),
+    return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "status": lead["status"], "design": draft["design"], "reset_to": snap.get("at"),
             "pinned": bool(lead.get("pinned"))}
 
 
@@ -1028,6 +1050,7 @@ def list_leads(limit: int = 20, include_test: bool = False, x_intake_secret: Opt
 
 class ApproveReq(BaseModel):
     variant: Optional[Literal["expert", "value", "payback", "independence", "upfront"]] = None
+    base_version: Optional[int] = None
 
 
 @app.put("/api/leads/{lead_id}/approve")
@@ -1038,6 +1061,9 @@ def approve_lead(lead_id: str, req: Optional[ApproveReq] = None, x_intake_secret
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
+    stale = _stale(lead, req.base_version if req else None)
+    if stale is not None:
+        return stale
     refresh_lead(lead)
     variant = (req.variant if req else None) or "expert"
     if variant != "expert" and not any(v.get("key") == variant for v in (lead.get("draft") or {}).get("variants") or []):
@@ -1045,12 +1071,13 @@ def approve_lead(lead_id: str, req: Optional[ApproveReq] = None, x_intake_secret
     lead.update(status="approved", approved_at=leads.now(), approved_variant=variant, updated_at=leads.now())
     lead["approved_hash"] = current_hash(lead)
     leads.save(lead)
-    return {"ok": True, "status": "approved", "approved_at": lead["approved_at"], "approved_variant": variant,
+    return {"version": int(lead.get("version") or 0), "ok": True, "status": "approved", "approved_at": lead["approved_at"], "approved_variant": variant,
             "proposal_hash": lead["approved_hash"]}
 
 
 class DecisionReq(BaseModel):
     action: Literal["sign", "decline", "question"]
+    base_version: Optional[int] = None
     name: Optional[str] = None
     accepted: Optional[bool] = None
     signature_png: Optional[str] = None
@@ -1069,6 +1096,9 @@ def lead_decision(lead_id: str, req: DecisionReq, request: Request):
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
+    stale = _stale(lead, req.base_version)
+    if stale is not None:
+        return stale
     if req.action == "sign":
         if lead.get("status") not in ("approved", "signed"):
             return err(409, "The planner has not released this proposal yet.")
@@ -1106,7 +1136,7 @@ def lead_decision(lead_id: str, req: DecisionReq, request: Request):
     lead.update(status=status, decision=dec, updated_at=t)
     lead.setdefault("history", []).append({"step": None, "field": None, "answer": {}, "changed": [], "note": f"homeowner: {req.action}", "at": t})
     leads.save(lead)
-    return {"ok": True, "status": status, "decided_at": t, "proposal_hash": req.proposal_hash,
+    return {"version": int(lead.get("version") or 0), "ok": True, "status": status, "decided_at": t, "proposal_hash": req.proposal_hash,
             "matches_current": req.proposal_hash == current_hash(lead)}
 
 
