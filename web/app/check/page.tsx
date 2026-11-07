@@ -5,6 +5,7 @@ import StepHead from "@/components/stage/StepHead";
 import { COMPONENT_DESIGN_FIELD, INSTALLER_NAME, type ComponentKey, type Design, type Eval, type HomeInputs, type InboxRow, type ProjectDetail, type ProjectSummary, type ValidateFlag, type ValidateResponse, type RecommenderScore } from "@/lib/api";
 import { call } from "@/lib/client";
 import { REALITY_MISS, REALITY_PROJECT } from "@/lib/demo";
+import { findRot, rotLine } from "@/lib/rot";
 import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, named } from "@/lib/stage";
 
 type Approved = { inputs: HomeInputs; draft: Design | null; approved: Design; at: string };
@@ -206,7 +207,7 @@ function Inbox({ ev }: { ev: Eval | null }) {
 // v2.0: the named-rule formula against the learned black box and the textbook, on the same test homes.
 function Recommenders({ r }: { r: NonNullable<Eval["recommenders"]> }) {
   const cols = (["formula", "blackbox", "textbook"] as const).filter((k) => r[k]);
-  const head = { formula: "Formula", blackbox: "Black box", textbook: "Textbook" };
+  const head = { formula: "Formula", blackbox: "Black box", textbook: "Reonic rule of thumb" };
   const rows: [string, keyof RecommenderScore][] = [["Whole design", "design_match_share"], ["Solar", "pv_within"], ["Battery", "battery_within"], ["Wallbox decision", "wallbox_decision"]];
   return (
     <table className="c-table small c-recs">
@@ -222,16 +223,17 @@ function Score({ ev }: { ev: Eval | null }) {
   return (
     <section className="c-sec c-score">
       <p>Across {n0(ev.split.test)} held-out projects, the whole design landed within tolerance {pct1(o.design_match_share)} of the time.
-        {o.textbook_design_match_share != null && <> A textbook rule manages {pct1(o.textbook_design_match_share)}</>}
+        {o.textbook_design_match_share != null && <> Reonic's rule of thumb manages {pct1(o.textbook_design_match_share)}</>}
         {o.ceiling_design_match_share != null && <>, and two planners at the same installer, given near-identical homes, agree {pct1(o.ceiling_design_match_share)} of the time</>}.</p>
       {pv.within_tolerance_share != null && ev.ceiling && <p>On solar alone the draft is within tolerance {pct1(pv.within_tolerance_share)} of the time, against {pct1(ev.ceiling.pv_agreement_share)} for planners agreeing with each other.</p>}
       {ev.synthetic?.headline_short && <p>{ev.synthetic.headline_short}</p>}
+      {rotLine(findRot(ev, ev.overall)) && <p>{rotLine(findRot(ev, ev.overall))}</p>}
       {ev.recommenders && <Recommenders r={ev.recommenders} />}
       {ev.deviation_quality && ev.deviation_quality.n_differ > 0 && <p>Where the formula differs from the expert ({n0(ev.deviation_quality.n_differ)} homes), ours pays back sooner in {n0(ev.deviation_quality.ours_better_payback)} and is more independent in {n0(ev.deviation_quality.ours_better_autarky)}.</p>}
       <details>
         <summary>All the numbers</summary>
         <table className="c-table small">
-          <thead><tr><th></th><th className="r">Ours</th><th className="r">Planners agree</th><th className="r">Textbook</th><th>Tolerance</th></tr></thead>
+          <thead><tr><th></th><th className="r">Ours</th><th className="r">Planners agree</th><th className="r">Reonic rule of thumb</th><th>Tolerance</th></tr></thead>
           <tbody>{KEYS.map((k) => { const c = ev.components[k]; const v = (x?: number | null) => x == null ? "n/a" : pct1(x); return (
             <tr key={k}><td>{NAME[k]}</td><td className="r num">{v(c.within_tolerance_share)}</td><td className="r num">{v(c.ceiling_within_tolerance_share)}</td><td className="r num">{v(c.textbook_within_tolerance_share ?? c.baseline_within_tolerance_share)}</td><td>{c.tolerance}</td></tr>
           ); })}</tbody>

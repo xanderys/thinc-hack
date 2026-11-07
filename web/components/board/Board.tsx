@@ -8,14 +8,23 @@ import { HERO_LEAD } from "@/lib/demo";
 import House from "@/components/stage/House";
 import type { Live, Seed } from "@/components/stage/Stage";
 import AddSheet from "./AddSheet";
+import HousePhoto from "./HousePhoto";
 
 const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 
-type Card = { id: string; name: string; place: string; status: LeadT["status"]; updated: string; design?: Design; line: string };
+type Card = { id: string; name: string; place: string; status: LeadT["status"]; updated: string; design?: Design; line: string; created?: string; decision?: LeadRow["decision"] };
 type LiveRow = { lead_id?: string | null; status: string; started_at: number | null; customer_name?: string | null; address_or_postcode?: string | null };
 
-const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "First design ready", approved: "Approved" };
+const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "Draft", approved: "Approved", signed: "Signed", declined: "Declined", question: "Question" };
+const DECIDED = new Set(["signed", "declined", "question"]);
+const hm = (iso?: string | null) => iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
+// Enquiry to decision, in the largest unit that reads well.
+function span(from?: string | null, to?: string | null) {
+  if (!from || !to) return "";
+  const m = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 60000));
+  return m < 60 ? `${m} min` : m < 2880 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.round(m / 1440)} days`;
+}
 const lineOf = (d?: Design, title?: string) => d
   ? [d.pv_kwp != null && `${d.pv_kwp.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWp`, d.battery_kwh != null && `${d.battery_kwh.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWh`, d.heatpump_kw != null && `${d.heatpump_kw} kW heat pump`, d.wallbox_kw != null && "wallbox"].filter(Boolean).join(" + ") || "Nothing to fit"
   : title?.split(": ").slice(1).join(": ") ?? "";
@@ -37,11 +46,11 @@ function transition(fn: () => void) {
 function seedOf(l: LeadT): Seed {
   let stored: { read: ReadResponse; text: string } | null = null;
   try { stored = JSON.parse(sessionStorage.getItem(`marquee.read.${l.lead_id}`) ?? "null"); } catch { /* storage blocked */ }
-  if (stored) return { leadId: l.lead_id, read: stored.read, text: stored.text };
+  if (stored) return { leadId: l.lead_id, read: stored.read, text: stored.text, draft: l.draft };
   const place = l.address_or_postcode, pc = /^\d{5}$/.test(place.trim()) ? place.trim() : undefined;
   const inputs = { ...l.facts, ...(pc ? {} : { address: l.facts.address ?? place }) };
   const unknown = l.status === "draft" && l.next_question ? [l.next_question.field as keyof LeadT["facts"]] : [];
-  return { leadId: l.lead_id, read: { inputs, found: [], unknown, postcode: pc, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
+  return { leadId: l.lead_id, draft: l.draft, read: { inputs, found: [], unknown, postcode: pc, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
 }
 
 export default function Board({ openId: initial }: { openId?: string }) {
@@ -109,7 +118,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
     const out = (rows ?? []).map((r) => {
       const ext = r as LeadRow & { updated_at?: string };
       const d = designs[r.lead_id]?.d;
-      return { id: r.lead_id, name: r.customer_name ?? r.title.split(",")[0], place: r.address_or_postcode ?? "", status: r.status, updated: ext.updated_at ?? r.created_at ?? "", design: d, line: lineOf(d, r.title) };
+      return { id: r.lead_id, name: r.customer_name ?? r.title.split(",")[0], place: r.address_or_postcode ?? "", status: r.status, updated: ext.updated_at ?? r.created_at ?? "", design: d, line: lineOf(d, r.title), created: r.created_at, decision: r.decision };
     });
     const isLive = (c: Card) => !!live[c.id] || c.status === "in_call";
     return [...out.filter(isLive), ...out.filter((c) => !isLive(c))];
@@ -166,11 +175,16 @@ export default function Board({ openId: initial }: { openId?: string }) {
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
       <div className={calling ? "b-open-h live" : "b-open-h"}>
         {calling && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
-        <button type="button" className="b-close" onClick={close} aria-label="Close, back to the board">Close</button>
+        <button type="button" className="b-close" onClick={close} aria-label="Close, back to the board"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 3l12 12M15 3L3 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></button>
         <div>
           <h1>{openCard?.name ?? seed?.read.inputs.address ?? "House"}</h1>
-          <p>{[openCard?.place, calling ? STATUS.in_call : openCard && (approved[openCard.id] ? STATUS.approved : STATUS[openCard.status])].filter(Boolean).join(" · ")}</p>
+          <p>{openCard?.place}{(() => {
+            if (!openCard && !calling) return null;
+            const st = calling ? "in_call" : openCard && (DECIDED.has(openCard.status) || openCard.status === "approved") ? openCard.status : openCard && approved[openCard.id] ? "approved" : openCard?.status ?? "draft";
+            return <span className={`b-st b-chip ${st}`}>{STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${hm(openCard.decision?.decided_at)}` : ""}</span>;
+          })()}</p>
         </div>
+        <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
       </div>
       {seedErr && <div className="error" role="alert"><span><span className="src">Engine said</span>{seedErr}</span><button className="btn ghost" onClick={() => { const id = openId; setOpenId(null); setTimeout(() => setOpenId(id), 0); }}>Retry</button></div>}
       {!seed && !seedErr && <p className="s-quiet s-wait">Opening the house</p>}
@@ -189,7 +203,8 @@ export default function Board({ openId: initial }: { openId?: string }) {
         </li>
         {cards.map((c) => {
           const lv = live[c.id] || c.status === "in_call";
-          const st = approved[c.id] ? "approved" : lv ? "in_call" : c.status;
+          const st = lv ? "in_call" : DECIDED.has(c.status) || c.status === "approved" ? c.status : approved[c.id] ? "approved" : c.status;
+          const dec = DECIDED.has(c.status) ? c.decision : null;
           return (
             <li key={c.id}>
               <button type="button" className={lv ? "b-card live" : "b-card"} style={{ viewTransitionName: `card-${c.id}` }} onClick={() => open(c.id)}>
@@ -197,8 +212,11 @@ export default function Board({ openId: initial }: { openId?: string }) {
                 <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{STATUS[st]}</span></span>
                 <span className="b-name">{c.name}</span>
                 <span className="b-place">{c.place}</span>
-                {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /></span>}
+                {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><HousePhoto address={c.place} /></span>}
                 <span className="b-line num">{c.line}</span>
+                {dec && <span className={`b-dec ${c.status}`}>{STATUS[c.status]} {hm(dec.decided_at)}{c.status === "signed" && span(c.created, dec.decided_at) ? `, ${span(c.created, dec.decided_at)} from enquiry` : ""}</span>}
+                {dec && c.status === "signed" && <span className="b-today">Today: 8 days to an offer, 29 more to a signature</span>}
+                {dec && dec.matches_current === false && <span className="b-warn">Signed a different version than the one on file</span>}
               </button>
             </li>
           );

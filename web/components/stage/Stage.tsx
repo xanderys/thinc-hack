@@ -6,10 +6,12 @@ import type { CallLead } from "@/components/stage/Calls";
 const Calls = dynamic(() => import("@/components/stage/Calls"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 import Plan, { type Variant } from "@/components/stage/Plan";
+import Chain from "@/components/chain/Chain";
 import Refine, { type Moved } from "@/components/stage/Refine";
-import TopBar from "@/components/stage/TopBar";
+import TopBar, { Decide } from "@/components/stage/TopBar";
 import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
 import { call } from "@/lib/client";
+import { approveLead } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
 import { buildFacts, DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
 import { COMPONENT_DESIGN_FIELD } from "@/lib/api";
@@ -21,7 +23,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const COMPONENT_FIELD_SET: Record<string, true> = { pv_kwp: true, inverter_kw: true, battery_kwh: true, heatpump_kw: true, wallbox_kw: true };
 
 // A house opened from the board: the lead's id (refinements write back to it) and what was read.
-export type Seed = { leadId: string; read: ReadResponse; text?: string };
+export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null };   // draft: shown at once, before the first design call returns
 // While Rina's call runs: the lead's facts so far, the step count, what the last answer changed and what she is asking.
 export type Live = { step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null };
 
@@ -111,7 +113,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!seed) return;
     if (seed.read.inputs.installer_id) setInstaller(seed.read.inputs.installer_id as InstallerId);
     setLead(seed.text ?? "");
-    begin(seed.read, seed.leadId);
+    begin(seed.read, seed.leadId, seed.draft ?? null);
   }, [seed?.leadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Each answer from the call: the facts move, the design reruns, and what moved carries the engine's why.
@@ -124,10 +126,10 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts } });
   }, [live?.step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function begin(data: ReadResponse, leadId?: string) {
+  async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
     const r = { data };
-    setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(null); setPrev(null); last.current = null;
+    setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(draft); setPrev(null); last.current = draft;
     setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
     setRead(r.data); setRoof(null);
     const where = r.data.inputs.address ? `address=${encodeURIComponent(r.data.inputs.address)}` : r.data.postcode ? `postcode=${r.data.postcode}` : null;
@@ -220,12 +222,14 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const ev = (Object.keys(overrides).length ? drafted?.variants : null) ?? res.variants ?? drafted?.variants;
     if (ev?.length) {
       const order = [...ev].sort((a, b) => (b.key === pref ? 1 : 0) - (a.key === pref ? 1 : 0));
-      return order.map((v, n) => {
+      // After a sentence or a hand change the design on screen may match none of the offers: list it first as Current.
+      const cur: Variant[] = order.some((v) => same(v.design, res.design)) ? [] : [{ name: "Current", tag: "Current", design: res.design, e: res.economics, note: "", current: true, overrides: null }];
+      return [...cur, ...order.map((v, n) => {
         const [name, how] = v.label.split(" (");
         return { name, tag: n === 0 ? "Preferred" : v.key === "expert" ? (how ? how.replace(/\)$/, "").replace(/^./, (c) => c.toUpperCase()).replace(" here ", " ") : "As planners design it") : "",
           design: v.design, e: v.economics, note: v.key === "expert" ? "" : v.note, current: same(v.design, res.design),
           overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } };
-      });
+      })];
     }
     const fixed = Object.keys(overrides).length > 0;
     const out: Variant[] = [{ name: variantName(res.design), tag: fixed ? "Chosen" : "", design: res.design, e: res.economics, overrides: null, current: true }];
@@ -300,8 +304,12 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!res) return;
     const at = new Date();
     try { sessionStorage.setItem("marquee.approved", JSON.stringify({ inputs: pref === "expert" ? inputs : { ...inputs, preference: pref }, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
-    setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
-    if (leadRef.current) onApproved?.(leadRef.current);
+    const done = () => { setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })); if (leadRef.current) onApproved?.(leadRef.current); };
+    const id = leadRef.current;
+    if (!id) { done(); return; }
+    // v2.5: release the proposal to the homeowner; the variant on screen is the one they sign.
+    const key = (res.variants ?? drafted?.variants ?? []).find((v) => same(v.design, res.design))?.key;
+    approveLead(id, key).then((r) => { if (r.ok) { setErr(null); done(); } else setErr(r.error); });
   }
 
   const onVariant = useCallback((v: Variant) => {
@@ -316,11 +324,13 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} setInstaller={setInstaller}
         question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} asking={question === undefined} liveAsking={live?.asking ?? null}
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
-        canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />
+        canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-      {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? "Measuring the roof from Bavarian 3D data, about 10 s" : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} bare />}
-      {res && <Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
-        moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} bare />}
+      {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
+      {res && <Chain res={res} prev={prev} inputs={inputs} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={history.length > 0} onUndo={onUndo} answered={answer != null} redraft={moved}
+        decide={<Decide pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />}
+        refine={<Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
+          moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} bare />} />}
     </div>
   );
 

@@ -7,8 +7,11 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
   const { path } = await ctx.params;
   const enginePath = path[0] === "health" ? "/health" : `/api/${path.map(encodeURIComponent).join("/")}`;
   let body: unknown;
-  if (req.method === "POST") {
-    try { body = await req.json(); } catch { return NextResponse.json({ error: "Body is not JSON" }, { status: 400 }); }
+  if (req.method === "POST" || req.method === "PUT") {
+    const text = await req.text();
+    // PUT approve may come with no body (variant is optional).
+    if (req.method === "PUT" && !text.trim()) body = {};
+    else try { body = JSON.parse(text); } catch { return NextResponse.json({ error: "Body is not JSON" }, { status: 400 }); }
   }
   const out = await callEngine(req.method, enginePath, req.nextUrl.searchParams, body);
   return NextResponse.json(out.body, { status: out.status });
@@ -16,3 +19,4 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
 
 export const GET = handle;
 export const POST = handle;
+export const PUT = handle;   // v2.5 approve
