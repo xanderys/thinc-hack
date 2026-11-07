@@ -3,7 +3,7 @@ marp: true
 theme: marquee
 size: 16:9
 paginate: true
-footer: Marquee · Reonic case
+footer: Marquee
 ---
 
 <!-- _class: blue -->
@@ -13,7 +13,7 @@ footer: Marquee · Reonic case
 
 # Planners spend hours on every single design.
 
-[UNCONFIRMED: our own figure for planner hours per offer, from the Reonic experts]
+<p>Reonic case brief</p>
 
 ---
 
@@ -33,7 +33,7 @@ footer: Marquee · Reonic case
 
 ---
 
-<p class="label">Unseen homes · PV within 1 kWp or 15%</p>
+<p class="label">Unseen homes, PV within 1 kWp or 15%</p>
 
 <div class="stat">38.9%</div>
 
@@ -49,7 +49,7 @@ footer: Marquee · Reonic case
 
 ## Experts follow rules nobody wrote down.
 
-<div class="data">[UNCONFIRMED: pick 2 or 3 from docs/data-insights.md top 10, e.g. "kWp = 6.5 + 0.58 x MWh", "95% of PV designs include a battery", "91% of wallboxes go to homes flagged without an EV"]</div>
+<div class="data">PV <b>6.5 kWp + 0.58 per MWh</b>; the textbook under-sizes <b>82%</b><br>battery in <b>95%</b> of PV designs, about <b>1 kWh per kWp</b><br><b>91%</b> of wallboxes go to homes flagged without an EV</div>
 
 ---
 
@@ -78,6 +78,8 @@ footer: Marquee · Reonic case
 
 <p class="label">Marquee</p>
 
-# [UNCONFIRMED: closing line]
+## “Every home is different. The expertise to design for it should not be the bottleneck.”
 
-<div class="data">[UNCONFIRMED: team line with full names, and the link to show]</div>
+<p>Reonic case brief</p>
+
+<div class="data">Xander, Zi Yuan, Jamon</div>
