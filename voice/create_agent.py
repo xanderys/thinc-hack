@@ -13,7 +13,7 @@ OVERRIDES = {"conversation_config_override": {"agent": {"first_message": True}}}
 
 
 def env(name):
-    for p in (HERE / ".env", pathlib.Path.home() / ".config/marquee/elevenlabs.env"):
+    for p in (HERE / ".env", pathlib.Path.home() / ".config/marquee/elevenlabs.env", pathlib.Path.home() / ".config/marquee/intake.env"):
         if p.exists():
             for line in p.read_text().splitlines():
                 if line.startswith(name + "="):
@@ -29,9 +29,12 @@ def step_tool():
     """intake_step: the engine picks the next question. Enabled when voice/.env has INTAKE_STEP_URL and INTAKE_SECRET."""
     fields = json.loads((HERE / "intake_fields.json").read_text())
     facts = {k: {"type": v["type"], "description": v["description"]} for k, v in fields.items() if k not in ("summary", "notes")}
+    facts.update(postcode={"type": "string", "description": "Postcode."},
+                 customer_name={"type": "string", "description": "Customer's name."},
+                 installer_name={"type": "string", "description": "Installer's name, from the note."})
     return {"tool_config": {
         "type": "webhook", "name": "intake_step",
-        "description": "Call after every answer with all facts known so far. Returns the next question to ask, or done.",
+        "description": "Call after every answer with all facts known so far. Returns next_question (field, question, why, options, expected_swing) and done.",
         "response_timeout_secs": 5, "tool_error_handling_mode": "hide", "pre_tool_speech": "off",
         "api_schema": {
             "url": env("INTAKE_STEP_URL"), "method": "POST",
