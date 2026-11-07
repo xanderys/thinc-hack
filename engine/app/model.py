@@ -14,6 +14,7 @@ from . import hourly, rules
 
 log = logging.getLogger("engine")
 from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES, date_t
+from .hourly.optimum import NPV_TIE_EUR, NPV_TIE_SHARE
 
 SEED = 42
 K = 15
@@ -25,6 +26,13 @@ UNITS = {"pv": "kWp", "battery": "kWh", "heatpump": "kW", "wallbox": "kW"}
 TARGET = {"pv": "pv_kwp", "battery": "battery_kwh", "heatpump": "heatpump_kw", "wallbox": "wallbox_kw"}
 NAMES = {"pv": "PV", "battery": "a battery", "heatpump": "a heat pump", "wallbox": "a wallbox"}
 
+
+# Grey-box (lab iteration 3): base = physics optimum (20-year NPV over the installer's catalogue, no expert label, PV capped
+# at the roof when known). mode "ratio": the size regressors learn expert / optimum; "residual": expert minus optimum;
+# "feature": the optimum is a feature. Decisions keep the classifiers. base "argmax" best NPV, "cheap" cheapest in the tie band.
+# grid: an Engine whose catalogue the optimum uses (lab/greybox.py sets the full-train one in CV so cached grids stay valid).
+GREYBOX = {"mode": None, "base": "argmax", "grid": None}
+_GRID = {}  # memo: (installer, inputs, catalogue) -> (pv sizes, battery sizes, NPV matrix)
 
 MONO = True  # monotone in demand (PV) and price (battery); 4,500 kWh default imputed, missing price = 32 ct
 DEMAND_IMPUTE: dict = {}  # load profile -> median non-default demand in train
@@ -122,7 +130,6 @@ class Engine:
         X = pd.DataFrame([base_features(r, r["installer_id"]) for r in tr.to_dict("records")])
         # offer date picks the battery catalogue only; as a model feature it lowered the scoreboard (README)
         X = X.drop(columns=["t"])
-        self.cols = list(X.columns)
 
         for inst in INSTALLERS:
             t = tr[tr.installer_id == inst]
@@ -146,23 +153,39 @@ class Engine:
             cat["bat_s"] = tb.battery_kwh.values.astype(float)
             self.knn[inst] = {"V": (V - mu) / sd * KNN_W, "mu": mu, "sd": sd, "rows": t.reset_index(drop=True)}
 
+        gb = GREYBOX["mode"]
+        if gb:
+            rows_ = tr.to_dict("records")
+            grids = [self.opt_grid(row_inputs(r), r["installer_id"], date_t(r["offer_date"])) for r in rows_]
+            opt_pv = np.array([opt_base(g)[0] for g in grids])
+            if gb == "feature":
+                X = X.assign(opt_pv=opt_pv, opt_bat=[opt_base(g)[1] for g in grids])
+        self.cols = list(X.columns)
         y = {c: tr[TARGET[c]].values for c in COMPONENTS}
         mono_pv = {"demand": 1, "log_demand": 1} if MONO else None
         mono_bat = {"price": 1} if MONO else None
         clf = lambda m=None: HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=4, min_samples_leaf=15, random_state=SEED, monotonic_cst=m)
         reg = lambda m=None: HistGradientBoostingRegressor(max_iter=300, learning_rate=0.05, max_depth=4, min_samples_leaf=15, loss="absolute_error", random_state=SEED, monotonic_cst=m)
 
-        # PV
+        # PV (grey-box: the regressor learns the expert's deviation from the optimum; gb_fwd/gb_inv in this module)
+        b_pv = np.array([gb_floor(v, self.grid_cat(i)["pv"]) for v, i in zip(opt_pv, tr.installer_id)]) if gb in ("ratio", "residual") else None
         self.models["pv_dec"] = clf(mono_pv).fit(X, y["pv"] > 0)
         m = y["pv"] > 0
-        self.models["pv_size"] = reg(mono_pv).fit(X[m], y["pv"][m])
-        pv_oof = np.where(cross_val_predict(clf(mono_pv), X, y["pv"] > 0, cv=5), cross_val_predict(reg(mono_pv), X, y["pv"], cv=5), 0.0)
+        self.models["pv_size"] = reg(mono_pv).fit(X[m], gb_fwd(y["pv"], b_pv)[m])
+        pv_oof = np.where(cross_val_predict(clf(mono_pv), X, y["pv"] > 0, cv=5), gb_inv(cross_val_predict(reg(mono_pv), X, gb_fwd(y["pv"], b_pv), cv=5), b_pv), 0.0)
         X1 = X.assign(pv=pv_oof)
-        # battery given PV
+        # battery given PV (base: the optimum battery for the chained PV)
+        b_bat = None
+        if gb:
+            ob = np.array([opt_base(g, p)[1] for g, p in zip(grids, pv_oof)])
+            if gb == "feature":
+                X1 = X1.assign(opt_bat_pv=ob)
+            else:
+                b_bat = np.array([gb_floor(v, self.grid_cat(i)["battery"]) for v, i in zip(ob, tr.installer_id)])
         self.models["bat_dec"] = clf(mono_bat).fit(X1, y["battery"] > 0)
         m = y["battery"] > 0
-        self.models["bat_size"] = reg(mono_bat).fit(X1[m], y["battery"][m])
-        bat_oof = np.where(cross_val_predict(clf(mono_bat), X1, y["battery"] > 0, cv=5), cross_val_predict(reg(mono_bat), X1, y["battery"], cv=5), 0.0)
+        self.models["bat_size"] = reg(mono_bat).fit(X1[m], gb_fwd(y["battery"], b_bat)[m])
+        bat_oof = np.where(cross_val_predict(clf(mono_bat), X1, y["battery"] > 0, cv=5), gb_inv(cross_val_predict(reg(mono_bat), X1, gb_fwd(y["battery"], b_bat), cv=5), b_bat), 0.0)
         X2 = X1.assign(battery=bat_oof)
         # heat pump: too few sold to learn a size; decision from data, size from physics
         self.hp_positive = int((y["heatpump"] > 0).sum())
@@ -206,9 +229,23 @@ class Engine:
         ov = overrides or {}
         cat = self.catalogue[inst]
         f = base_features(inp, inst)
+        gb = GREYBOX["mode"]
+        g = self.opt_grid(inp, inst, f["t"]) if gb else None
+        if gb == "feature":
+            f["opt_pv"], f["opt_bat"] = opt_base(g)
         X = pd.DataFrame([f])[self.cols]
         nb = self.neighbours(inp, inst)
         comps, design = {}, {}
+        gc = self.grid_cat(inst) if gb else None
+        b_pv = gb_floor(opt_base(g)[0], gc["pv"]) if gb in ("ratio", "residual") else None
+
+        def bat_frame(pv):
+            X1 = X.assign(pv=pv)
+            return X1.assign(opt_bat_pv=opt_base(g, pv)[1]) if gb == "feature" else X1
+
+        def bat_fn(X1, pv):
+            b = gb_floor(opt_base(g, pv)[1], gc["battery"]) if gb in ("ratio", "residual") else None
+            return snap(float(gb_inv(self.models["bat_size"].predict(X1), b)[0]), self.battery_catalogue(inst, f["t"]))
 
         def choose(key, p, size_fn):
             """Planner number/null fixes it; "include" forces it in and the engine sizes it; else the model decides."""
@@ -220,13 +257,13 @@ class Engine:
 
         # PV
         p_pv = float(self.models["pv_dec"].predict_proba(X)[0, 1])
-        pv_fn = lambda: self.roof_cap(inp, snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"]), cat["pv"])
+        pv_fn = lambda: self.roof_cap(inp, snap(float(gb_inv(self.models["pv_size"].predict(X), b_pv)[0]), cat["pv"]), cat["pv"])
         pv, src = choose("pv_kwp", p_pv, pv_fn)
         comps["pv"] = self._detail("pv", pv, p_pv, nb, inp, src)
         # battery
-        X1 = X.assign(pv=pv)
+        X1 = bat_frame(pv)
         p_b = float(self.models["bat_dec"].predict_proba(X1)[0, 1])
-        bat, src = choose("battery_kwh", p_b, lambda: snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"])))
+        bat, src = choose("battery_kwh", p_b, lambda: bat_fn(X1, pv))
         # a battery needs PV to charge: without PV, new or recorded, propose PV or drop the battery
         nopv_note = None
         if bat and not pv and not inp.get("has_solar") and src == "model":
@@ -234,8 +271,8 @@ class Engine:
                 pv = pv_fn()
                 comps["pv"] = self._detail("pv", pv, p_pv, nb, inp, "model")
                 comps["pv"]["reason"] = f"A battery needs PV to charge and none is recorded, so PV is proposed; {comps['pv']['reason']}"
-                X1 = X.assign(pv=pv)
-                bat = snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"]))
+                X1 = bat_frame(pv)
+                bat = bat_fn(X1, pv)
             else:
                 bat, nopv_note = 0.0, "No PV, new or recorded, so no battery: it could not charge from solar."
         if pv and inp.get("roof") and inp["roof"].get("max_kwp"):
@@ -288,6 +325,8 @@ class Engine:
         """Sizes only, no overrides, for many homes in one pass per model; same logic as predict()."""
         if not inps:
             return []
+        if GREYBOX["mode"]:  # lab only: the grey-box path goes through predict()
+            return [self.predict(i, full=False)["design"] for i in inps]
         F = [base_features(i, i["installer_id"]) for i in inps]
         X = pd.DataFrame(F)[self.cols]
         n = len(inps)
@@ -324,6 +363,40 @@ class Engine:
             out.append({"pv_kwp": float(pv[k]) or None, "inverter_kw": rules.inverter_kw(pv[k]) if pv[k] else None,
                         "battery_kwh": float(bats[k]) or None, "heatpump_kw": hp or None, "wallbox_kw": wb or None})
         return out
+
+    def grid_cat(self, inst):
+        src = GREYBOX["grid"] or self
+        return src.catalogue[inst]
+
+    def opt_grid(self, inp: dict, inst: str, t: float):
+        """20-year NPV of every catalogue PV and battery size (none included) for this home, hourly simulation; PV no
+        larger than a known roof holds. No heat pump, no wallbox, no expert label: the base of the grey-box model."""
+        src = GREYBOX["grid"] or self
+        pvs = np.concatenate([[0.0], src.catalogue[inst]["pv"]])
+        bats = np.concatenate([[0.0], src.battery_catalogue(inst, t)])
+        roof = inp.get("roof") or {}
+        if roof.get("max_kwp"):
+            pvs = pvs[pvs <= roof["max_kwp"] + 1e-9]
+        clean = {k: v for k, v in inp.items() if not k.startswith("_") and k not in ("offer_date", "installer_id", "roof")}
+        key = (inst, tuple(sorted(clean.items(), key=lambda kv: kv[0])), tuple(pvs), tuple(bats))
+        if roof:
+            key = key + (repr(sorted(roof.items(), key=lambda kv: kv[0])),)
+        if key in _GRID:
+            return _GRID[key]
+        sim_in = roof_to_sim({**clean, "roof": roof}) if roof else clean
+        sim_in = {k: v for k, v in sim_in.items() if k != "roof"} if not roof else sim_in
+        npv = np.full((len(pvs), len(bats)), np.nan)
+        for i, pv in enumerate(pvs):
+            for j, b in enumerate(bats):
+                if not pv and not b:
+                    npv[i, j] = 0.0
+                    continue
+                if b and not pv and not clean.get("has_solar"):
+                    continue
+                d = {"pv_kwp": pv or None, "inverter_kw": rules.inverter_kw(pv) if pv else None, "battery_kwh": b or None}
+                npv[i, j] = hourly.simulate(sim_in, d).economics["annual"]["npv_20y_eur"] or 0.0
+        _GRID[key] = (pvs, bats, npv)
+        return _GRID[key]
 
     _capped: ClassVar[dict] = {}  # inputs whose PV the roof capped, for the reason line
 
@@ -979,6 +1052,43 @@ def physics_component(msg: str) -> str:
     if "wallbox" in m:
         return "wallbox"
     return "pv"
+
+
+def opt_base(g, pv=None):
+    """(PV kWp, battery kWh) of the optimum; with pv given, the optimum battery for the nearest catalogue PV size."""
+    pvs, bats, npv = g
+    if pv is not None:
+        i = int(np.argmin(np.abs(pvs - pv)))
+        sub = np.full_like(npv, np.nan)
+        sub[i] = npv[i]
+    else:
+        sub = npv
+    best = np.nanmax(sub)
+    if GREYBOX["base"] == "cheap":  # cheapest design inside the optimum's NPV tie band (app/hourly/optimum.py)
+        near = sub >= best - max(NPV_TIE_EUR, NPV_TIE_SHARE * abs(best))
+        capex = (pvs * np.array([rules.pv_cost_per_kwp(p) if p else 0 for p in pvs]))[:, None] + 450 * bats[None, :]
+        i, j = np.unravel_index(np.argmin(np.where(near, capex, np.inf)), capex.shape)
+    else:
+        i, j = np.unravel_index(np.nanargmax(sub), sub.shape)
+    return float(pvs[i]), float(bats[j])
+
+
+def gb_floor(v, cat):
+    """Optimum as the base of the learned deviation; where the optimum is none, the smallest catalogue size."""
+    return float(v) if v > 0 else (float(cat.min()) if len(cat) else 1.0)
+
+
+def gb_fwd(y, b):
+    """Target the regressor learns: the size itself, expert / base (ratio) or expert minus base (residual)."""
+    if b is None:
+        return y
+    return y / b if GREYBOX["mode"] == "ratio" else y - b
+
+
+def gb_inv(r, b):
+    if b is None:
+        return r
+    return r * b if GREYBOX["mode"] == "ratio" else r + b
 
 
 def row_inputs(r: dict) -> dict:

@@ -1,8 +1,8 @@
 """Iteration 3: grey-box sizing. Base = physics optimum (20-year NPV over the installer's catalogue, app/hourly),
-gradient boosting learns the expert's deviation (residual) or sees the optimum as a feature.
+gradient boosting learns the expert's deviation as a ratio (expert / optimum) or a difference, or sees the optimum as a feature.
 
     cd engine && uv run python -m lab.greybox                 # grids (cached), CV for each mode, physics sample
-    cd engine && uv run python -m lab.greybox --test residual:argmax   # also score the locked test split for one mode
+    cd engine && uv run python -m lab.greybox --test ratio:argmax   # also score the locked test split for one mode
 
 Grids are computed once per home under the full-train catalogue and cached in engine/.cache/greybox/ (gitignored,
 per-project). Prints aggregates only.
@@ -28,7 +28,7 @@ from app.model import COMPONENTS, GREYBOX, TARGET, Engine, opt_base, row_inputs
 from lab.cv import FOLDS, SEED, check_load, fmt, metrics, predict_frame, split, test_score
 
 CACHE = Path(__file__).resolve().parent.parent / ".cache" / "greybox" / "grids.pkl"
-MODES = [(None, "argmax"), ("residual", "argmax"), ("residual", "cheap"), ("feature", "argmax")]
+MODES = [(None, "argmax"), ("ratio", "argmax"), ("ratio", "cheap"), ("residual", "argmax"), ("feature", "argmax")]
 
 
 def grids(df, tr, te):
