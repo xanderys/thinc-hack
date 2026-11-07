@@ -12,7 +12,7 @@ export interface RoofPlane {
   fits_panels?: number; chosen_panels: PanelRect[];
   // Shade fields, when the engine sends them.
   shade?: number | null; shade_loss_share?: number | null; yield_shaded_kwh_per_kwp?: number | null;
-  skip_reason?: string | null; skip?: string | null;
+  skip_reason?: string | null; skip?: string | null; shade_reason?: string | null;
 }
 
 export interface RoofModel {
@@ -27,14 +27,15 @@ export interface RoofModel {
 export interface EnvelopeFace { kind: string; azimuth: number | null; area_m2: number; u_value: number; source?: string; loss_w: number }
 export interface Envelope {
   faces: EnvelopeFace[]; ventilation_w: number; design_heat_load_kw: number; annual_heat_demand_kwh?: number;
-  design_outdoor_c?: number; heatpump_kw?: number | null; sources?: (string | { key?: string; citation: string; url?: string })[];
+  design_outdoor_c?: number; heatpump_kw?: number | null; thermal_bridges_w?: number; build_year?: number;
+  design?: { inside_c?: number; outside_c?: number; air_changes_per_h?: number; volume_m3?: number }; sources?: (string | { key?: string; citation: string; url?: string })[];
 }
 
 export interface DayHour { h: number; pv_kw: number; load_kw: number; battery_kw: number; grid_kw: number; soc_kwh: number }
 
 export interface FrontierPoint {
   kwp: number; kwh: number; capex_eur: number; npv_20y_eur: number; autarky_share: number;
-  payback_years: number | null; chosen: boolean; label?: string;
+  payback_years: number | null; chosen: boolean; label?: string; on_frontier?: boolean;
 }
 
 export interface Layers {
@@ -47,6 +48,10 @@ export interface Layers {
   sources: { key: string; citation: string; url?: string }[];
   economics?: { capex_eur: number; annual_saving_eur: number; payback_years: number | null; self_consumption_share: number; autarky_share: number; annual?: { pv_yield_kwh: number; npv_20y_eur: number | null; [k: string]: unknown } };
 }
+
+// The engine labels points with keys ("knee", "payback") or with words; show words.
+const LABEL: Record<string, string> = { knee: "Recommended", payback: "Best payback", independence: "Most independence", upfront: "Lowest upfront cost", value: "Best 20-year value", npv: "Best 20-year value", expert: "As planners design it" };
+export const labelOf = (p: FrontierPoint) => (p.label ? LABEL[p.label] ?? p.label : p.chosen ? "Recommended" : "");
 
 export const planesOf = (x: RoofModel | RoofPlane[] | undefined | null): RoofPlane[] => (!x ? [] : Array.isArray(x) ? x : x.planes ?? []);
 

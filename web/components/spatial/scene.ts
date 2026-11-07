@@ -25,10 +25,10 @@ export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string
 
 
 const fmt0 = (x: number) => Math.round(x).toLocaleString("en-GB");
-const skipOf = (p: RoofPlane) => p.skip_reason || p.skip || null;
+const skipOf = (p: RoofPlane) => p.skip_reason || p.skip || p.shade_reason || null;
 function sunHtml(p: RoofPlane) {
   const loss = p.shade_loss_share;
-  if (p.yield_shaded_kwh_per_kwp != null && loss != null && loss > 0.005)
+  if (p.yield_shaded_kwh_per_kwp != null && loss != null && loss >= 0.005)
     return `<b>${fmt0(p.yield_shaded_kwh_per_kwp)}</b> kWh/kWp<br/><span>${Math.round(loss * 100)}% lost to shade</span>`;
   return `<b>${fmt0(p.yield_kwh_per_kwp)}</b> kWh/kWp`;
 }
@@ -222,12 +222,12 @@ export class SpatialScene {
     this.box.copy(box);
     const size = box.getSize(new THREE.Vector3());
     // Battery: a block beside the house on the east side; grid: a pole at the edge of the plot.
-    const bx = box.max.x - 1.2, bz = box.max.z + 1.1; // in front of the south-east corner, where the camera sees it
+    const bx = box.min.x + 1.2, bz = box.max.z + 1.1; // in front of the south-west corner, where the camera sees it
     this.batteryBox = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.6), new THREE.MeshLambertMaterial({ color: "#FAF8F3" }));
     this.batteryBox.position.set(bx, 0.75, bz);
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(this.batteryBox.geometry), new THREE.LineBasicMaterial({ color: INK }));
     this.batteryBox.add(edges);
-    const gx = box.max.x + 3.5, gz = box.max.z + 6.5;
+    const gx = box.max.x + 5, gz = box.min.z + 3;
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 7.5, 8), new THREE.MeshLambertMaterial({ color: "#4A4C55" }));
     pole.position.set(gx, 3.75, gz);
     const arm = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.08), new THREE.MeshLambertMaterial({ color: "#4A4C55" }));

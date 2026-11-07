@@ -47,7 +47,7 @@
 
 .clock { position: absolute; right: 10px; bottom: 10px; font-family: var(--font-mono), monospace; font-size: 22px; background: var(--paper); border: 1px solid var(--ink); padding: 2px 8px; font-variant-numeric: tabular-nums; pointer-events: none; }
 
-.side { position: absolute; right: 10px; bottom: 10px; width: 300px; background: var(--paper); border: 1px solid var(--ink); padding: 6px 6px 2px; }
+.side { position: absolute; right: 10px; bottom: 10px; width: 360px; background: var(--paper); border: 1px solid var(--ink); padding: 6px 6px 2px; }
 .legend { position: absolute; left: 10px; bottom: 10px; display: grid; gap: 3px; font-size: 11px; color: var(--ink-2); background: var(--paper); border: 1px solid var(--ink); padding: 6px 8px; pointer-events: none; }
 .legend .bar { width: 140px; height: 8px; }
 .legend .ends { display: flex; justify-content: space-between; font-family: var(--font-mono), monospace; }
