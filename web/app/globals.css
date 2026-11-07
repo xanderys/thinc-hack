@@ -385,13 +385,14 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .c-why { font-family: var(--font-serif), serif; font-size: 22px; line-height: 1.25; margin: 0 0 12px; }
 .c-why b { font-weight: 400; color: var(--accent); }
 .c-inbox { border-top: 1.5px solid var(--ink); }
-.c-inbox .ir { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.3fr) 90px 150px; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--rule); align-items: baseline; font-size: 14.5px; }
+.c-inbox .ir { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.3fr) 150px; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--rule); align-items: baseline; font-size: 14.5px; }
 .c-inbox .ir .h small { display: block; font-size: 12.5px; color: var(--ink-3); }
 .c-inbox .ir .d { font: 13.5px var(--font-mono), monospace; color: var(--ink-2); }
 .c-inbox .ir .c { font-size: 13.5px; color: var(--ink-2); }
 .c-inbox .ir .c.unsure { color: var(--accent); }
 .c-inbox .ir .r { font-size: 13.5px; }
 .c-inbox .ir .r.rev { color: var(--accent); }
+.c-inbox .ir .miss { grid-column: 2 / -1; font-size: 13px; color: var(--ink-2); }
 .c-inbox .ir.head { font-size: 12.5px; color: var(--ink-3); border-bottom: 0; padding-bottom: 6px; }
 .c-tally { font: 500 14px var(--font-mono), monospace; margin: 12px 0 0; }
 .c-score p { font-family: var(--font-serif), serif; font-size: 26px; line-height: 1.3; max-width: 52ch; margin: 0 0 14px; }
@@ -405,8 +406,8 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
   .c-real { grid-template-columns: 1fr; gap: 18px; }
   .c-inbox .ir { grid-template-columns: 1fr auto; gap: 2px 12px; }
   .c-inbox .ir .d { grid-column: 1; }
-  .c-inbox .ir .c { grid-column: 2; grid-row: 1; text-align: right; }
-  .c-inbox .ir .r { grid-column: 2; grid-row: 2; text-align: right; }
+  .c-inbox .ir .r { grid-column: 2; grid-row: 1; text-align: right; }
+  .c-inbox .ir .miss { grid-column: 1 / -1; }
   .c-inbox .ir.head { display: none; }
   .c-score p { font-size: 22px; }
 }
