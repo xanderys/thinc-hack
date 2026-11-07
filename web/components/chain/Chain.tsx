@@ -14,6 +14,7 @@ import House from "@/components/stage/House";
 import Why from "@/components/stage/Why";
 import s from "./chain.module.css";
 import { OfferValue, SiteVisitNote, useCardQualification } from "@/components/qualify/Verdict";
+import ShadingPanel from "@/components/spatial/ShadingScrubber";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
 
@@ -222,6 +223,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
         <p className={s.simH}><Bolt /> Simulation</p>
         <dl className={s.kpis}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}</dd></div>)}</dl>
         <OfferValue q={q} />
+        {address && spatial !== false && <ShadingPanel address={address} kwp={d.pv_kwp} solarStage={stage === 4} />}
       </div>
       {stage === N && variants.length > 0 && (
         <div className={s.variants}>
