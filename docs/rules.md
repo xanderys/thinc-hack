@@ -48,14 +48,31 @@ For each home: the house model's roof planes (LoD2 faces from GET /api/roof/mode
 The exam is roof-blind by necessity: the data pack has no addresses, so every exam home runs on the typical-year default roof and no envelope. Live leads with an address are not: their planes, shade and envelope drive the design. For the layers view: `frontier(inputs, roof)` returns every swept row (`kwp, kwh, capex_eur, npv_20y_eur, autarky_share, payback_years, on_frontier, chosen, label`); `day(inputs, design)` returns the April-May weekday with the median PV hour by hour (`pv_kw, load_kw, battery_kw` positive discharging, `grid_kw` positive import, `soc_kwh`) and that night (`evening_kwh` from the last PV hour to the first next morning, `night_hours`, usable `battery_kwh`, `htw_cap_kwh`). `recommend()` adds `sim_inputs` (`pv_planes`, the plane fill) to pass into `simulate()` so the economics match the sweep.
 
 ## Iterations
-Each step is one sourced assumption or structural rule, never a number tuned to the data; scored on the fit half (the test half stays sealed until final).
+Two loops, both scored on the fit half only; the test half stays sealed.
+
+**Loop 1, rules-2-physics (sourced assumptions only, money as the objective).** Each step is one sourced assumption, never a number tuned to the data.
 
 | # | Commit | Change | Source | Fit half: PV / battery / all four |
 |---|---|---|---|---|
-| 2 | next | Objective: independence premium of 29 ct per kWh of household and EV use supplied by the home's own PV, counted in the 20-year value (not the money NPV); independence x2, payback and upfront x0 | [Kaps, Marinesi and Netessine, Operations Research 2024](https://doi.org/10.1287/opre.2024.1104): median non-market value among German storage adopters (mean 53 ct) | pending |
+| 2 | next | Objective: independence premium of 29 ct per kWh of household and EV use supplied by the home's own PV, counted in the 20-year value (not the money NPV); independence x2, payback and upfront x0 | [Kaps, Marinesi and Netessine, Operations Research 2024](https://doi.org/10.1287/opre.2024.1104): median non-market value among German storage adopters (mean 53 ct) | not scored: the loop was stopped for the expert-match goal |
 | 1 | e0a7c78 | Battery price: BSW 2026 market average 315 EUR/kWh installed in place of the Verbraucherzentrale midpoint 500 | [BSW via reduco 2026](https://reduco.ai/blog/stromspeicher-kosten-vergleich-2026) | 30.3% / 39.1% / 9.5% (+0.8 / +8.7 / +1.1 points); median battery 9.2 kWh against 10; NPV at or above the expert's on 99%, payback shorter on 62%, autarky higher on 51% |
 | 0a | fc6dae2 | Structural: no heat pump while the year's heat is only a default; heat load precedence demand, bill, envelope (upper bound) | REONIC ENGINE bug report; envelope uses unrenovated IWU U-values | pending |
 | 0 | c1bf388 | First end-to-end rules-2 (knee of the frontier, sourced 2026 prices) | as in the parameter table | 29.5% / 30.4% / 8.4% (own run, 654 jobs; rules-1 41.0 / 49.2 / 17.7). 20-year NPV at or above the expert's on 98% of homes, payback shorter on 75%; median battery 5 kWh against the experts' 10 |
+
+**Loop 2, expert match with named rules (5-fold CV on the fit half, 654 jobs; gains under about 2.5 points are noise).**
+
+| Rule family | All four |
+|---|---|
+| rules-1: base array plus share of use, battery kWh per kWp | 16.2% |
+| PV by use band, battery kWh per kWp | 17.1% |
+| PV by use band, battery by PV band | 17.7% |
+| PV by use band, battery by PV band and offer era | 17.4% |
+| Median of the 10 / 15 / 30 nearest signed homes | 17.9% / 17.1% / 16.7% |
+| Joint design by use band (rules-3-band) | 18.0% |
+| rules-3-band with the battery snapped to packages on sale at the offer date | 18.0% |
+| rules-3-band fitted and scored on the same rows (ceiling) | 20.3% |
+
+Conclusion: the inputs carry about 18 to 20% of whole designs. Transparent rules reach it, and so does the black box; nothing honest goes further. A quarter of homes without an EV still got a wallbox, and nothing in the inputs predicts which, which caps all four at 74.8%. Production stays on rules-1 (no gain above the noise); rules-3-band is the eval column whose explanation is the most honest line ("11 of 44 similar signed homes within tolerance"); rules-2-physics gives the variants and the deviation column (its money NPV is at or above the expert's on 98 to 99% of homes).
 
 ## rules-3-band (expert match)
 `app.planner_rules.rules3`: per installer and use band (household plus EV: up to 2,500, 2,500 to 3,500, 3,500 to 4,499, the 4,500 kWh default meaning use not given, 4,501 to 5,500, 5,500 to 7,000, 7,000 to 9,000, over 9,000 kWh), the (PV, battery) pair that the most signed designs in the fit half match within tolerance (at least 3 homes per band, else the installer's overall pair); PV capped by the roof; heat pump, wallbox and inverter as rules-1. Calibrate and score: `uv run python -m app.planner_rules.rules3` (writes `rules3.json`, 16 cells of aggregates).
