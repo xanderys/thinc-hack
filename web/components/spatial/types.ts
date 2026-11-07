@@ -30,7 +30,8 @@ export interface PlanItem { kind?: string; label?: string; note?: string; at?: P
 export interface Plan {
   outline: P2[]; edges?: { from?: P2; to?: P2; length_m: number; a?: P2; b?: P2 }[]; edge_lengths_m?: number[];
   floor_area_m2?: number | null; storeys?: number | null; orientation?: string | number | null;
-  equipment?: PlanItem[]; markers?: PlanItem[]; clearances?: { at?: P2; center?: P2; centre?: P2; r_m?: number; radius_m?: number; label?: string }[];
+  equipment?: PlanItem[]; markers?: PlanItem[]; clearances?: { at?: P2; center?: P2; centre?: P2; x?: number; y?: number; r_m?: number; radius_m?: number; label?: string; kind?: string; source?: string }[];
+  net_floor_area_m2?: number | null;
   cable_run?: P2[] | { points?: P2[]; path?: P2[]; length_m?: number; label?: string } | null;
   rooms?: unknown; note?: string | null; notes?: string[] | string | null; sources?: unknown;
 }
