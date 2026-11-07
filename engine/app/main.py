@@ -23,7 +23,8 @@ from . import model as model_mod
 
 def _load_env():
     """INTAKE_SECRET from ~/.config/marquee/intake.env (shared with the voice builder; never in git)."""
-    for p in (Path.home() / ".config" / "marquee" / "intake.env", Path(__file__).resolve().parent.parent / ".env"):
+    for p in (Path.home() / ".config" / "marquee" / "intake.env", Path.home() / ".config" / "marquee" / "google.env",
+              Path(__file__).resolve().parent.parent / ".env"):
         if p.exists():
             for line in p.read_text().splitlines():
                 k, _, v = line.partition("=")
@@ -78,7 +79,7 @@ def startup():
         threading.Thread(target=warm_inbox, daemon=True).start()
     leads.load_all()  # before anything can create or step a lead
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
-    threading.Thread(target=lambda: (roofs.warm(), roofs.warm_models()), daemon=True).start()
+    threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models()), daemon=True).start()
     threading.Thread(target=warm_rules_eval, daemon=True).start()
 
 
@@ -422,6 +423,21 @@ def roof(address: str = "", postcode: str = ""):
     if postcode.strip():
         return roofs.postcode_lookup(postcode)
     return err(422, "address or postcode is missing.")
+
+
+@app.get("/api/roof/photo")
+def roof_photo(address: str = ""):
+    """v2.2: Street View of the house; the Google key stays on the server; 404 with Google's words when no imagery."""
+    if not address.strip():
+        return err(422, "address is missing.")
+    try:
+        img, msg = roofs.photo(address)
+    except Exception as e:
+        return err(502, f"Street View request failed: {e}")
+    if img is None:
+        return err(404, msg)
+    from fastapi.responses import Response
+    return Response(img, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/roof/model")

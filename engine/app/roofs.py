@@ -51,6 +51,9 @@ def lookup(address: str) -> dict:
     res = _lookup(address)
     if res.get("source") not in ("none", "postcode") and model_available():
         res = {**res, "model_url": model_url(address)}  # v2.1: the 3D house, built on first request
+    if res.get("source") not in ("none", "postcode"):
+        res = {**res, **({"photo_url": photo_url(address)} if photo_cached(address) else {}),
+               "google_panels": google_panels_cached(address)}  # v2.2: only what is already on disk; LoD2 stays first
     return res
 
 
@@ -189,6 +192,96 @@ def warm_models():
             model_info(a)
         except Exception as e:
             log.warning("roof model warm-up failed for %s: %s", a, e)
+
+
+PHOTO_CACHE = Path(__file__).resolve().parent.parent / ".cache" / "streetview"
+GOOGLE_CACHE = Path(__file__).resolve().parent.parent / ".cache" / "google_solar"
+
+
+def _gkey():
+    import os
+    return os.environ.get("GOOGLE_API_KEY")
+
+
+def _where(address: str) -> str:
+    r = _lookup_cached_only(address)
+    return f"{r['lat']},{r['lon']}" if r and r.get("lat") else address
+
+
+def _lookup_cached_only(address: str):
+    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
+    path = CACHE / f"{key}.json"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def photo(address: str) -> tuple[bytes | None, str]:
+    """Street View Static, 640x400 at fov 80, cached on disk; the key never leaves the server. (bytes, message)."""
+    import httpx
+    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
+    path = PHOTO_CACHE / f"{key}.jpg"
+    if path.exists():
+        return path.read_bytes(), "cached"
+    k = _gkey()
+    if not k:
+        return None, "No Google key on the server."
+    loc = _where(address)
+    meta = httpx.get("https://maps.googleapis.com/maps/api/streetview/metadata", params={"location": loc, "key": k}, timeout=10).json()
+    if meta.get("status") != "OK":
+        return None, f"Street View: {meta.get('status')}" + (f", {meta['error_message']}" if meta.get("error_message") else "")
+    r = httpx.get("https://maps.googleapis.com/maps/api/streetview",
+                  params={"size": "640x400", "fov": 80, "location": loc, "key": k}, timeout=15)
+    if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
+        return None, f"Street View: HTTP {r.status_code}"
+    PHOTO_CACHE.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(r.content)
+    return r.content, "fetched"
+
+
+def photo_cached(address: str) -> bool:
+    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
+    return (PHOTO_CACHE / f"{key}.jpg").exists()
+
+
+def photo_url(address: str) -> str:
+    from urllib.parse import quote
+    return f"/api/roof/photo?address={quote(address)}"
+
+
+def google_panels_cached(address: str):
+    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
+    p = GOOGLE_CACHE / f"{key}.json"
+    return json.loads(p.read_text()).get("max_panels") if p.exists() else None
+
+
+def google_solar(address: str):
+    """Second opinion, never a dependency: Google Solar buildingInsights maxArrayPanelsCount, cached on disk."""
+    import httpx
+    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
+    p = GOOGLE_CACHE / f"{key}.json"
+    if p.exists():
+        return json.loads(p.read_text())
+    k = _gkey()
+    r = _lookup_cached_only(address)
+    if not k or not r or not r.get("lat"):
+        return None
+    j = httpx.get("https://solar.googleapis.com/v1/buildingInsights:findClosest",
+                  params={"location.latitude": r["lat"], "location.longitude": r["lon"], "requiredQuality": "MEDIUM", "key": k},
+                  timeout=15).json()
+    sp = j.get("solarPotential") or {}
+    out = {"max_panels": sp.get("maxArrayPanelsCount"), "panel_w": sp.get("panelCapacityWatts"),
+           "max_array_m2": sp.get("maxArrayAreaMeters2"), "imagery_quality": j.get("imageryQuality"),
+           "error": (j.get("error") or {}).get("message")}
+    GOOGLE_CACHE.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(out))
+    return out
+
+
+def warm_google():
+    if _gkey():
+        try:  # the Solar API waits for billing (THINC HACK MASTER, 8 Nov); only the photo is tried
+            photo(HERO_ADDRESS)
+        except Exception as e:
+            log.warning("google warm-up failed: %s", e)
 
 
 def facing(segs: list) -> str:
