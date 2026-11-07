@@ -22,8 +22,12 @@ def frame(ring: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndar
     if n[2] < 0:
         n = -n
     h = np.cross([0.0, 0.0, 1.0], n)
-    if np.linalg.norm(h) < 1e-6:          # flat: rows run east to west
-        u, v = np.array([1.0, 0, 0]), np.array([0, 1.0, 0])
+    if n[2] > 0.996:                       # flat (under 5 degrees): rows follow the longest edge
+        e = np.roll(ring, -1, axis=0) - ring
+        e[:, 2] = 0
+        u = e[np.argmax(np.linalg.norm(e, axis=1))]
+        u = u / np.linalg.norm(u)
+        v = np.cross(n, u)
     else:
         u = h / np.linalg.norm(h)
         v = np.cross(n, u)

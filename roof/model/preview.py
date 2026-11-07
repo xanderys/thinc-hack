@@ -64,10 +64,11 @@ def render(glb_path: str, planes_json: str | None, out_png: str) -> str:
     meta = json.loads(Path(planes_json).read_text()) if planes_json else None
     img = np.zeros((H, W, 3), float); img[:] = [236, 236, 232]
     zbuf = np.full((H, W), np.inf)
-    pts = np.vstack([g.vertices for n, g in scene.geometry.items() if n != "ground"])
+    pts = np.vstack([g.vertices for n, g in scene.geometry.items() if n.startswith("roof_")])
     centre = (pts.min(0) + pts.max(0)) / 2
-    span = np.linalg.norm(pts.max(0) - pts.min(0))
-    radius = max(22.0, min(span * 0.45, 40.0))
+    centre[1] = pts[:, 1].min() * 0.6           # aim a little below the eaves
+    span = np.linalg.norm((pts.max(0) - pts.min(0))[[0, 2]])
+    radius = max(24.0, min(span * 1.7, 48.0))
     eye = centre + np.array([-0.5, 0.95, 0.62]) * radius    # south west of the house, looking down
     proj = _camera(centre + np.array([0, -2, 0]), eye)
     sun = SUN / np.linalg.norm(SUN)
@@ -89,9 +90,13 @@ def render(glb_path: str, planes_json: str | None, out_png: str) -> str:
                 tuv = uv[tri]
                 def shade(b, tuv=tuv, lam=lam):
                     q = b @ tuv
-                    x = np.clip((q[:, 0] * (tw - 1)).astype(int), 0, tw - 1)
-                    y = np.clip(((1 - q[:, 1]) * (th - 1)).astype(int), 0, th - 1)
-                    return t[y, x] * lam
+                    fx = np.clip(q[:, 0] * (tw - 1), 0, tw - 1.001)
+                    fy = np.clip((1 - q[:, 1]) * (th - 1), 0, th - 1.001)
+                    x, y = fx.astype(int), fy.astype(int)
+                    ax, ay = (fx - x)[:, None], (fy - y)[:, None]
+                    c = (t[y, x] * (1 - ax) + t[y, x + 1] * ax) * (1 - ay) + \
+                        (t[y + 1, x] * (1 - ax) + t[y + 1, x + 1] * ax) * ay
+                    return c * lam
             else:
                 c = base * lam
                 shade = lambda b, c=c: np.broadcast_to(c, (len(b), 3))

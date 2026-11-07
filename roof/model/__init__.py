@@ -166,7 +166,9 @@ def model(address: str, kwp: float | None = None) -> dict:
     Raises roof.NotFound with the source's own words when there is no LoD2 building."""
     k = key(address)
     base = OUT / f"{k}.base.json"
-    meta = json.loads(base.read_text()) if base.exists() and (OUT / f"{k}.glb").exists() else _build(address)
+    meta = json.loads(base.read_text()) if base.exists() and (OUT / f"{k}.glb").exists() else None
+    if meta is None or not meta["textured"]:   # an untextured build retries the WMS next time
+        meta = _build(address)
     meta["layout"] = lay_out(meta["planes"], kwp)
     path = OUT / f"{k}.json"
     path.write_text(json.dumps(meta, ensure_ascii=False))
