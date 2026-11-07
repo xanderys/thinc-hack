@@ -57,6 +57,16 @@ Each step is one sourced assumption or structural rule, never a number tuned to 
 | 0a | fc6dae2 | Structural: no heat pump while the year's heat is only a default; heat load precedence demand, bill, envelope (upper bound) | REONIC ENGINE bug report; envelope uses unrenovated IWU U-values | pending |
 | 0 | c1bf388 | First end-to-end rules-2 (knee of the frontier, sourced 2026 prices) | as in the parameter table | 29.5% / 30.4% / 8.4% (own run, 654 jobs; rules-1 41.0 / 49.2 / 17.7). 20-year NPV at or above the expert's on 98% of homes, payback shorter on 75%; median battery 5 kWh against the experts' 10 |
 
+## rules-3-band (expert match)
+`app.planner_rules.rules3`: per installer and use band (household plus EV: up to 2,500, 2,500 to 3,500, 3,500 to 4,499, the 4,500 kWh default meaning use not given, 4,501 to 5,500, 5,500 to 7,000, 7,000 to 9,000, over 9,000 kWh), the (PV, battery) pair that the most signed designs in the fit half match within tolerance (at least 3 homes per band, else the installer's overall pair); PV capped by the roof; heat pump, wallbox and inverter as rules-1. Calibrate and score: `uv run python -m app.planner_rules.rules3` (writes `rules3.json`, 16 cells of aggregates).
+
+| Fit half, 5-fold CV, 654 jobs | PV | Battery | Wallbox | All four |
+|---|---|---|---|---|
+| rules-1-calibrated | 36.7% | 46.8% | 74.8% | 16.2% |
+| rules-3-band | 39.3% | 49.7% | 74.8% | 18.0% |
+
+Every transparent family tried lands at 16 to 18% all four in CV: base plus slope, PV by band with battery by kWh per kWp, battery by PV band or by offer era, the joint band table, and the median of the 10, 15 or 30 nearest homes (17.9%, 17.1%, 16.7%). Fitted and scored on the same rows, the band table reaches only 20.3%, so the inputs carry about that much. Wallbox caps all four at 74.8%: a quarter of homes without an EV get one, with no input that predicts it.
+
 ## rules-1-calibrated (comparison column)
 
 ### The data overruled the first rules
