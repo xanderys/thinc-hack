@@ -83,6 +83,7 @@ def delete(lead_id: str):
     """Remove a lead from memory and disk; its lines in steps.jsonl stay (the priors keep what the call taught)."""
     LEADS.pop(lead_id, None)
     (DIR / f"lead-{lead_id}.json").unlink(missing_ok=True)
+    (DIR / "sig" / f"{lead_id}.png").unlink(missing_ok=True)  # a signature never outlives its lead
 
 
 def log_step(rec: dict):
