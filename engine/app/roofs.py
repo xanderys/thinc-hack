@@ -140,7 +140,7 @@ def postcode_lookup(postcode: str) -> dict:
            "build_year_class": z.get("build_year_class"), "build_year_estimate": z.get("build_year_estimate"),
            "heating_class": z.get("heating_class"), "avg_flat_m2": z.get("avg_flat_m2"), "dwellings_class": z.get("dwellings_class"),
            "zensus_confidence": "estimated from postcode (Zensus 2022, 100 m cell at its centre)" if z else None,
-           "notes": [h.get("display_name", pc), "Postcode centre only: no building, so no roof area or panel count."]
+           "notes": [h.get("display_name", pc), "No street given, roof assumed standard face."]
                     + ([] if z else ["Zensus cell not available here (outside the Munich index)."])}
     CACHE.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(res, ensure_ascii=False))
@@ -241,6 +241,68 @@ def spatial_inputs() -> list:
     if (planes.get("envelope") or {}).get("design_heat_load_kw"):
         out.append("envelope heat loss")
     return out
+
+
+VENUE_ADDRESSES = ["Sandstraße 33, 80335 München"]
+VENUE_POSTCODES = ["80335", "80333", "80336", "80637", "82008"]
+PENDING_NOTE = "Measuring the roof from Bavarian 3D data, about 10 s."
+_inflight: dict = {}
+
+
+def warm_venue():
+    """LoD2 tiles for the venue postcodes, then the venue and check addresses with their house models (DOM20 shade)."""
+    m = _roof()
+    for pc in VENUE_POSTCODES:
+        try:
+            r = postcode_lookup(pc)
+            if r.get("lat"):
+                x, y = m.TO_UTM.transform(r["lon"], r["lat"])
+                m._tile_index(int(x // 2000) * 2, int(y // 2000) * 2)
+        except Exception as e:
+            log.warning("venue tile warm-up failed for %s: %s", pc, e)
+    for a in VENUE_ADDRESSES + CHECK_ADDRESSES:
+        try:
+            lookup(a)
+            if model_available():
+                model_info(a, 1985 if a == HERO_ADDRESS else None)
+        except Exception as e:
+            log.warning("venue warm-up failed for %s: %s", a, e)
+    log.warning("venue tiles and models warmed")
+
+
+def lookup_or_pending(address: str, wait: float = 1.5) -> dict:
+    """The roof if it can be had within `wait` seconds, else a pending result while the lookup carries on; poll again."""
+    import threading
+    hit = _lookup_cached_only(address)
+    if hit is not None:
+        return lookup(address)
+    k = address.strip().lower()
+    t = _inflight.get(k)
+    if t is None or not t.is_alive():
+        t = threading.Thread(target=lambda: _safe_lookup(address), daemon=True)
+        _inflight[k] = t
+        t.start()
+    t.join(wait)
+    if _lookup_cached_only(address) is not None:
+        return lookup(address)
+    if not t.is_alive() and k in _failed:
+        return _failed.pop(k)
+    return {"source": "pending", "pending": True, "matched_address": address, "lat": None, "lon": None, "footprint_m2": None,
+            "roof_area_m2": None, "usable_area_m2": None, "segments": [], "max_panels": None, "max_kwp": None,
+            "confidence": "none", "notes": [PENDING_NOTE]}
+
+
+_failed: dict = {}
+
+
+def _safe_lookup(address):
+    try:
+        r = lookup(address)
+        if r.get("source") == "none":  # misses are not cached: hand the source's words to the next poll
+            _failed[address.strip().lower()] = r
+    except Exception as e:
+        _failed[address.strip().lower()] = {"source": "none", "matched_address": "", "notes": [str(e)], "segments": [],
+                                            "confidence": "none"}
 
 
 def warm_models():
