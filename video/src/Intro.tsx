@@ -1,8 +1,10 @@
 import React from "react";
-import { AbsoluteFill, OffthreadVideo, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, OffthreadVideo, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { ANCHORS, PUSH, type Anchor, type Pt, type Quad } from "./anchors";
 import { labelFor } from "./home";
 import { ANCHOR_STAGGER, H, PUSH_LEN, PUSH_START, W, XRAY_LEN, XRAY_START } from "./timeline";
+import { ModelXray } from "./ModelXray";
+import { XRAY } from "./xray.config";
 import { BLUE, INK, MONO, PAPER } from "./theme";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -125,13 +127,20 @@ export const Intro: React.FC = () => {
         <OffthreadVideo src={staticFile("footage/intro.mp4")} style={{ width: W, height: H, objectFit: "cover" }} />
       </AbsoluteFill>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ position: "absolute", inset: 0 }}>
-        {frame >= XRAY_START && (
+        {XRAY.mode === "lines" && frame >= XRAY_START && (
           <text x={64} y={H - 56} fontFamily={MONO} fontSize={20} letterSpacing="0.14em" fill={PAPER} opacity={xray}>
             SAMPLE HOME, NOT THIS HOUSE
           </text>
         )}
-        {frame >= XRAY_START && ANCHORS.map((a, i) => <AnchorLayer key={a.id} a={a} i={i} project={project} />)}
+        {XRAY.mode === "lines" && frame >= XRAY_START && ANCHORS.map((a, i) => <AnchorLayer key={a.id} a={a} i={i} project={project} />)}
       </svg>
+      {XRAY.mode === "model" && frame >= XRAY_START && (
+        <AbsoluteFill style={{ opacity: Math.min(1, (frame - XRAY_START) / 12) }}>
+          <Sequence from={XRAY_START}>
+            <ModelXray />
+          </Sequence>
+        </AbsoluteFill>
+      )}
     </AbsoluteFill>
   );
 };
