@@ -19,6 +19,7 @@ import os
 from fastapi import Header
 
 from . import data, leads, roofs
+from . import imagery
 from . import model as model_mod
 
 
@@ -482,12 +483,26 @@ def project(project_id: str):
     return err(404, f"No project with id {project_id}")
 
 
+def _imagery(lat, lon, building=None, tile=None) -> dict:
+    try:
+        return imagery.block(lat, lon, building, tile)
+    except Exception as e:
+        return {"dop20_flown": None, "lod2_stand": None, "source_note": f"imagery dates unavailable: {e}"}
+
+
 @app.get("/api/roof")
 def roof(address: str = "", postcode: str = ""):
     if address.strip():
-        return roofs.lookup_or_pending(address)  # pending: true while a new 2 km tile downloads; poll again
+        r = roofs.lookup_or_pending(address)  # pending: true while a new 2 km tile downloads; poll again
+        if isinstance(r, dict) and not r.get("pending"):
+            r = {**r, "imagery": _imagery(r.get("lat"), r.get("lon"), *imagery.from_notes(r.get("notes")))}
+        return r
     if postcode.strip():
-        return roofs.postcode_lookup(postcode)
+        r = roofs.postcode_lookup(postcode)
+        if isinstance(r, dict):
+            r = {**r, "imagery": {"dop20_flown": None, "lod2_stand": None,
+                                  "source_note": "No street given, so no orthophoto or LoD2 building to date."}}
+        return r
     return err(422, "address or postcode is missing.")
 
 
@@ -525,6 +540,8 @@ def roof_model(address: str = "", build_year: Optional[int] = None, kwp: Optiona
     p = info.get("planes_json_path")
     if not planes and p and Path(p).exists():
         planes = json.loads(Path(p).read_text())
+    if isinstance(planes, dict) and planes.get("lat") is not None:
+        planes["imagery"] = _imagery(planes.get("lat"), planes.get("lon"), planes.get("building"), planes.get("tile"))
     if isinstance(planes, dict) and planes.get("envelope"):
         from . import envelope_view
         envelope_view.enrich(planes["envelope"])
