@@ -25,7 +25,8 @@ def v(d, k):
 
 
 def show(h):
-    return {k: x for k, x in h.items() if x not in (None, False) and k not in ("_id",)}
+    """Synthetic inputs as shown: no id or offer date."""
+    return {k: x for k, x in h.items() if x not in (None, False) and k not in ("_id", "offer_date")}
 
 
 def _inv(name, group, rows, desc):
