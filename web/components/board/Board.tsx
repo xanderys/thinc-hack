@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import dynamic from "next/dynamic";
-import type { Design, Lead as LeadT, LeadRow, ReadResponse } from "@/lib/api";
+import type { Design, DesignResponse, Health, Lead as LeadT, LeadRow, ReadResponse } from "@/lib/api";
 import { call } from "@/lib/client";
 import { HERO_LEAD } from "@/lib/demo";
 import House from "@/components/stage/House";
@@ -19,6 +19,10 @@ const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", d
 const lineOf = (d?: Design, title?: string) => d
   ? [d.pv_kwp != null && `${d.pv_kwp.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWp`, d.battery_kwh != null && `${d.battery_kwh.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWh`, d.heatpump_kw != null && `${d.heatpump_kw} kW heat pump`, d.wallbox_kw != null && "wallbox"].filter(Boolean).join(" + ") || "Nothing to fit"
   : title?.split(": ").slice(1).join(": ") ?? "";
+
+// The engine's current version, asked once per page.
+let healthP: Promise<(Health & { rules_version?: string | null }) | null> | null = null;
+const health = () => (healthP ??= call<Health & { rules_version?: string | null }>("/api/health").then((r) => r.ok ? r.data : null));
 
 const APPROVED = "marquee.approved.ids";
 const readApproved = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(APPROVED) ?? "{}"); } catch { return {}; } };
@@ -69,9 +73,18 @@ export default function Board({ openId: initial }: { openId?: string }) {
         const at = (row as LeadRow & { updated_at?: string }).updated_at ?? row.created_at ?? "";
         if (fetching.current.has(row.lead_id) || designsRef.current[row.lead_id]?.at === at) continue;
         fetching.current.add(row.lead_id);
-        call<LeadT>(`/api/leads/${row.lead_id}`).then((g) => {
+        call<LeadT>(`/api/leads/${row.lead_id}`).then(async (g) => {
+          if (!g.ok) { fetching.current.delete(row.lead_id); return; }
+          // A draft stored by an earlier engine: show a fresh design for the lead's facts until the lead refreshes.
+          let d = g.data.draft.design;
+          const h = await health();
+          const dv = g.data.draft as DesignResponse & { rules_version?: string | null };
+          if (h && (dv.model_version !== h.model_version || (dv.rules_version != null && dv.rules_version !== h.rules_version))) {
+            const f = await call<DesignResponse>("/api/design", { inputs: g.data.facts });
+            if (f.ok) d = f.data.design;
+          }
           fetching.current.delete(row.lead_id);
-          if (g.ok) setDesigns((x) => { const n = { ...x, [row.lead_id]: { at, d: g.data.draft.design } }; designsRef.current = n; return n; });
+          setDesigns((x) => { const n = { ...x, [row.lead_id]: { at, d } }; designsRef.current = n; return n; });
         });
       }
     };
