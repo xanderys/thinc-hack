@@ -10,7 +10,7 @@ const DESIGN_KEY: Record<keyof Design, string> = { pv_kwp: "pv", inverter_kw: "i
 const COMPONENT_FIELD: Record<string, keyof Design> = { pv: "pv_kwp", inverter: "inverter_kw", battery: "battery_kwh", heatpump: "heatpump_kw", wallbox: "wallbox_kw" };
 
 const START: HomeInputs = {
-  installer_id: "2a8ba8e2", annual_demand_kwh: 4500, load_profile: "FamilyOfFour", num_inhabitants: 4,
+  installer_id: "2a8ba8e2", annual_demand_kwh: 5000, load_profile: "FamilyOfFour", num_inhabitants: 4,
   house_size_sqm: 140, house_built_year: 1985, has_ev: false, has_wallbox: false, heating_type: "Gas",
   electricity_price_ct_kwh: 32, has_solar: false, has_storage: false,
 };
@@ -89,6 +89,12 @@ export default function Planner() {
     return () => { clearTimeout(t); ctl.abort(); };
   }, [inputs, overrides, retry]);
 
+  useEffect(() => {
+    if (!error?.includes("restarting")) return;
+    const t = setTimeout(() => setRetry((x) => x + 1), 8000);
+    return () => clearTimeout(t);
+  }, [error, retry]);
+
   const setOverride = useCallback((field: keyof Design, value: OverrideValue | undefined) => {
     cause.current = "Set by the planner.";
     setOvChips((c) => c.filter((x) => x.field !== field));
@@ -101,7 +107,7 @@ export default function Planner() {
 
   async function interpret() {
     setLlmBusy(true); setLlmError(null);
-    const r = await call<InterpretResponse>("/api/interpret", { sentence, inputs, design: res?.design ?? {}, overrides });
+    const r = await call<InterpretResponse>("/api/interpret", { sentence, inputs, design: res?.design ?? {}, overrides, typical: res ? Object.fromEntries((Object.keys(res.components) as (keyof typeof res.components)[]).map((k) => [COMPONENT_FIELD[k], res.components[k].neighbours.median_size])) : {} });
     setLlmBusy(false);
     if (!r.ok) { setLlmError(r.error); return; }
     const ovs = r.data.overrides ?? [];

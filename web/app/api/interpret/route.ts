@@ -66,8 +66,8 @@ export async function POST(req: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: "No ANTHROPIC_API_KEY in web/.env.local, so sentences cannot be read. Sliders still work." }, { status: 503 });
   }
-  let sentence: string, inputs: HomeInputs, design: Partial<Design> = {}, current: Overrides = {};
-  try { ({ sentence, inputs, design = {}, overrides: current = {} } = await req.json()); } catch { return NextResponse.json({ error: "Body is not JSON" }, { status: 400 }); }
+  let sentence: string, inputs: HomeInputs, design: Partial<Design> = {}, current: Overrides = {}, typical: Partial<Design> = {};
+  try { ({ sentence, inputs, design = {}, overrides: current = {}, typical = {} } = await req.json()); } catch { return NextResponse.json({ error: "Body is not JSON" }, { status: 400 }); }
   if (!sentence?.trim()) return NextResponse.json({ error: "Write a sentence first." }, { status: 400 });
 
   const client = new Anthropic();
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
     if (c.action === "include") to = "include";
     else if (c.action === "none") to = null;
     else if (c.action === "set" && typeof c.size === "number" && c.size > 0) to = c.size;
-    else if (c.action === "bigger") to = now == null ? STEPS[f][0] : STEPS[f].find((x) => x > now + 1e-9) ?? STEPS[f][STEPS[f].length - 1];
+    else if (c.action === "bigger") to = now == null ? typical[f] ?? STEPS[f][0] : STEPS[f].find((x) => x > now + 1e-9) ?? STEPS[f][STEPS[f].length - 1];
     else if (c.action === "smaller") to = now == null ? null : [...STEPS[f]].reverse().find((x) => x < now - 1e-9) ?? null;
     else continue;
     overrides.push({ field: f, from: f in current ? current[f] : undefined, to, note: c.note });

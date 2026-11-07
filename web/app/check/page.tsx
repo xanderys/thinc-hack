@@ -174,7 +174,7 @@ export default function Check() {
                   );
                 })}</tbody>
               </table>
-              <p className="note">Lower line in each cell: rule-of-thumb baseline.</p>
+              <p className="note">Lower line in each cell: textbook rule.</p>
             </div>
 
             <div className="section scroll">

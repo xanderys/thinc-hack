@@ -41,6 +41,7 @@ function Fix({ field, current, unit, step, overrides, setOverride }: {
   const fixedNum = typeof overrides[field] === "number" ? overrides[field] as number : null;
   const [draft, setDraft] = useState<string>(clean(fixedNum ?? current));
   useEffect(() => { if (mode !== "value") setDraft(clean(current)); }, [current, mode]);
+  useEffect(() => { if (fixedNum != null) setDraft((d) => (Number(d) === fixedNum ? d : clean(fixedNum))); }, [fixedNum]);
   const commit = (s: string) => { const n = Number(s); if (s !== "" && Number.isFinite(n) && n > 0) setOverride(field, n); };
   return (
     <div className="fix">
