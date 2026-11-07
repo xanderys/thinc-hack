@@ -3,7 +3,7 @@
 Draft v2, against the north star (enquiry to signed install, faster). The engine is now a transparent formula and the dataset is the exam; hero and scoreboard numbers are re-marked until THINC HACK MASTER sends the new set. Speakers: Zi Yuan tells the planner's story, Xander runs the demo and the score, Jamon the roadmap. [UNCONFIRMED: speaker split carried over from v1; roadmap moved to Jamon]
 
 ## 0:00 to 0:20, slide 1, Zi Yuan
-"At one installer on Reonic, the median time from enquiry to offer is 8 days, across 260 projects. And the first credible offer often wins. Marquee takes the design and the draft from days to seconds."
+"At one installer on Reonic, the median time from enquiry to offer is 8 days, across 260 projects. And the first credible offer often wins. Marquee takes it from 8 days to 3 minutes."
 
 ## 0:20 to 0:50, slide 2, Zi Yuan
 "Tuesday, 8:40. A planner has six new enquiries and two site visits this afternoon. Frau Weber writes: family of four, detached house, want solar, maybe a battery, bill attached. Now the planner has to decide panel size, battery, heat pump and charger, and every one depends on the others. A senior planner does it from gut feel. Everyone else redoes it when the homeowner asks: what if we skip the battery?"

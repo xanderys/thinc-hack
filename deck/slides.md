@@ -12,7 +12,7 @@ footer: Marquee
 
 <p class="label">Marquee</p>
 
-# Enquiry to offer: 8 days today, seconds with Marquee.
+# Enquiry to offer: 8 days to 3 minutes.
 
 <p>Median, one installer, 260 projects</p>
 
@@ -51,7 +51,7 @@ footer: Marquee
 
 ## The share of PV size that the usual intake explains.
 
-<div class="data">installer A designs from placeholder numbers:<br>default price on about <b>75%</b> of projects, default <b>4,500 kWh</b> demand on <b>32%</b><br>Rina replaces placeholders with stated facts in <b>3 minutes</b></div>
+<div class="data">installer A designs from placeholder numbers:<br>default price on about <b>75%</b> of projects, default <b>4,500 kWh</b> demand on <b>32%</b><br>the assistant replaces placeholders with stated facts in <b>3 minutes</b></div>
 
 <p class="brief">Reonic, Manuel Schneider: “Im Zweifelsfall sind unsere Produkte immer so entwickelt, den Nutzer zu fragen.” (pv magazine, 8 Jun 2026)</p>
 
