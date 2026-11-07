@@ -124,3 +124,9 @@ img.panel { max-height: 380px; }
   max-width: none;
 }
 section.ink .brief, section.blue .brief { color: var(--on-dark-2); }
+
+/* Board screenshot slide */
+section.board h2 { font-size: 48px; margin-bottom: 18px; }
+section.board p:not(.label):not(.brief) { font-size: 22px; max-width: none; }
+section.board .data { margin-top: 6px; max-width: none; }
+section.board img { display: block; margin-top: 14px; }

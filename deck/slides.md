@@ -30,15 +30,19 @@ footer: Marquee
 
 ---
 
+<!-- _class: board -->
+
 <p class="label">Enquiry to site visit</p>
 
 ## Which leads deserve a visit.
 
-<div class="data">The installer can see which leads deserve a visit before they spend a planner’s afternoon on one. And the planner arrives already knowing the likely answer, so the scan confirms the design instead of starting it.<br>replayed on 258 held-out signed sales: Visit <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b></div>
+<p>The installer can see which leads deserve a visit before they spend a planner’s afternoon on one. And the planner arrives already knowing the likely answer, so the scan confirms the design instead of starting it.</p>
 
-[UNCONFIRMED: desktop screenshot of the production board, Visit, Call first and Decline in one frame, from THINC HACK MASTER]
+<div class="data">258 held-out sales replayed: Visit <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b></div>
 
-[UNCONFIRMED: which Decline lead stays, Xander's pick]
+![w:1000](img/board-verdicts.png)
+
+[UNCONFIRMED: Decline shown is Markus Lindner (homeowner declined); Moser, the shed, left off; Xander's pick]
 
 [UNCONFIRMED: replay shares, engine/lab/qualification_backtest.md 1186795]
 
