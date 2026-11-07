@@ -635,8 +635,9 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     step = lead["questions_asked"] + 1
     t = leads.now()
     field_asked = asked if asked in ans else (next(iter(ans)) if ans else None)
+    was_done = lead.get("status") == "done"  # a planner refinement after the call keeps the lead done
     lead.update(inputs=inp, unknown=unknown, draft=draft, next_question=nq, questions_asked=step, updated_at=t,
-                status="done" if nq is None else "in_call")
+                status="done" if (nq is None or was_done) else "in_call")
     if not lead.get("customer_name") and meta.get("customer_name"):
         lead["customer_name"] = meta["customer_name"]
     if not lead.get("address_or_postcode") and (ans.get("address") or ans.get("postcode")):
