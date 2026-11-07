@@ -104,13 +104,19 @@ def warm_reonic_eval():
         blocks, check = {}, {}
         for name, rows in pops.items():
             res = {}
-            for key, fn in (("reonic_rule", eng.reonic_rule), ("textbook", eng.baseline)):
+            fns = [("reonic_rule", eng.reonic_rule), ("textbook", eng.baseline)]
+            try:
+                from .planner_rules import rules5  # noqa: F401
+                fns.append(("rules5", eng.predict_rules5))
+            except ImportError:
+                pass
+            for key, fn in fns:
                 D = pd.DataFrame([{k: (v or 0.0) for k, v in fn(model_mod.row_inputs(r)).items()} for r in rows.to_dict("records")])
                 w = {c: R.within(c, D[model_mod.TARGET[c]].values, rows[model_mod.TARGET[c]].values) for c in model_mod.COMPONENTS}
                 res[key] = {"design_match_share": round(float(np.logical_and.reduce(list(w.values())).mean()), 3),
                             "pv_within": round(float(w["pv"].mean()), 3), "battery_within": round(float(w["battery"].mean()), 3),
                             "wallbox_decision": round(float(w["wallbox"].mean()), 3), "n": len(rows)}
-            blocks[f"{name} | lowest option | ours"] = res["reonic_rule"]
+            blocks[f"{name} | lowest option | ours"] = {k: v for k, v in res.items() if k != "textbook"}
             check[name] = {"textbook_rescored": res["textbook"]["design_match_share"]}
         STATE["reonic_eval"] = {"blocks": blocks, "check": check, "labels": {
             "reonic_rule": "Reonic rule of thumb: 1 kWp and 1.25 kWh per 1,000 kWh annual use, no heat pump unless asked, 11 kW wallbox with an EV",
@@ -334,7 +340,7 @@ def health():
     e = STATE["engine"]
     try:
         from . import planner_rules
-        rv = {"calibrated": "rules-1-calibrated", "band": "rules-3-band", "readout": "rules-4-readout"}.get(model_mod.RECOMMENDER["mode"]) or getattr(planner_rules, "RULES_VERSION", None)
+        rv = {"calibrated": "rules-1-calibrated", "band": "rules-3-band", "readout": "rules-4-readout", "rules5": "rules-5"}.get(model_mod.RECOMMENDER["mode"]) or getattr(planner_rules, "RULES_VERSION", None)
     except Exception:
         rv = None
     try:
@@ -998,8 +1004,8 @@ def evaluation():
         re_ = STATE.get("reonic_eval")
         if re_:  # Reonic's published rule of thumb, scored by the engine on the same homes (it reproduces the lab's textbook row)
             for blk, rows in re_["blocks"].items():
-                out["recommenders_detail"].setdefault(blk, {})["reonic_rule"] = rows
-            out["recommenders"]["reonic_rule"] = re_["blocks"]["test half | lowest option | ours"]
+                out["recommenders_detail"].setdefault(blk, {}).update(rows)
+            out["recommenders"].update(re_["blocks"]["test half | lowest option | ours"])
             out["recommenders_labels"] = re_["labels"]
             out["reonic_rule_check"] = re_["check"]
     except Exception as e:

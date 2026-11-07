@@ -227,7 +227,7 @@ class Engine:
     def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain."""
         mode = RECOMMENDER["mode"]
-        if mode in ("rules", "calibrated", "band", "readout"):
+        if mode in ("rules", "calibrated", "band", "readout", "rules5"):
             out = self.predict_rules(inp, overrides, full, extras, engine=mode)
         else:
             out = self.predict_ml(inp, overrides, full, extras)
@@ -264,6 +264,9 @@ class Engine:
         rec_in = self.rules_inputs(inp)
         fn = {"calibrated": planner_rules.calibrated.recommend, "band": planner_rules.rules3.recommend,
               "readout": planner_rules.rules4.recommend}.get(engine, planner_rules.recommend)
+        if engine == "rules5":
+            from .planner_rules import rules5 as R5
+            fn = R5.recommend
         r = rules_cached(fn, rec_in, self.rules_catalogue(inst, t), ov)
         design = {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
         nb = self.neighbours(inp, inst)
@@ -283,13 +286,23 @@ class Engine:
                "economics": econ,
                "model_version": {"calibrated": "rules-1-calibrated"}.get(engine) or r.get("version") or planner_rules.RULES_VERSION,
                "rules": r.get("rules", [])}
+        if engine == "readout":  # rules-5's wording (textbook, planners, design per rule) reads best: serve it when it exists
+            try:
+                from .planner_rules import rules5 as R5
+                if hasattr(R5, "rules_table"):
+                    out["rules_applied"] = out["rules"]
+                    out["rules"] = R5.rules_table(inst)
+            except ImportError:
+                pass
+            except Exception as e:
+                log.warning("rules-5 wording unavailable: %s", e)
         if engine == "calibrated":  # the Rules block reads as rules-4's rule list; the sizes and derivations stay rules-1's
             try:
                 out["rules_applied"] = out["rules"]
                 out["rules"] = planner_rules.rules4.rules_table(inst)
             except Exception as e:
                 log.warning("rules-4 wording unavailable: %s", e)
-        if engine in ("calibrated", "band", "readout"):
+        if engine in ("calibrated", "band", "readout", "rules5"):
             from . import layout as L
             out["objective"] = L.OBJECTIVE  # the variants' yardstick; the design itself is the rule list
         elif r.get("objective"):
@@ -299,7 +312,7 @@ class Engine:
         if full and extras and design.get("pv_kwp"):
             try:
                 out["variants"] = (self.variants_physics(inp, design, econ, rec_in, self.rules_catalogue(inst, t))
-                                   if engine in ("calibrated", "band", "readout") else self.variants(phys_inp, design, econ))
+                                   if engine in ("calibrated", "band", "readout", "rules5") else self.variants(phys_inp, design, econ))
             except Exception as e:
                 log.warning("variants failed: %s", e)
         return out
@@ -343,6 +356,12 @@ class Engine:
             if m:
                 rec_in["roof_model"] = m
         return rec_in
+
+    def predict_rules5(self, inp: dict) -> dict:
+        from .planner_rules import rules5
+        t = base_features(inp, inp["installer_id"])["t"]
+        r = rules5.recommend(self.rules_inputs(inp), self.rules_catalogue(inp["installer_id"], t), None)
+        return {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
 
     def predict_band(self, inp: dict) -> dict:
         from .planner_rules import rules3
@@ -469,7 +488,7 @@ class Engine:
             return []
         if GREYBOX["mode"]:  # lab only: the grey-box path goes through predict()
             return [self.predict(i, full=False)["design"] for i in inps]
-        if RECOMMENDER["mode"] in ("rules", "calibrated", "band", "readout"):  # questions ranked on the calibrated rules (under 1 ms a home)
+        if RECOMMENDER["mode"] in ("rules", "calibrated", "band", "readout", "rules5"):  # questions ranked on the calibrated rules
             return [self.predict_calibrated(i) for i in inps]
         F = [base_features(i, i["installer_id"]) for i in inps]
         X = pd.DataFrame(F)[self.cols]
