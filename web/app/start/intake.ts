@@ -161,7 +161,7 @@ export interface HomeAnswers {
 const known = <T extends string>(x?: T) => (x && x !== "unknown" ? x : undefined);
 
 /** Dynamic variables for the call (voice/README "Starting a call from another site"): all strings, unknowns left out. */
-export function homeVariables(a: HomeAnswers, installer_id: InstallerId, roof?: RoofInfo | null): Record<string, string> {
+export function homeVariables(a: HomeAnswers, installer_id: InstallerId, roof?: RoofInfo | null, lead_id?: string | null): Record<string, string> {
   const bill = known(a.bill_band) as keyof typeof BILL_EUR | undefined;
   const eur = bill ? BILL_EUR[bill] : undefined;
   const multi = !!roof?.footprint_m2 && roof.footprint_m2 > MULTI_UNIT_FOOTPRINT_M2;
@@ -169,6 +169,7 @@ export function homeVariables(a: HomeAnswers, installer_id: InstallerId, roof?: 
     customer_name: a.name.trim(),
     address_or_postcode: a.location.trim(),
     installer_id,
+    lead_id: lead_id ?? undefined,
     people: known(a.people),
     monthly_bill_eur: eur ? String(eur) : undefined,
     kwh_estimate: eur ? String(kwhFromBill(eur)) : undefined,
@@ -269,4 +270,15 @@ export function mergeIntake(form: Partial<IntakeFacts>, call?: Partial<IntakeFac
   }
   if (call?.annual_demand_kwh !== undefined && !call.estimated_fields?.includes("annual_demand_kwh")) sources.annual_demand_kwh = "call";
   return { facts, sources };
+}
+
+/** What the enquiry form states, as engine inputs for POST /api/leads (v1.9). "Don't know" stays out. */
+export function homeFacts(a: HomeAnswers): Record<string, unknown> {
+  const f: Record<string, unknown> = {};
+  const p = known(a.people); if (p) f.num_inhabitants = Number(p);
+  const h = known(a.heating); if (h) f.heating_type = h === "Electric" ? "OtherNonRenewable" : h === "Other" ? "Unknown" : h;
+  const ev = known(a.ev); if (ev) { f.has_ev = ev !== "none"; if (ev !== "none") f.ev_annual_km = 15000; }
+  const b = known(a.bill_band) as keyof typeof BILL_EUR | undefined; if (b) { f.annual_demand_kwh = kwhFromBill(BILL_EUR[b]); f.electricity_price_ct_kwh = PRICE_CT; }
+  if (p === "4") f.load_profile = "FamilyOfFour";
+  return f;
 }

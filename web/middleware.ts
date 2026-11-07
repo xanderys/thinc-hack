@@ -7,6 +7,9 @@ export function middleware(req: NextRequest) {
   const p = req.nextUrl.pathname;
   if (p === "/") { const u = req.nextUrl.clone(); u.pathname = "/start"; return NextResponse.rewrite(u); }
   if (p === "/start" || p === "/start/roof") return NextResponse.next();
+  // The enquiry creates its lead and waits for the first design; the lead list stays planner-only.
+  if (p === "/api/leads" && req.method === "POST") return NextResponse.next();
+  if (/^\/api\/leads\/[\w-]+$/.test(p) && req.method === "GET") return NextResponse.next();
   return new NextResponse("Not found", { status: 404 });
 }
 
