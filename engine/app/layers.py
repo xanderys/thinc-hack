@@ -370,8 +370,15 @@ def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
                "band": f"{c.get('modules_in_design')} modules in the design"}]
     # roof, day and charging are REONIC PHYSICS's when planner_rules has bars(); heat loss and the checks stay here
     try:
-        from .planner_rules import bars as physics_bars
-        theirs = {b["key"]: b for b in physics_bars(inp, d) or [] if b.get("key") in ("roof", "day", "charging")}
+        from .planner_rules.bars import bars as physics_bars
+        fields = ("annual_demand_kwh", "has_ev", "ev_annual_km", "house_built_year", "heating_type", "heating_cost_per_year_eur",
+                  "heating_demand_kwh", "num_inhabitants", "house_size_sqm", "electricity_price_ct_kwh", "load_profile")
+        prov = {f: tag(f) for f in fields if tag(f) in ("lead", "rina")}
+        clean = {k: v for k, v in inp.items() if not k.startswith("_")}
+        # roof and day stay the engine's (they read the one laid-out run the 3D model and the economics use); charging is
+        # PHYSICS's, which has no layout or day of its own to disagree with
+        theirs = {b["key"]: b for b in physics_bars(clean, d, roof=inp.get("roof"), provenance=prov) or []
+                  if b.get("key") in ("charging",)}
         res = [theirs.get(b["key"], b) for b in res]
     except ImportError:
         pass
