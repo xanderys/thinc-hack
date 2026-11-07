@@ -1,8 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Design, DesignResponse, Economics, HomeInputs, Overrides, WriteResponse } from "@/lib/api";
 import House from "./House";
 import Flow from "./Flow";
+import Why from "./Why";
+import { INSTALLER_NAME } from "@/lib/api";
 import { designLine, evidence, KEYS, n0, n2, NAME, named, pct, size } from "@/lib/stage";
 
 export type Variant = { name: string; tag: string; design: Design; e: Economics | null; overrides: Overrides | null; current: boolean };
@@ -10,7 +12,7 @@ export type Variant = { name: string; tag: string; design: Design; e: Economics 
 type Props = {
   res: DesignResponse; prev: DesignResponse | null; inputs: HomeInputs;
   write: WriteResponse | null; writeBusy: boolean; flag: string | null;
-  variants: Variant[]; onVariant: (v: Variant) => void; busy: boolean;
+  variants: Variant[]; onVariant: (v: Variant) => void; busy: boolean; answered: boolean;
 };
 
 function Est({ k, v, u, was }: { k: string; v: string; u: string; was?: string | null }) {
@@ -19,8 +21,23 @@ function Est({ k, v, u, was }: { k: string; v: string; u: string; was?: string |
   );
 }
 
-export default function Plan({ res, prev, inputs, write, writeBusy, flag, variants, onVariant, busy }: Props) {
+export default function Plan({ res, prev, inputs, write, writeBusy, flag, variants, onVariant, busy, answered }: Props) {
   const [open, setOpen] = useState<string | null>(null);
+  const [level, setLevel] = useState(1);
+  const [closing, setClosing] = useState(false);
+  const [ox, setOx] = useState(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const installer = INSTALLER_NAME[inputs.installer_id as keyof typeof INSTALLER_NAME] ?? "this installer";
+  // Opens out of the tapped number and closes back into it; a tap mid-close reopens at once.
+  const toggle = (k: string, el: HTMLElement | null) => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    if (el) { const r = el.getBoundingClientRect(); setOx(r.left + r.width / 2); }
+    if (open === k && !closing) {
+      setClosing(true);
+      const rm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      timer.current = setTimeout(() => { setOpen(null); setClosing(false); setLevel(1); }, rm ? 200 : 500);
+    } else { if (open !== k) setLevel(1); setOpen(k); setClosing(false); }
+  };
   const e = res.economics, pe = prev?.economics, a = e.annual, pa = pe?.annual;
   const was = (now: number, then: number | undefined | null, f: (x: number) => string) => then != null && f(then) !== f(now) ? f(then) : null;
   const moved = !!prev && JSON.stringify(prev.design) !== JSON.stringify(res.design);
@@ -60,12 +77,18 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
             <div className="s-comp" key={k}>
               <span className="n">{NAME[k]}</span>
               <span className={v == null ? "s none" : "s"}>
-                <span key={String(v)} className={pv !== undefined && pv !== v ? "s-mark" : undefined}>{v == null ? "None" : <>{n2(v)}<span className="u">{c.unit}</span></>}</span>
+                {c.derivation ? (
+                  <button className={open === k && !closing ? "num-b open" : "num-b"} aria-expanded={open === k && !closing} aria-label={`Why ${NAME[k]} ${v == null ? "none" : n2(v)}`} onClick={(ev) => toggle(k, ev.currentTarget)}>
+                    <span key={String(v)} className={pv !== undefined && pv !== v ? "s-mark" : undefined}>{v == null ? "None" : <>{n2(v)}<span className="u">{c.unit}</span></>}</span>
+                  </button>
+                ) : <span key={String(v)} className={pv !== undefined && pv !== v ? "s-mark" : undefined}>{v == null ? "None" : <>{n2(v)}<span className="u">{c.unit}</span></>}</span>}
                 {pv !== undefined && pv !== v && <span className="was">was {pv == null ? "none" : n2(pv)}</span>}
               </span>
               <span className="say">{line ?? <span className="s-wait">Writing</span>}</span>
-              <button className="why" aria-expanded={open === k} onClick={() => setOpen(open === k ? null : k)}>Why</button>
-              {open === k && <div className="ev s-in">{evidence(res, k, inputs.installer_id)} {named(c.reason)}</div>}
+              <button className="why" aria-expanded={open === k && !closing} onClick={(ev) => toggle(k, (ev.currentTarget.parentElement?.querySelector(".num-b") as HTMLElement | null) ?? ev.currentTarget)}>Why</button>
+              {open === k && (c.derivation
+                ? <Why k={k} d={c.derivation} level={level} onMore={setLevel} answered={answered} installer={installer} closing={closing} ox={ox} />
+                : <div className="ev s-in">{evidence(res, k, inputs.installer_id)} {named(c.reason)}</div>)}
             </div>
           );
         })}

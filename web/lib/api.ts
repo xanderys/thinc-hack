@@ -118,6 +118,13 @@ export interface Eval {
   ceiling?: { method: string; pv_agreement_share: number; battery_agreement_share: number };
   per_installer: Record<InstallerId, { test: number; design_match_share: number; baseline_design_match_share?: number }>;
   deviations: { project_id: string; component: string; ours: number | null; expert: number | null; note: string }[];
+  synthetic?: Synthetic;
+}
+
+export interface Synthetic {
+  n: number; plausible_share: number; monotonicity_violations: number; headline: string; headline_short: string;
+  invariants: { name: string; group: string; pass_share: number; n_checked: number }[];
+  before?: { pass_share: Record<string, number> };
 }
 
 // Contract v1.1: an override value of "include" asks the engine to include and size the component.
