@@ -54,12 +54,13 @@ body:has(.start-root) main { max-width: none; padding: 0; }
   padding: max(64px, env(safe-area-inset-top)) 24px max(48px, env(safe-area-inset-bottom));
   background: linear-gradient(180deg, #3A3C42 0%, #1C1C1E 55%, #111113 100%);
 }
-.ios-call-top { text-align: center; margin-top: 24px; }
+.ios-call-top { text-align: center; margin-top: 36px; }
 .ios-call h2 { font-family: inherit; font-size: 34px; font-weight: 400; margin: 0; letter-spacing: 0.01em; color: #fff; }
 .ios-call-top p { margin: 4px 0 0; font-size: 17px; color: rgba(255, 255, 255, 0.62); }
 .ios-call .ios-time { font-variant-numeric: tabular-nums; }
-.ios-keys { margin-top: auto; display: flex; gap: 36px; margin-bottom: 44px; }
-.ios-key { display: flex; flex-direction: column; align-items: center; gap: 8px; background: none; border: 0; color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+.ios-keys { margin-top: auto; display: grid; grid-template-columns: repeat(3, 76px); gap: 26px 30px; margin-bottom: 52px; }
+.ios-key { display: flex; flex-direction: column; align-items: center; gap: 8px; background: none; border: 0; padding: 0; color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+.ios-key.off { cursor: default; }
 .ios-key svg { width: 76px; height: 76px; padding: 22px; border-radius: 50%; background: rgba(255, 255, 255, 0.18); }
 .ios-key.on svg { background: #fff; color: #1C1C1E; }
 .ios-end { width: 76px; height: 76px; border-radius: 50%; border: 0; background: #FF3B30; color: #fff; display: grid; place-items: center; cursor: pointer; }

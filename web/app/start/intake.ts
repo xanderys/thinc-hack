@@ -180,9 +180,9 @@ export function homeVariables(a: HomeAnswers, installer_id: InstallerId, roof?: 
   return Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) as Record<string, string>;
 }
 
-/** Rina's spoken first line, as the voice contract sets it: greet by name, confirm the address. */
-export function homeFirstMessage(a: HomeAnswers) {
-  return `Hi ${a.name.trim().split(/\s+/)[0]}, it's Rina from Reonic. Just to check, are you living at ${a.location.trim()}?`;
+/** Rina's spoken first line: from the installer, greet by name, confirm the address. */
+export function homeFirstMessage(a: HomeAnswers, installer_id: InstallerId) {
+  return `Hi ${a.name.trim().split(/\s+/)[0]}, it's Rina from ${INSTALLER_BRAND[installer_id]}. Just to check, are you living at ${a.location.trim()}?`;
 }
 
 /** Sent once the call connects: what the enquiry gave, so Rina never asks it again. Unknown parts are left out. */
@@ -194,7 +194,7 @@ export function homeNote(a: HomeAnswers, installer_id: InstallerId, roof?: RoofI
     v.heating && `heating ${v.heating}`, v.ev && `electric car ${v.ev}`,
     known(a.roof) && `roof faces ${HOME_FORM.roof[a.roof!].toLowerCase()}`,
     v.floor_area_m2 && `living space ${v.floor_area_m2} m2`, v.multi_unit && `multi-unit building ${v.multi_unit}`].filter(Boolean);
-  return `Enquiry (never ask these again): ${parts.join("; ")}. You have already asked whether they live at the address.`;
+  return `Enquiry for ${INSTALLER_BRAND[installer_id]} (never ask these again): ${parts.join("; ")}. You call on behalf of ${INSTALLER_BRAND[installer_id]}. You have already asked whether they live at the address.`;
 }
 
 /** First line Rina says on a widget call, so she never asks for the address. */
