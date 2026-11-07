@@ -112,3 +112,12 @@
   .overlay :global(.sp-label) { font-size: 10.5px; }
   .clock { font-size: 18px; }
 }
+
+/* Bare: the reasoning chain's hero. The canvas fills its parent; callouts in Reonic's labelled style. */
+.wrap:has(.bareView) { height: 100%; grid-template-rows: minmax(0, 1fr) auto; }
+.bareView { aspect-ratio: auto; height: 100%; border: 0; background: var(--paper); }
+.toolsBare { top: auto; bottom: 12px; right: 12px; }
+.licenceBare { position: absolute; left: 12px; bottom: 6px; z-index: 2; font-size: 10px; background: rgba(253, 253, 251, 0.8); padding: 1px 6px; border-radius: 6px; pointer-events: none; }
+.wrap:has(.bareView) { position: relative; }
+.bareView ~ .licenceBare { }
+.overlay :global(.sp-label) { border-radius: 8px; border-color: var(--rule); background: #fff; box-shadow: var(--shadow); padding: 4px 8px; }

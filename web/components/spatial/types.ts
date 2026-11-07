@@ -68,8 +68,17 @@ export interface Layers {
   objective: { name: string; sentence: string; sources: string[] };
   sources: { key: string; citation: string; url?: string }[];
   consistency?: Consistency;
-  economics?: { capex_eur: number; annual_saving_eur: number; payback_years: number | null; self_consumption_share: number; autarky_share: number; annual?: { pv_yield_kwh: number; npv_20y_eur: number | null; [k: string]: unknown } };
+  economics?: { capex_eur: number; annual_saving_eur: number; payback_years: number | null; self_consumption_share: number; autarky_share: number; break_even_year?: number | null; irr?: number | null; cashflow_cumulative_eur?: number[]; annual?: { pv_yield_kwh: number; npv_20y_eur: number | null; [k: string]: unknown } };
+  bars?: Bar[];        // v2.6, in chain order
+  checks?: Check[];    // v2.6
+  ev?: { annual_km: number; annual_kwh: number; home_share: number; kwh_per_night_typical: number; kw_needed: number; km_per_hour_at_11kw: number; charging_window: string; note_22kw?: string } | null;
 }
+
+// v2.6 working-shown bars and checks.
+export type SourceTag = "lead" | "rina" | "address" | "default";
+export interface Bar { key: "roof" | "heat_loss" | "day" | "charging"; title: string; total: number; unit: string; segments: { name: string; value: number; unit: string; source_tag: SourceTag; citation?: string }[]; sentence: string; sources: string[] }
+// level (v2.7): "fail" is a real failure (red); "reference" is a published guide shown amber when outside; "info" is a tick with no verdict.
+export interface Check { name: string; value: number | string; unit: string; pass: boolean; band: string; level?: string; message?: string }
 
 // The engine labels points with keys ("knee", "payback") or with words; show words.
 const LABEL: Record<string, string> = { knee: "Recommended", payback: "Best payback", independence: "Most independence", upfront: "Lowest upfront cost", value: "Best 20-year value", npv: "Best 20-year value", expert: "As planners design it", chosen: "Recommended", recommended: "Recommended", best_value: "Best 20-year value", lowest_upfront: "Lowest upfront cost", best_payback: "Best payback", most_independence: "Most independence" };

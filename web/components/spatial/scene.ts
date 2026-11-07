@@ -9,8 +9,8 @@ import { flowsOf, lerpHour, p2 } from "./types";
 import { facing } from "./facing";
 import { poseOffset, springStep, type Focus, type Pose } from "./camera";
 
-const PAPER = new THREE.Color("#F4F1EA");
-const BLUE = new THREE.Color("#0D1BFE");
+const PAPER = new THREE.Color("#fdfdfb");
+const BLUE = new THREE.Color("#374be6");
 const SUN = new THREE.Color("#E8730C");
 const INK = "#0A0C14";
 const NEIGHBOUR = "#B4B1A9";
@@ -100,6 +100,7 @@ export class SpatialScene {
   private anchors = { roof: new THREE.Vector3(), home: new THREE.Vector3(), batt: new THREE.Vector3(), grid: new THREE.Vector3() };
   private focusPts: Record<Focus, THREE.Vector3> = { roof: new THREE.Vector3(), house: new THREE.Vector3(), drive: new THREE.Vector3(), battery: new THREE.Vector3(), wallbox: new THREE.Vector3(), west: new THREE.Vector3() };
   private fitD = 40;
+  private wallbox: THREE.Mesh | null = null;
   private fly: { pos: THREE.Vector3; tgt: THREE.Vector3; top: boolean } | null = null;
   private pose: Pose | null = null;
   private vPos = new THREE.Vector3();
@@ -292,6 +293,12 @@ export class SpatialScene {
     this.focusPts.drive.set(box.max.x + 1.5, fy, box.max.z);
     this.focusPts.wallbox.set(box.max.x, fy, box.max.z - 1.5);
     this.focusPts.west.set(box.min.x, fy, midZ);
+    // Wallbox: a small EV-blue box on the wall by the drive, shown only when the design has one.
+    this.wallbox = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 0.2), new THREE.MeshLambertMaterial({ color: "#1c71ef" }));
+    this.wallbox.position.set(box.max.x + 0.12, 1.3, box.max.z - 1.5);
+    this.wallbox.add(new THREE.LineSegments(new THREE.EdgesGeometry(this.wallbox.geometry), new THREE.LineBasicMaterial({ color: INK })));
+    this.wallbox.visible = false;
+    this.kit.add(this.wallbox);
 
     // Sun path for the day layer.
     const path: THREE.Vector3[] = [];
@@ -375,12 +382,14 @@ export class SpatialScene {
     });
   }
 
+  setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on; }
+
   show(o: { outlines: boolean; panels: boolean; kit: boolean; sun: boolean; battery: "plain" | "lit" }) {
     this.outlines.visible = o.outlines;
     this.panels.visible = o.panels;
     this.kit.visible = o.kit;
     this.sunGroup.visible = o.sun;
-    if (this.batteryBox) (this.batteryBox.material as THREE.MeshLambertMaterial).color.set(o.battery === "lit" ? "#0D1BFE" : "#FAF8F3");
+    if (this.batteryBox) (this.batteryBox.material as THREE.MeshLambertMaterial).color.set(o.battery === "lit" ? "#24a148" : "#FAF8F3");
     if (!o.sun) this.setFlows(null);
   }
 

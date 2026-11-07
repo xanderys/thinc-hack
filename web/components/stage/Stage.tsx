@@ -6,6 +6,7 @@ import type { CallLead } from "@/components/stage/Calls";
 const Calls = dynamic(() => import("@/components/stage/Calls"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 import Plan, { type Variant } from "@/components/stage/Plan";
+import Chain from "@/components/chain/Chain";
 import Refine, { type Moved } from "@/components/stage/Refine";
 import TopBar from "@/components/stage/TopBar";
 import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
@@ -318,9 +319,10 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
         canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-      {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? "Measuring the roof from Bavarian 3D data, about 10 s" : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} bare />}
-      {res && <Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
-        moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} bare />}
+      {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
+      {res && <Chain res={res} prev={prev} inputs={inputs} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={history.length > 0} onUndo={onUndo} answered={answer != null}
+        refine={<Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
+          moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} bare />} />}
     </div>
   );
 

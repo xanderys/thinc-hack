@@ -670,3 +670,23 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .t-asking { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 15px; padding: 10px 12px; background: var(--sheet-2); border: 1px solid var(--accent); }
 .t-asking .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 @media (prefers-reduced-motion: no-preference) { .t-asking .dot { animation: s-pulse 1.6s ease-in-out infinite; } }
+
+/* Reonic grammar (8 Nov 2026): rounded panels, pill chips, white cards on off-white, one compact top bar. */
+.btn { border-radius: 8px; font-weight: 600; }
+.btn.ghost { background: #fff; }
+input, select, textarea { border-radius: 8px; }
+.b-card { border-radius: 12px; background: #fff; box-shadow: var(--shadow); }
+.b-card.live { background: var(--navy); border-color: var(--navy); }
+.b-open-h { border-bottom: 1px solid var(--rule); align-items: center; }
+.b-open-h .btn, .b-open-h button { border-radius: 8px; }
+.b-card-in { padding-top: 8px; }
+.t-bar { gap: 8px; padding-bottom: 8px; margin-bottom: 0; border-bottom: 0; }
+.t-row { gap: 8px 12px; }
+.t-chips { gap: 6px; }
+.t-chip summary { border-radius: 999px; background: #fff; min-height: 32px; font-size: 13.5px; }
+.t-edit { border-radius: 10px; border-color: var(--rule); box-shadow: var(--shadow); background: #fff; }
+.t-edit input { border-radius: 8px; }
+.t-ask { border-radius: 10px; }
+.t-pref { background: var(--sheet-2); border-radius: 10px; padding: 2px; border: 0 !important; }
+.t-pref > * { border: 0 !important; border-radius: 8px; }
+.s-say input { border-radius: 8px; border-color: var(--rule-2); background: #fff; }

@@ -2,7 +2,7 @@
 // Progressive, layered explanation of a design over the real house model.
 // Usage: <SpatialDemo inputs={inputs} design={design} address={address} layer={n} onLayerChange={setN} />
 // Renders nothing when the engine has no 3D model for the address; onAvailable(false) tells the parent to keep its drawing.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Design, DesignResponse, HomeInputs } from "@/lib/api";
 import { call } from "@/lib/client";
 import type { Envelope, Layers, PanelRect, RoofModel, RoofPlane } from "./types";
@@ -24,6 +24,11 @@ type Props = {
   endpoints?: Endpoints;
   response?: DesignResponse | null;   // optional: the heat layer reads the heat pump derivation from it
   view?: StageView;                   // optional: the reasoning stage the camera should frame (camera.ts)
+  bare?: boolean;                     // the reasoning chain draws its own chrome: canvas, labels and compass only
+  leadId?: string;                    // sent with the layers call so call facts tag as Rina
+  onLayers?: (l: Layers) => void;     // the one layers response, for bars, checks and the energy numbers
+  tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void }) => ReactNode;
+  children?: ReactNode;               // overlays drawn over the canvas
 };
 
 // Layer ids are fixed (7 Heat, 8 Plan); a step shows only when its data is present.
@@ -47,7 +52,7 @@ function useReduce() {
   return r;
 }
 
-export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage }: Props) {
+export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, leadId, onLayers, tools, children }: Props) {
   const reduce = useReduce();
   const [own, setOwn] = useState(1);
   const layer = ctrl ?? own;
@@ -83,14 +88,14 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     const ac = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     setLayersErr(null); setBusy(true);
-    fetch(layersUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ inputs: { ...inputs, address }, design }), signal: ac.signal })
+    fetch(layersUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ inputs: { ...inputs, address }, design, ...(leadId ? { lead_id: leadId } : {}) }), signal: ac.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => null);
         setBusy(false);
         const m = body ? modelOf(body.planes) : null;
         if (res.status === 404 || (res.ok && !m?.planes?.some((p) => p.is_target))) { setAbsent(true); setLayers(null); onAvailable?.(false); return; }
         if (!res.ok) { setLayersErr(body?.error || `Engine answered ${res.status}`); if (tryN < 1) timer = setTimeout(() => setTryN((x) => x + 1), 20000); return; }
-        setAbsent(false); setLayers(body as Layers); onAvailable?.(true);
+        setAbsent(false); setLayers(body as Layers); onAvailable?.(true); onLayers?.(body as Layers);
       })
       .catch((e) => { if ((e as Error).name !== "AbortError") { setBusy(false); setLayersErr((e as Error).message); } });
     return () => { ac.abort(); if (timer) clearTimeout(timer); };
@@ -149,6 +154,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     sc.setHeat(null);
     sc.show({ outlines: L <= 3, panels: L >= 3 && L !== 7, kit: L >= 4 && L <= 6, sun: L === 4, battery: L === 5 && !!design.battery_kwh ? "lit" : "plain" });
     sc.setTint(L === 2 ? "yield" : "off");
+    sc.setWallbox(!!design.wallbox_kw);
     if (L === 3 && prev !== 3 && prev < 3) sc.setPanels(panelList, !reduce);
     if (L === 4 && layers) sc.setDay(layers.day.hours, !reduce); else sc.setDay(null, false);
     if (L === 1) sc.setLabels(sc.planeLabels("roof"));
@@ -157,7 +163,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     else if (L === 7) sc.setLabels(sc.setHeat(envelope));
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen]);
+  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw]);
 
   // The plan layer is always top-down; the other layers keep the planner's choice.
   useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);
@@ -305,15 +311,15 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
 
   return (
     <section className={s.wrap} aria-label="How the design is computed, over the house">
-      <div className={s.strip} style={{ ["--n" as string]: nSteps }} role="group" aria-label="Layers">
+      {!bare && <div className={s.strip} style={{ ["--n" as string]: nSteps }} role="group" aria-label="Layers">
         {ids.map((id, i) => (
           <button key={id} type="button" className={s.step} aria-pressed={L === id} onClick={() => setLayer(id)}>
             <span className={s.k}>{i + 1}</span><span className={s.t}>{STEPS[id - 1]}</span>
           </button>
         ))}
-      </div>
+      </div>}
 
-      <div className={s.view}>
+      <div className={bare ? `${s.view} ${s.bareView}` : s.view}>
         <div ref={host} className={s.host} />
         <svg ref={svg} className={s.flows} aria-hidden="true" />
         <div ref={overlay} className={s.overlay} aria-hidden="true" />
@@ -323,7 +329,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {glbErr && <div className={s.err}>{glbErr}<button type="button" onClick={() => setRetryGlb((x) => x + 1)}>Retry</button></div>}
         {layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTryN((x) => x + 1)}>Retry</button></div>}
 
-        {(numbers.length > 0 || check) && (
+        {!bare && (numbers.length > 0 || check) && (
           <div className={s.nwrap}>
             {numbers.length > 0 && (
               <dl className={s.numbers}>
@@ -334,31 +340,34 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
           </div>
         )}
 
-        <div className={s.tools}>
+        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { setView(v); if (v === "3d" && L === 8) setLayer(3); } })}
+        {bare && <div className={`${s.tools} ${s.toolsBare}`}><div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div></div>}
+        {!bare && <div className={s.tools}>
           <div className={s.toggle} role="group" aria-label="View">
             <button type="button" aria-pressed={L !== 8 && view === "3d"} onClick={() => { setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
             <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => setView("2d")}>2D</button>
           </div>
           <div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div>
-        </div>
+        </div>}
 
-        {L === 2 && (
+        {!bare && L === 2 && (
           <div className={s.legend}>
             <div className={s.bar} style={{ background: "linear-gradient(90deg, #F4F1EA, #0D1BFE)" }} />
             <div className={s.ends}><span>{n0(Math.min(...planes.map((p) => p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp)))}</span><span>{n0(Math.max(...planes.map((p) => p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp)))} kWh/kWp</span></div>
           </div>
         )}
-        {L === 7 && envelope && (
+        {!bare && L === 7 && envelope && (
           <div className={s.legend}>
             <div className={s.bar} style={{ background: "linear-gradient(90deg, #F4F1EA, #E8730C)" }} />
             <div className={s.ends}><span>less</span><span>more W per m²</span></div>
           </div>
         )}
-        {L === 4 && layers && <div className={s.clock} aria-live="off">{hh(hour.h)}</div>}
-        {chart && <div className={s.side}>{chart}</div>}
+        {!bare && L === 4 && layers && <div className={s.clock} aria-live="off">{hh(hour.h)}</div>}
+        {!bare && chart && <div className={s.side}>{chart}</div>}
+        {children}
       </div>
 
-      <div className={s.caption}>
+      {!bare && <div className={s.caption}>
         {content ? <p className={s.sentence}>{content.sentence}</p> : null}
         {content && "second" in content && content.second ? <p className={s.sentence}>{content.second}</p> : null}
         {L === 4 && layers && (
@@ -374,7 +383,8 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
           <p className={s.sources}>Sources: {content.sources.map((x, i) => <span key={x.key}>{i ? "; " : ""}{x.url ? <a href={x.url} target="_blank" rel="noreferrer">{x.citation}</a> : x.citation}</span>)}</p>
         )}
         <p className={s.licence}>{LICENCE}</p>
-      </div>
+      </div>}
+      {bare && <p className={`${s.licence} ${s.licenceBare}`}>{LICENCE}</p>}
     </section>
   );
 }
