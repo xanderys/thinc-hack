@@ -19,7 +19,9 @@ DIR = HERE / ".cache" / "zensus"
 DB = DIR / "munich.sqlite"
 BASE = "https://www.destatis.de/static/DE/zensus/" + "gitter" + "daten/"
 FILES = {"age": "Gebaeude_nach_Baujahr_in_Mikrozensus_Klassen",
-         "heat": "Gebaeude_mit_Wohnraum_nach_ueberwiegender_Heizungsart"}
+         "heat": "Gebaeude_mit_Wohnraum_nach_ueberwiegender_Heizungsart",
+         "dwell": "Gebaeude_nach_Anzahl_der_Wohnungen_im_Gebaeude",
+         "flat": "Durchschnittliche_Flaeche_je_Wohnung_in_Gitterzellen"}
 BBOX = (47.8, 11.0, 48.5, 12.1)   # lat0, lon0, lat1, lon1: Munich and its ring of suburbs
 TO_LAEA = Transformer.from_crs(4326, 3035, always_xy=True)
 
@@ -30,11 +32,20 @@ AGE = [("Vor1919", "before 1919", 1905), ("a1919bis1948", "1919 to 1948", 1934),
 HEAT = [("Fernheizung", "district heating"), ("Etagenheizung", "floor heating (one per flat)"),
         ("Blockheizung", "block heating"), ("Zentralheizung", "central heating"),
         ("Einzel_Mehrraumoefen", "single-room stoves"), ("keine_Heizung", "no heating")]
+DWELL = [("1_Wohnung", "1 dwelling", 1), ("2_Wohnungen", "2 dwellings", 2), ("3bis6_Wohnungen", "3 to 6 dwellings", 3),
+         ("7bis12_Wohnungen", "7 to 12 dwellings", 7), ("13undmehr_Wohnungen", "13 or more dwellings", 13)]
 LABEL = "estimated from address (Zensus 2022, 100 m cell)"
 
 
 def _num(v: str) -> int:
     return int(v) if v.strip().isdigit() else 0   # "–" means none
+
+
+def _flat(v: str) -> float | None:
+    try:
+        return float(v.replace(",", "."))
+    except ValueError:
+        return None
 
 
 def _csv_path(kind: str) -> Path:
@@ -60,20 +71,24 @@ def build() -> None:
     con = sqlite3.connect(DB)
     con.execute("create table age (e int, n int, " + ",".join(f"{k} int" for k, _, _ in AGE) + ", primary key (e, n))")
     con.execute("create table heat (e int, n int, " + ",".join(f"{k} int" for k, _ in HEAT) + ", primary key (e, n))")
-    for kind, cols in (("age", [k for k, _, _ in AGE]), ("heat", [k for k, _ in HEAT])):
+    con.execute("create table dwell (e int, n int, " + ",".join(f'"{k}" int' for k, _, _ in DWELL) + ", primary key (e, n))")
+    con.execute("create table flat (e int, n int, m2 real, primary key (e, n))")
+    for kind, cols in (("age", [k for k, _, _ in AGE]), ("heat", [k for k, _ in HEAT]),
+                       ("dwell", [k for k, _, _ in DWELL]), ("flat", ["durchschnFlaechejeWohn"])):
         rows = []
         with open(_csv_path(kind), encoding="utf-8-sig") as f:
             for row in csv.DictReader(f, delimiter=";"):
                 x, y = int(row["x_mp_100m"]), int(row["y_mp_100m"])
                 if e0 <= x <= e1 and n0 <= y <= n1:
-                    rows.append((x // 100 * 100, y // 100 * 100, *[_num(row[c]) for c in cols]))
+                    vals = [_flat(row[c]) for c in cols] if kind == "flat" else [_num(row[c]) for c in cols]
+                    rows.append((x // 100 * 100, y // 100 * 100, *vals))
         con.executemany(f"insert into {kind} values ({','.join('?' * (2 + len(cols)))})", rows)
         print(kind, len(rows), "cells")
     con.commit(); con.close()
 
 
 def _sum(con, table: str, cols: list[str], e: int, n: int, ring: int) -> list[int]:
-    q = f"select {','.join(f'coalesce(sum({c}),0)' for c in cols)} from {table} " \
+    q = f"select {','.join(f'coalesce(sum("{c}"),0)' for c in cols)} from {table} " \
         f"where e between ? and ? and n between ? and ?"
     return list(con.execute(q, (e - 100 * ring, e + 100 * ring, n - 100 * ring, n + 100 * ring)).fetchone())
 
@@ -99,6 +114,16 @@ def lookup(lat: float, lon: float) -> dict | None:
             out.update(build_year_class=AGE[i][1], build_year_estimate=AGE[i][2])
         if sum(h):
             out["heating_class"] = HEAT[max(range(len(h)), key=h.__getitem__)][1]
+        d = _sum(con, "dwell", [k for k, _, _ in DWELL], e, n, ring)
+        if sum(d):
+            i = max(range(len(d)), key=d.__getitem__)
+            out.update(dwellings_class=DWELL[i][1], dwellings_min=DWELL[i][2])
+        for r in (0, 1):   # average flat size: own cell, else mean of the 3 x 3 block
+            m = con.execute("select avg(m2) from flat where e between ? and ? and n between ? and ?",
+                            (e - 100 * r, e + 100 * r, n - 100 * r, n + 100 * r)).fetchone()[0]
+            if m:
+                out["avg_flat_m2"] = round(m, 1)
+                break
         if ring:
             out["zensus_confidence"] = LABEL.replace("100 m cell", "3 x 3 block of 100 m cells")
         return out
