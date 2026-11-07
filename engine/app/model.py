@@ -428,7 +428,7 @@ class Engine:
             note = ""
             if not w["all"]:
                 c = next(c for c in ("pv", "battery", "wallbox", "heatpump") if not w[c])
-                note = self._deviation_note(c, r, d[TARGET[c]] or 0.0, float(r[TARGET[c]]))
+                note = self._inbox_note(c, r, d[TARGET[c]] or 0.0, float(r[TARGET[c]]))
             out.append({"project_id": r["project_id"], "installer_id": r["installer_id"], "inputs": inp,
                         "draft": full["design"], "confidence": self.agreement(inp, full["design"]),
                         "expert": row_design(r), "within": w, "note": note, "_row": r})
@@ -449,7 +449,9 @@ class Engine:
         key = TARGET[comp]
         final = design.get(key)
         n = len(nb)
-        src_of = lambda k: "lead" if inp.get(k) not in (None, False, "Unknown") else "default"
+        given = inp.get("_given")
+        src_of = (lambda k: "lead" if k in given else "default") if given is not None else \
+                 (lambda k: "lead" if inp.get(k) not in (None, False, "Unknown") else "default")
         planner = detail["reason"].startswith(("Set by the planner", "Included by the planner"))
         s = nb[key].values
         sim_in = roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")})
@@ -851,6 +853,24 @@ class Engine:
             "ceiling": {k: ceil[k] for k in ("method", "pv_agreement_share", "battery_agreement_share", "covered_test_share")},
             "deviations": dev,
         }
+
+    NOTE_NAME = {"pv": "Solar", "battery": "Battery", "heatpump": "Heat pump", "wallbox": "Wallbox"}
+
+    def _inbox_note(self, comp, r, ours, expert) -> str:
+        """One plain sentence, no quotes or line breaks: what the expert fitted, the draft, and what similar homes got."""
+        unit = UNITS[comp]
+        s = self.neighbours(row_inputs(r), r["installer_id"])[TARGET[comp]].values
+        inc = s[s > 0]
+        g = lambda x: f"{x:g}" if x else "none"
+        tail = ""
+        if len(inc):
+            med = float(np.median(inc))
+            k = int((np.abs(inc - med) <= rules.tolerance(comp, med)).sum())
+            tail = f"; {k} of {len(s)} similar homes got about {med:g}"
+        else:
+            tail = f"; none of {len(s)} similar homes got one"
+        e = f"{expert:g} {unit}" if expert else "none"
+        return f"{self.NOTE_NAME[comp]}: expert fitted {e}, draft {g(ours)}{tail}."
 
     def _deviation_note(self, comp, r, ours, expert) -> str:
         """Neighbour evidence plus the missing input that explains the gap."""
