@@ -16,6 +16,8 @@ import { GLTFExtensionsPlugin, LoadRegionPlugin, ReorientationPlugin, SphereRegi
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import type { SpatialScene } from "./scene";
 import type { RoofPlane } from "./types";
+import { WhiteContext } from "./whiteContext";
+import { applyTileLod } from "./tileLod";
 
 export type Anchor = { lat: number; lon: number; height: number; beta: number; geoid?: number };
 export type Fit = { dx: number; dy: number; dz: number; spread: number; samples: number; draped: number; skipped: number };
@@ -46,7 +48,7 @@ function hull(pts: [number, number][]) {
 type Inner = {
   scene: THREE.Scene; renderer: THREE.WebGLRenderer; camera: THREE.Camera;
   placeholder: THREE.Object3D; glbRoot?: THREE.Object3D | null; box: THREE.Box3; panels: THREE.Group;
-  targets: { p: RoofPlane }[];
+  targets: { p: RoofPlane }[]; ctxLines?: THREE.Group;
 };
 type Opts = {
   root: string; anchor: Anchor; phone: boolean;
@@ -112,6 +114,8 @@ export class PhotoLayer {
   private fitting = false;
   private panelsSeen: THREE.Object3D[] = [];
   fit: Fit | null = null;
+  private white = new WhiteContext();
+  private lodOff: () => void = () => {};
 
   constructor(sc: SpatialScene, private o: Opts) {
     this.inner = sc as unknown as Inner;
@@ -139,6 +143,11 @@ export class PhotoLayer {
     this.holder.rotation.y = Math.PI + anchor.beta;
     this.publish();
     this.holder.add(tiles.group);
+    // White context outside the house footprint (mask read from meshFrame), full detail only near the house.
+    const house = this.inner.box.isEmpty() ? new THREE.Vector3() : this.inner.box.getCenter(new THREE.Vector3());
+    this.white.setNeighbours(this.inner.ctxLines?.userData.edges ?? [], [house.x, house.z]);
+    tiles.addEventListener("load-model", ({ scene }: { scene: THREE.Object3D }) => this.white.apply(scene));
+    this.lodOff = applyTileLod(tiles, house, { phone: o.phone });
     this.holder.visible = false;
     this.inner.scene.add(this.holder);
 
@@ -282,6 +291,7 @@ export class PhotoLayer {
     this.tiles.setResolutionFromRenderer(camera, renderer);
     camera.updateMatrixWorld();
     this.tiles.update();
+    this.white.sync(meshFrame);
     if (this.ready) this.drape();
     const text = [...this.credits.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k).join("; ");
     if (text !== this.creditText) { this.creditText = text; this.o.onCredit(text); }
@@ -298,6 +308,8 @@ export class PhotoLayer {
     this.inner.panels.children.forEach((g) => g.children.forEach((ch) => { ch.position.y = 0; }));
     this.inner.scene.remove(this.holder);
     if (meshFrame.holder === this.holder) Object.assign(meshFrame, { anchor: null, fit: null, holder: null, offset: [0, 0, 0], version: meshFrame.version + 1 });
+    this.lodOff();
+    this.white.dispose();
     this.tiles.dispose();
     this.draco.dispose();
   }
