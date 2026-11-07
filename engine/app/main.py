@@ -910,7 +910,7 @@ def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
             dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(l)}
         out.append({"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
                     "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
-                    "approved_at": l.get("approved_at"), "decision": dec, "updated_at": l["updated_at"]})
+                    "approved_at": l.get("approved_at"), "decision": dec, "created_at": l.get("created_at"), "updated_at": l["updated_at"]})
     return out
 
 
