@@ -10,6 +10,11 @@ export function middleware(req: NextRequest) {
   // The enquiry creates its lead and waits for the first design; the lead list stays planner-only.
   if (p === "/api/leads" && req.method === "POST") return NextResponse.next();
   if (/^\/api\/leads\/[\w-]+$/.test(p) && req.method === "GET") return NextResponse.next();
+  // v2.5: the proposal page, its one-sentence lines, the house view and the homeowner's decision. Approve stays planner-only.
+  if (/^\/start\/proposal\/[\w-]+$/.test(p)) return NextResponse.next();
+  if (/^\/api\/leads\/[\w-]+\/decision$/.test(p) && req.method === "POST") return NextResponse.next();
+  if ((p === "/api/write" || p === "/api/explain/layers") && req.method === "POST") return NextResponse.next();
+  if (p === "/spatial-demo/glb" && req.method === "GET") return NextResponse.next();
   return new NextResponse("Not found", { status: 404 });
 }
 
