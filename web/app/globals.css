@@ -294,7 +294,7 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 @media (prefers-reduced-motion: no-preference) {
   .s-in { animation: s-arrive 767ms var(--spring-smooth-500) both; }
   .s-in + .s-in { animation-delay: 40ms; }
-  .s-mark { animation: s-mark 500ms var(--spring-snappy-350) both; color: var(--accent); }
+  .s-mark { animation: s-mark 500ms var(--spring-snappy-350) both; }
   @keyframes s-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes s-mark { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   .house .h-part { animation: s-fade 767ms var(--spring-smooth-500) both; }
@@ -303,7 +303,6 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 @media (prefers-reduced-motion: reduce) {
   .s-in, .s-mark, .house .h-part { animation: s-fade-r 200ms linear both; }
   @keyframes s-fade-r { from { opacity: 0; } to { opacity: 1; } }
-  .s-mark { color: var(--accent); }
 }
 
 @media (max-width: 640px) {
@@ -321,3 +320,32 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
   .seg button { min-height: 44px; }
 }
 @media (max-width: 640px) { .masthead .engine:not(.mock) { display: none; } }
+
+.s-refine { margin-top: 34px; padding-top: 18px; border-top: 1.5px solid var(--ink); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 24px; }
+.s-say { display: flex; gap: 8px; }
+.s-say input { flex: 1; min-width: 0; background: var(--sheet-2); border: 1px solid var(--ink-3); border-radius: 0; padding: 9px 12px; font-size: 15px; }
+.s-say.phonebar { display: none; }
+.s-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.s-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--accent); padding: 3px 4px 3px 8px; font-size: 13px; }
+.s-chip button { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0 4px; font-size: 15px; line-height: 1; }
+.s-moved .cause { margin: 14px 0 2px; font-size: 13.5px; color: var(--ink-3); }
+.s-moved ul { list-style: none; padding: 0; margin: 0; font-size: 15px; }
+.s-moved li { padding: 5px 0; }
+.s-moved .num { font-size: 14px; }
+.s-moved .ar { color: var(--accent); }
+.s-moved .why2 { color: var(--ink-3); font-size: 13.5px; margin-left: 8px; }
+.s-hand { margin-top: 12px; font-size: 13.5px; }
+.s-handrow { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.s-handrow .fix { margin: 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.s-handrow .fix .label { display: none; }
+.s-handrow .fix input[type="number"] { width: 80px; padding: 4px 6px; border: 1px solid var(--ink-3); border-radius: 0; background: var(--sheet-2); text-align: right; }
+.s-decide { display: flex; gap: 8px; align-items: start; }
+.s-approved { display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--ink); padding: 7px 0; }
+.s-approved a { color: var(--accent); font-size: 14px; }
+@media (max-width: 640px) {
+  .s-refine { grid-template-columns: 1fr; }
+  .s-say.desk { display: none; }
+  .s-say.phonebar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--paper); border-top: 1.5px solid var(--ink); padding: 10px 16px 14px; margin: 0; }
+  .st { padding-bottom: 72px; }
+  .s-say input, .s-say .btn, .s-decide .btn { min-height: 44px; }
+}
