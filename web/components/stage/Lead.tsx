@@ -54,7 +54,10 @@ export default function Lead(p: Props) {
     const q = quote(f);
     if (q && f === "annual_demand_kwh" && q === quote("monthly_bill_eur")) return `From "${q}" at ${price} ct`;
     if (q) return `"${q}"`;
-    if (read?.source === "call" && f in read.inputs) return read.estimated?.includes(f) ? "Estimated on the call" : "Said on the call";
+    if (read?.source === "call" && f in read.inputs) {
+      const o = read.origin ?? {}, tag = o[f] ?? (f === "has_ev" || f === "ev_annual_km" ? o.ev : f === "electricity_price_ct_kwh" ? o.monthly_bill_eur && "estimated" : undefined);
+      return tag === "form" ? "From the form" : tag === "estimated" ? "Estimated" : "From the call";
+    }
     if (f === p.question?.field && p.answer !== undefined) return fromBill && f === "annual_demand_kwh" ? `About ${n0(fromBill.kwh)} kWh from ${n0(fromBill.eur)} EUR a month at ${price} ct` : "You answered";
     return f === "annual_demand_kwh" && !p.asking && p.question?.field !== f ? "Assumed: not in the lead" : "Not in the lead";
   };
@@ -62,11 +65,12 @@ export default function Lead(p: Props) {
   const addr = read?.inputs.address ? (p.roof && p.roof.source !== "none" ? `${read.inputs.address} (matched)` : read.inputs.address) : null;
   const more = [
     addr,
-    i.house_size_sqm ? `${n0(i.house_size_sqm)} m²` : null,
-    i.house_built_year ? `built ${i.house_built_year}` : null,
+    // Stated in the lead wins; otherwise the address estimate, labelled as one.
+    read?.inputs.house_size_sqm ? `${n0(read.inputs.house_size_sqm)} m²` : p.roof?.floor_area_m2 ? `about ${n0(Math.round(p.roof.floor_area_m2 / 10) * 10)} m², estimated from the address, upper bound` : null,
+    read?.inputs.house_built_year ? `built ${read.inputs.house_built_year}` : p.roof?.build_year_estimate ? `built about ${p.roof.build_year_estimate}${p.roof.build_year_class ? ` (${p.roof.build_year_class.replace(/\s*[-–]\s*/, " to ")})` : ""}, estimated from the address` : null,
     i.has_solar ? `solar ${i.existing_solar_kwp ?? ""} kWp already` : "no solar",
     i.has_storage ? `battery ${i.existing_storage_kwh ?? ""} kWh already` : "no battery",
-  ].filter(Boolean).join(", ");
+  ].filter(Boolean).join("; ");
 
   return (
     <section className="s-lead" aria-label="The lead">
