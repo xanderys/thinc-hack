@@ -16,7 +16,7 @@ from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES, date_t
 
 SEED = 42
 K = 15
-MODEL_VERSION = "chain-hgb-knn-5+hourly"
+MODEL_VERSION = "chain-hgb-knn-6+hourly"
 NO_PV_RULE = "pv"  # "pv": propose PV when a battery would otherwise have none; "battery_none": drop the battery
 T_NOW = {"t": 2026.3}  # latest offer date in train; used when a request carries no offer_date
 COMPONENTS = ["pv", "battery", "heatpump", "wallbox"]
@@ -225,7 +225,7 @@ class Engine:
         # wallbox: decision from the EV flag (learned decision lost to this rule on test; README)
         p_w = float(self.models["wb_dec"].predict_proba(X2)[0, 1])
         wb, src = choose("wallbox_kw", 1.0 if inp.get("has_ev") else 0.0,
-                         lambda: 22.0 if float(self.models["wb_size"].predict_proba(X2)[0, 1]) >= 0.5 else 11.0)
+                         lambda: self.wallbox_default(inst))
         comps["wallbox"] = self._detail("wallbox", wb, p_w, nb, inp, src)
 
         inv = ov["inverter_kw"] if isinstance(ov.get("inverter_kw"), (int, float)) else rules.inverter_kw(pv)
@@ -272,10 +272,20 @@ class Engine:
         for k, i in enumerate(inps):
             cat = self.catalogue[insts[k]]
             hp = snap_up(rules.heatpump_kw(i), cat["heatpump"]) if p_h[k] >= 0.5 and i.get("heating_type") != "Heatpump" else 0.0
-            wb = (22.0 if p_22[k] >= 0.5 else 11.0) if i.get("has_ev") else 0.0
+            wb = self.wallbox_default(insts[k]) if i.get("has_ev") else 0.0
             out.append({"pv_kwp": float(pv[k]) or None, "inverter_kw": rules.inverter_kw(pv[k]) if pv[k] else None,
                         "battery_kwh": float(bats[k]) or None, "heatpump_kw": hp or None, "wallbox_kw": wb or None})
         return out
+
+    def wallbox_default(self, inst) -> float:
+        """The installer's wallbox size if it sells one size at least 60% of the time, else 11 kW (registration only;
+        22 kW needs grid operator approval, docs/domain.md 1). The learned 11-vs-22 choice flipped on mileage alone: noise."""
+        s = self.train[(self.train.installer_id == inst) & (self.train.wallbox_kw > 0)].wallbox_kw
+        if len(s):
+            vc = s.value_counts(normalize=True)
+            if vc.iloc[0] >= 0.6:
+                return float(vc.index[0])
+        return 11.0
 
     ASK_TOL = {"pv_kwp": 1.0, "battery_kwh": 2.0, "heatpump_kw": 2.0, "wallbox_kw": 2.0}
 
@@ -428,8 +438,10 @@ class Engine:
             if inp.get("heating_type") in ("Gas", "Oil"):
                 return f"Replaces the {inp['heating_type'].lower()} boiler: {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
             return f"Included by the planner: {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
+        if src == "include" and comp == "wallbox":
+            return f"Included by the planner at {fmt(size, unit)}: the standard size; 22 kW needs grid operator approval."
         if src == "include" and comp != "pv" and comp != "battery":
-            return f"Included by the planner at {fmt(size, unit)}, the size this installer fits most for homes like this."
+            return f"Included by the planner at {fmt(size, unit)}."
         if comp == "pv":
             if not inc:
                 return f"{n - k} of {n} similar homes got no new PV" + (" (existing system on the roof)." if inp.get("has_solar") else ".")
@@ -452,9 +464,9 @@ class Engine:
                 if inp.get("has_wallbox"):
                     return "The home already has a wallbox."
                 return f"No EV recorded, so no wallbox; {n - k} of {n} similar homes also went without."
-            if inp.get("has_ev") and k < n / 2:
-                return f"The home has an EV, so a wallbox at {fmt(size, unit)}; {k} of {n} similar homes got one."
-            return f"The home {ev}; {k} of {n} similar homes got a wallbox, most often {fmt(st['median_size'], unit)}."
+            if inp.get("has_ev"):
+                return f"The home has an EV, so a wallbox at {fmt(size, unit)}, the standard size (22 kW needs grid operator approval); {k} of {n} similar homes got one."
+            return f"The home {ev}; {k} of {n} similar homes got a wallbox."
 
     def _explain(self, inp, design, comps, nb, econ):
         d = inp.get("annual_demand_kwh") or 0
