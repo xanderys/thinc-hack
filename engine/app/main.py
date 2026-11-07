@@ -80,7 +80,7 @@ def startup():
     leads.load_all()  # before anything can create or step a lead
     leads.expire_stale()
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
-    threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models()), daemon=True).start()
+    threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models(), refresh_all_leads()), daemon=True).start()
     # the scoreboard is the lab's sealed table (final_test.json); the live recompute stays available via warm_rules_eval()
 
 
@@ -606,6 +606,7 @@ def _full_draft_later(lead_id: str, inp: dict):
             lead = leads.LEADS.get(lead_id)
             if lead and lead["draft"]["design"] == d["design"]:
                 lead["draft"] = d
+                lead["draft_stamp"] = engine_stamp()
                 leads.save(lead)
         except Exception:
             log.exception("full draft failed")
@@ -742,6 +743,40 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
             "dropped": dropped}
 
 
+_STAMP: dict = {}
+
+
+def engine_stamp() -> str:
+    """Changes whenever a design could change: model cache key, rules, hourly physics, roof model code, live recommender."""
+    if "v" not in _STAMP:
+        h = hashlib.sha256(cache_key().encode())
+        here = Path(__file__).parent
+        for f in sorted(list((here / "planner_rules").glob("*.py")) + list((here / "planner_rules").glob("*.json"))
+                        + list((here / "hourly").glob("*.py")) + list((roofs.ROOT / "roof" / "model").glob("*.py"))):
+            h.update(f.read_bytes())
+        h.update(model_mod.RECOMMENDER["mode"].encode())
+        _STAMP["v"] = h.hexdigest()[:12]
+    return _STAMP["v"]
+
+
+def refresh_lead(lead: dict) -> dict:
+    """A draft made by an earlier engine is recomputed (same pipeline, with the roof) before it is shown, and saved."""
+    if lead.get("draft_stamp") == engine_stamp() or STATE.get("engine") is None:
+        return lead
+    try:
+        lead["draft"] = engine().predict(dict(lead["inputs"]))
+        lead["draft_stamp"] = engine_stamp()
+        leads.save(lead)
+    except Exception as e:
+        log.warning("lead %s refresh failed: %s", lead.get("lead_id"), e)
+    return lead
+
+
+def refresh_all_leads():
+    for lead in list(leads.LEADS.values()):
+        refresh_lead(lead)
+
+
 def _lead_out(lead: dict) -> dict:
     return {"lead_id": lead["lead_id"], "status": lead["status"], "customer_name": lead["customer_name"],
             "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
@@ -757,7 +792,7 @@ def get_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
-    return _lead_out(lead)
+    return _lead_out(refresh_lead(lead))
 
 
 @app.delete("/api/leads/{lead_id}")
@@ -777,6 +812,8 @@ def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     leads.expire_stale()
     rows = sorted(leads.LEADS.values(), key=lambda l: l["updated_at"], reverse=True)[: max(1, min(limit, 200))]
+    for l in rows:
+        refresh_lead(l)
     return [{"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
              "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
              "updated_at": l["updated_at"]} for l in rows]
