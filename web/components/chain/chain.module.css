@@ -160,3 +160,9 @@
 .rot { margin: 8px 0 0; font-size: 13px; line-height: 1.4; color: var(--ink-2); border-left: 0; padding: 8px 10px; background: #fff7e6; border-radius: 8px; }
 .varC { margin: -4px 0 8px; font-size: 11.5px; color: var(--ink-3); }
 .cashL { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-3); margin: 4px 2px 0; }
+/* The open card's decisions (preference, locks, Undo, Approve) sit at the end of the chain. */
+.decide { margin: 10px 12px 12px; }
+.decide :global(.t-row) { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.decide :global(.t-pref) { display: grid; grid-template-columns: 1fr 1fr; width: 100%; margin: 0; }
+.decide :global(.t-pref button) { min-height: 40px; font-size: 13px; padding: 6px 10px; }
+.decide :global(.t-go) { margin-left: auto; display: flex; gap: 8px; }
