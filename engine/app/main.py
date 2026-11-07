@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import pickle
 import threading
@@ -9,7 +10,7 @@ from typing import Literal, Optional, Union
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import os
@@ -77,7 +78,7 @@ def startup():
         threading.Thread(target=warm_inbox, daemon=True).start()
     leads.load_all()  # before anything can create or step a lead
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
-    threading.Thread(target=roofs.warm, daemon=True).start()
+    threading.Thread(target=lambda: (roofs.warm(), roofs.warm_models()), daemon=True).start()
     threading.Thread(target=warm_rules_eval, daemon=True).start()
 
 
@@ -421,6 +422,37 @@ def roof(address: str = "", postcode: str = ""):
     if postcode.strip():
         return roofs.postcode_lookup(postcode)
     return err(422, "address or postcode is missing.")
+
+
+@app.get("/api/roof/model")
+def roof_model(address: str = ""):
+    """v2.1: the planes of the actual house (LoD2, per-plane sun yield, panel layout) and a URL to its 3D model."""
+    if not address.strip():
+        return err(422, "address is missing.")
+    try:
+        info = roofs.model_info(address)
+    except RuntimeError as e:
+        return err(503, str(e))
+    planes = {}
+    p = info.get("planes_json_path")
+    if p and Path(p).exists():
+        planes = json.loads(Path(p).read_text())
+    return {**(planes if isinstance(planes, dict) else {"planes": planes}), "glb_url": roofs.model_url(address),
+            "textured": info.get("textured"), "licence": info.get("licence"), "source": info.get("source")}
+
+
+@app.get("/api/roof/model/file")
+def roof_model_file(address: str = ""):
+    if not address.strip():
+        return err(422, "address is missing.")
+    try:
+        info = roofs.model_info(address)
+    except RuntimeError as e:
+        return err(503, str(e))
+    g = info.get("glb_path")
+    if not g or not Path(g).exists():
+        return err(404, f"No 3D model file for {address}.")
+    return FileResponse(g, media_type="model/gltf-binary", headers={"Cache-Control": "public, max-age=86400"})
 
 
 class AskReq(BaseModel):

@@ -48,6 +48,13 @@ def to_contract(d: dict) -> dict:
 
 
 def lookup(address: str) -> dict:
+    res = _lookup(address)
+    if res.get("source") not in ("none", "postcode") and model_available():
+        res = {**res, "model_url": model_url(address)}  # v2.1: the 3D house, built on first request
+    return res
+
+
+def _lookup(address: str) -> dict:
     key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
     path = CACHE / f"{key}.json"
     if path.exists():
@@ -67,7 +74,8 @@ def cached(address: str):
     key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
     path = CACHE / f"{key}.json"
     if path.exists():
-        return json.loads(path.read_text())
+        r = json.loads(path.read_text())
+        return {**r, "model_url": model_url(address)} if r.get("source") not in ("none", "postcode") and model_available() else r
     if key not in _warming:
         _warming.add(key)
         import threading
@@ -134,6 +142,53 @@ def postcode_lookup(postcode: str) -> dict:
     CACHE.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(res, ensure_ascii=False))
     return res
+
+
+MODEL_CACHE = Path(__file__).resolve().parent.parent / ".cache" / "roofmodel"
+CHECK_ADDRESSES = [HERO_ADDRESS, "Wilhelm-Keim-Straße 4a, 82031 Grünwald", "Neufeldstraße 6, 81243 München",
+                   "Evereststraße 68, 81825 München", "Fliederstraße 81, 82110 Germering"]
+
+
+def model_available() -> bool:
+    try:
+        return hasattr(_roof(), "model")
+    except Exception:
+        return False
+
+
+def model_url(address: str) -> str:
+    from urllib.parse import quote
+    return f"/api/roof/model/file?address={quote(address)}"
+
+
+def model_info(address: str) -> dict:
+    """v2.1: roof.model(address) from roof/model (REONIC MODEL): {glb_path, planes_json_path, textured, licence, source},
+    cached by address so a model is built once."""
+    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
+    path = MODEL_CACHE / f"{key}.json"
+    if path.exists():
+        info = json.loads(path.read_text())
+        if Path(info.get("glb_path", "")).exists():
+            return info
+    m = _roof()
+    if not hasattr(m, "model"):
+        raise RuntimeError("The 3D roof model is not installed yet (roof/model).")
+    res = m.model(address)
+    info = res if isinstance(res, dict) else getattr(res, "__dict__", {})
+    info = {k: (str(v) if k.endswith("_path") else v) for k, v in info.items()}
+    MODEL_CACHE.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(info, ensure_ascii=False))
+    return info
+
+
+def warm_models():
+    if not model_available():
+        return
+    for a in CHECK_ADDRESSES:
+        try:
+            model_info(a)
+        except Exception as e:
+            log.warning("roof model warm-up failed for %s: %s", a, e)
 
 
 def facing(segs: list) -> str:
