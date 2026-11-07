@@ -86,13 +86,13 @@ footer: Marquee
 
 <!-- _class: ink -->
 
-<p class="label">Inside Reonic</p>
+<p class="label">Roadmap</p>
 
-## A Propose design step in the offer.
+## The closed loop.
 
-<div class="data">Reonic’s AI chat already sizes from past projects<br>this adds proof on every number, an honest score,<br>the one question, and changes by sentence</div>
+<div class="data"><b>today</b> each design replays through Munich’s real 2025:<br>real weather, real day-ahead prices, <b>576</b> negative hours<br><b>next</b> installed systems’ meter and inverter data flows back<br>through Reonic and teaches the next design what worked</div>
 
-[UNCONFIRMED: naming Reonic's AI chat on a slide; source docs/research/icp-reonic.md]
+<p class="brief">Prices and weather: Energy-Charts (Fraunhofer ISE), CC BY 4.0</p>
 
 ---
 

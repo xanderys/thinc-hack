@@ -31,3 +31,8 @@ Draft v1. Every number here must match the final deck.
 
 10. **What would you do with another month?**
     Per-installer style across all 3,000+ installers, the two intake fields, the validation view, then the homeowner view on the same engine.
+
+## Does anyone already feed installed-system data back into design?
+We found no public product that does. 1KOMMA5° Heartbeat connects 50,000 to 60,000 systems, but uses them to trade power, not to size new systems (1KOMMA5° press release, 14 Nov 2025). Reonic holds both the offer and the installed system, so it can close that loop.
+Sources: https://1komma5.com/de/magazin/pressemitteilungen/heartbeat-ai-verfuegbar-fuer-millionen-bestehender-energiesysteme/ and https://api.energy-charts.info/
+Words: "replay" for what we built, "closed loop" for the roadmap. Never "world model", never "nobody does".
