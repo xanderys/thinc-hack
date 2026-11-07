@@ -25,7 +25,7 @@ For each home: the house model's roof planes (LoD2 faces from GET /api/roof/mode
 | `feed_in` | 7.7 / 6.66 ct/kWh | EEG feed-in for systems from 1 Aug 2026, up to 10 kWp / 10 to 40 kWp, fixed 20 years (docs/domain.md) |
 | `negative_hours` | 573 h | no feed-in pay in negative-price hours (EEG 51, Solarspitzengesetz); 573 negative hours in 2025 (SMARD) ([link](https://www.smard.de/page/en/topic-article/5892/219038)) |
 | `pv_cost` | 2,333 + 883 per kWp EUR | line through 1,350 EUR/kWp at 5 kWp and 1,000 at 20 kWp, midpoints of the 2026 size table (reduco); Fraunhofer ISE average 1,015 EUR/kWp at 10 kWp, March 2026 ([link](https://reduco.ai/blog/solar/solaranlage-kosten-nach-groesse-kwp)) |
-| `battery_cost` | 500 EUR/kWh | Verbraucherzentrale 2026: 300 to 700 EUR per kWh installed, midpoint ([link](https://42watt.de/magazin/stromspeicher-kosten)) |
+| `battery_cost` | 315 EUR/kWh | BSW Solar 2026 market average, installed, 270 to 420 EUR per kWh (via reduco 2026); Verbraucherzentrale gives 300 to 700 ([link](https://reduco.ai/blog/stromspeicher-kosten-vergleich-2026)) |
 | `battery_life` | 15 years or 6,000 cycles  | Verbraucherzentrale 10 to 15 years; LFP 6,000 full cycles to 80% capacity; replaced at today's price ([link](https://42watt.de/magazin/lebensdauer-stromspeicher)) |
 | `battery_physics` | 90% usable, 90% round trip  | HTW Berlin Stromspeicher-Inspektion 2025 and Unabhaengigkeitsrechner FAQ ([link](https://solar.htw-berlin.de/studien/stromspeicher-inspektion-2025/)) |
 | `htw_cap` | 1.5 kWh per MWh | HTW Berlin rule: usable storage at most 1.5 kWh per 1,000 kWh of use; flagged, not a hard cap ([link](https://www.finanztip.de/daily/stromspeicher-zur-pv-anlage-so-gross-darf-er-hoechstens-sein/)) |
@@ -51,6 +51,7 @@ Each step is one sourced assumption or structural rule, never a number tuned to 
 
 | # | Commit | Change | Source | Fit half: PV / battery / all four |
 |---|---|---|---|---|
+| 1 | next | Battery price: BSW 2026 market average 315 EUR/kWh installed in place of the Verbraucherzentrale midpoint 500 | [BSW via reduco 2026](https://reduco.ai/blog/stromspeicher-kosten-vergleich-2026) | pending |
 | 0a | fc6dae2 | Structural: no heat pump while the year's heat is only a default; heat load precedence demand, bill, envelope (upper bound) | REONIC ENGINE bug report; envelope uses unrenovated IWU U-values | pending |
 | 0 | c1bf388 | First end-to-end rules-2 (knee of the frontier, sourced 2026 prices) | as in the parameter table | 29.5% / 30.4% / 8.4% (own run, 654 jobs; rules-1 41.0 / 49.2 / 17.7). 20-year NPV at or above the expert's on 98% of homes, payback shorter on 75%; median battery 5 kWh against the experts' 10 |
 

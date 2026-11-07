@@ -17,7 +17,7 @@ YEAR = 2025
 
 PRICE_CT = 37.0             # BDEW Strompreisanalyse Aug 2026: households 37.0 ct/kWh at 3,500 kWh
 FEEDIN_LOW, FEEDIN_HIGH = rules.FEEDIN_LOW, rules.FEEDIN_HIGH
-BAT_EUR_KWH = 500           # Verbraucherzentrale via 42watt 2026: 300 to 700 EUR/kWh installed, midpoint
+BAT_EUR_KWH = 315           # BSW Solar 2026 market average, installed (via reduco 2026: range 270 to 420)
 BAT_LIFE_YEARS = 15         # Verbraucherzentrale: 10 to 15 years
 BAT_LIFE_CYCLES = 6000      # LFP to 80% capacity (42watt, reduco 2026)
 PV_FIXED_EUR, PV_EUR_KWP = 2333.0, 883.0  # line through 5 kWp at 1,350 and 20 kWp at 1,000 EUR/kWp (reduco 2026 size table midpoints)
