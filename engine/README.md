@@ -32,14 +32,16 @@ Rules:
 4. An 11 kW wallbox when an electric car is real or planned.
 5. The inverter nearest 0.85 times the PV kWp.
 
-Constants, fitted on half of each installer's projects (seed 42), scored on the other half:
+Constants, fitted on half of each installer's projects (seed 42), scored on the other half; the rule sentences in `DesignResponse.rules` and `docs/rules.md` come from the same `rules_table()` and carry each installer's numbers:
 
 | Constant | 2a8ba8e2 / 23c108b7 | Source |
 |---|---|---|
-| `pv_base_kwp` | 4.95 / 11.7 kWp | fitted |
-| `oversize_ratio` | 0.95 / 0.0 | fitted; 23c108b7 sells one array whatever the use |
-| `battery_per_kwp` | 0.80 / 0.85 kWh per kWp | fitted |
+| `base_kwp` | 4.95 / 11.7 kWp | fitted |
+| `per_use_slope` | 0.95 / 0 | fitted; 23c108b7 sells one array whatever the use |
+| `battery_kwh_per_kwp` | 0.80 / 0.85 kWh per kWp | fitted |
 | `boiler_age_years` | 20 | default, not in the data |
+| `battery_packages` | the installer's packages on sale at the offer date | catalogue, not fitted |
+| `evening_share` | 0.52 | BDEW H25 against the PVGIS Munich TMY, not fitted |
 
 Side by side, `/api/eval.recommenders`, on the 126 held-out homes that neither the black box nor the fitted constants saw (all four within tolerance / PV / battery):
 
