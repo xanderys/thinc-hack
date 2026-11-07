@@ -74,6 +74,8 @@ All four within tolerance, lowest option, our bands:
 | rules-2-physics | 7.4% | 7.1% |
 | textbook | 6.8% | 6.3% |
 
+rules-3-band scores 20.9 on the test half, within noise of production's 18.6 (p 0.65); we ship the rule set a planner can read.
+
 The differences between the rule sets and the black box are not significant (McNemar p 0.33 to 1.00): they are ties. Counting a hit against any option the expert offered, rules-4 reaches 19.7% on the test half. Where rules-4 differs from the expert (514 of 633 homes), both designs through the same hourly simulation: rules-4 has the better 20-year NPV in 327 homes and the expert in 180, median gain EUR 430.
 
 ## Data
