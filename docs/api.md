@@ -1,4 +1,4 @@
-# Engine API contract (v1)
+# Engine API contract (v1.1)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -68,7 +68,7 @@ interface DesignResponse {
 
 - `GET /health` → `{ ok: true, model_version, trained_on: { projects, installers }, data_loaded: boolean }`
 - `POST /api/design` body `{ inputs: HomeInputs }` → `DesignResponse`
-- `POST /api/refine` body `{ inputs: HomeInputs, overrides?: Partial<Design> }` → `DesignResponse & { diff: { component, from, to, why }[] }`. Overrides are planner-fixed components; the engine re-sizes the rest around them.
+- `POST /api/refine` body `{ inputs: HomeInputs, overrides?: Overrides }` → `DesignResponse & { diff: { component, from, to, why }[] }`. `Overrides = Partial<Record<keyof Design, number | null | "include">>`: a number fixes the size, `null` fixes none, `"include"` means include it and let the engine size it (v1.1). The engine re-sizes the rest around the overrides.
 - `POST /api/validate` body `{ inputs: HomeInputs, design: Design }` → `{ flags: { component, level: "ok"|"unusual"|"implausible", message, neighbours: Neighbours }[] }`
 - `GET /api/projects?split=test&limit=50` → `{ project_id, installer_id, inputs: HomeInputs, expert: Design }[]`
 - `GET /api/projects/{project_id}` → `{ project_id, installer_id, inputs, expert: Design, ours: DesignResponse }`
@@ -81,8 +81,11 @@ interface Eval {
     decision_accuracy: number | null; baseline_decision_accuracy: number | null;
     size_mae: number | null; baseline_size_mae: number | null; unit: string;
     within_tolerance_share: number | null; tolerance: string;   // e.g. "±1 kWp"
+    ceiling_within_tolerance_share?: number; textbook_within_tolerance_share?: number; floor_slope_within_tolerance_share?: number; // v1.1; baseline_* = textbook
   }>;
-  overall: { design_match_share: number; baseline_design_match_share: number; definition: string };
+  overall: { design_match_share: number; baseline_design_match_share: number; definition: string;
+             ceiling_design_match_share?: number; textbook_design_match_share?: number; floor_slope_design_match_share?: number };
+  ceiling?: { method: string; pv_agreement_share: number; battery_agreement_share: number };  // planner self-agreement on near-identical inputs, v1.1
   per_installer: Record<InstallerId, { test: number; design_match_share: number }>;
   deviations: { project_id: string; component: string; ours: number | null; expert: number | null; note: string }[]; // top 20
 }
