@@ -13,7 +13,10 @@ def load_engine():
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / f"engine-{main.cache_key()}.pkl"
     if path.exists():
-        return pickle.loads(path.read_bytes()), path
+        eng = pickle.loads(path.read_bytes())
+        if hasattr(eng, "restore_globals"):  # module state set in fit()
+            eng.restore_globals()
+        return eng, path
     df, stats = data.load()
     eng = Engine(df, stats).fit()
     for old in OUT.glob("engine-*.pkl"):

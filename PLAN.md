@@ -34,12 +34,14 @@ Contract between units: `docs/api.md`. Change it only through the orchestrator.
 - Sun 10:00 video recorded, deck in repo. Sun 13:30 submitted (cut-off 14:00).
 
 ## Done
+- 19:40 Live on https://marquee-reonic.vercel.app: lead read with quotes, one computed question, Plan system panel (house, four numbers, power flow, components, variants), refine by sentence with Approve, Check (validation cards, real held-out home, inbox of 20, scoreboard). Old pages at /classic. Engine: roof from Bavarian LoD2, derivation per component, offer variants, monotonic model, synthetic suite (10,000 homes, violations 3,135 to 740).
 - Repo, collaborators, dataset on both Macs (private), domain research in docs/domain.md.
 - 14:00 Engine live on the mini behind Tailscale Funnel with the full contract; merged to main. First scoreboard: full-design match 19.7% vs 2.5% baseline; PV MAE 3.4 kWp (weak), battery within 2 kWh 52.9% vs 40.4%.
 - Engine v1.2 to v1.6 (hourly economics, ask, inbox, roof, derivation) and web stage steps 1 to 3 merged; production smoke 13/13.
 - Deploy: MARQUEE SHIP runs vercel deploy --prod from the repo root then vercel alias set; Git deploys are cancelled by the ignore step.
 
 ## Next
+- Stage: step 5 and 6, then the why-this-number reveal, facts panel with preference control, synthetic line, voice behind a flag. Deck and video re-pinned to hero v2. Sun 08:00 freeze, 10:00 video and deck final, 13:30 submit.
 - 15:45 Product plan approved (see docs/briefs/stage.md): agentic stage at /, Reality at /check, old pages at /classic. Engine adds /api/ask and /api/inbox (v1.3). Deck resumed.
 - Engine: PV accuracy (no-PV retrofits as a first decision, catalogue snapping), wallbox, economics lookup, README.
 - Web: mock-backed planner by 16:15, then real engine.

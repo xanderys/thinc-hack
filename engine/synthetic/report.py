@@ -5,6 +5,7 @@ from pathlib import Path
 from .common import ENGINE, OUT
 
 REPORT = OUT / "report.json"
+COMMITTED = Path(__file__).parent / "report.json"  # the same aggregates, committed: synthetic homes only, no real rows
 DOC = ENGINE.parent / "docs" / "synthetic.md"
 
 
@@ -15,8 +16,9 @@ def headline(r: dict) -> str:
 
 def short(r: dict) -> str:
     m = next(i for i in r["invariants"] if i["name"] == "Raising demand never lowers PV")["pass_share"]
-    return (f"Tested on {r['n']:,} synthetic homes against the hourly physics: {r['plausible_share'] * 100:.0f} percent plausible, "
-            f"monotonic in demand {m * 100:.0f} percent of the time.")
+    floor = lambda x: int(x * 100)  # rounded down so 99.6 never reads as 100
+    return (f"Tested on {r['n']:,} synthetic homes against the hourly physics: {floor(r['plausible_share'])} percent plausible, "
+            f"monotonic in demand {floor(m)} percent of the time.")
 
 
 BASELINE = Path(__file__).parent / "baseline.json"  # pass shares before the engine's fixes, aggregates only
@@ -55,18 +57,21 @@ def examples(r: dict) -> str:
 def write(r: dict):
     OUT.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(r, indent=1, default=float))
+    COMMITTED.write_text(json.dumps(r, indent=1, default=float))
     DOC.write_text(doc(r))
 
 
 def load_report() -> dict | None:
     """The /api/eval.synthetic shape plus extras (split, runtime, coverage); None when the suite has not run."""
-    if not REPORT.exists():
+    path = next((p for p in (COMMITTED, REPORT) if p.exists()), None)
+    if path is None:
         return None
-    r = json.loads(REPORT.read_text())
+    r = json.loads(path.read_text())
     return {"n": r["n"], "generated_at": r["generated_at"], "plausible_share": r["plausible_share"],
             "monotonicity_violations": r["monotonicity_violations"], "headline": headline(r), "headline_short": short(r),
             "invariants": [{k: i[k] for k in ("name", "group", "pass_share", "n_checked", "worst")} for i in r["invariants"]],
-            "split": r["split"], "runtime_s": r["runtime_s"], "coverage": r["coverage"]}
+            "split": r["split"], "runtime_s": r["runtime_s"], "coverage": r["coverage"],
+            "before": json.loads(BASELINE.read_text()) if BASELINE.exists() else None}
 
 
 def _pct(x):
@@ -105,7 +110,7 @@ Short:
 ## Method
 
 - Homes: {r['n']:,} from the engine's {r['train_rows']:,} training rows (seed {r['seed']}). In-distribution {s['in_distribution']:.0%}: a real row with demand, mileage, price, heat and size scattered (lognormal, 8 to 15%), so the joint structure of installer, load profile, EV, heating and existing kit is kept. Edge {s['edge']:.0%}: demand 1,500 to 2,500 or 10,000 to 20,000 kWh, EV at 30,000 km, heat pump plus EV, existing PV of 3 to 15 kWp. Adversarial {s['adversarial']:.0%}: demand 0, negative or 50,000 kWh, price 0, 40 m2 with 10,000 kWh, existing kWp with `has_solar` false, mileage with no EV, storage with no PV.
-- Oracle: the API's input check, then `Engine.sizes_batch` (as `/api/inbox`) in one batch with every metamorphic variant, then `Engine._physics` (simulate, validate_physics, optimum) per home in-process. Every simulation, including the optimum's grid, is checked for energy balance.
+- Oracle: the API's input check, then `Engine.sizes_batch` (as `/api/inbox`) in one batch with every metamorphic variant, then `Engine._physics` (simulate, validate_physics, optimum) per home in-process. Every simulation, including the optimum's grid, is checked for energy balance. Honesty passes on an input error, a hard rule, a physics warning or a warning about the inputs; routine sizing bands (payback, kWp per MWh, kWh per kWp) do not count.
 - Coverage: {cov['real_cells_covered_share'] * 100:.0f}% of the {cov['real_cells']} cells seen in the real inputs (installer x load profile x EV x heating x existing PV x demand band) are covered, plus {cov['new_cells']} cells the real data never has.
 - Runtime: {r['runtime_s']:.0f} s, {bal['simulations']:,} simulations.
 
@@ -122,7 +127,7 @@ Worst cases (synthetic homes):
 
 {examples(r)}
 
-The worst five cases per invariant are in `engine/.cache/synthetic/report.json` and `/api/eval` (`synthetic`); the model is not changed on them.
+"Before fixes" is the frozen engine before MONO (4,500 kWh default imputed, missing price filled, PV monotone in demand, battery in price) and input validation; the optimum grid also went from 12 to 8 PV sizes, so gap numbers are not strictly comparable. The worst five cases per invariant are in `engine/synthetic/report.json` and `/api/eval` (`synthetic`); the model is not changed on them.
 
 ## Limits
 

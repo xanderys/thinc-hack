@@ -187,7 +187,7 @@ def honesty(adv, errors, designs, phys) -> dict:
             ok, note, d = True, f"Rejected: {e}", None
         else:
             p, d = phys[h["_id"]], designs[h["_id"]]
-            flags = list(p.get("hard", {}).values()) + p.get("phys_warn", []) + ([p["error"]] if "error" in p else [])
+            flags = list(p.get("hard", {}).values()) + p.get("phys_warn", []) + p.get("input_warn", []) + ([p["error"]] if "error" in p else [])
             ok, note = bool(flags), (" ".join(flags) if flags else "Designed with no error and no flag.")
         by_kind.setdefault(h["_kind"], []).append(ok)
         rows.append((ok, 1.0, {"kind": h["_kind"], "inputs": show(h), "design": d, "note": note}))

@@ -52,4 +52,8 @@ for p in /classic /classic/check; do
   [ "$c" = 200 ] && step "GET $p" ok || step "GET $p" bad "HTTP $c"
 done
 
+r=$(curl -s "$B/api/inbox?limit=20")
+echo "$r" | python3 -c 'import sys,json;d=json.load(sys.stdin);d=d if isinstance(d,list) else d.get("rows",d.get("items",[]));assert len(d)==20' 2>/dev/null \
+  && step "web GET /api/inbox 20 rows" ok || step "web GET /api/inbox 20 rows" bad "$(echo "$r" | head -c 200)"
+
 exit $fail

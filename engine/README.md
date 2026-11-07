@@ -2,6 +2,15 @@
 
 Statistics plus physics, no LLM. Proposes PV, battery, heat pump and wallbox in the style of one installer, and scores itself against held-out expert designs.
 
+## What it removes from the planner's day
+
+- Enquiry to first design: `/api/design` drafts PV, battery, heat pump and wallbox from the facts in a lead, with reasons, in under 300 ms.
+- Site check: `/api/roof` reads the roof from an address (Bavarian LoD2), so no roof sketch before the first offer.
+- Back-and-forth with the homeowner: `/api/ask` names the one missing fact that changes the design most; nothing else is asked.
+- Offer variants: `variants` gives the planners' design plus most independence, best payback and lowest upfront cost, each simulated hour by hour, so the offer has options without re-planning.
+- Checking: `plausibility`, `/api/validate` and each component's `derivation` show why a number is what it is, so a senior planner signs off exceptions only.
+- The morning queue: `/api/inbox` is the overnight drafts, held-out real projects already designed, with the misses flagged and explained.
+
 ## Run
 
 ```bash
@@ -92,6 +101,8 @@ Each component carries `derivation`: one physical axiom with this home's numbers
 
 ## Scoreboard
 
+Numbers in this section are from before the synthetic fixes; the current board is live at `/api/eval` and summarised under "Fixes from the synthetic suite".
+
 Scored on 258 new-system test jobs: the expert fitted PV, or PV is recorded. The other 56 test jobs are add-ons (battery extensions, wallboxes) to PV the status quo does not record; a design tool proposing for a home without PV cannot reproduce them, so they are reported separately. About 200 battery-only add-ons to homes recorded without PV are excluded from the main board; on all 314 test jobs we score 14.6% vs 5.4%. "Near-identical homes" is the agreement between near-identical training homes: each test home against the median design of 5 or more training homes with identical installer, demand, EV flag and heating type (covers 72% of test homes).
 
 | Within tolerance | Ours | Textbook | Floor-slope | Near-identical homes |
@@ -107,6 +118,24 @@ Textbook: 1.3 kWp per MWh plus 2.5 kWp with an EV. Floor-slope: 6.5 kWp plus 0.5
 Also on the new-system jobs: PV within ±2 kWp 50.8% (textbook 27.9%), PV MAE 2.66 kWp (textbook 4.16), battery MAE 2.41 kWh (2.46). Per installer, all four: 2a8ba8e2 16.6%, 23c108b7 20.0%.
 
 All 314 test jobs, add-ons included: all four 14.6% (textbook 5.4%), PV 30.6%, battery 48.1%. Before the battery-needs-PV rule the engine scored 22.0% here by copying the add-on pattern (PV none, battery 5 kWh) onto homes that record no PV; that design is not plausible to show a planner, so the rule stays.
+
+## Fixes from the synthetic suite
+
+The synthetic suite (`engine/synthetic`, 10,000 physics-checked homes) found two faults; both are fixed and the model is monotone now (`MONO` in `app/model.py`):
+
+- Demand up lowered PV in 8.6% of homes, because the 4,500 kWh default was learned as a value. Exactly 4,500 (or 0) is now treated as missing and imputed with the training median for the load profile (FamilyOfFour 4,000, H0 4,350, HomeOfficeOnePerson 3,550, else 4,300), and PV is fitted with `monotonic_cst` +1 on demand.
+- A higher tariff dropped the battery in 26.3% of homes. A missing price is now 32 ct (not "missing"), and the battery decision and size carry `monotonic_cst` +1 on price.
+
+Held-out board, before fixes / now:
+
+| Within tolerance | Before fixes | Now |
+|---|---|---|
+| All four at once | 17.4% | 17.1% |
+| PV ±1 kWp or 15% | 36.8% | 37.6% |
+| Battery ±2 kWh | 49.6% | 48.8% |
+| PV MAE | 2.66 kWp | 2.64 kWp |
+
+On 150 held-out homes swept through demand and price: demand up lowers PV 36 before, 0 now; price up shrinks the battery 88 before, 21 now (the rest move through the PV size, which price does not constrain).
 
 ## Known limits
 
