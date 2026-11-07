@@ -316,8 +316,8 @@ def simulate(inputs: dict, design: dict, location="Munich") -> SimResult:
     a.append("PV EUR 1,350 per kWp at 5 kWp falling to EUR 1,000 at 20 kWp; battery EUR 450 per kWh.")
 
     econ = {
-        "capex_eur": round(capex, -1), "annual_saving_eur": round(saving, -1),
-        "payback_years": round(capex / saving, 1) if saving > 0 and capex else None,
+        "capex_eur": float(round(capex, -1)), "annual_saving_eur": float(round(saving, -1)),
+        "payback_years": float(round(capex / saving, 1)) if saving > 0 and capex else None,
         "self_consumption_share": round(float(sc), 3), "autarky_share": round(float(aut), 3),
         "assumptions": a, "method": "hourly-simulation",
         "annual": {
