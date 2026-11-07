@@ -42,3 +42,6 @@ Words: "replay" for what we built, "closed loop" for the roadmap. Never "world m
 
 ## Is it really 8 days of work?
 No. The 8 days is median calendar time from enquiry to offer at one installer (23c108b7, 260 projects with both dates in the Reonic export, request_created_at to offer_created_at), and it includes waiting. Marquee removes the design and draft step, not the site visit. Offer to signature is a further 28 days (median; p25 15, p75 43).
+
+## Does the agent know which drafts are right?
+Partly. Rows where most similar homes agree are hits twice as often (56% against 33%, 60 held-out rows). That is why the inbox shows "N of 20 drafts need no change" and a one-line reason on every row that needs review, not a confidence score. Never claim that confidence predicts a match.
