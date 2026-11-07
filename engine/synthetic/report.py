@@ -105,7 +105,7 @@ Short:
 ## Method
 
 - Homes: {r['n']:,} from the engine's {r['train_rows']:,} training rows (seed {r['seed']}). In-distribution {s['in_distribution']:.0%}: a real row with demand, mileage, price, heat and size scattered (lognormal, 8 to 15%), so the joint structure of installer, load profile, EV, heating and existing kit is kept. Edge {s['edge']:.0%}: demand 1,500 to 2,500 or 10,000 to 20,000 kWh, EV at 30,000 km, heat pump plus EV, existing PV of 3 to 15 kWp. Adversarial {s['adversarial']:.0%}: demand 0, negative or 50,000 kWh, price 0, 40 m2 with 10,000 kWh, existing kWp with `has_solar` false, mileage with no EV, storage with no PV.
-- Oracle: the API's input check, then `Engine.sizes_batch` (as `/api/inbox`) in one batch with every metamorphic variant, then `Engine._physics` (simulate, validate_physics, optimum) per home in-process. Every simulation, including the optimum's grid, is checked for energy balance.
+- Oracle: the API's input check, then `Engine.sizes_batch` (as `/api/inbox`) in one batch with every metamorphic variant, then `Engine._physics` (simulate, validate_physics, optimum) per home in-process. Every simulation, including the optimum's grid, is checked for energy balance. Honesty passes on an input error, a hard rule, a physics warning or a warning about the inputs; routine sizing bands (payback, kWp per MWh, kWh per kWp) do not count.
 - Coverage: {cov['real_cells_covered_share'] * 100:.0f}% of the {cov['real_cells']} cells seen in the real inputs (installer x load profile x EV x heating x existing PV x demand band) are covered, plus {cov['new_cells']} cells the real data never has.
 - Runtime: {r['runtime_s']:.0f} s, {bal['simulations']:,} simulations.
 

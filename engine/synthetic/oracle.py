@@ -7,6 +7,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 
+ROUTINE = ("Payback", "Battery ", "Roof needed")  # sizing bands, not flags about the inputs
 _ENG = None
 _BAL = None
 
@@ -15,14 +16,15 @@ def strip(h: dict) -> dict:
     return {k: v for k, v in h.items() if not k.startswith("_")}
 
 
-def input_error(h: dict) -> str | None:
-    """The API's own range check (app.main.check_inputs); its words, or None."""
+def input_check(h: dict) -> tuple[str | None, dict]:
+    """The API's own input check (app.main.check_inputs): (its words or None, the home as the API passes it on)."""
     from app.main import InputError, check_inputs
+    inp = strip(h)
     try:
-        check_inputs(strip(h))
+        check_inputs(inp)
     except InputError as e:
-        return str(e)
-    return None
+        return str(e), h
+    return None, {**h, **inp}
 
 
 def balance(r, design) -> float:
@@ -44,6 +46,8 @@ def _init(path):
     global _ENG, _BAL
     from app import hourly
     _ENG = pickle.loads(open(path, "rb").read())
+    if hasattr(_ENG, "restore_globals"):  # module state set in fit()
+        _ENG.restore_globals()
     sim_mod = sys.modules["app.hourly.sim"]
     opt_mod = sys.modules["app.hourly.optimum"]
     raw = sim_mod.simulate
@@ -69,7 +73,10 @@ def _physics(job):
         try:
             t = base_features(inp, inp["installer_id"])["t"]
             econ, plaus, opt = _ENG._physics(inp, design, inp["installer_id"], t, True)
-            n_rules = len([p for p in rules.plausibility(inp, design, econ) if not p["message"].startswith("DC/AC")])
+            rp = [p for p in rules.plausibility(inp, design, econ) if not p["message"].startswith("DC/AC")]
+            n_rules = len(rp)
+            r["input_warn"] = [p["message"] for p in rp if p["level"] != "ok" and not p["message"].startswith(ROUTINE)
+                               and " kWp for " not in p["message"]]
             r.update(method=econ.get("method"), npv=econ.get("annual", {}).get("npv_20y_eur"),
                      annual={k: econ.get("annual", {}).get(k) for k in ("pv_yield_kwh", "self_consumed_kwh", "fed_in_kwh")},
                      hard=rules.hard_rules(inp, design), phys_warn=[p["message"] for p in plaus[n_rules:] if p["level"] != "ok"],
