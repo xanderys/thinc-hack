@@ -136,6 +136,60 @@ export function isMultiUnit(a: Partial<FormAnswers>, roof?: RoofInfo | null) {
   return a.house_type === "apartment" || (!!roof?.footprint_m2 && roof.footprint_m2 > MULTI_UNIT_FOOTPRINT_M2);
 }
 
+// The installer the enquiry page belongs to. Placeholder names for the demo; never Reonic's brand.
+export const INSTALLER_BRAND: Record<InstallerId, string> = { "2a8ba8e2": "Isarwerk Solar", "23c108b7": "Würmtal Energie" };
+
+/** The homeowner enquiry page (web/app/start). Only name and location are required; "unknown" is an explicit "don't know". */
+export const HOME_FORM = {
+  people: { "1": "1", "2": "2", "3": "3", "4": "4", "5": "5+", unknown: "Don't know" },
+  heating: { Gas: "Gas", Oil: "Oil", Heatpump: "Heat pump", Electric: "Electric", Other: "Other", unknown: "Don't know" },
+  ev: { now: "Have one", planned: "Planned", none: "No", unknown: "Don't know" },
+  bill_band: { lt60: "Under 60", "60_100": "60 to 100", "100_150": "100 to 150", gt150: "Over 150", unknown: "Don't know" },
+  roof: { south: "South", east_west: "East and west", north: "North", flat: "Flat", unknown: "Don't know" },
+} as const;
+
+export interface HomeAnswers {
+  name: string;
+  location: string; // address, or postcode alone
+  people?: keyof typeof HOME_FORM.people;
+  heating?: keyof typeof HOME_FORM.heating;
+  ev?: keyof typeof HOME_FORM.ev;
+  bill_band?: keyof typeof HOME_FORM.bill_band;
+  roof?: keyof typeof HOME_FORM.roof;
+}
+
+const known = <T extends string>(x?: T) => (x && x !== "unknown" ? x : undefined);
+
+/** Dynamic variables for the call: the names the lead route reads back, plus customer_name and address_or_postcode for Rina. */
+export function homeVariables(a: HomeAnswers, installer_id: InstallerId): Record<string, string> {
+  const bill = known(a.bill_band) as keyof typeof BILL_EUR | undefined;
+  return {
+    ...formVariables({ first_name: a.name, address: a.location, people: known(a.people) as FormAnswers["people"], heating: known(a.heating) as FormAnswers["heating"], ev: known(a.ev) as FormAnswers["ev"], bill_band: bill }, installer_id),
+    customer_name: a.name.trim(),
+    address_or_postcode: a.location.trim(),
+    roof: known(a.roof) ? HOME_FORM.roof[a.roof!] : NOT_GIVEN,
+    installer_name: INSTALLER_BRAND[installer_id],
+  };
+}
+
+/** Rina's first line on the enquiry page: greet by name, confirm where they live. */
+export function homeFirstMessage(a: HomeAnswers, installer_id: InstallerId) {
+  const street = streetOf(a.location), pc = a.location.match(/\b\d{5}\b/)?.[0];
+  const where = street ? `at ${street}` : pc ? `in ${pc.split("").join(" ")}` : "at the address you gave";
+  return `Hi ${a.name.trim().split(/\s+/)[0]}, it's Rina from ${INSTALLER_BRAND[installer_id]}, thanks for your request. Just to check, are you living ${where}?`;
+}
+
+/** Start-of-call note: what the form said and what the lookup found, so Rina never asks it again. */
+export function homeNote(a: HomeAnswers, installer_id: InstallerId, roof?: RoofInfo | null) {
+  const v = homeVariables(a, installer_id);
+  const found = roof && roof.source !== "none" && roof.footprint_m2;
+  const building = !found ? "Building lookup: not found." : `Building lookup: found, footprint about ${Math.round(roof!.footprint_m2!)} m2` +
+    (roof!.roof_area_m2 ? `, roof about ${Math.round(roof!.roof_area_m2)} m2` : "") + (roof!.floor_area_m2 ? `, living space estimated at about ${Math.round(roof!.floor_area_m2)} m2 (do not ask living space)` : "") + ".";
+  return `Form answers (never ask what is given; ask what is "not given"): name ${v.customer_name}; address or postcode ${v.address_or_postcode}; people ${v.people}; ` +
+    `electricity bill about ${v.monthly_bill_eur} EUR a month${v.kwh_estimate !== NOT_GIVEN ? `, about ${v.kwh_estimate} kWh a year` : ""}; heating ${v.heating}; electric car ${v.ev}; roof ${v.roof}. ` +
+    `${building} You already asked whether they live there. You call on behalf of ${v.installer_name}.`;
+}
+
 /** First line Rina says on a widget call, so she never asks for the address. */
 export function firstMessage(a: Partial<FormAnswers>) {
   const name = a.first_name?.trim();

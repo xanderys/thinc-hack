@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./start.css";
 
-export const metadata: Metadata = { title: "Your energy design", description: "A few taps and a short call for your solar design" };
+export const metadata: Metadata = { title: "Request your solar offer", description: "Name and postcode, then a short call back." };
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
 // The root layout draws the planner masthead; start.css hides it on this route so the page can be embedded.

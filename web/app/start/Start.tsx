@@ -1,138 +1,186 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
-import { FORM, firstMessage, formNote, formVariables, type FormAnswers, type InstallerId, type RoofInfo } from "./intake";
+import { HOME_FORM, INSTALLER_BRAND, homeFirstMessage, homeNote, homeVariables, type HomeAnswers, type InstallerId, type RoofInfo } from "./intake";
 
 type Props = { agentId: string; installerId: InstallerId };
 
 export default function Start(props: Props) {
   return (
     <ConversationProvider>
-      <Widget {...props} />
+      <Page {...props} />
     </ConversationProvider>
   );
 }
 
-const COLS = { house_type: 2, people: 5, bill_band: 2, heating: 3, ev: 3 } as const;
+// form: the enquiry; waiting: the call back is on its way; ringing: the incoming-call banner; call: the full-screen call; thanks / declined: the end.
+type Step = "form" | "waiting" | "ringing" | "call" | "thanks" | "declined";
+type Opt = "people" | "heating" | "ev" | "bill_band" | "roof";
 
-type Step = "form" | "call" | "thanks";
-type Line = { you: boolean; text: string };
+const locationOk = (s: string) => /\b\d{5}\b/.test(s);
+const first = (s: string) => s.trim().split(/\s+/)[0] ?? "";
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
-function Widget({ agentId, installerId }: Props) {
+function Page({ agentId, installerId }: Props) {
+  const brand = INSTALLER_BRAND[installerId];
   const [step, setStep] = useState<Step>("form");
-  const [a, setA] = useState<Partial<FormAnswers>>({ interests: [] });
-  const [lines, setLines] = useState<Line[]>([]);
+  const [a, setA] = useState<HomeAnswers>({ name: "", location: "" });
+  const [miss, setMiss] = useState<"name" | "location" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [since, setSince] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  const [speaker, setSpeaker] = useState(true);
   const connected = useRef(false);
-  const sendNote = useRef<(() => void) | null>(null);
+  const ring = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null), placeRef = useRef<HTMLInputElement>(null);
 
   const conversation = useConversation({
     onConnect: ({ conversationId }) => {
-      connected.current = true;
-      sendNote.current?.();
-      try { window.parent?.postMessage({ type: "marquee:lead", conversation_id: conversationId }, "*"); } catch {}
-    },
-    onMessage: ({ message, role }) => {
-      const text = message.replace(/\[[^\]]*\]\s*/g, "").trim();
-      if (text) setLines((l) => [...l, { you: role === "user", text }].slice(-3));
+      connected.current = true; setSince(Date.now());
+      // The planner preview embeds this page; it opens the lead when the call ends.
+      try { window.parent?.postMessage({ type: "marquee:lead", conversation_id: conversationId }, location.origin); } catch {}
     },
     onDisconnect: () => setStep(connected.current ? "thanks" : "form"),
-    onError: (m) => {
-      setError(String(m));
-      if (!connected.current) setStep("form");
-    },
+    onError: (m) => { setError(String(m)); if (!connected.current) setStep("form"); },
   });
 
-  const ready = /\d{4,5}/.test(a.address ?? "") && a.house_type && a.people && a.bill_band && a.heating && a.ev;
+  useEffect(() => {
+    if (since == null) return;
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, [since]);
+  useEffect(() => () => { if (ring.current) clearTimeout(ring.current); }, []);
 
-  const start = () => {
-    if (!ready) return;
-    setError(null);
-    setLines([]);
-    connected.current = false;
-    setStep("call");
+  const submit = () => {
+    if (!a.name.trim()) { setMiss("name"); nameRef.current?.focus(); return; }
+    if (!locationOk(a.location)) { setMiss("location"); placeRef.current?.focus(); return; }
+    setMiss(null); setError(null);
+    // The call back arrives a moment later, the way a phone call would.
+    ring.current = setTimeout(() => { setStep("ringing"); try { navigator.vibrate?.([400, 200, 400]); } catch {} }, 1400);
+    setStep("waiting");
+  };
+
+  // Accept is the user gesture: the microphone permission and the call start here, not on submit.
+  const accept = () => {
+    connected.current = false; setSince(null); setStep("call"); setError(null);
     let roof: RoofInfo | null | undefined;
-    const send = () => { if (connected.current && roof !== undefined) conversation.sendContextualUpdate(formNote(a, roof)); };
-    sendNote.current = send;
-    const ctl = new AbortController();
-    setTimeout(() => ctl.abort(), 8000);
-    fetch(`/start/roof?address=${encodeURIComponent(a.address ?? "")}`, { signal: ctl.signal })
-      .then((r) => (r.ok ? r.json() : null)).catch(() => null)
-      .then((r: RoofInfo | null) => { roof = r; send(); });
+    const send = () => { if (connected.current && roof !== undefined) conversation.sendContextualUpdate(homeNote(a, installerId, roof)); };
+    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 8000);
+    fetch(`/start/roof?address=${encodeURIComponent(a.location)}`, { signal: ctl.signal })
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null).then((r: RoofInfo | null) => { roof = r; send(); });
+    const wait = setInterval(() => { if (connected.current) { clearInterval(wait); send(); } }, 300);
+    setTimeout(() => clearInterval(wait), 20000);
+    setTimeout(() => { if (!connected.current) setError((e) => e ?? "No connection to the call service after 20 seconds."); }, 20000);
     conversation.startSession({
       agentId, connectionType: "webrtc",
-      dynamicVariables: formVariables(a, installerId),
-      overrides: { agent: { firstMessage: firstMessage(a) } },
+      dynamicVariables: homeVariables(a, installerId),
+      overrides: { agent: { firstMessage: homeFirstMessage(a, installerId) } },
     });
   };
 
-  if (step === "thanks")
-    return (
-      <section className="s-panel" key="thanks">
-        <h1>Thanks, your installer will send your design shortly.</h1>
-      </section>
-    );
+  const end = () => { if (connected.current) conversation.endSession(); else { conversation.endSession(); setStep("form"); } };
 
-  if (step === "call")
-    return (
-      <section className="s-panel" key="call">
-        <h1>Rina is calling</h1>
-        <p className="s-status" aria-live="polite">
-          {conversation.status === "connected" ? (conversation.isSpeaking ? "Speaking" : "Listening") : "Connecting"}
-        </p>
-        <ol className="s-captions" aria-live="polite">
-          {lines.map((l, i) => <li key={i} className={l.you ? "s-you" : undefined}>{l.text}</li>)}
-        </ol>
-        <button type="button" className="s-go s-quiet" onClick={() => conversation.endSession()}>End call</button>
-        {error && <p className="s-error" role="alert">{error}</p>}
-      </section>
-    );
-
-  const one = <K extends "house_type" | "people" | "bill_band" | "heating" | "ev">(k: K, legend: string, hint?: string) => (
-    <fieldset className="s-q">
-      <legend>{legend}{hint && <span className="s-hint"> {hint}</span>}</legend>
-      <div className="s-chips" style={{ "--cols": COLS[k] } as React.CSSProperties}>
-        {Object.entries(FORM[k]).map(([value, label]) => (
-          <button key={value} type="button" className="s-chip" aria-pressed={a[k] === value} onClick={() => setA({ ...a, [k]: value })}>
-            {label}
-          </button>
+  const pick = (k: Opt, legend: string, hint?: string) => (
+    <fieldset className="h-q">
+      <legend>{legend}{hint && <span className="h-hint"> {hint}</span>}</legend>
+      <div className="h-chips">
+        {Object.entries(HOME_FORM[k]).map(([value, label]) => (
+          <button key={value} type="button" className={value === "unknown" ? "h-chip dk" : "h-chip"} aria-pressed={a[k] === value}
+            onClick={() => setA({ ...a, [k]: a[k] === value ? undefined : value })}>{label}</button>
         ))}
       </div>
     </fieldset>
   );
 
-  const toggle = (v: keyof typeof FORM.interests) =>
-    setA({ ...a, interests: a.interests?.includes(v) ? a.interests.filter((x) => x !== v) : [...(a.interests ?? []), v] });
+  const head = (
+    <header className="h-top">
+      <span className="h-mark" aria-hidden>{brand.charAt(0)}</span>
+      <span><b>{brand}</b><small>Solar, storage and heat pumps</small></span>
+    </header>
+  );
+
+  if (step === "thanks" || step === "declined")
+    return (
+      <div className="h-page">{head}
+        <section className="h-card h-in" key="end">
+          <h1>{step === "thanks" ? `Thanks ${first(a.name)}, ${brand} will send the offer.` : `No problem, ${first(a.name)}. ${brand} will call you back later.`}</h1>
+        </section>
+      </div>
+    );
+
+  const live = conversation.status === "connected";
+  const secs = since ? Math.max(0, Math.floor((now - since) / 1000)) : 0;
 
   return (
-    <form className="s-panel" key="form" onSubmit={(e) => { e.preventDefault(); start(); }}>
-      <h1>Your energy design</h1>
-      <div className="s-q">
-        <label className="s-label" htmlFor="s-address">Address <span className="s-hint">street, number, postcode, town</span></label>
-        <input id="s-address" className="s-input" autoComplete="street-address" placeholder="Hauptstr. 5, 85579 Neubiberg"
-          value={a.address ?? ""} onChange={(e) => setA({ ...a, address: e.target.value })} />
-      </div>
-      {one("house_type", "House")}
-      {one("people", "People living there")}
-      {one("bill_band", "Electricity bill", "EUR a month")}
-      {one("heating", "Heating")}
-      {one("ev", "Electric car")}
-      <fieldset className="s-q">
-        <legend>Interested in</legend>
-        <div className="s-chips">
-          {Object.entries(FORM.interests).map(([value, label]) => (
-            <button key={value} type="button" className="s-chip" aria-pressed={!!a.interests?.includes(value as keyof typeof FORM.interests)}
-              onClick={() => toggle(value as keyof typeof FORM.interests)}>{label}</button>
-          ))}
+    <div className="h-page">
+      {head}
+      <form className="h-card" onSubmit={(e) => { e.preventDefault(); submit(); }} aria-hidden={step === "call"}>
+        <h1>Request your solar offer</h1>
+        <div className="h-q">
+          <label htmlFor="h-name">Name</label>
+          <input id="h-name" ref={nameRef} className="h-input" autoComplete="name" value={a.name} aria-invalid={miss === "name"}
+            onChange={(e) => setA({ ...a, name: e.target.value })} />
+          {miss === "name" && <p className="h-why" role="alert">Add your name so Rina knows who to ask for.</p>}
         </div>
-      </fieldset>
-      <div className="s-q">
-        <label className="s-label" htmlFor="s-name">First name <span className="s-hint">optional</span></label>
-        <input id="s-name" className="s-input" autoComplete="given-name" value={a.first_name ?? ""} onChange={(e) => setA({ ...a, first_name: e.target.value })} />
-      </div>
-      <button type="submit" className="s-go" disabled={!ready}>Start a 2-minute call</button>
-      <p className="s-small">Your browser will ask for the microphone.</p>
-      {error && <p className="s-error" role="alert">{error} <button type="button" className="s-chip" onClick={start}>Try again</button></p>}
-    </form>
+        <div className="h-q">
+          <label htmlFor="h-place">Address or postcode</label>
+          <input id="h-place" ref={placeRef} className="h-input" autoComplete="street-address" inputMode="text" value={a.location} aria-invalid={miss === "location"}
+            placeholder="Katharinenstraße 5, 82008 Unterhaching" onChange={(e) => setA({ ...a, location: e.target.value })} />
+          {miss === "location" && <p className="h-why" role="alert">Add a postcode, or the full address.</p>}
+        </div>
+        <p className="h-opt">Optional. Leave anything you are not sure of.</p>
+        {pick("people", "People in the home")}
+        {pick("heating", "Heating")}
+        {pick("ev", "Electric car")}
+        {pick("bill_band", "Electricity bill", "EUR a month")}
+        {pick("roof", "Roof faces")}
+        <button type="submit" className="h-go" disabled={step !== "form"}>{step === "form" ? "Request a call back" : "Calling you now"}</button>
+        {error && <p className="h-why" role="alert">ElevenLabs said: {error}</p>}
+      </form>
+
+      {step === "ringing" && (
+        <div className="ios-banner" role="dialog" aria-label={`Incoming call from Rina, ${brand}`}>
+          <span className="ios-av" aria-hidden>R</span>
+          <span className="ios-who"><small>{brand}</small><b>Rina</b></span>
+          <button type="button" className="ios-btn no" aria-label="Decline" onClick={() => setStep("declined")}><Phone down /></button>
+          <button type="button" className="ios-btn yes" aria-label="Accept" onClick={accept}><Phone /></button>
+        </div>
+      )}
+
+      {step === "call" && (
+        <div className="ios-call" role="dialog" aria-label={`Call with Rina, ${brand}`}>
+          <div className="ios-call-top">
+            <span className="ios-av big" aria-hidden>R</span>
+            <h2>Rina</h2>
+            <p>{brand}</p>
+            <p className="ios-time" aria-live="polite">{live ? clock(secs) : "Connecting"}</p>
+          </div>
+          <div className="ios-keys">
+            <button type="button" className={conversation.isMuted ? "ios-key on" : "ios-key"} aria-pressed={conversation.isMuted} onClick={() => conversation.setMuted(!conversation.isMuted)}>
+              <Mic /><span>Mute</span>
+            </button>
+            <button type="button" className={speaker ? "ios-key on" : "ios-key"} aria-pressed={speaker} onClick={() => { conversation.setVolume({ volume: speaker ? 0.5 : 1 }); setSpeaker(!speaker); }}>
+              <Speaker /><span>Speaker</span>
+            </button>
+          </div>
+          <button type="button" className="ios-end" aria-label="End call" onClick={end}><Phone down /></button>
+          {error && <p className="ios-err" role="alert">ElevenLabs said: {error}</p>}
+        </div>
+      )}
+    </div>
   );
+}
+
+function Phone({ down }: { down?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden style={down ? { transform: "rotate(135deg)" } : undefined}>
+      <path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
+    </svg>
+  );
+}
+function Mic() {
+  return <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z" /></svg>;
+}
+function Speaker() {
+  return <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06a9 9 0 0 0 0-17.54z" /></svg>;
 }

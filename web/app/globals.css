@@ -472,3 +472,28 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .s-calls-l button { width: 100%; display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; min-height: 44px; background: none; border: 0; border-bottom: 1px solid var(--rule); font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; border-radius: 0; }
 .s-calls-l .num { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; }
 .s-only { margin: 0 0 14px; font-size: 14px; color: var(--ink-2); }
+/* The one gradient on the planner (Xander's exception, 7 Nov): a live call drifts like a mesh. Blue, its tint and paper only. */
+.s-live { position: relative; overflow: hidden; margin: 8px 0 4px; min-height: 52px; display: flex; align-items: center; background: var(--accent); }
+.s-live-mesh { position: absolute; inset: 0; }
+.s-live-mesh i { position: absolute; width: 70%; height: 180%; top: -40%; border-radius: 50%; }
+.s-live-mesh i:nth-child(1) { left: -20%; background: radial-gradient(closest-side, rgba(150, 158, 255, 0.95), rgba(150, 158, 255, 0)); }
+.s-live-mesh i:nth-child(2) { left: 30%; background: radial-gradient(closest-side, rgba(13, 27, 254, 0.9), rgba(13, 27, 254, 0)); }
+.s-live-mesh i:nth-child(3) { left: 60%; background: radial-gradient(closest-side, rgba(243, 239, 230, 0.55), rgba(243, 239, 230, 0)); }
+.s-live-t { position: relative; padding: 0 14px; font-size: 14px; color: var(--paper); display: flex; align-items: center; gap: 8px; }
+.s-live-t .num { font-variant-numeric: tabular-nums; }
+.s-live-t .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--paper); }
+@media (prefers-reduced-motion: no-preference) {
+  .s-live-mesh i:nth-child(1) { animation: s-drift-a 8s ease-in-out infinite alternate; }
+  .s-live-mesh i:nth-child(2) { animation: s-drift-b 8s ease-in-out infinite alternate; }
+  .s-live-mesh i:nth-child(3) { animation: s-drift-c 8s ease-in-out infinite alternate; }
+  @keyframes s-drift-a { from { transform: translate(0, 0) scale(1); } to { transform: translate(45%, 10%) scale(1.25); } }
+  @keyframes s-drift-b { from { transform: translate(0, 5%) scale(1.1); } to { transform: translate(-40%, -8%) scale(0.9); } }
+  @keyframes s-drift-c { from { transform: translate(10%, -5%) scale(0.9); } to { transform: translate(-55%, 6%) scale(1.2); opacity: 0.6; } }
+  .s-calls-l li.s-in { animation: s-fade 400ms linear both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .s-live { background: linear-gradient(90deg, var(--accent), #8F97FF); }
+  .s-live-mesh { display: none; }
+  .s-live-t .dot { animation: s-pulse 1.6s ease-in-out infinite; }
+  @keyframes s-pulse { 50% { opacity: 0.3; } }
+}

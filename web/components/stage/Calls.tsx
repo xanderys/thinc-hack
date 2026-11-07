@@ -4,9 +4,10 @@ import type { InstallerId } from "@/lib/api";
 import type { IntakeFacts, Source } from "@/app/start/intake";
 
 export type CallLead = { conversation_id: string; facts: IntakeFacts; sources: Record<string, Source>; inputs: Record<string, unknown> };
-type Row = { conversation_id: string; started_at: number | null; call_secs: number | null; status: string; title: string | null };
+type Row = { conversation_id: string; started_at: number | null; call_secs: number | null; status: string; title: string | null; name?: string | null; location?: string | null };
 
 const when = (s: number | null) => s ? new Date(s * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+const live = (s: number | null, now: number) => { const t = s ? Math.max(0, Math.floor(now / 1000 - s)) : 0; return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
 const mins = (s: number | null) => s ? `${Math.max(1, Math.round(s / 60))} min` : "";
 
 // Behind NEXT_PUBLIC_VOICE=1: homeowner calls from the /start widget, and a way to start one here.
@@ -17,12 +18,25 @@ export default function Calls({ installer, onLead }: { installer: InstallerId; o
   const [opening, setOpening] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
+  // Polled every 3 s while the Lead step is open, so a call in progress shows up live.
   useEffect(() => {
-    fetch("/start/leads", { cache: "no-store" }).then(async (r) => {
+    let stop = false;
+    const load = () => fetch("/start/leads", { cache: "no-store" }).then(async (r) => {
       const b = await r.json().catch(() => ({ error: `Leads returned ${r.status}` }));
+      if (stop) return;
       if (r.ok) { setRows(b); setErr(null); } else setErr(b.error ?? `Leads returned ${r.status}`);
-    }).catch((e) => setErr(String(e)));
+    }).catch((e) => { if (!stop) setErr(String(e)); });
+    load();
+    const t = setInterval(load, 3000);
+    return () => { stop = true; clearInterval(t); };
   }, [tick]);
+  const [now, setNow] = useState(() => Date.now());
+  const anyLive = !!rows?.some((r) => r.status === "in_progress");
+  useEffect(() => {
+    if (!anyLive) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [anyLive]);
 
   // The analysis lands a few seconds after the call ends: 202 until then.
   const open = useCallback(async (id: string) => {
@@ -59,8 +73,13 @@ export default function Calls({ installer, onLead }: { installer: InstallerId; o
       {rows && rows.length === 0 && <p className="s-quiet">No calls yet.</p>}
       {rows && rows.length > 0 && (
         <ul className="s-calls-l">
-          {rows.slice(0, 6).map((r) => (
-            <li key={r.conversation_id}>
+          {[...rows.filter((r) => r.status === "in_progress"), ...rows.filter((r) => r.status !== "in_progress")].slice(0, 6).map((r) => r.status === "in_progress" ? (
+            <li key={`live-${r.conversation_id}`} className="s-live">
+              <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>
+              <span className="s-live-t"><span className="dot" aria-hidden />Live call with {[r.name ?? "a homeowner", r.location?.match(/\b\d{5}\b/)?.[0] ?? r.location].filter(Boolean).join(", ")}, <span className="num">{live(r.started_at, now)}</span></span>
+            </li>
+          ) : (
+            <li key={r.conversation_id} className="s-in">
               <button type="button" disabled={!!opening} onClick={() => open(r.conversation_id)}>
                 <span>{r.title ?? "Call"}</span><span className="num">{[when(r.started_at), mins(r.call_secs)].filter(Boolean).join(", ")}</span>
               </button>
