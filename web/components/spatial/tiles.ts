@@ -1,23 +1,28 @@
-// Google Photorealistic 3D Tiles inside the SpatialScene, with our layout drawn over them.
+// Google Photorealistic 3D Tiles as the 3D view, with our layout drawn on them.
 // Loaded with a dynamic import together with three. The tiles come through /api/tiles (key on the server).
 //
 // Frame: ReorientationPlugin puts the house's lat/lon/height at the origin with +Y up, east → -X, north → +Z.
 // Our scene is UTM grid: east → +X, grid north → -Z, and grid north sits beta clockwise of true north.
 // So the tiles sit in a holder rotated by pi + beta about Y; after that, local metres from the engine line up.
 //
-// Draw order: tile meshes first (renderOrder -10), then a depth clear, then the LoD2 house as a depth-only
-// occluder, then everything else. Panels, battery, wallbox and labels always read over the photo mesh but stay
-// hidden behind our own house.
+// Alignment: the anchor puts the mesh within a few metres of our LoD2 house. Once the house's tiles are in, a
+// height map of the mesh over the house is compared with the LoD2 roof planes; the horizontal and vertical shift
+// that best fits the roof moves the mesh onto our frame. Then each module is draped: moved along the vertical onto
+// the mesh roof under it, so modules sit on the real roof. Our LoD2 house, ground and neighbours hide in mesh mode;
+// modules, markers, outlines and labels stay.
 import * as THREE from "three";
 import { TilesRenderer, WGS84_ELLIPSOID } from "3d-tiles-renderer/three";
 import { GLTFExtensionsPlugin, LoadRegionPlugin, ReorientationPlugin, SphereRegion } from "3d-tiles-renderer/plugins";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import type { SpatialScene } from "./scene";
+import type { RoofPlane } from "./types";
 
 export type Anchor = { lat: number; lon: number; height: number; beta: number };
+export type Fit = { dx: number; dy: number; dz: number; spread: number; samples: number; draped: number; skipped: number };
 type Inner = {
-  scene: THREE.Scene; renderer: THREE.WebGLRenderer; camera: THREE.Camera; persp: THREE.PerspectiveCamera;
-  placeholder: THREE.Object3D; glbRoot?: THREE.Object3D | null; box: THREE.Box3; alive: boolean;
+  scene: THREE.Scene; renderer: THREE.WebGLRenderer; camera: THREE.Camera;
+  placeholder: THREE.Object3D; glbRoot?: THREE.Object3D | null; box: THREE.Box3; panels: THREE.Group;
+  targets: { p: RoofPlane }[];
 };
 type Opts = {
   root: string; anchor: Anchor; phone: boolean;
@@ -25,17 +30,17 @@ type Opts = {
 };
 
 const DRACO = "https://www.gstatic.com/draco/versioned/decoders/1.5.7/";
-const RADIUS = 150;     // draw distance around the house, metres
-const READY_MS = 6000;  // no photo by then: give up and keep the LoD2 model
+const RADIUS = 45;      // the mesh loads only this far around the house (metres), at full detail
+const READY_MS = 6000;  // no mesh by then: the LoD2 model stays
+const LIFT = 0.12;      // modules sit this far above the mesh roof
 
 // A WebGL context that can show the photo mesh without choking.
 export function photoCapable(sc: SpatialScene) {
-  const r = (sc as unknown as Inner).renderer;
-  const c = r.capabilities;
+  const c = (sc as unknown as Inner).renderer.capabilities;
   return c.isWebGL2 && c.maxTextureSize >= 4096;
 }
 
-// The LoD2 glb root in the scene: the web branch keeps it as glbRoot; else the group with the textured roof.
+// The LoD2 glb root in the scene: kept as glbRoot; else the group with walls, context or ground meshes.
 function glbOf(inner: Inner): THREE.Object3D | null {
   if (inner.glbRoot) return inner.glbRoot;
   for (const o of inner.scene.children) {
@@ -46,12 +51,28 @@ function glbOf(inner: Inner): THREE.Object3D | null {
   return null;
 }
 
+const toV = ([x, y, z]: [number, number, number]) => new THREE.Vector3(x, z, -y);
+const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+
+// Points on the LoD2 roof planes: each fan triangle's centroid and the midpoints towards its corners.
+function roofSamples(planes: RoofPlane[]) {
+  const out: THREE.Vector3[] = [];
+  for (const p of planes) {
+    const pts = p.polygon.map(toV);
+    if (pts.length < 3) continue;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const c = pts[0].clone().add(pts[i]).add(pts[i + 1]).multiplyScalar(1 / 3);
+      out.push(c);
+      for (const q of [pts[0], pts[i], pts[i + 1]]) out.push(c.clone().lerp(q, 0.5));
+    }
+  }
+  return out;
+}
+
 export class PhotoLayer {
   private inner: Inner;
   private tiles: TilesRenderer;
   private holder = new THREE.Group();
-  private clearer: THREE.Mesh;
-  private occluder = new THREE.Group();
   private raf = 0;
   private timer: ReturnType<typeof setTimeout>;
   private ready = false;
@@ -61,15 +82,20 @@ export class PhotoLayer {
   private creditText = "";
   private hidden: { o: THREE.Object3D; v: boolean }[] = [];
   private draco = new DRACOLoader().setDecoderPath(DRACO);
+  private ray = new THREE.Raycaster();
+  private fits = 0;
+  private fitting = false;
+  private panelsSeen: THREE.Object3D[] = [];
+  fit: Fit | null = null;
 
   constructor(sc: SpatialScene, private o: Opts) {
     this.inner = sc as unknown as Inner;
     const { anchor } = o;
     const tiles = new TilesRenderer(new URL(o.root, window.location.href).href);
     this.tiles = tiles;
-    tiles.errorTarget = o.phone ? 40 : 20;
-    tiles.lruCache.minBytesSize = (o.phone ? 60 : 150) * 2 ** 20;
-    tiles.lruCache.maxBytesSize = (o.phone ? 100 : 250) * 2 ** 20;
+    tiles.errorTarget = o.phone ? 24 : 12;
+    tiles.lruCache.minBytesSize = (o.phone ? 40 : 80) * 2 ** 20;
+    tiles.lruCache.maxBytesSize = (o.phone ? 70 : 140) * 2 ** 20;
     tiles.registerPlugin(new ReorientationPlugin({ lat: anchor.lat, lon: anchor.lon, height: anchor.height, recenter: true }));
     tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: this.draco }));
     const centre = WGS84_ELLIPSOID.getCartographicToPosition(anchor.lat, anchor.lon, anchor.height, new THREE.Vector3());
@@ -82,19 +108,7 @@ export class PhotoLayer {
     this.holder.visible = false;
     this.inner.scene.add(this.holder);
 
-    // Clears depth between the photo and our overlays; draws nothing itself.
-    this.clearer = new THREE.Mesh(new THREE.PlaneGeometry(0.001, 0.001), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
-    this.clearer.frustumCulled = false;
-    this.clearer.renderOrder = -5;
-    this.clearer.onBeforeRender = (r) => r.clearDepth();
-    this.clearer.visible = false;
-    this.inner.scene.add(this.clearer);
-
-    tiles.addEventListener("load-model", ({ scene }: { scene: THREE.Object3D }) => {
-      scene.traverse((m) => { m.renderOrder = -10; });
-      if (!this.ready && this.loadedCount() >= 6) this.show();
-    });
-    tiles.addEventListener("tiles-load-end", () => { if (!this.ready && this.loadedCount() > 0) this.show(); });
+    tiles.addEventListener("tiles-load-end", () => { void this.align(); });
     tiles.addEventListener("load-error", ({ error, tile }: { error: Error; tile: unknown }) => {
       if (!this.ready && !tile) this.fail(error?.message || "The photo tiles did not load.");
     });
@@ -107,54 +121,100 @@ export class PhotoLayer {
       });
     });
 
-    this.timer = setTimeout(() => { if (!this.ready) this.fail("The photo tiles took too long."); }, READY_MS);
+    this.timer = setTimeout(() => { if (!this.ready) this.fail("The photo mesh took too long."); }, READY_MS);
+    if (typeof window !== "undefined") (window as unknown as { __mesh?: PhotoLayer }).__mesh = this;
     this.loop();
   }
 
-  private loadedCount() { let n = 0; this.tiles.group.traverse((m) => { if ((m as THREE.Mesh).isMesh) n++; }); return n; }
+  private meshCount() { let n = 0; this.tiles.group.traverse((m) => { if ((m as THREE.Mesh).isMesh) n++; }); return n; }
+
+  private down(x: number, z: number, from = 200): number | null {
+    this.ray.set(new THREE.Vector3(x, from, z), new THREE.Vector3(0, -1, 0));
+    this.ray.far = from + 100;
+    const h = this.ray.intersectObject(this.tiles.group, true)[0];
+    return h ? h.point.y : null;
+  }
+
+  // Fit the mesh to the LoD2 roof: a height map of the mesh over the house, then the shift (dx, dz) at which the
+  // mesh heights under the LoD2 roof samples agree best (least median spread), and dy as their median difference.
+  private async align() {
+    if (this.dead || this.fitting || this.fits >= 3 || this.meshCount() === 0) return;
+    this.fitting = true;
+    try {
+      const box = this.inner.box.isEmpty() ? new THREE.Box3(new THREE.Vector3(-8, 0, -8), new THREE.Vector3(8, 9, 8)) : this.inner.box;
+      const S = 6, step = 0.5;
+      const x0 = box.min.x - S, z0 = box.min.z - S, nx = Math.ceil((box.max.x - box.min.x + 2 * S) / step) + 1, nz = Math.ceil((box.max.z - box.min.z + 2 * S) / step) + 1;
+      this.holder.updateMatrixWorld(true);
+      const H = new Float32Array(nx * nz).fill(NaN);
+      for (let j = 0; j < nz; j++) {
+        for (let i = 0; i < nx; i++) { const y = this.down(x0 + i * step, z0 + j * step); if (y != null) H[j * nx + i] = y; }
+        if (j % 8 === 7) { await new Promise((r) => setTimeout(r, 0)); if (this.dead) return; }
+      }
+      const at = (x: number, z: number) => {
+        const fi = (x - x0) / step, fj = (z - z0) / step, i = Math.floor(fi), j = Math.floor(fj);
+        if (i < 0 || j < 0 || i >= nx - 1 || j >= nz - 1) return NaN;
+        const a = H[j * nx + i], b = H[j * nx + i + 1], c = H[(j + 1) * nx + i], d = H[(j + 1) * nx + i + 1], u = fi - i, v = fj - j;
+        return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+      };
+      const pts = roofSamples(this.inner.targets.map((t) => t.p));
+      if (pts.length < 6) { this.show(); return; }
+      const score = (dx: number, dz: number) => {
+        const r: number[] = [];
+        for (const p of pts) { const h = at(p.x + dx, p.z + dz); if (!Number.isNaN(h)) r.push(h - p.y); }
+        if (r.length < pts.length * 0.6) return { s: Infinity, dy: 0, n: r.length };
+        const m = median(r);
+        return { s: median(r.map((x) => Math.abs(x - m))), dy: m, n: r.length };
+      };
+      let best = { dx: 0, dz: 0, ...score(0, 0) };
+      for (const [span, st] of [[4, 0.5], [0.5, 0.125]] as const) {
+        const cx = best.dx, cz = best.dz;
+        for (let dx = -span; dx <= span + 1e-6; dx += st) for (let dz = -span; dz <= span + 1e-6; dz += st) {
+          const r = score(cx + dx, cz + dz);
+          if (r.s < best.s - 1e-4) best = { dx: cx + dx, dz: cz + dz, ...r };
+        }
+      }
+      if (Number.isFinite(best.s) && Math.abs(best.dy) < 25) {
+        // Mesh point at (x + dx, z + dz) belongs at our (x, z): move the mesh by (-dx, -dy, -dz).
+        this.holder.position.x -= best.dx; this.holder.position.z -= best.dz; this.holder.position.y -= best.dy;
+        this.holder.updateMatrixWorld(true);
+        const prev = this.fit;
+        this.fit = { dx: (prev?.dx ?? 0) + best.dx, dy: (prev?.dy ?? 0) + best.dy, dz: (prev?.dz ?? 0) + best.dz, spread: best.s, samples: best.n, draped: 0, skipped: 0 };
+        this.fits++;
+      }
+      this.drape(true);
+      this.show();
+    } finally { this.fitting = false; }
+  }
+
+  // Each module moves along the vertical onto the mesh roof under it (median of its corners and centre),
+  // when that is within 1.5 m; otherwise it keeps the LoD2 roof height.
+  private drape(force = false) {
+    const kids = this.inner.panels.children;
+    if (!force && kids.length === this.panelsSeen.length && kids.every((k, i) => k === this.panelsSeen[i])) return;
+    this.panelsSeen = [...kids];
+    if (!this.fit) return;
+    let draped = 0, skipped = 0;
+    this.holder.updateMatrixWorld(true);
+    for (const g of kids) {
+      const cs = (g.userData?.cs as THREE.Vector3[] | undefined) ?? [];
+      if (cs.length < 3) continue;
+      const c = cs.reduce((a, b) => a.clone().add(b), new THREE.Vector3()).multiplyScalar(1 / cs.length);
+      const d = [...cs, c].map((q) => { const y = this.down(q.x, q.z, q.y + 6); return y == null ? null : y + LIFT - q.y; }).filter((x): x is number => x != null);
+      const m = d.length >= 3 ? median(d) : null;
+      const ok = m != null && Math.abs(m) < 1.5;
+      g.children.forEach((ch) => { ch.position.y = ok ? m! : 0; });
+      if (ok) draped++; else skipped++;
+    }
+    this.fit = { ...this.fit, draped, skipped };
+  }
 
   private show() {
     if (this.dead || this.ready) return;
     this.ready = true;
     clearTimeout(this.timer);
-    this.fitGround();
-    const glb = glbOf(this.inner);
-    // Depth-only copy of our own house: the overlays hide behind it, never behind the photo mesh.
-    if (glb) {
-      glb.updateMatrixWorld(true);
-      const mat = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide });
-      glb.traverse((m) => {
-        const mesh = m as THREE.Mesh, n = (m.name || m.parent?.name || "").toLowerCase();
-        if (!mesh.isMesh || n.startsWith("context") || n.startsWith("ground")) return;
-        const c = new THREE.Mesh(mesh.geometry, mat);
-        c.matrixAutoUpdate = false; c.matrix.copy(mesh.matrixWorld); c.renderOrder = -4;
-        this.occluder.add(c);
-      });
-      this.inner.scene.add(this.occluder);
-    }
-    for (const x of [glb, this.inner.placeholder]) if (x) { this.hidden.push({ o: x, v: x.visible }); x.visible = false; }
+    for (const x of [glbOf(this.inner), this.inner.placeholder]) if (x) { this.hidden.push({ o: x, v: x.visible }); x.visible = false; }
     this.holder.visible = true;
-    this.clearer.visible = true;
     this.o.onReady();
-  }
-
-  // Our ground (local z 0, from DHHN heights plus a fixed geoid offset) against the photo mesh: ray-cast a ring
-  // around the house and take a low quantile, so hedges and cars do not lift it. Shift only by a few metres.
-  private fitGround() {
-    const box = this.inner.box, c = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
-    const r = box.isEmpty() ? 10 : Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2 + 4;
-    this.holder.updateMatrixWorld(true);
-    const ray = new THREE.Raycaster(), hits: number[] = [];
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      ray.set(new THREE.Vector3(c.x + Math.cos(a) * r, 120, c.z + Math.sin(a) * r), new THREE.Vector3(0, -1, 0));
-      const h = ray.intersectObject(this.tiles.group, true)[0];
-      if (h) hits.push(h.point.y);
-    }
-    if (hits.length < 4) return;
-    hits.sort((x, y) => x - y);
-    const g = hits[Math.floor(hits.length * 0.25)];
-    if (Math.abs(g) < 8) this.holder.position.y = -g;
   }
 
   private fail(why: string) {
@@ -173,6 +233,7 @@ export class PhotoLayer {
     this.tiles.setResolutionFromRenderer(camera, renderer);
     camera.updateMatrixWorld();
     this.tiles.update();
+    if (this.ready) this.drape();
     const text = [...this.credits.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k).join("; ");
     if (text !== this.creditText) { this.creditText = text; this.o.onCredit(text); }
   };
@@ -185,11 +246,9 @@ export class PhotoLayer {
     const glb = glbOf(this.inner);
     this.hidden.forEach(({ o, v }) => { o.visible = o === this.inner.placeholder ? !glb : v; });
     if (glb) glb.visible = true;
-    this.inner.scene.remove(this.holder, this.clearer, this.occluder);
-    this.occluder.clear();
+    this.inner.panels.children.forEach((g) => g.children.forEach((ch) => { ch.position.y = 0; }));
+    this.inner.scene.remove(this.holder);
     this.tiles.dispose();
     this.draco.dispose();
-    (this.clearer.material as THREE.Material).dispose();
-    this.clearer.geometry.dispose();
   }
 }
