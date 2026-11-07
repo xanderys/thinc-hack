@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import HomeForm from "@/components/HomeForm";
 import DesignSheet from "@/components/DesignSheet";
+import ValidatePanel from "@/components/ValidatePanel";
 import type { Design, DesignResponse, HomeInputs, InterpretChange, InterpretResponse, RefineResponse } from "@/lib/api";
 import { call, fmt, COMPONENT_NAME } from "@/lib/client";
 import type { DiffItem, InterpretOverride, OverrideValue, Overrides } from "@/lib/api";
@@ -32,6 +33,7 @@ const show = (x: unknown) => x == null ? "none" : typeof x === "boolean" ? (x ? 
 export default function Planner() {
   const [inputs, setInputs] = useState<HomeInputs>(START);
   const [overrides, setOverrides] = useState<Overrides>({});
+  const [validate, setValidate] = useState(false);
   const [res, setRes] = useState<DesignResponse | RefineResponse | null>(null);
   const [prev, setPrev] = useState<Design | null>(null);
   const [moved, setMoved] = useState<DiffItem[]>([]);
@@ -147,9 +149,15 @@ export default function Planner() {
 
       <div>
         <div className="sheet-head">
-          <h1>Proposed system</h1>
-          <span className="status" aria-live="polite">{busy ? "Recomputing" : ""}</span>
+          <h1>{validate ? "Your design" : "Proposed system"}</h1>
+          <span className="status" aria-live="polite">{busy && !validate ? "Recomputing" : ""}</span>
         </div>
+        <span className="seg mode" role="group" aria-label="Mode">
+          <button type="button" aria-pressed={!validate} onClick={() => setValidate(false)}>Propose</button>
+          <button type="button" aria-pressed={validate} onClick={() => setValidate(true)}>Validate my design</button>
+        </span>
+
+        {validate ? <ValidatePanel inputs={inputs} start={res?.design ?? null} /> : <>
 
         {error && (
           <div className="error" role="alert">
@@ -247,6 +255,7 @@ export default function Planner() {
             </div>
           </>
         )}
+        </>}
       </div>
     </div>
   );
