@@ -299,7 +299,7 @@ def health():
     e = STATE["engine"]
     try:
         from . import planner_rules
-        rv = {"calibrated": "rules-1-calibrated", "band": "rules-3-band"}.get(model_mod.RECOMMENDER["mode"]) or getattr(planner_rules, "RULES_VERSION", None)
+        rv = {"calibrated": "rules-1-calibrated", "band": "rules-3-band", "readout": "rules-4-readout"}.get(model_mod.RECOMMENDER["mode"]) or getattr(planner_rules, "RULES_VERSION", None)
     except Exception:
         rv = None
     try:
@@ -788,6 +788,10 @@ def evaluation():
     engine()
     out = dict(STATE["eval"])
     out["synthetic"] = synthetic_report()  # v1.4: null until the suite has written a report
+    try:  # the lab's measurement rows: which definition of "right" moves the score (fit half, out-of-fold)
+        out["measurement"] = json.loads((Path(__file__).parent / "measurement.json").read_text())
+    except Exception:
+        pass
     out["exam_note"] = ("The exam homes carry no address, so every column is scored without roof, shade or envelope data; "
                         "live leads add them.")
     re_ = STATE.get("rules_eval") or {}

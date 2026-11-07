@@ -1,0 +1,254 @@
+{
+ "source": "engine/lab/reports/levers.md (branch engine-lab, aa5e6e4)",
+ "population": "fit half, 654 new-system jobs, 5-fold cross-validation (fold seed 42); rules and black box out-of-fold; test half not read",
+ "ground_truth": {
+  "lowest option": "the lowest-numbered option of each project (the engine's label)",
+  "any option": "a hit if within tolerance of at least one option the expert offered for that project (the same option for all four)"
+ },
+ "bands": {
+  "ours": "PV within 1 kWp or 15%, battery within 2 kWh, wallbox and heat pump on the decision",
+  "package step": "PV as ours, battery within one of the installer's sold package steps, wallbox decision only (Reonic-style, pending the expert's answer)"
+ },
+ "rows": [
+  {
+   "ground_truth": "lowest option",
+   "band": "ours",
+   "engine": "rules-1",
+   "pv": 0.365,
+   "battery": 0.462,
+   "wallbox": 0.748,
+   "all_four": 0.16699999999999998,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "ours",
+   "engine": "rules-3",
+   "pv": 0.396,
+   "battery": 0.489,
+   "wallbox": 0.748,
+   "all_four": 0.177,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "ours",
+   "engine": "rules-4",
+   "pv": 0.402,
+   "battery": 0.491,
+   "wallbox": 0.748,
+   "all_four": 0.17600000000000002,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "ours",
+   "engine": "physics",
+   "pv": 0.295,
+   "battery": 0.304,
+   "wallbox": 0.748,
+   "all_four": 0.084,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "ours",
+   "engine": "black box (out-of-fold)",
+   "pv": 0.365,
+   "battery": 0.495,
+   "wallbox": 0.748,
+   "all_four": 0.153,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "ours",
+   "engine": "textbook",
+   "pv": 0.196,
+   "battery": 0.462,
+   "wallbox": 0.748,
+   "all_four": 0.064,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "package step",
+   "engine": "rules-1",
+   "pv": 0.365,
+   "battery": 0.424,
+   "wallbox": 0.748,
+   "all_four": 0.141,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "package step",
+   "engine": "rules-3",
+   "pv": 0.396,
+   "battery": 0.44799999999999995,
+   "wallbox": 0.748,
+   "all_four": 0.153,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "package step",
+   "engine": "rules-4",
+   "pv": 0.402,
+   "battery": 0.498,
+   "wallbox": 0.748,
+   "all_four": 0.17600000000000002,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "package step",
+   "engine": "physics",
+   "pv": 0.295,
+   "battery": 0.307,
+   "wallbox": 0.748,
+   "all_four": 0.083,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "package step",
+   "engine": "black box (out-of-fold)",
+   "pv": 0.365,
+   "battery": 0.45899999999999996,
+   "wallbox": 0.748,
+   "all_four": 0.128,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "lowest option",
+   "band": "package step",
+   "engine": "textbook",
+   "pv": 0.196,
+   "battery": 0.433,
+   "wallbox": 0.748,
+   "all_four": 0.063,
+   "heatpump": 0.992
+  },
+  {
+   "ground_truth": "any option",
+   "band": "ours",
+   "engine": "rules-1",
+   "pv": 0.381,
+   "battery": 0.494,
+   "wallbox": 0.752,
+   "all_four": 0.188,
+   "heatpump": 0.997
+  },
+  {
+   "ground_truth": "any option",
+   "band": "ours",
+   "engine": "rules-3",
+   "pv": 0.41600000000000004,
+   "battery": 0.515,
+   "wallbox": 0.752,
+   "all_four": 0.20199999999999999,
+   "heatpump": 0.997
+  },
+  {
+   "ground_truth": "any option",
+   "band": "ours",
+   "engine": "rules-4",
+   "pv": 0.41700000000000004,
+   "battery": 0.518,
+   "wallbox": 0.752,
+   "all_four": 0.19699999999999998,
+   "heatpump": 0.997
+  },
+  {
+   "ground_truth": "any option",
+   "band": "ours",
+   "engine": "physics",
+   "pv": 0.309,
+   "battery": 0.332,
+   "wallbox": 0.752,
+   "all_four": 0.098,
+   "heatpump": 0.995
+  },
+  {
+   "ground_truth": "any option",
+   "band": "ours",
+   "engine": "black box (out-of-fold)",
+   "pv": 0.381,
+   "battery": 0.518,
+   "wallbox": 0.752,
+   "all_four": 0.16699999999999998,
+   "heatpump": 0.997
+  },
+  {
+   "ground_truth": "any option",
+   "band": "ours",
+   "engine": "textbook",
+   "pv": 0.205,
+   "battery": 0.486,
+   "wallbox": 0.752,
+   "all_four": 0.067,
+   "heatpump": 0.997
+  },
+  {
+   "ground_truth": "any option",
+   "band": "package step",
+   "engine": "rules-1",
+   "pv": 0.381,
+   "battery": 0.44799999999999995,
+   "wallbox": 0.752,
+   "all_four": 0.161,
+   "heatpump": 0.997
+  },
+  {
+   "ground_truth": "any option",
+   "band": "package step",
+   "engine": "rules-3",
+   "pv": 0.41600000000000004,
+   "battery": 0.47600000000000003,
+   "wallbox": 0.752,
+   "all_four": 0.177,
+   "heatpump": 0.997
+  },
+  {
+   "ground_truth": "any option",
+   "band": "package step",
+   "engine": "rules-4",
+   "pv": 0.41700000000000004,
+   "battery": 0.514,
+   "wallbox": 0.752,
+   "all_four": 0.196,
+   "heatpump": 0.997
+  },
+  {
+   "ground_truth": "any option",
+   "band": "package step",
+   "engine": "physics",
+   "pv": 0.309,
+   "battery": 0.33,
+   "wallbox": 0.752,
+   "all_four": 0.09300000000000001,
+   "heatpump": 0.995
+  },
+  {
+   "ground_truth": "any option",
+   "band": "package step",
+   "engine": "black box (out-of-fold)",
+   "pv": 0.381,
+   "battery": 0.48,
+   "wallbox": 0.752,
+   "all_four": 0.14400000000000002,
+   "heatpump": 0.997
+  },
+  {
+   "ground_truth": "any option",
+   "band": "package step",
+   "engine": "textbook",
+   "pv": 0.205,
+   "battery": 0.457,
+   "wallbox": 0.752,
+   "all_four": 0.066,
+   "heatpump": 0.997
+  }
+ ]
+}

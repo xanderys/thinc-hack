@@ -227,7 +227,7 @@ class Engine:
     def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain."""
         mode = RECOMMENDER["mode"]
-        if mode in ("rules", "calibrated", "band"):
+        if mode in ("rules", "calibrated", "band", "readout"):
             out = self.predict_rules(inp, overrides, full, extras, engine=mode)
         else:
             out = self.predict_ml(inp, overrides, full, extras)
@@ -249,7 +249,8 @@ class Engine:
         ov = overrides or {}
         t = base_features(inp, inst)["t"]
         rec_in = self.rules_inputs(inp)
-        fn = {"calibrated": planner_rules.calibrated.recommend, "band": planner_rules.rules3.recommend}.get(engine, planner_rules.recommend)
+        fn = {"calibrated": planner_rules.calibrated.recommend, "band": planner_rules.rules3.recommend,
+              "readout": planner_rules.rules4.recommend}.get(engine, planner_rules.recommend)
         r = rules_cached(fn, rec_in, self.rules_catalogue(inst, t), ov)
         design = {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
         nb = self.neighbours(inp, inst)
@@ -267,7 +268,7 @@ class Engine:
         econ, plaus, opt = self._physics(phys_inp, design, inst, t, full, extras)
         out = {"design": design, "explanation": list(r.get("explanation") or [])[:6], "components": comps, "plausibility": plaus,
                "economics": econ,
-               "model_version": "rules-1-calibrated" if engine == "calibrated" else (r.get("version") or planner_rules.RULES_VERSION),
+               "model_version": {"calibrated": "rules-1-calibrated"}.get(engine) or r.get("version") or planner_rules.RULES_VERSION,
                "rules": r.get("rules", [])}
         if engine == "calibrated":  # the Rules block reads as rules-4's rule list; the sizes and derivations stay rules-1's
             try:
@@ -282,7 +283,7 @@ class Engine:
         if full and extras and design.get("pv_kwp"):
             try:
                 out["variants"] = (self.variants_physics(inp, design, econ, rec_in, self.rules_catalogue(inst, t))
-                                   if engine in ("calibrated", "band") else self.variants(phys_inp, design, econ))
+                                   if engine in ("calibrated", "band", "readout") else self.variants(phys_inp, design, econ))
             except Exception as e:
                 log.warning("variants failed: %s", e)
         return out
@@ -449,7 +450,7 @@ class Engine:
             return []
         if GREYBOX["mode"]:  # lab only: the grey-box path goes through predict()
             return [self.predict(i, full=False)["design"] for i in inps]
-        if RECOMMENDER["mode"] in ("rules", "calibrated", "band"):  # questions are ranked on the calibrated rules (under 1 ms a home)
+        if RECOMMENDER["mode"] in ("rules", "calibrated", "band", "readout"):  # questions ranked on the calibrated rules (under 1 ms a home)
             return [self.predict_calibrated(i) for i in inps]
         F = [base_features(i, i["installer_id"]) for i in inps]
         X = pd.DataFrame(F)[self.cols]
