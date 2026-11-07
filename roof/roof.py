@@ -376,11 +376,11 @@ def _add_zensus(res: RoofResult) -> None:
     import zensus
     z = zensus.lookup(res.lat, res.lon) if res.lat is not None else None
     if z:
-        dmin = z.pop("dwellings_min", 1)
+        dmin = z.pop("dwellings_min", None)   # None = dwellings class unknown
         for k, v in z.items():
             setattr(res, k, v)
         gross = (res.footprint_m2 or 0) * (res.storeys or 0)
-        if res.floor_area_m2 and z.get("avg_flat_m2") and (dmin >= 3 or gross > MULTI_UNIT_M2):
+        if res.floor_area_m2 and z.get("avg_flat_m2") and ((dmin >= 3) if dmin is not None else gross > MULTI_UNIT_M2):
             res.notes.append(f"multi-unit building ({res.dwellings_class or 'footprint x storeys ' + str(round(gross)) + ' m2'}): "
                              f"floor area is the cell's average flat size, whole building was {res.floor_area_m2} m2")
             res.floor_area_m2 = z["avg_flat_m2"]
