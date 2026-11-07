@@ -1,0 +1,38 @@
+@font-face { font-family: "Sans"; src: url(../public/fonts/instrument-sans-400.woff2); font-weight: 400; }
+@font-face { font-family: "Sans"; src: url(../public/fonts/instrument-sans-500.woff2); font-weight: 500; }
+@font-face { font-family: "Sans"; src: url(../public/fonts/instrument-sans-600.woff2); font-weight: 600; }
+@font-face { font-family: "Serif"; src: url(../public/fonts/instrument-serif-400.woff2); }
+@font-face { font-family: "Mono"; src: url(../public/fonts/ibm-plex-mono-400.woff2); font-weight: 400; }
+@font-face { font-family: "Mono"; src: url(../public/fonts/ibm-plex-mono-500.woff2); font-weight: 500; }
+:root {
+  --paper: #F4F1EA; --sheet: #FAF8F3; --ink: #0A0C14; --ink-2: #4A4C55; --ink-3: #8A8B92;
+  --rule: #D6D1C5; --accent: #0D1BFE; --sun: #E8730C;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.45 "Sans", sans-serif; -webkit-font-smoothing: antialiased; }
+.mono, .num { font-family: "Mono", monospace; font-variant-numeric: tabular-nums; }
+.serif { font-family: "Serif", serif; font-weight: 400; }
+button { font: inherit; color: inherit; border-radius: 0; cursor: pointer; }
+.masthead { display: flex; align-items: baseline; gap: 28px; padding: 16px 32px 12px; background: var(--accent); color: var(--paper); }
+.masthead .title { font-family: "Serif", serif; font-size: 24px; }
+.masthead nav { display: flex; gap: 20px; font-size: 14px; }
+.masthead nav span { opacity: .72; padding-bottom: 2px; border-bottom: 1.5px solid transparent; }
+.masthead nav span.on { opacity: 1; border-bottom-color: var(--paper); }
+.masthead .engine { margin-left: auto; font: 12.5px "Mono", monospace; opacity: .72; }
+.wrap { max-width: 1376px; margin: 0 auto; padding: 0 32px 56px; }
+.stephead { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 26px 0 0; border-bottom: 1.5px solid var(--ink); }
+.stephead h1 { font: 40px/1.05 "Serif", serif; letter-spacing: -0.02em; margin: 0 0 12px; }
+.steps { display: flex; gap: 26px; font-size: 14px; }
+.steps span { padding: 0 0 12px; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1.5px; }
+.steps span.done { color: var(--ink-2); }
+.steps span.on { color: var(--ink); border-bottom-color: var(--accent); }
+.steps i { font-style: normal; font-family: "Mono", monospace; font-size: 12px; margin-right: 6px; color: var(--ink-3); }
+.label { font-size: 12.5px; color: var(--ink-3); }
+.btn { background: var(--accent); color: var(--paper); border: 0; padding: 8px 16px; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--ink-3); }
+.seg { display: inline-flex; border: 1px solid var(--ink-3); }
+.seg button { background: var(--sheet); border: 0; border-right: 1px solid var(--rule); padding: 6px 14px; }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--accent); color: var(--paper); }
+.note { position: absolute; font: 11px "Mono", monospace; color: var(--accent); }
