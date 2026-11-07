@@ -59,6 +59,25 @@ On the full 258 board (half of it in the formula's fit half): 20.9% / 17.1% / 6.
 
 If the mini is unreachable, run `engine/fallback.sh` on the MacBook and set `ENGINE_URL` to its Tailscale address. It finds the data pack under `.handoff`, reads the same `~/.config/marquee/*.env` switches, copies the bundled hero roof (`engine/fallback/roof2`, public LoD2 and Zensus figures only), and serves on port 8000 with `RECOMMENDER=rules` unless the env file says otherwise; the first start trains for about a minute, later starts load `engine/.cache`. The intake step needs `~/.config/marquee/intake.env` copied from the mini (it holds the secret, so copy it by hand, never through git).
 
+## Final scoreboard (sealed test half, run once by the lab)
+
+Production is rules-4-readout (`RECOMMENDER=readout`): the experts' own designs read back as a short rule list per installer. `/api/eval` serves this table as it is (`recommenders`, `recommenders_detail`, `deviation_quality`, `final_test`), so `/check`, this README and the deck show the same numbers. Source: `engine/lab/reports/final_test.md` (engine-lab cda46bd).
+
+All four within tolerance, lowest option, our bands:
+
+| Engine | Test half (633) | Clean 126 |
+|---|---|---|
+| rules-4-readout (production) | 18.6% | 23.0% |
+| rules-3-band | 20.9% | 23.8% |
+| rules-1-calibrated | 17.9% | 23.8% |
+| black box (126 unseen) | 19.0% | 19.0% |
+| rules-2-physics | 7.4% | 7.1% |
+| textbook | 6.8% | 6.3% |
+
+rules-3-band scores 20.9 on the test half, within noise of production's 18.6 (p 0.65); we ship the rule set a planner can read.
+
+The differences between the rule sets and the black box are not significant (McNemar p 0.33 to 1.00): they are ties. Counting a hit against any option the expert offered, rules-4 reaches 19.7% on the test half. Where rules-4 differs from the expert (514 of 633 homes), both designs through the same hourly simulation: rules-4 has the better 20-year NPV in 327 homes and the expert in 180, median gain EUR 430.
+
 ## Data
 
 | | 2a8ba8e2 | 23c108b7 |

@@ -122,3 +122,15 @@ The lab ran five measured changes on 5-fold cross-validation inside the training
 1. Done in iteration 2 (kept lowest option).
 2. Done in iteration 3 (not merged). Grey-box (approved by Xander via THINC HACK MASTER): base = physics optimum (`app.hourly.optimum`, installer catalogue), gradient boosting learns the expert's deviation per component, chained as today. Merge candidate only if it beats the current board.
 3. Done in iteration 4 (rejected). 4. Done in iteration 5 (merged). Closed after 19:30 Berlin 7 Nov: documentation only until the Sunday 08:00 stop.
+
+## Rules scoreboard (8 Nov, origin/physics 1329cd2)
+
+`python -m lab.score_rules` with `PLANNER_RULES_ENGINE` pointing at a physics checkout (planner_rules not copied in). Formula calibrated on the fit half, scored on the 633 new-system test homes, the 258 board and the 126 in both. All four: formula 17.9% / 20.9% / 23.8%, black box 19.0% (126 unseen) / 17.1% (board), textbook 6.8% / 6.6% / 6.3%. Matches PHYSICS' self-score to the digit. Deviation (all differing homes simulated): test half 519 differ, payback better for ours in 277 and the expert in 233, autarky ours 315 and expert 200; board 204 differ, payback 124 vs 77, autarky 111 vs 90. Report: `lab/reports/rules_scoreboard.md`.
+
+## Four-line rules scoreboard harness (8 Nov)
+
+`cd engine && uv run python -m lab.score_rules --physics-ref <ref> --calibrated-ref 1329cd2` scores formula-physics (no calibrate, constants=None), formula-calibrated (rules-1, fit half), black box and textbook on the test half, the 258 board and board and test half, plus the deviation analysis and runtime per design. Each ref is a throwaway worktree under /private/tmp/claude-501 imported in its own subprocess (`lab/_rules_worker.py`), designs cached in `engine/.cache/lab_rules/<sha>[-calibrated].json`; `--limit N` times N designs only. Smoke test with rules-1 in both columns (`reports/rules_scoreboard_smoke.md`, not a result) reproduces 3f498d8: 17.9% / 20.9% / 23.8% all four and the same deviation counts. Rules-1 costs about 9 ms per design (7.9 s for the first call).
+
+## FINAL test-half score (8 Nov, run once)
+
+`uv run python -m lab.final_test --final` scored the sealed test half (633 new-system homes) and the clean 126 (258 board and test half) with all engines from origin/physics 6c3b46b, calibrated on the full fit half, plus rules-4 at the leaf-default 445656e as a labelled extra column (both versions fixed before any test score; a first 445656e run was stopped before it produced any score, so nothing was tuned on the test half). Black box is scored on the 126 test homes it never trained on. Blocks: ground truth {lowest option, any offered option (same option for all four)} x band {ours, Reonic-style package step snapped to each installer's own sizes, pending the expert's answer}; paired McNemar and hourly-simulation deviation. Report: `lab/reports/final_test.md`. Not rerun.

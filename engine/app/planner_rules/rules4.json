@@ -2,80 +2,78 @@
  "_meta": {
   "fitted_on": "fit half (seed 42, same ids as engine/lab/split), 654 new-system jobs",
   "depth": 3,
-  "min_leaf": 15
+  "min_leaf": 25,
+  "weak_below_oof": 0.3
  },
  "23c108b7": {
   "pv": {
    "feature": "use_kwh",
    "threshold": 3750.0,
    "le": {
-    "feature": "use_kwh",
-    "threshold": 2900.0,
-    "le": {
-     "value": 6.75,
-     "matched": 6,
-     "n": 15
-    },
-    "gt": {
-     "value": 7.199999999999999,
-     "matched": 14,
-     "n": 36
-    }
+    "value": 7.199999999999999,
+    "matched": 20,
+    "n": 51,
+    "oof_n": 51,
+    "oof_ok": 17,
+    "oof": 0.333,
+    "weak": false
    },
    "gt": {
-    "feature": "use_kwh",
-    "threshold": 8950.0,
-    "le": {
-     "value": 11.7,
-     "matched": 58,
-     "n": 97
-    },
-    "gt": {
-     "value": 13.049999999999999,
-     "matched": 8,
-     "n": 15
-    }
+    "value": 11.7,
+    "matched": 64,
+    "n": 112,
+    "oof_n": 112,
+    "oof_ok": 59,
+    "oof": 0.527,
+    "weak": false
    }
   },
   "battery": {
    "feature": "use_kwh",
-   "threshold": 8950.0,
+   "threshold": 6550.0,
    "le": {
-    "feature": "pv_kwp",
-    "threshold": 9.45,
+    "feature": "use_kwh",
+    "threshold": 3900.0,
     "le": {
-     "feature": "pv_kwp",
-     "threshold": 6.97,
-     "le": {
-      "value": 9.0,
-      "matched": 9,
-      "n": 15
-     },
-     "gt": {
-      "value": 10.0,
-      "matched": 20,
-      "n": 36
-     }
+     "value": 10.0,
+     "matched": 31,
+     "n": 54,
+     "oof_n": 53,
+     "oof_ok": 30,
+     "oof": 0.566,
+     "weak": false
     },
     "gt": {
-     "feature": "use_kwh",
-     "threshold": 4550.0,
+     "feature": "use_given",
+     "threshold": 0.5,
      "le": {
       "value": 9.0,
-      "matched": 35,
-      "n": 46
+      "matched": 24,
+      "n": 31,
+      "oof_n": 29,
+      "oof_ok": 22,
+      "oof": 0.759,
+      "weak": false
      },
      "gt": {
       "value": 10.0,
       "matched": 36,
-      "n": 51
+      "n": 48,
+      "oof_n": 48,
+      "oof_ok": 35,
+      "oof": 0.729,
+      "weak": false
      }
     }
    },
    "gt": {
-    "value": 15.0,
-    "matched": 6,
-    "n": 15
+    "value": 9.0,
+    "matched": 12,
+    "n": 30,
+    "oof_n": 29,
+    "oof_ok": 11,
+    "oof": 0.379,
+    "weak": false
    }
   },
   "packages": [
@@ -94,17 +92,25 @@
    "feature": "use_kwh",
    "threshold": 3550.0,
    "le": {
-    "feature": "heats_with_heat_pump",
-    "threshold": 0.5,
+    "feature": "use_kwh",
+    "threshold": 2856.5,
     "le": {
      "value": 6.3,
-     "matched": 51,
-     "n": 111
+     "matched": 23,
+     "n": 48,
+     "oof_n": 48,
+     "oof_ok": 19,
+     "oof": 0.396,
+     "weak": false
     },
     "gt": {
      "value": 8.1,
-     "matched": 12,
-     "n": 22
+     "matched": 39,
+     "n": 85,
+     "oof_n": 85,
+     "oof_ok": 26,
+     "oof": 0.306,
+     "weak": false
     }
    },
    "gt": {
@@ -113,44 +119,68 @@
     "le": {
      "value": 10.35,
      "matched": 132,
-     "n": 315
+     "n": 315,
+     "oof_n": 315,
+     "oof_ok": 121,
+     "oof": 0.384,
+     "weak": false
     },
     "gt": {
-     "feature": "use_kwh",
-     "threshold": 12600.0,
-     "le": {
-      "value": 10.35,
-      "matched": 10,
-      "n": 22
-     },
-     "gt": {
-      "value": 18.0,
-      "matched": 8,
-      "n": 17
-     }
+     "value": 12.149999999999999,
+     "matched": 15,
+     "n": 39,
+     "oof_n": 39,
+     "oof_ok": 14,
+     "oof": 0.359,
+     "weak": false
     }
    }
   },
   "battery": {
-   "feature": "pv_kwp",
-   "threshold": 7.2,
+   "feature": "use_kwh",
+   "threshold": 3550.0,
    "le": {
     "value": 5.0,
-    "matched": 63,
-    "n": 111
+    "matched": 68,
+    "n": 133,
+    "oof_n": 133,
+    "oof_ok": 66,
+    "oof": 0.496,
+    "weak": false
    },
    "gt": {
     "feature": "use_kwh",
-    "threshold": 12600.0,
+    "threshold": 10850.0,
     "le": {
-     "value": 9.2,
-     "matched": 162,
-     "n": 363
+     "feature": "use_kwh",
+     "threshold": 4100.0,
+     "le": {
+      "value": 5.0,
+      "matched": 23,
+      "n": 57,
+      "oof_n": 57,
+      "oof_ok": 20,
+      "oof": 0.351,
+      "weak": false
+     },
+     "gt": {
+      "value": 9.2,
+      "matched": 130,
+      "n": 274,
+      "oof_n": 272,
+      "oof_ok": 126,
+      "oof": 0.463,
+      "weak": false
+     }
     },
     "gt": {
      "value": 14.0,
-     "matched": 6,
-     "n": 17
+     "matched": 10,
+     "n": 27,
+     "oof_n": 27,
+     "oof_ok": 5,
+     "oof": 0.185,
+     "weak": true
     }
    }
   },

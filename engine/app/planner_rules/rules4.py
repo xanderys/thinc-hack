@@ -16,7 +16,7 @@ from . import calibrated as R1
 RULES_VERSION = "rules-4-readout"
 TABLE = Path(__file__).with_name("rules4.json")
 MODULE_KWP = 0.45
-DEPTH, MIN_LEAF = 3, 15
+DEPTH, MIN_LEAF = 3, 25
 NAMES = {"2a8ba8e2": "Installer A", "23c108b7": "Installer B"}
 FEATURES = ["use_kwh", "has_ev", "heats_with_heat_pump", "use_given", "offer_year"]
 LABEL = {"use_kwh": "use incl. EV (kWh)", "has_ev": "electric car", "heats_with_heat_pump": "heats with a heat pump",
@@ -73,9 +73,61 @@ def prune(n):
     return {**n, "le": a, "gt": b}
 
 
-def calibrate(fit_df) -> dict:
+WEAK_OOF = 0.30  # a leaf that holds out of fold on fewer homes than this is printed as weak
+
+
+def calibrate(fit_df, oof=True) -> dict:
     from .calibrate import inputs as row_in, scope
     d = scope(fit_df)
+    out = _calibrate(d)
+    if oof:
+        _support(d, out)
+    return out
+
+
+def _support(d, out, k=5):
+    """Out-of-fold support per leaf: of the homes a leaf covers, the share whose 5-fold out-of-fold design is within
+    tolerance for that component."""
+    from .calibrate import inputs as row_in
+    d = d.reset_index(drop=True)
+    fold = np.random.default_rng(42).permutation(len(d)) % k
+    ok = {"pv": np.zeros(len(d), bool), "battery": np.zeros(len(d), bool)}
+    for f in range(k):
+        cons = _calibrate(d[fold != f])
+        idx = np.where(fold == f)[0]
+        for j in idx:
+            r = d.iloc[j].to_dict()
+            p = recommend(row_in(r), constants=cons)["design"]
+            ok["pv"][j] = bool(_within("pv", np.array([p["pv_kwp"] or 0.0]), np.array([r["pv_kwp"]]))[0])
+            ok["battery"][j] = bool(_within("battery", np.array([p["battery_kwh"] or 0.0]), np.array([r["battery_kwh"]]))[0])
+    for j in range(len(d)):
+        r = d.iloc[j].to_dict()
+        inp = row_in(r)
+        t = out[r["installer_id"]]
+        if not r["has_solar"]:
+            leaf, _ = walk(t["pv"], features(inp))
+            leaf["oof_n"] = leaf.get("oof_n", 0) + 1
+            leaf["oof_ok"] = leaf.get("oof_ok", 0) + int(ok["pv"][j])
+        if not r["has_storage"]:
+            base = walk(t["pv"], features(inp))[0]["value"] if not r["has_solar"] else (r["existing_solar_kwp"] or 0.0)
+            leaf, _ = walk(t["battery"], features(inp, base))
+            leaf["oof_n"] = leaf.get("oof_n", 0) + 1
+            leaf["oof_ok"] = leaf.get("oof_ok", 0) + int(ok["battery"][j])
+
+    def mark(n):
+        if "feature" in n:
+            mark(n["le"]); mark(n["gt"])
+        else:
+            n["oof"] = round(n.get("oof_ok", 0) / n["oof_n"], 3) if n.get("oof_n") else None
+            n["weak"] = n["oof"] is not None and n["oof"] < WEAK_OOF
+    for i in out:
+        if not i.startswith("_"):
+            mark(out[i]["pv"]); mark(out[i]["battery"])
+    out["_meta"]["weak_below_oof"] = WEAK_OOF
+
+
+def _calibrate(d) -> dict:
+    from .calibrate import inputs as row_in
     out = {"_meta": {"fitted_on": f"fit half (seed 42, same ids as engine/lab/split), {len(d)} new-system jobs",
                      "depth": DEPTH, "min_leaf": MIN_LEAF}}
     for inst, g in d.groupby("installer_id"):
@@ -154,7 +206,7 @@ def rule_list(tree, comp, unit):
             rec(n["gt"], path + [(n["feature"], n["threshold"], False)])
         else:
             v = f"{n['value']:g} {unit}" if n["value"] else "none"
-            out.append({"when": say(path), "then": v, "matched": n["matched"], "n": n["n"]})
+            out.append({"when": say(path), "then": v, "matched": n["matched"], "n": n["n"], "oof": n.get("oof"), "weak": bool(n.get("weak"))})
     rec(tree, [])
     return out
 
@@ -169,7 +221,9 @@ def rules_table(inst=None, constants=None):
     out = []
     for i in ([inst] if inst else [k for k in t if not k.startswith("_")]):
         for comp, unit in (("pv", "kWp"), ("battery", "kWh")):
-            cs = [{"name": f"{comp}: {r['when']}", "id": f"{i}:{comp}:{r['when']}", "value": r["then"], "unit": "", "source": f"{NAMES.get(i, i)}: {r['matched']} of {r['n']} signed designs within tolerance",
+            cs = [{"name": f"{comp}: {r['when']}", "id": f"{i}:{comp}:{r['when']}", "value": r["then"], "unit": "", "weak": r["weak"],
+                   "source": f"{NAMES.get(i, i)}: {r['matched']} of {r['n']} signed designs within tolerance"
+                   + (f"; holds out of fold on {r['oof']:.0%}" if r["oof"] is not None else "") + (" (weak)" if r["weak"] else ""),
                    "fitted_on": (t.get("_meta") or {}).get("fitted_on")} for r in rule_list(t[i][comp], comp, unit)]
             out.append({"name": f"{comp} ({NAMES.get(i, i)})", "sentence": SENTENCE[comp], "constants": cs})
     return out + [r for r in R1.rules_table(inst or "2a8ba8e2") if r["name"] in ("heatpump", "wallbox", "inverter")]
@@ -209,7 +263,7 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
         capped = bool(cap and pv > cap)
         if capped:
             pv = round(max(1, math.floor(cap / MODULE_KWP)) * MODULE_KWP, 2)
-        s = f"{leaf['value']:g} kWp: {NAMES.get(inst, inst)} fits this for {say(path)} ({leaf['matched']} of {leaf['n']} signed homes within tolerance)"
+        s = f"{leaf['value']:g} kWp: {NAMES.get(inst, inst)} fits this for {say(path)} ({leaf['matched']} of {leaf['n']} signed homes within tolerance{'; a weak rule' if leaf.get('weak') else ''})"
         s += f", capped by the roof at {pv:g} kWp." if capped else "."
         put("pv", pv, s, {"axiom": SENTENCE["pv"], "equation": say(path) + f" -> {leaf['value']:g} kWp",
                           "inputs": [{"name": LABEL[k], "value": round(f[k], 2), "unit": "", "source": "inputs"} for k in dict.fromkeys(p[0] for p in path)]
@@ -234,7 +288,7 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
         final = float(snapped or bat)
         bat_leaf, bat = bat, final
         if final:
-            s = f"{final:g} kWh: {NAMES.get(inst, inst)}'s package for {say(path)} ({leaf['matched']} of {leaf['n']} within tolerance)" + (f", nearest on sale to {bat_leaf:g}." if snapped else ".")
+            s = f"{final:g} kWh: {NAMES.get(inst, inst)}'s package for {say(path)} ({leaf['matched']} of {leaf['n']} within tolerance{'; a weak rule' if leaf.get('weak') else ''})" + (f", nearest on sale to {bat_leaf:g}." if snapped else ".")
         else:
             s = f"No battery: {NAMES.get(inst, inst)} fits none for {say(path)} ({leaf['matched']} of {leaf['n']})."
         put("battery", final, s, {"axiom": SENTENCE["battery"], "equation": say(path) + f" -> {bat_leaf:g} kWh" + (f", package {final:g} kWh" if snapped else ""),
@@ -271,7 +325,7 @@ def cv_score(df, k=5, fn=None):
     fold = np.random.default_rng(42).permutation(len(d)) % k
     acc = []
     for f in range(k):
-        cons = calibrate(d[fold != f])
+        cons = calibrate(d[fold != f], oof=False)
         te = d[fold == f]
         p = [recommend(row_in(r), constants=cons)["design"] for r in te.to_dict("records")]
         h = [_within(c, np.array([x[kk] or 0 for x in p], float), te[kk].values.astype(float))
@@ -292,4 +346,35 @@ if __name__ == "__main__":
         for comp, unit in (("pv", "kWp"), ("battery", "kWh")):
             print(f"\n{NAMES[inst]} {comp}")
             for r in rule_list(cons[inst][comp], comp, unit):
-                print(f"  {r['when']}: {r['then']}  ({r['matched']} of {r['n']})")
+                print(f"  {r['when']}: {r['then']}  ({r['matched']} of {r['n']}; out of fold {r['oof']:.0%}{', WEAK' if r['weak'] else ''})")
+
+
+# ---------- docs/rules.md production section, from rules_table() ----------
+
+DOCS = Path(__file__).resolve().parents[3] / "docs" / "rules.md"
+START, END = "<!-- rules-4 generated by rules4.py: start -->", "<!-- rules-4 generated by rules4.py: end -->"
+
+
+def docs_block():
+    out = [START]
+    for inst in ("2a8ba8e2", "23c108b7"):
+        out.append(f"\n### {NAMES[inst]} ({inst})\n")
+        for r in rules_table(inst):
+            if r["name"].split(" ")[0] not in ("pv", "battery"):
+                continue
+            out.append(f"\n**{r['name'].split(' ')[0].capitalize().replace('Pv', 'PV')}**: {r['sentence']}")
+            for c in r["constants"]:
+                out.append(f"- {'Weak: ' if c.get('weak') else ''}{c['name'].split(': ', 1)[1]}: {c['value']}. {c['source'].split(': ', 1)[1].replace(' (weak)', '')}.")
+    out.append("\n### Both installers\n")
+    for r in rules_table("2a8ba8e2"):
+        if r["name"] in ("heatpump", "wallbox", "inverter"):
+            out.append(f"- **{r['name'].capitalize().replace('Heatpump', 'Heat pump')}**: {r['sentence']} "
+                       + "; ".join(f"`{c['name']}` = {c['value']:g} {c['unit']}".strip() + f" ({c['source']})" for c in r["constants"]) + ".")
+    out.append(END)
+    return "\n".join(out)
+
+
+def write_docs():
+    t = DOCS.read_text()
+    a, b = t.index(START), t.index(END) + len(END)
+    DOCS.write_text(t[:a] + docs_block() + t[b:])
