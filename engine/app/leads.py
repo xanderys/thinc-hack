@@ -47,8 +47,24 @@ def load_all():
             pass
 
 
+import contextvars
+
+REQUEST = contextvars.ContextVar("lead_request", default=None)  # set per request by main's middleware
+PINNED_LOG = DIR / "pinned_writes.jsonl"
+
+
 def save(lead: dict):
     DIR.mkdir(parents=True, exist_ok=True)
+    if lead.get("pinned"):  # every write to a pinned (demo) lead, with who sent it
+        try:
+            ctx = REQUEST.get() or {"source": "engine background (refresh or roof redraft)"}
+            d = (lead.get("draft") or {}).get("design") or {}
+            rec = {"at": now(), "lead_id": lead["lead_id"], "status": lead.get("status"), "steps": len(lead.get("history") or []),
+                   "design": {k: v for k, v in d.items() if v}, **ctx}
+            with _lock, PINNED_LOG.open("a") as f:
+                f.write(json.dumps(rec, ensure_ascii=False, default=float) + "\n")
+        except Exception:
+            pass
     tmp = DIR / f"lead-{lead['lead_id']}.json.tmp"
     tmp.write_text(json.dumps(lead, ensure_ascii=False, default=float))
     tmp.replace(DIR / f"lead-{lead['lead_id']}.json")

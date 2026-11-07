@@ -41,6 +41,22 @@ log = logging.getLogger("engine")
 app = FastAPI(title="Reonic planner engine")
 from . import shading_routes  # noqa: E402  GET /api/roof/shading (branch shading)
 app.include_router(shading_routes.router)
+@app.middleware("http")
+async def _who(request: Request, call_next):
+    """Records who sent each write, so a write to a pinned lead is logged with its source (leads.PINNED_LOG)."""
+    tok = None
+    if request.method in ("POST", "PUT", "DELETE") and request.url.path.startswith(("/api/leads", "/api/intake")):
+        h = request.headers
+        tok = leads.REQUEST.set({"route": f"{request.method} {request.url.path}", "client": request.client.host if request.client else None,
+                                 "forwarded_for": h.get("x-forwarded-for"), "user_agent": h.get("user-agent"),
+                                 "origin": h.get("origin") or h.get("referer"), "with_secret": bool(h.get("x-intake-secret"))})
+    try:
+        return await call_next(request)
+    finally:
+        if tok is not None:
+            leads.REQUEST.reset(tok)
+
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 STATE: dict = {"engine": None, "eval": None, "error": None}
