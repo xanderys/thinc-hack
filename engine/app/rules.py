@@ -69,12 +69,12 @@ def heat_load_kw(inp):
     yr = inp.get("house_built_year")
     if inp.get("heating_demand_kwh"):
         return inp["heating_demand_kwh"] / 2300, f"{inp['heating_demand_kwh']:,.0f} kWh heat a year over 2,300 full-load hours, the installer's median"
-    env = inp.get("envelope") or {}
-    if env.get("design_heat_load_kw"):  # physics of this house beats a price-based guess
-        return float(env["design_heat_load_kw"]), "design heat load of this house from its envelope (LoD2, IWU)"
     if inp.get("heating_cost_per_year_eur"):
         heat = inp["heating_cost_per_year_eur"] / 0.12
         return heat / 2300, f"EUR {inp['heating_cost_per_year_eur']:,.0f} heating cost at 12 ct per kWh of heat, over 2,300 full-load hours"
+    env = inp.get("envelope") or {}
+    if env.get("design_heat_load_kw"):  # an upper bound (unrenovated fabric): only when no bill or heat figure exists
+        return float(env["design_heat_load_kw"]), "design heat load from the envelope (LoD2, IWU), an upper bound for unrenovated fabric"
     if sqm:
         wpm = 40 if yr and yr >= 2000 else 70 if yr and yr >= 1980 else 120 if yr else 90
         return sqm * wpm / 1000 + 1.0, f"{sqm:.0f} m2 at {wpm} W/m2, plus 1 kW hot water"

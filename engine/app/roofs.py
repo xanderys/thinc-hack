@@ -164,11 +164,14 @@ def model_url(address: str) -> str:
     return f"/api/roof/model/file?address={quote(address)}"
 
 
-def model_info(address: str) -> dict:
+def _mkey(address: str, build_year=None) -> str:
+    return hashlib.sha256(f"{address.strip().lower()}|{int(build_year) if build_year else ''}".encode()).hexdigest()[:16]
+
+
+def model_info(address: str, build_year=None) -> dict:
     """v2.1: roof.model(address) from roof/model (REONIC MODEL): {glb_path, planes_json_path, textured, licence, source},
-    cached by address so a model is built once."""
-    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
-    path = MODEL_CACHE / f"{key}.json"
+    cached by address and build year (the envelope uses the year) so a model is built once."""
+    path = MODEL_CACHE / f"{_mkey(address, build_year)}.json"
     if path.exists():
         info = json.loads(path.read_text())
         if Path(info.get("glb_path", "")).exists():
@@ -176,7 +179,7 @@ def model_info(address: str) -> dict:
     m = _roof()
     if not hasattr(m, "model"):
         raise RuntimeError("The 3D roof model is not installed yet (roof/model).")
-    res = m.model(address)
+    res = m.model(address, build_year=int(build_year) if build_year else None)
     info = res if isinstance(res, dict) else getattr(res, "__dict__", {})
     info = {k: (str(v) if k.endswith("_path") else v) for k, v in info.items()}
     MODEL_CACHE.mkdir(parents=True, exist_ok=True)
@@ -184,10 +187,12 @@ def model_info(address: str) -> dict:
     return info
 
 
-def model_json_cached(address: str):
-    """The built model's planes JSON for this address, or None; never builds one."""
-    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
-    path = MODEL_CACHE / f"{key}.json"
+def model_json_cached(address: str, build_year=None):
+    """The built model's planes JSON for this address and year, or None; never builds one (starts a build on a miss)."""
+    path = MODEL_CACHE / f"{_mkey(address, build_year)}.json"
+    if not path.exists() and model_available():
+        import threading
+        threading.Thread(target=lambda: _safe_model(address, build_year), daemon=True).start()
     if not path.exists():
         return None
     try:
@@ -196,18 +201,26 @@ def model_json_cached(address: str):
         return None
 
 
-def envelope_cached(address: str):
-    """envelope block (per-face heat loss, design heat load) from an already built model; never builds one."""
-    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
-    path = MODEL_CACHE / f"{key}.json"
-    if not path.exists():
-        return None
+_building: set = set()
+
+
+def _safe_model(address, build_year):
+    k = _mkey(address, build_year)
+    if k in _building:
+        return
+    _building.add(k)
     try:
-        info = json.loads(path.read_text())
-        planes = json.loads(Path(info["planes_json_path"]).read_text())
-        return planes.get("envelope")
-    except Exception:
-        return None
+        model_info(address, build_year)
+    except Exception as e:
+        log.warning("roof model build failed for %s: %s", address, e)
+    finally:
+        _building.discard(k)
+
+
+def envelope_cached(address: str, build_year=None):
+    """envelope block (per-face heat loss, design heat load) from an already built model; never builds one."""
+    m = model_json_cached(address, build_year)
+    return (m or {}).get("envelope")
 
 
 def spatial_inputs() -> list:
@@ -215,8 +228,7 @@ def spatial_inputs() -> list:
     out = ["lod2 roof planes"]
     if not model_available():
         return out
-    key = hashlib.sha256(HERO_ADDRESS.strip().lower().encode()).hexdigest()[:16]
-    path = MODEL_CACHE / f"{key}.json"
+    path = MODEL_CACHE / f"{_mkey(HERO_ADDRESS, 1985)}.json"
     try:
         info = json.loads(path.read_text())
         planes = json.loads(Path(info["planes_json_path"]).read_text())
@@ -236,7 +248,7 @@ def warm_models():
         return
     for a in CHECK_ADDRESSES:
         try:
-            model_info(a)
+            model_info(a, 1985 if a == HERO_ADDRESS else None)  # the hero lead states 1985
         except Exception as e:
             log.warning("roof model warm-up failed for %s: %s", a, e)
 

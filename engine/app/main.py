@@ -240,7 +240,7 @@ def check_inputs(inp: dict):
         except Exception as e:
             log.warning("roof lookup failed: %s", e)
     if inp.get("address") and inp.get("roof") and not inp.get("envelope"):
-        env = roofs.envelope_cached(inp["address"])
+        env = roofs.envelope_cached(inp["address"], inp.get("house_built_year"))
         if env and env.get("design_heat_load_kw"):
             inp["envelope"] = env  # heat load from the house's own walls and roof (REONIC MODEL); rules read it too
     r = inp.get("roof") or {}
@@ -460,14 +460,16 @@ def roof_photo(address: str = ""):
 
 
 @app.get("/api/roof/model")
-def roof_model(address: str = ""):
+def roof_model(address: str = "", build_year: Optional[int] = None):
     """v2.1: the planes of the actual house (LoD2, per-plane sun yield, panel layout) and a URL to its 3D model."""
     if not address.strip():
         return err(422, "address is missing.")
     try:
-        info = roofs.model_info(address)
+        info = roofs.model_info(address, build_year)
     except RuntimeError as e:
         return err(503, str(e))
+    except Exception as e:
+        return err(404, str(e))
     planes = {}
     p = info.get("planes_json_path")
     if p and Path(p).exists():
@@ -477,11 +479,11 @@ def roof_model(address: str = ""):
 
 
 @app.get("/api/roof/model/file")
-def roof_model_file(address: str = ""):
+def roof_model_file(address: str = "", build_year: Optional[int] = None):
     if not address.strip():
         return err(422, "address is missing.")
     try:
-        info = roofs.model_info(address)
+        info = roofs.model_info(address, build_year)
     except RuntimeError as e:
         return err(503, str(e))
     g = info.get("glb_path")

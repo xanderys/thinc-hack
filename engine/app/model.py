@@ -226,9 +226,8 @@ class Engine:
     # ---------- prediction ----------
     def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain."""
-        if RECOMMENDER["mode"] == "rules":
-            return self.predict_rules(inp, overrides, full, extras)
-        return self.predict_ml(inp, overrides, full, extras)
+        out = self.predict_rules(inp, overrides, full, extras) if RECOMMENDER["mode"] == "rules" else self.predict_ml(inp, overrides, full, extras)
+        return with_heat_bound(inp, out)
 
     def rules_catalogue(self, inst: str, t: float) -> dict:
         cat = self.catalogue[inst]
@@ -278,7 +277,7 @@ class Engine:
         """What the rules read: the inputs, the roof as the simulation sees it, and the built house model when cached."""
         rec_in = roof_to_sim({k: v for k, v in inp.items() if k != "_estimated"})
         if inp.get("address") and inp.get("roof"):
-            m = __import__("app.roofs", fromlist=["model_json_cached"]).model_json_cached(inp["address"])
+            m = __import__("app.roofs", fromlist=["model_json_cached"]).model_json_cached(inp["address"], inp.get("house_built_year"))
             if m:
                 rec_in["roof_model"] = m
         return rec_in
@@ -663,7 +662,7 @@ class Engine:
             heat = inp.get("heating_demand_kwh") or (inp["heating_cost_per_year_eur"] / 0.12 if inp.get("heating_cost_per_year_eur") else None)
             axiom = "A heat pump runs about 2,300 full-load hours a year, so heat demand over 2,300 hours gives its size."
             env = inp.get("envelope") or {}
-            if not inp.get("heating_demand_kwh") and env.get("design_heat_load_kw"):
+            if not inp.get("heating_demand_kwh") and not inp.get("heating_cost_per_year_eur") and env.get("design_heat_load_kw"):
                 ax = round(float(env["design_heat_load_kw"]), 1)
                 ins = [{"name": "design heat load", "value": ax, "unit": "kW", "source": "envelope (LoD2, IWU)"}]
                 eq = f"design heat load {ax:g} kW from the walls, roof and windows of this house"
@@ -1198,6 +1197,19 @@ def rules_cached(fn, inputs, catalogue, overrides):
             _RULES_MEMO.clear()
         _RULES_MEMO[k] = fn(inputs, catalogue, overrides)
     return _RULES_MEMO[k]
+
+
+def with_heat_bound(inp: dict, out: dict) -> dict:
+    """The envelope's design heat load is an upper bound (unrenovated IWU U-values on the whole LoD2 volume): when a
+    heat figure from the lead or the bill exists, the heat pump is sized from that and the envelope is carried as a bound."""
+    env = (inp.get("envelope") or {}).get("design_heat_load_kw")
+    if env and (inp.get("heating_demand_kwh") or inp.get("heating_cost_per_year_eur")):
+        hp = out["components"]["heatpump"]
+        hp["heat_load_upper_bound_kw"] = round(float(env), 1)
+        yr = inp.get("house_built_year")
+        hp["heat_load_upper_bound_note"] = (f"up to {env:.0f} kW if the {int(yr)} fabric is unrenovated" if yr
+                                            else f"up to {env:.0f} kW if the fabric is unrenovated")
+    return out
 
 
 def physics_component(msg: str) -> str:
