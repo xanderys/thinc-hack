@@ -26,7 +26,7 @@ export interface HomeInputs {
 }
 
 export interface RoofResult {
-  source: "lod2" | "google-solar" | "osm" | "none";
+  source: "lod2" | "google-solar" | "osm" | "postcode" | "none";
   matched_address: string; lat: number | null; lon: number | null;
   footprint_m2: number | null; roof_area_m2: number | null; usable_area_m2: number | null;
   segments: { azimuth: number; pitch: number; area_m2: number }[];
@@ -159,8 +159,8 @@ export interface InboxRow {
 }
 
 // LLM edge, web only
-export interface ReadFact { field: keyof HomeInputs | "wants" | "monthly_bill_eur"; value: unknown; quote: string; }
-export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; source?: "call"; origin?: Record<string, "form" | "call" | "estimated">; }
+export interface ReadFact { field: keyof HomeInputs | "wants" | "monthly_bill_eur" | "postcode"; value: unknown; quote: string; }
+export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; source?: "call"; origin?: Record<string, "form" | "call" | "estimated">; postcode?: string; }
 export interface WriteResponse { text: string; grounded: boolean; lines: Partial<Record<ComponentKey, string | null>>; cached?: boolean; }
 
 export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Installer A", "23c108b7": "Installer B" };

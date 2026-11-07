@@ -471,3 +471,4 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .s-calls-l { list-style: none; margin: 8px 0 0; padding: 0; }
 .s-calls-l button { width: 100%; display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; min-height: 44px; background: none; border: 0; border-bottom: 1px solid var(--rule); font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; border-radius: 0; }
 .s-calls-l .num { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; }
+.s-only { margin: 0 0 14px; font-size: 14px; color: var(--ink-2); }

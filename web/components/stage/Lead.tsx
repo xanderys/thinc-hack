@@ -14,6 +14,13 @@ type Props = {
   pref: Pref; setPref: (p: Pref) => void; asking: boolean; call?: React.ReactNode;
 };
 
+// A yes/no question always offers both answers, even when the engine lists only the one that changes the design.
+function askOptions(q: AskQuestion) {
+  const o = q.options.map((x) => ({ value: x.value as unknown, label: x.label }));
+  if (typeof q.current === "boolean" && !o.some((x) => x.value === q.current)) o.push({ value: q.current, label: q.current ? "Yes" : "No" });
+  return o;
+}
+
 export type Pref = "expert" | "independence" | "payback" | "upfront";
 const PREFS: [Pref, string][] = [["independence", "Most independence"], ["payback", "Best payback"], ["upfront", "Lowest upfront cost"], ["expert", "As planners design it"]];
 
@@ -77,7 +84,7 @@ export default function Lead(p: Props) {
       <h2 className="s-h3">{read ? (read.source === "call" ? "From the call" : "From the lead") : "Paste the lead."}</h2>
       {!read ? (
         <form onSubmit={(e) => { e.preventDefault(); if (p.lead.trim()) p.onRead(); }}>
-          <textarea className="s-mailin" value={p.lead} onChange={(e) => p.setLead(e.target.value)} rows={11} aria-label="The lead" disabled={p.busy} />
+          <textarea className="s-mailin" value={p.lead} onChange={(e) => p.setLead(e.target.value)} rows={11} aria-label="The lead" placeholder="Paste the enquiry, or just an address or postcode." disabled={p.busy} />
           <div className="s-row"><button className="btn" type="submit" disabled={p.busy || !p.lead.trim()}>{p.busy ? "Reading" : "Read it"}</button></div>
         </form>
       ) : null}
@@ -89,12 +96,15 @@ export default function Lead(p: Props) {
 
       {read && (
         <div className="s-facts s-in">
+          {read.postcode && !read.inputs.address && (
+            <p className="s-only">Postcode {read.postcode}: {p.roof && p.roof.source !== "none" ? "sun and typical homes known" : "location known"}, {read.found.length > 1 ? "plus what the lead says below" : "nothing else yet"}.</p>
+          )}
           <h3 className="s-fh">Consumption</h3>
-          <Fact k="Annual use" v={<span className={p.answer !== undefined && !quote("annual_demand_kwh") ? "num asked" : "num"}>{quote("annual_demand_kwh") || p.answer !== undefined || (!p.asking && p.question?.field !== "annual_demand_kwh") ? `${n0(i.annual_demand_kwh)} kWh` : "Not known yet"}</span>} src={src("annual_demand_kwh")} />
+          <Fact k="Annual use" v={<span className={p.answer !== undefined && p.question?.field === "annual_demand_kwh" && !quote("annual_demand_kwh") ? "num asked" : "num"}>{quote("annual_demand_kwh") || p.answer !== undefined || (!p.asking && p.question?.field !== "annual_demand_kwh") ? `${n0(i.annual_demand_kwh)} kWh` : "Not known yet"}</span>} src={src("annual_demand_kwh")} />
           <Fact k="Heating" v={<>{HEATING_WORD[i.heating_type]}{i.heating_cost_per_year_eur ? <>, <span className="num">{n0(i.heating_cost_per_year_eur)} EUR</span> a year</> : null}</>} src={src("heating_type")} />
           {i.electricity_price_ct_kwh != null && <Fact k="Price" v={<><span className="num">{i.electricity_price_ct_kwh} ct</span> per kWh</>} src={src("electricity_price_ct_kwh")} />}
           <h3 className="s-fh">Demand</h3>
-          <Fact k="Electric car" v={i.has_ev ? <>Yes{i.ev_annual_km ? <>, <span className="num">{n0(i.ev_annual_km)} km</span> a year</> : null}</> : "No"} src={evWas ? "Changed in a sentence" : src("has_ev")} was={evWas} />
+          <Fact k="Electric car" v={p.question?.field === "has_ev" && p.answer === undefined && !quote("has_ev") ? "Not known yet" : i.has_ev ? <>Yes{i.ev_annual_km ? <>, <span className="num">{n0(i.ev_annual_km)} km</span> a year</> : null}</> : "No"} src={evWas ? "Changed in a sentence" : src("has_ev")} was={evWas} />
           <Fact k="Household" v={i.num_inhabitants ? `${i.num_inhabitants} people` : "Not known"} src={src("num_inhabitants")} />
           <h3 className="s-fh">Preferences</h3>
           {quote("wants") && <Fact k="Wants" v={String(read.found.find((x) => x.field === "wants")?.value ?? "").replace(/^./, (c) => c.toUpperCase())} src={`"${quote("wants")}"`} />}
@@ -118,7 +128,7 @@ export default function Lead(p: Props) {
         <div className="s-ask s-in">
           <p>{QUESTION[p.question.field] ?? `What is ${String(p.question.field)}?`} It changes the design most.</p>
           <span className="seg" role="group" aria-label="Answer">
-            {p.question.options.map((o) => (
+            {askOptions(p.question).map((o) => (
               <button key={String(o.value)} type="button" className={typeof o.value === "number" ? "num" : undefined} aria-pressed={p.answer === o.value} title={o.label} onClick={() => p.onAnswer(o.value)}>
                 {optionLabel(p.question!.field, o.value)}
               </button>
