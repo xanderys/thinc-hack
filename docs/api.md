@@ -1,4 +1,4 @@
-# Engine API contract (v1.1)
+# Engine API contract (v1.2)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -52,6 +52,15 @@ interface Economics {
   capex_eur: number; annual_saving_eur: number; payback_years: number | null;
   self_consumption_share: number; autarky_share: number;
   assumptions: string[];
+  method?: "hourly-simulation" | "annual-lookup";   // v1.2
+  annual?: { pv_yield_kwh: number; load_kwh: number; self_consumed_kwh: number; fed_in_kwh: number; grid_import_kwh: number; feed_in_income_eur: number; bill_before_eur: number; bill_after_eur: number; npv_20y_eur: number | null };
+}
+
+interface Optimum {                        // v1.2, from the hourly physics simulation
+  design: Design;                         // economically optimal sizes for this home under the installer's catalogue
+  economics: Economics;
+  delta_vs_proposal: { capex_eur: number; annual_saving_eur: number; payback_years: number | null; autarky_share: number };
+  note: string;                           // one sentence: where the expert habit and the maths disagree
 }
 
 interface DesignResponse {
@@ -59,7 +68,8 @@ interface DesignResponse {
   explanation: string[];                // 3 to 5 short sentences
   components: { pv: ComponentDetail; battery: ComponentDetail; heatpump: ComponentDetail; wallbox: ComponentDetail };
   plausibility: Plausibility[];
-  economics: Economics;
+  economics: Economics;                 // v1.2: from the hourly simulation when available; economics.method says which
+  optimum?: Optimum;
   model_version: string;
 }
 ```
