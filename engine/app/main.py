@@ -167,6 +167,8 @@ DESIGN_RANGES = {"pv_kwp": (0, 100), "inverter_kw": (0, 100), "battery_kwh": (0,
 
 def check_inputs(inp: dict):
     """Range checks, then resolve the roof (v1.6) into inp['roof'] when an address is given."""
+    if not inp.get("has_ev"):
+        inp["ev_annual_km"] = None  # a mileage without an EV is stale; it must never move the design
     if inp.get("address") and not inp.get("roof"):
         try:
             r = roofs.lookup(inp["address"])
