@@ -158,7 +158,7 @@ export interface InboxRow {
 
 // LLM edge, web only
 export interface ReadFact { field: keyof HomeInputs | "wants" | "monthly_bill_eur"; value: unknown; quote: string; }
-export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; }
+export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; source?: "call"; estimated?: string[]; }
 export interface WriteResponse { text: string; grounded: boolean; lines: Partial<Record<ComponentKey, string | null>>; cached?: boolean; }
 
 export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Installer A", "23c108b7": "Installer B" };

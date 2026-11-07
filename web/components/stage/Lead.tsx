@@ -11,7 +11,7 @@ type Props = {
   setInstaller: (i: InstallerId) => void;
   roof: RoofResult | null;
   question: AskQuestion | null; answer: unknown; onAnswer: (v: unknown) => void; askError: string | null;
-  pref: Pref; setPref: (p: Pref) => void; asking: boolean;
+  pref: Pref; setPref: (p: Pref) => void; asking: boolean; call?: React.ReactNode;
 };
 
 export type Pref = "expert" | "independence" | "payback" | "upfront";
@@ -54,6 +54,7 @@ export default function Lead(p: Props) {
     const q = quote(f);
     if (q && f === "annual_demand_kwh" && q === quote("monthly_bill_eur")) return `From "${q}" at ${price} ct`;
     if (q) return `"${q}"`;
+    if (read?.source === "call" && f in read.inputs) return read.estimated?.includes(f) ? "Estimated on the call" : "Said on the call";
     if (f === p.question?.field && p.answer !== undefined) return fromBill && f === "annual_demand_kwh" ? `About ${n0(fromBill.kwh)} kWh from ${n0(fromBill.eur)} EUR a month at ${price} ct` : "You answered";
     return f === "annual_demand_kwh" && !p.asking && p.question?.field !== f ? "Assumed: not in the lead" : "Not in the lead";
   };
@@ -69,15 +70,17 @@ export default function Lead(p: Props) {
 
   return (
     <section className="s-lead" aria-label="The lead">
-      <h2 className="s-h3">{read ? "From the lead" : "Paste the lead."}</h2>
+      <h2 className="s-h3">{read ? (read.source === "call" ? "From the call" : "From the lead") : "Paste the lead."}</h2>
       {!read ? (
         <form onSubmit={(e) => { e.preventDefault(); if (p.lead.trim()) p.onRead(); }}>
           <textarea className="s-mailin" value={p.lead} onChange={(e) => p.setLead(e.target.value)} rows={11} aria-label="The lead" disabled={p.busy} />
           <div className="s-row"><button className="btn" type="submit" disabled={p.busy || !p.lead.trim()}>{p.busy ? "Reading" : "Read it"}</button></div>
         </form>
-      ) : (
-        <div className="s-mail s-in"><Marked text={p.lead} quotes={read.found.map((f) => f.quote)} /><button className="s-link" onClick={p.onEdit}>Edit</button></div>
-      )}
+      ) : null}
+      {!read && p.call}
+      {read && (read.source === "call"
+        ? <div className="s-mail s-in">{p.lead || "Facts from the call."}<button className="s-link" onClick={p.onEdit}>Edit</button></div>
+        : <div className="s-mail s-in"><Marked text={p.lead} quotes={read.found.map((f) => f.quote)} /><button className="s-link" onClick={p.onEdit}>Edit</button></div>)}
       {p.error && <div className="error" role="alert"><span><span className="src">Claude said</span>{p.error}</span><button className="btn ghost" onClick={p.onRead}>Retry</button></div>}
 
       {read && (
