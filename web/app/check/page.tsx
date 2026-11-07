@@ -253,6 +253,25 @@ function Score({ ev }: { ev: Eval | null }) {
   );
 }
 
+function ResetDemo() {
+  const [busy, setBusy] = useState(false);
+  const [out, setOut] = useState<{ ok: boolean; line: string }[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true); setErr(null); setOut(null);
+    const r = await call<{ lines: { ok: boolean; line: string }[] }>("/api/leads/reset-pinned", {});
+    setBusy(false);
+    if (r.ok) setOut(r.data.lines); else setErr(r.error);
+  };
+  return (
+    <section className="c-sec" aria-label="Demo leads">
+      <button className="btn ghost" onClick={run} disabled={busy}>{busy ? "Resetting" : "Reset demo leads"}</button>
+      {err && <Err src="Engine" msg={err} retry={run} />}
+      {out && <ul className="c-sub">{out.map((l, i) => <li key={i}>{l.line}</li>)}</ul>}
+    </section>
+  );
+}
+
 export default function Check() {
   const [ev, setEv] = useState<Eval | null>(null);
   const [real, setReal] = useState<string>(REALITY_PROJECT);
@@ -264,6 +283,7 @@ export default function Check() {
       <Reality ev={ev} id={real} onOther={() => setReal((x) => x === REALITY_PROJECT ? REALITY_MISS : REALITY_PROJECT)} />
       <Inbox ev={ev} />
       <Score ev={ev} />
+      <ResetDemo />
     </div>
   );
 }
