@@ -77,6 +77,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const [hour, setHour] = useState<{ h: number; playing: boolean }>({ h: 12, playing: false });
   const [view, setView] = useState<"3d" | "2d">("3d");
 
+  const viewEl = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null), overlay = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), compass = useRef<HTMLDivElement>(null);
   const scene = useRef<SpatialScene | null>(null);
   const modelRef = useRef<RoofModel | null>(null);
@@ -151,6 +152,45 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
   const vo = useViewOpts();
   const credit = vo.google && vo.ground === "google" && vo.credit ? ` · Ground: ${vo.credit}` : "";
+  // Overlays marked data-cover inside the view (the number card, the shading strip) report their rects; each takes
+  // the side of the canvas that costs the house least, and the scene fits the house into what is left. The free
+  // area is also published as CSS variables (--free-l, --free-t, --free-w, --free-h) so a loading skeleton can sit
+  // exactly where the house will appear.
+  useEffect(() => {
+    const v = viewEl.current, sc = scene.current;
+    if (!v || !sc) return;
+    const M = 8; // px between an overlay and the house
+    const measure = () => {
+      const V = v.getBoundingClientRect(), W = V.width, H = V.height;
+      if (W < 2 || H < 2) return;
+      const ins = { top: 0, right: 0, bottom: 0, left: 0 };
+      v.querySelectorAll<HTMLElement>("[data-cover]").forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const x0 = Math.max(0, r.left - V.left), x1 = Math.min(W, r.right - V.left), y0 = Math.max(0, r.top - V.top), y1 = Math.min(H, r.bottom - V.top);
+        if (x1 - x0 < 4 || y1 - y0 < 4) return; // not over the model
+        const opts: [keyof typeof ins, number, number][] = [];
+        if (y0 <= H * 0.25) opts.push(["top", y1 + M, (y1 + M) * W]);
+        if (y1 >= H * 0.75) opts.push(["bottom", H - y0 + M, (H - y0 + M) * W]);
+        if (x0 <= W * 0.25) opts.push(["left", x1 + M, (x1 + M) * H]);
+        if (x1 >= W * 0.75) opts.push(["right", W - x0 + M, (W - x0 + M) * H]);
+        const best = opts.sort((a, b) => a[2] - b[2])[0];
+        if (best) ins[best[0]] = Math.max(ins[best[0]], best[1]);
+      });
+      sc.setInsets(ins);
+      const fw = Math.max(W * 0.45, W - ins.left - ins.right), fh = Math.max(H * 0.45, H - ins.top - ins.bottom);
+      v.style.setProperty("--free-l", `${Math.min(ins.left, W - fw)}px`); v.style.setProperty("--free-t", `${Math.min(ins.top, H - fh)}px`);
+      v.style.setProperty("--free-w", `${fw}px`); v.style.setProperty("--free-h", `${fh}px`);
+    };
+    let raf = 0;
+    const soon = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(measure); };
+    const ro = new ResizeObserver(soon);
+    const watch = () => { ro.disconnect(); ro.observe(v); v.querySelectorAll("[data-cover]").forEach((el) => ro.observe(el)); soon(); };
+    const mo = new MutationObserver(watch);
+    mo.observe(v, { childList: true }); // overlays are direct children of the view; labels below never trigger it
+    watch();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); mo.disconnect(); };
+  }, [ready]);
+
   const photo = usePhoto((model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32, ready ? scene.current : null, view === "3d" && L !== 8, {
     creditBottom: bare ? 22 : 104, planes,
     snapKey: snapKey(leadId ?? "demo", layersKey, typeof window === "undefined" ? 1.6 : (host.current?.clientWidth ?? 16) / Math.max(1, host.current?.clientHeight ?? 10)),
@@ -344,7 +384,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         ))}
       </div>}
 
-      <div className={bare ? `${s.view} ${s.bareView}` : s.view}>
+      <div ref={viewEl} className={bare ? `${s.view} ${s.bareView}` : s.view}>
         <div ref={host} className={s.host} />
         <svg ref={svg} className={s.flows} aria-hidden="true" />
         <div ref={overlay} className={s.overlay} aria-hidden="true" />
@@ -359,7 +399,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTryN((x) => x + 1)}>Retry</button></div>}
 
         {!bare && (numbers.length > 0 || check) && (
-          <div className={s.nwrap}>
+          <div className={s.nwrap} data-cover>
             {numbers.length > 0 && (
               <dl className={s.numbers}>
                 {numbers.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}{x.u && <span>{x.u}</span>}</dd></div>)}
