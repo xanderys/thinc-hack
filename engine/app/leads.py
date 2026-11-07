@@ -54,6 +54,12 @@ def save(lead: dict):
     tmp.replace(DIR / f"lead-{lead['lead_id']}.json")
 
 
+def delete(lead_id: str):
+    """Remove a lead from memory and disk; its lines in steps.jsonl stay (the priors keep what the call taught)."""
+    LEADS.pop(lead_id, None)
+    (DIR / f"lead-{lead_id}.json").unlink(missing_ok=True)
+
+
 def log_step(rec: dict):
     DIR.mkdir(parents=True, exist_ok=True)
     with _lock, STEPS.open("a") as f:
