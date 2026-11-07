@@ -4,3 +4,10 @@ node_modules/
 .next/
 .vercel/
 .DS_Store
+
+# Reonic data pack: never commit
+Project\ Data/
+*.zip
+.claude/worktrees/
+.handoff/
+HACKATHON-COMPETITION-BRIEF.md
