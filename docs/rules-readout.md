@@ -44,19 +44,24 @@ Tolerance: PV ±1 kWp or ±15%, battery ±2 kWh, heat pump and wallbox decisions
 | Smaller arrays below about 3,600 kWh | The roof face is not filled when use is small, though the margin would still pay. The likely reasons are a smaller house and budget, but the data has neither | inferred, not in the data |
 | Heat pump homes get a larger array at low use | More electricity use than the household figure shows | the heat pump's own electricity (seasonal COP 3.4, Fraunhofer ISE 2025) |
 | Battery is the installer's package nearest about 0.7 to 1.0 kWh per kWp (5 kWh for small arrays, 9 to 10 kWh for standard ones) | Size storage to the array, at most 1.5 kWh per 1,000 kWh of use | HTW Berlin rule of thumb via [finanztip](https://www.finanztip.de/daily/stromspeicher-zur-pv-anlage-so-gross-darf-er-hoechstens-sein/) |
-| Battery on 95 to 99% of jobs | Storage is sold with nearly every array | data; buyers value self-supply at a median 29 ct per kWh ([Kaps et al., Operations Research 2024](https://doi.org/10.1287/opre.2024.1104)) |
+| Battery on 95 to 99% of jobs | Storage is sold with nearly every array | data; buyers value self-supply at a median 29 ct per kWh ([Kaps and Netessine, Operations Research](https://doi.org/10.1287/opre.2024.1104)) |
 | Wallbox prior about 23%, regardless of the EV flag | none found | data |
 | No heat pump unless asked | PV installers rarely sell them | data: 13 of 1,619 projects |
 
-## Score (5-fold CV on the fit half; gains under about 2.5 points are noise)
+## Each lever's effect (5-fold CV on the fit half, 654 jobs; gains under about 2.5 points are noise; lab paired test: rules-3 vs rules-1 p 0.15 to 0.90)
 
-| Rule set | PV | Battery | All four |
-|---|---|---|---|
-| rules-1-calibrated (base array plus share of use) | 36.7% | 46.8% | 16.2% |
-| rules-4-readout (these rules) | 38.7% | 48.2% | 17.0% |
-| rules-3-band (most common design per use band) | 39.3% | 49.7% | 18.0% |
+| Lever | PV | Battery | Wallbox | All four |
+|---|---|---|---|---|
+| rules-1-calibrated: base array plus share of use, battery kWh per kWp (production) | 36.7% | 46.8% | 74.8% | 16.2% |
+| rules-4-readout: these rules, A and B separate | 38.7% | 48.2% | 74.8% | 17.0% |
+| rules-4 with the battery snapped to the packages on sale at the offer date | 38.7% | 48.3% | 74.8% | 17.0% |
+| rules-4 with A and B pooled into one rule set | 41.7% | 58.0% | 74.8% | 21.7% |
+| the same, battery snapped to each installer's own packages | 41.7% | 47.1% | 74.8% | 17.7% |
+| rules-3-band: most common design per installer and use band | 39.3% | 49.7% | 74.8% | 18.0% |
+| Median of the 10 / 15 / 30 nearest signed designs | 38.1 / 38.2 / 37.1% | 50.0 / 48.6 / 50.5% | 74.8% | 16.1 / 16.8 / 17.7% |
+| Blend: rules-4 unless the 15 nearest disagree by more than one package step (PV: beyond tolerance), then their median | 39.0% | 48.5% | 74.8% | 16.8% |
 
-The three are the same within the noise. These rules are the clearest way to say what rules-1's numbers already do.
+The pooled rule set's 21.7% is a tolerance artefact. Pooled, Installer A gets 9 kWh, B's pack, which A never sells. A 9 kWh battery sits within ±2 kWh of both A's 7 and 10 kWh packages, so it is scored right on both. Snapped to A's own packages, it falls back to 17.7%. It is rejected. The blend does not help either: where the rules and the neighbours disagree, neither is reliably right. Production stays on rules-1, and these rules are the wording of its Rules block.
 
 ## The honest ceiling
 The inputs carry about 18 to 20% of whole designs: the band table, fitted and scored on the same homes, reaches only 20.3%. Transparent rules reach this level, and so does the black box; nothing honest goes further. Three things in the data set the limit:
