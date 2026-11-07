@@ -1,0 +1,119 @@
+{
+ "_meta": {
+  "fitted_on": "fit half (seed 42, same ids as engine/lab/split), 654 new-system jobs",
+  "rule": "most common design within tolerance per installer and use band",
+  "min_homes": 3
+ },
+ "23c108b7": {
+  "_all": {
+   "pv_kwp": 11.9,
+   "battery_kwh": 8.0,
+   "n": 163,
+   "matched": 66
+  },
+  "1": {
+   "pv_kwp": 7.2,
+   "battery_kwh": 9.7,
+   "n": 8,
+   "matched": 3
+  },
+  "2": {
+   "pv_kwp": 9.45,
+   "battery_kwh": 9.0,
+   "n": 32,
+   "matched": 11
+  },
+  "3": {
+   "pv_kwp": 10.8,
+   "battery_kwh": 9.0,
+   "n": 28,
+   "matched": 13
+  },
+  "4": {
+   "pv_kwp": 11.9,
+   "battery_kwh": 8.0,
+   "n": 29,
+   "matched": 13
+  },
+  "5": {
+   "pv_kwp": 10.8,
+   "battery_kwh": 10.0,
+   "n": 20,
+   "matched": 9
+  },
+  "6": {
+   "pv_kwp": 11.9,
+   "battery_kwh": 8.0,
+   "n": 17,
+   "matched": 12
+  },
+  "7": {
+   "pv_kwp": 11.9,
+   "battery_kwh": 8.0,
+   "n": 14,
+   "matched": 10
+  },
+  "8": {
+   "pv_kwp": 15.3,
+   "battery_kwh": 15.0,
+   "n": 15,
+   "matched": 4
+  }
+ },
+ "2a8ba8e2": {
+  "_all": {
+   "pv_kwp": 10.35,
+   "battery_kwh": 10.0,
+   "n": 491,
+   "matched": 100
+  },
+  "1": {
+   "pv_kwp": 5.4,
+   "battery_kwh": 5.0,
+   "n": 27,
+   "matched": 10
+  },
+  "2": {
+   "pv_kwp": 6.3,
+   "battery_kwh": 5.0,
+   "n": 69,
+   "matched": 17
+  },
+  "3": {
+   "pv_kwp": 7.65,
+   "battery_kwh": 5.0,
+   "n": 105,
+   "matched": 21
+  },
+  "4": {
+   "pv_kwp": 10.35,
+   "battery_kwh": 10.0,
+   "n": 80,
+   "matched": 16
+  },
+  "5": {
+   "pv_kwp": 9.0,
+   "battery_kwh": 10.0,
+   "n": 44,
+   "matched": 11
+  },
+  "6": {
+   "pv_kwp": 10.35,
+   "battery_kwh": 10.0,
+   "n": 57,
+   "matched": 21
+  },
+  "7": {
+   "pv_kwp": 10.35,
+   "battery_kwh": 10.0,
+   "n": 65,
+   "matched": 16
+  },
+  "8": {
+   "pv_kwp": 12.15,
+   "battery_kwh": 10.0,
+   "n": 44,
+   "matched": 9
+  }
+ }
+}
