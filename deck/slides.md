@@ -38,6 +38,8 @@ footer: Marquee
 
 <div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>[UNCONFIRMED: kWp]</b>, <b>[UNCONFIRMED: kWh]</b>, payback <b>[UNCONFIRMED: years]</b><br>after one sentence <b>[UNCONFIRMED: kWp, kWh, wallbox, payback]</b></div>
 
+[UNCONFIRMED: screenshot of the house card opened into the full design, from the live build]
+
 <p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
 
 ---

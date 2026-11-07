@@ -12,10 +12,11 @@ Draft v2, against the north star (enquiry to signed install, faster). The engine
 ## 0:50 to 1:50, slide 3 (live), Xander
 Read figures off the screen; say none we have not seen live.
 
-1. "I paste Frau Weber's email. Marquee reads it and quotes back every fact it found."
-2. "One thing is missing that would change the design most: how much electricity they use a year. So it asks one question instead of a call back." [answer on screen]
-3. "Here is the offer a senior planner at this installer would write, with the roof measured from open data, no site visit: [read the design and payback]. Every number opens its proof: the homes like this one, the year hour by hour, and the cheapest version. The variants are ready too: [read lowest upfront and best payback]."
-4. "The family buys an EV next year." [type it] "One sentence, and the design re-sizes around the car: [read what moved]. Approve. That is an offer ready to send."
+1. "This is the planner's board: one card per house. I press plus and paste Frau Weber's email. Her house appears as a card." [also works by typing or a call]
+2. "I open it. The inputs and toggles sit across the top, and here is her real house in 3D, roof, shade and layers from open Bavarian data, no site visit."
+3. "Here is the design: [read PV, battery and payback off the screen]. Every number opens its source."
+4. "The family buys an EV next year." [type it] "One sentence, and the design re-sizes around the car: [read what moved]. That is an offer ready to send."
+[UNCONFIRMED: demo steps follow the board-of-cards product; check against the live build in about three hours]
 
 ## 1:50 to 2:20, slide 4, Xander
 "Why only one question? The usual intake explains just 15% of PV size. Reonic's own rule is: when in doubt, ask the user. So the agent asks for the one fact that would move the design most, and stays silent when nothing would."
