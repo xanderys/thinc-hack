@@ -54,7 +54,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact 
   );
 
   return (
-    <div className={float ? `${s.wrap} ${s.float}` : s.wrap}>
+    <div className={float ? `${s.wrap} ${s.float}` : s.wrap} data-cover={float ? "" : undefined}>
       <button type="button" className={s.chip} aria-pressed={on} onClick={() => setShadeOn(!on)}>Shading simulation</button>
       {on && (
         <div className={s.card}>

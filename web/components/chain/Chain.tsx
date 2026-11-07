@@ -279,7 +279,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
 
   const overlays = (
     <>
-      <div className={s.sim}>
+      <div className={s.sim} data-cover>
         <p className={s.simH}><Bolt /> Simulation</p>
         <dl className={s.kpis}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}</dd></div>)}</dl>
         {address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div>}
