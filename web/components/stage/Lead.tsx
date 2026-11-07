@@ -54,7 +54,10 @@ export default function Lead(p: Props) {
     const q = quote(f);
     if (q && f === "annual_demand_kwh" && q === quote("monthly_bill_eur")) return `From "${q}" at ${price} ct`;
     if (q) return `"${q}"`;
-    if (read?.source === "call" && f in read.inputs) return read.estimated?.includes(f) ? "Estimated on the call" : "Said on the call";
+    if (read?.source === "call" && f in read.inputs) {
+      const o = read.origin ?? {}, tag = o[f] ?? (f === "has_ev" || f === "ev_annual_km" ? o.ev : f === "electricity_price_ct_kwh" ? o.monthly_bill_eur && "estimated" : undefined);
+      return tag === "form" ? "From the form" : tag === "estimated" ? "Estimated" : "From the call";
+    }
     if (f === p.question?.field && p.answer !== undefined) return fromBill && f === "annual_demand_kwh" ? `About ${n0(fromBill.kwh)} kWh from ${n0(fromBill.eur)} EUR a month at ${price} ct` : "You answered";
     return f === "annual_demand_kwh" && !p.asking && p.question?.field !== f ? "Assumed: not in the lead" : "Not in the lead";
   };

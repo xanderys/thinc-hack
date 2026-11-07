@@ -2,9 +2,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Lead, { type Pref } from "@/components/stage/Lead";
 import dynamic from "next/dynamic";
-import type { IntakeFacts } from "@/components/voice/intake";
-const MarqueeCall = dynamic(() => import("@/components/voice/MarqueeCall"), { ssr: false });
-const VOICE = process.env.NEXT_PUBLIC_VOICE === "1" ? process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID : undefined;
+import type { CallLead } from "@/components/stage/Calls";
+const Calls = dynamic(() => import("@/components/stage/Calls"), { ssr: false });
+const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 import Plan, { type Variant } from "@/components/stage/Plan";
 import StepHead from "@/components/stage/StepHead";
 import Refine, { type Moved } from "@/components/stage/Refine";
@@ -82,12 +82,13 @@ export default function Stage() {
   }
 
   // Facts from the call: everything was said, so nothing is asked.
-  function onIntake(facts: IntakeFacts, got: Record<string, unknown>) {
-    const { preference, ...rest } = got as Partial<HomeInputs>;
+  // Facts from a homeowner call, each tagged form, call or estimated; nothing is asked.
+  function onCall(l: CallLead) {
+    const { preference, ...rest } = l.inputs as Partial<HomeInputs>;
     if (rest.installer_id) setInstaller(rest.installer_id as InstallerId);
-    if (preference) setPref(preference);
-    setLead(facts.summary ?? "");
-    begin({ inputs: rest, found: [], unknown: [], source: "call", estimated: [...(facts.estimated_fields ?? []), ...(facts.annual_demand_kwh == null ? ["annual_demand_kwh", "electricity_price_ct_kwh"] : [])] });
+    setPref(preference ?? "expert");
+    setLead(l.facts.summary ?? "");
+    begin({ inputs: rest, found: [], unknown: [], source: "call", origin: l.sources });
   }
 
   async function begin(data: ReadResponse) {
@@ -261,7 +262,7 @@ export default function Stage() {
         <Lead lead={lead} setLead={setLead} read={read} busy={readBusy} error={readErr} onRead={doRead} onEdit={() => setRead(null)}
           inputs={inputs} changed={changed} setInstaller={setInstaller} roof={roof}
           question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} pref={pref} setPref={setPref} asking={!!read && question === undefined}
-          call={VOICE && !read ? <MarqueeCall agentId={VOICE} installerId={installer} onIntake={onIntake} /> : null} />
+          call={VOICE && !read ? <Calls installer={installer} onLead={onCall} /> : null} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
           {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} />}
