@@ -32,6 +32,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   const [readErr, setReadErr] = useState<string | null>(null);
   const [installer, setInstaller] = useState<InstallerId>("2a8ba8e2");
   const [roof, setRoof] = useState<RoofResult | null>(null);
+  const roofGen = useRef(0);
   const [question, setQuestion] = useState<AskQuestion | null | undefined>(undefined); // undefined while asking
   const [askErr, setAskErr] = useState<string | null>(null);
   const [answer, setAnswer] = useState<unknown>(undefined);
@@ -65,7 +66,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (question && answer !== undefined) (base as unknown as Record<string, unknown>)[question.field] = answer;
     const out: HomeInputs = { ...base, ...changed };
     // One roof lookup per lead; later calls carry the result instead of the address.
-    if (roof && roof.source !== "none") { out.roof = roof; delete out.address; }
+    if (roof && roof.source !== "none" && !roof.pending) { out.roof = roof; delete out.address; }
     return out;
   }, [read, installer, question, answer, changed, roof]);
   const ready = !!read && question !== undefined && (question === null || answer !== undefined);
@@ -130,7 +131,17 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
     setRead(r.data); setRoof(null);
     const where = r.data.inputs.address ? `address=${encodeURIComponent(r.data.inputs.address)}` : r.data.postcode ? `postcode=${r.data.postcode}` : null;
-    if (where) call<RoofResult>(`/api/roof?${where}`).then((x) => setRoof(x.ok ? x.data : null));
+    // A pending roof means the 3D measurement is still running: design on the standard face, ask again every 3 s.
+    const gen = ++roofGen.current;
+    const look = async (k: number): Promise<void> => {
+      const x = await call<RoofResult>(`/api/roof?${where}`);
+      if (gen !== roofGen.current) return;
+      if (!x.ok) { setRoof(null); return; }
+      if (x.data.pending && k >= 40) { setRoof({ ...x.data, pending: false, source: "none" }); return; }
+      setRoof(x.data);
+      if (x.data.pending) setTimeout(() => { void look(k + 1); }, 3000);
+    };
+    if (where) void look(0);
     const base: HomeInputs = { ...DEFAULTS, ...r.data.inputs, installer_id: (r.data.inputs.installer_id as InstallerId) ?? installer };
     // A restarting engine answers 502 for about 35 s: wait and ask again rather than skip the question.
     for (let k = 0; ; k++) {
@@ -307,7 +318,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
         canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-      {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} bare />}
+      {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? "Measuring the roof from Bavarian 3D data, about 10 s" : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} bare />}
       {res && <Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
         moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} bare />}
     </div>
@@ -322,7 +333,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
           call={VOICE && !read && !seed ? <Calls installer={installer} onLead={onCall} /> : null} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-          {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} />}
+          {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? "Measuring the roof from Bavarian 3D data, about 10 s" : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} />}
           {res && <Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
             moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} />}
         </div>

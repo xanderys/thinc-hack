@@ -24,7 +24,7 @@ function Est({ k, v, u, was }: { k: string; v: string; u: string; was?: string |
   );
 }
 
-export default function Plan({ res, prev, inputs, write, writeBusy, flag, variants, onVariant, busy, answered, bare }: Props & { bare?: boolean }) {
+export default function Plan({ res, prev, inputs, write, writeBusy, flag, variants, onVariant, busy, answered, bare, roofNote }: Props & { bare?: boolean; roofNote?: string }) {
   const [open, setOpen] = useState<string | null>(null);
   const [level, setLevel] = useState(1);
   const [closing, setClosing] = useState(false);
@@ -68,7 +68,7 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
       <div className={spatial ? "s-top solo" : "s-top"}>
         <div className="s-house">
           {!spatial && <House design={res.design} />}
-          {roofLine && <p className="s-roof" title={roofLine.credit}>{roofLine.text}</p>}
+          {roofNote && !roofLine ? <p className="s-roof" aria-live="polite">{roofNote}</p> : roofLine && <p className="s-roof" title={roofLine.credit}>{roofLine.text}</p>}
         </div>
         <div>
           <dl className="s-est">
