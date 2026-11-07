@@ -12,6 +12,8 @@ import { POSES, type StageView } from "./camera";
 import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
 import { usePhoto } from "./PhotoView";
+import LayersMenu from "./LayersMenu";
+import { setImagery, useViewOpts, type Imagery } from "./whiteMode";
 import s from "./spatial.module.css";
 import ShadingPanel from "./ShadingScrubber";
 import { useShadeView, useShading } from "@/lib/shading";
@@ -140,6 +142,11 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const nSteps = ids.length;
   const L = ids.includes(layer) ? layer : 1;
   // In 3D the Google mesh replaces the LoD2 house when it loads (PhotoView.tsx); never on the plan layer.
+  // Ground picture and imagery dates for the layers menu (satGround.ts, whiteMode.ts).
+  useEffect(() => { if (glbOk) scene.current?.groundFor(address); }, [glbOk, address]);
+  useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
+  const vo = useViewOpts();
+  const credit = vo.google && vo.ground === "google" && vo.credit ? ` · Ground: ${vo.credit}` : "";
   const photo = usePhoto((model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32, ready ? scene.current : null, view === "3d" && L !== 8, { creditBottom: bare ? 22 : 104 });
 
   // Panels change with the design: re-place them (animated only when the panels layer is showing).
@@ -358,6 +365,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
             <button type="button" aria-pressed={L !== 8 && view === "3d"} onClick={() => { setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
             <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => setView("2d")}>2D</button>
           </div>
+          <LayersMenu className={s.layersBtn} />
           <div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div>
         </div>}
 
@@ -396,9 +404,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {content && content.sources.length > 0 && (
           <p className={s.sources}>Sources: {content.sources.map((x, i) => <span key={x.key}>{i ? "; " : ""}{x.url ? <a href={x.url} target="_blank" rel="noreferrer">{x.citation}</a> : x.citation}</span>)}</p>
         )}
-        <p className={s.licence}>{LICENCE}</p>
+        <p className={s.licence}>{LICENCE}{credit}</p>
       </div>}
-      {bare && <p className={`${s.licence} ${s.licenceBare}`}>{LICENCE}</p>}
+      {bare && <p className={`${s.licence} ${s.licenceBare}`}>{LICENCE}{credit}</p>}
     </section>
   );
 }

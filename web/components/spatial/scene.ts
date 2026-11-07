@@ -9,8 +9,9 @@ import { flowsOf, lerpHour, p2 } from "./types";
 import { facing } from "./facing";
 import { poseOffset, springStep, type Focus, type Pose } from "./camera";
 import { ShadeLayer } from "./shading";
-import { neighbourEdges, outlineMesh, whiteFallback } from "./whiteContext";
+import { neighbourEdges, outlineMesh, registerGlb } from "./whiteContext";
 import { Xray } from "./xray";
+import { googleGround, sharpen } from "./satGround";
 import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
@@ -144,6 +145,7 @@ export class SpatialScene {
   private shade = new ShadeLayer();
   private ctxLines = new THREE.Group(); // neighbours' footprints on the white ground
   private xray = new Xray({ walls: () => this.wallMesh, box: this.box, planes: () => this.targets.map((t) => t.p), root: this.scene });
+  private ctxOff: (() => void)[] = [];   // the white-context and ground subscriptions of this glb
 
   constructor(private host: HTMLElement, private overlay: HTMLElement, private svg: SVGSVGElement, private opts: SceneOpts) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
@@ -377,12 +379,13 @@ export class SpatialScene {
         const old = m.material as THREE.MeshStandardMaterial;
         if (name.startsWith("context")) m.material = new THREE.MeshLambertMaterial({ color: NEIGHBOUR, side: THREE.DoubleSide, transparent: true, opacity: 0.35, depthWrite: false });
         else if (name.startsWith("walls")) { m.material = new THREE.MeshLambertMaterial({ color: WALL, side: THREE.DoubleSide }); this.wallMesh = m; this.wallMat = m.material; }
-        else if (old && old.map) { old.map.anisotropy = 4; m.material = new THREE.MeshLambertMaterial({ map: old.map, side: THREE.DoubleSide }); }
+        else if (old && old.map) { m.material = new THREE.MeshLambertMaterial({ map: old.map, side: THREE.DoubleSide }); }
       });
       // The target footprint comes with the roof model; until it is in, flatten later.
       this.glbRoot = gltf.scene; this.flattened = false;
       if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene);
-      whiteFallback(gltf.scene);
+      sharpen(gltf.scene, this.renderer);
+      this.ctxOff.push(registerGlb(gltf.scene, this.ctxLines));
       this.scene.add(gltf.scene);
       this.placeholder.visible = false;
       if (this.heat) this.setHeat(this.heat);
@@ -490,6 +493,12 @@ export class SpatialScene {
         m.opacity = 0.86;
       } else if (mode === "off") m.opacity = 0;
     });
+  }
+
+  // The Google satellite ground for this address, once the glb is in (satGround.ts).
+  groundFor(address: string) {
+    if (!this.glbRoot) return;
+    this.ctxOff.push(googleGround(this.glbRoot, this.renderer, address));
   }
 
   setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on; }
@@ -857,6 +866,7 @@ export class SpatialScene {
     this.planG?.remove();
     this.shade.dispose();
     this.xray.dispose();
+    this.ctxOff.forEach((f) => f());
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();
