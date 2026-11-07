@@ -237,7 +237,19 @@ export default function Board({ openId: initial }: { openId?: string }) {
         <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
       </div>
       {seedErr && <div className="error" role="alert"><span><span className="src">Engine said</span>{seedErr}</span><button className="btn ghost" onClick={() => { const id = openId; setOpenId(null); setTimeout(() => setOpenId(id), 0); }}>Retry</button></div>}
-      {!seed && !seedErr && <p className="s-quiet s-wait">Opening the house</p>}
+      {!seed && !seedErr && (
+        <div className="ok-skel" role="status" aria-label="Opening the house">
+          <div className="ok-chips">{[110, 90, 130, 120, 110, 120].map((w, i) => <span key={i} className="s-skel" style={{ width: w }} />)}</div>
+          <div className="ok-body">
+            <div className="ok-steps">{[0, 1, 2, 3, 4].map((i) => <span key={i} className="s-skel ok-step" />)}</div>
+            <div className="ok-hero">
+              <div className="ok-sim">{[0, 1, 2, 3].map((i) => <span key={i} className="s-skel" />)}</div>
+              <svg className="ok-house" viewBox="0 0 240 160" aria-hidden><path d="M30 84 L120 24 L210 84 V148 H30 Z" /></svg>
+              <p className="ok-words">Opening the house</p>
+            </div>
+          </div>
+        </div>
+      )}
       {staleNote && <p className="b-shared" role="status">This lead changed elsewhere, reloaded.</p>}
       {seed && <Stage key={`${seed.leadId}:${reload}`} seed={seed} onApproved={onApproved} live={liveFeed} />}
     </div>

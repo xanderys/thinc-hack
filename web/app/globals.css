@@ -736,3 +736,25 @@ input, select, textarea { border-radius: 8px; }
 .b-skel-line.short { width: 40%; }
 @keyframes skel { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .b-skel, .s-skel { animation: none; } }
+
+/* The open card before the lead arrives: the final layout, shimmering. */
+.ok-skel { display: grid; gap: 12px; margin-top: 12px; }
+.ok-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.ok-chips .s-skel { height: 36px; border-radius: 999px; }
+.ok-body { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 12px; height: calc(100vh - 330px); min-height: 420px; }
+.ok-steps { display: grid; align-content: start; gap: 8px; }
+.ok-step { height: 64px; border-radius: 12px; }
+.ok-steps .ok-step:first-child { height: 220px; }
+.ok-hero { position: relative; border: 1px solid var(--rule); border-radius: 12px; background: var(--paper); overflow: hidden; }
+.ok-sim { position: absolute; top: 12px; left: 12px; width: 290px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 10px; background: #fff; border: 1px solid var(--rule); border-radius: 12px; }
+.ok-sim .s-skel { height: 56px; border-radius: 8px; }
+.ok-house { position: absolute; left: 50%; top: 50%; width: min(40%, 280px); transform: translate(-50%, -50%); fill: #e6e9f2; animation: okp 1.2s ease-in-out infinite alternate; }
+@keyframes okp { from { opacity: 0.55; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ok-house { animation: none; } }
+.ok-words { position: absolute; left: 14px; bottom: 12px; margin: 0; font-size: 12.5px; color: var(--ink-3); }
+@media (max-width: 760px) {
+  .ok-body { grid-template-columns: 1fr; height: auto; }
+  .ok-hero { order: -1; height: 46vh; min-height: 300px; margin: 0 -16px; border-radius: 0; }
+  .ok-sim { left: 8px; right: 8px; width: auto; grid-template-columns: repeat(4, 1fr); padding: 6px; }
+  .ok-sim .s-skel { height: 40px; }
+}

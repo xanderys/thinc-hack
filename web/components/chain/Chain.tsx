@@ -99,6 +99,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   useEffect(() => { if (!pending) return; const t = setInterval(() => beat((x) => x + 1), 500); return () => clearInterval(t); }, [pending]);
   const waited = pending ? (Date.now() - pending) / 1000 : 0;
   const edit = !!cause && !/^Switched to/.test(cause);
+  const causeRef = useRef(cause); causeRef.current = cause;
   const q = useCardQualification(inputs, res, leadId);   // visit verdict: offer value, confidence, what to confirm on site
   // Draft first: the chain plays once, on the first open of a lead; after that the design is there at once and the
   // chain waits as a collapsed strip under the model.
@@ -175,7 +176,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     consumed.current = redraftRef.current;
     // A refinement redrafts in place: the changed layers light up and the camera goes to the first; no replay.
     setMoved(m);
-    setStage(Math.min(...m));
+    // A variant switch stays on the Offer; the strip lights what changed, the view does not move.
+    if (!/^Switched to/.test(causeRef.current ?? "")) setStage(Math.min(...m));
     setAuto(false);
     setUpdated(Date.now());
   }
