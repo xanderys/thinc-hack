@@ -3,12 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import StepHead from "@/components/stage/StepHead";
 import { COMPONENT_DESIGN_FIELD, INSTALLER_NAME, type ComponentKey, type Design, type Eval, type HomeInputs, type InboxRow, type ProjectDetail, type ProjectSummary, type ValidateFlag, type ValidateResponse } from "@/lib/api";
 import { call } from "@/lib/client";
-import { REALITY_PROJECT } from "@/lib/demo";
+import { REALITY_MISS, REALITY_PROJECT } from "@/lib/demo";
 import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, named } from "@/lib/stage";
 
 type Approved = { inputs: HomeInputs; draft: Design | null; approved: Design; at: string };
 const pct1 = (x: number) => `${(Math.round(x * 1000) / 10).toLocaleString("en-GB")}%`;
-const word = (c: number) => c >= 0.7 ? "sure" : c >= 0.5 ? "likely" : "unsure";
 const UNIT: Record<ComponentKey, string> = { pv: "kWp", battery: "kWh", heatpump: "kW", wallbox: "kW" };
 const reduce = () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -89,7 +88,7 @@ function Validation() {
   );
 }
 
-function Reality({ ev, id }: { ev: Eval | null; id: string | null }) {
+function Reality({ ev, id, onOther }: { ev: Eval | null; id: string | null; onOther: () => void }) {
   const [p, setP] = useState<ProjectDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -122,13 +121,24 @@ function Reality({ ev, id }: { ev: Eval | null; id: string | null }) {
             const lead = m.o == null ? `Only ${took} of ${nb.n} similar homes from this installer added one, so the draft left it out.` : named(p.ours.components[m.k].reason);
             return <p className="c-why" key={m.k}><b>Missed the {NAME[m.k].toLowerCase()}.</b> {lead} The record does not say why this planner chose otherwise; that judgement stays with the planner.</p>;
           })}
+          <button className="s-link" onClick={onOther}>Another one</button>
         </div>
       </div>
     </section>
   );
 }
 
-function Inbox({ ev, onFirst }: { ev: Eval | null; onFirst: (id: string) => void }) {
+// "Expert 10.8 kWp, ours 9 kWp. ..." to "Expert fitted 10.8 kWp, draft 9."
+function miss(r: InboxRow) {
+  const m = r.note.match(/^Expert ([\d.,]+) (kWp|kWh|kW), ours ([\d.,]+|none)/i);
+  if (m) { const d = m[2] === "kWp" ? r.draft.pv_kwp : m[2] === "kWh" ? r.draft.battery_kwh : null; return `Expert fitted ${m[1]} ${m[2]}, draft ${d != null ? n2(d) : m[3]}.`; }
+  const k = KEYS.find((x) => !r.within[x]);
+  if (!k) return "";
+  const f = COMPONENT_DESIGN_FIELD[k], e = r.expert[f], d = r.draft[f], u = k === "pv" ? "kWp" : k === "battery" ? "kWh" : "kW";
+  return `${NAME[k]}: expert fitted ${e == null ? "none" : `${n2(e)} ${u}`}, draft ${d == null ? "none" : n2(d)}.`;
+}
+
+function Inbox({ ev }: { ev: Eval | null }) {
   const [rows, setRows] = useState<InboxRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [shown, setShown] = useState(0);
@@ -136,7 +146,7 @@ function Inbox({ ev, onFirst }: { ev: Eval | null; onFirst: (id: string) => void
   useEffect(() => {
     (async () => {
       const r = await call<InboxRow[]>("/api/inbox?limit=20");
-      if (r.ok) { setRows(r.data); setErr(null); if (r.data[0]) onFirst(r.data[0].project_id); return; }
+      if (r.ok) { setRows(r.data); setErr(null); return; }
       if (!/404|not found/i.test(r.error)) { setErr(r.error); return; }
       // Before v1.3: build the rows from the held-out list and each project's detail.
       const l = await call<ProjectSummary[]>("/api/projects?split=test&limit=20");
@@ -151,8 +161,10 @@ function Inbox({ ev, onFirst }: { ev: Eval | null; onFirst: (id: string) => void
       }
       setRows(out);
     })();
-  }, [tick, ev]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sorted = useMemo(() => rows ? [...rows].sort((a, b) => a.confidence - b.confidence) : [], [rows]);
+  }, [tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The engine's order: least agreement among similar homes first. Agreement is only weakly predictive, so it is not shown.
+  const sorted = useMemo(() => rows ?? [], [rows]);
+  const ok = rows ? rows.filter((r) => r.within.all).length : 0;
   useEffect(() => {
     if (!sorted.length) return;
     if (reduce()) { setShown(sorted.length); return; }
@@ -164,21 +176,21 @@ function Inbox({ ev, onFirst }: { ev: Eval | null; onFirst: (id: string) => void
   const vis = sorted.slice(0, shown), pvHit = vis.filter((r) => r.within.pv).length;
   return (
     <section className="c-sec">
-      <h2>The agent drafted {rows ? rows.length : 20} more.</h2>
-      <p className="c-sub">{ev ? `${n0(ev.split.test)} held-out signed projects, replayed through the engine. ` : ""}Least sure first.</p>
+      <h2>{rows ? `${ok} of ${rows.length} drafts match the senior planner's offer within tolerance. The other ${rows.length - ok} say why.` : "The agent drafted 20 more."}</h2>
+      {ev && <p className="c-sub">{n0(ev.split.test)} held-out signed projects, replayed through the engine.</p>}
       {err && <Err src="Engine" msg={err} retry={() => setTick((t) => t + 1)} />}
       {!rows && !err && <p className="c-sub s-wait">Replaying</p>}
       {rows && (
         <div className="c-inbox">
-          <div className="ir head"><span>Home</span><span>Draft</span><span>Confidence</span><span>Against the expert</span></div>
+          <div className="ir head"><span>Home</span><span>Draft</span><span>Against the expert</span></div>
           {vis.map((r) => {
             const i = r.inputs, sub = [i.heating_type !== "Unknown" ? HEATING_WORD[i.heating_type] : "Heating not recorded", i.has_ev ? "EV" : null].filter(Boolean).join(", ");
             return (
               <div className="ir s-in" key={r.project_id} title={r.note || undefined}>
                 <span className="h">{INSTALLER_NAME[r.installer_id]}, {n0(i.annual_demand_kwh)} kWh<small>{sub}</small></span>
                 <span className="d">{designLine(r.draft)}</span>
-                <span className={`c ${word(r.confidence)}`}>{word(r.confidence)}</span>
                 <span className={r.within.all ? "r" : "r rev"}>{r.within.all ? "matches the expert" : "review"}</span>
+                {!r.within.all && <span className="miss">{miss(r)}</span>}
               </div>
             );
           })}
@@ -198,6 +210,7 @@ function Score({ ev }: { ev: Eval | null }) {
         {o.textbook_design_match_share != null && <> A textbook rule manages {pct1(o.textbook_design_match_share)}</>}
         {o.ceiling_design_match_share != null && <>, and two planners at the same installer, given near-identical homes, agree {pct1(o.ceiling_design_match_share)} of the time</>}.</p>
       {pv.within_tolerance_share != null && ev.ceiling && <p>On solar alone the draft is within tolerance {pct1(pv.within_tolerance_share)} of the time, against {pct1(ev.ceiling.pv_agreement_share)} for planners agreeing with each other.</p>}
+      {ev.synthetic?.headline_short && <p>{ev.synthetic.headline_short}</p>}
       <details>
         <summary>All the numbers</summary>
         <table className="c-table small">
@@ -207,6 +220,14 @@ function Score({ ev }: { ev: Eval | null }) {
           ); })}</tbody>
         </table>
         <p className="c-sub">{ev.split.method}</p>
+        {ev.synthetic && ev.synthetic.invariants.length > 0 && (
+          <table className="c-table small">
+            <thead><tr><th>On {n0(ev.synthetic.n)} synthetic homes</th>{ev.synthetic.before && <th className="r">Before</th>}<th className="r">Now</th></tr></thead>
+            <tbody>{ev.synthetic.invariants.map((i) => { const b = ev.synthetic?.before?.pass_share[i.name]; return (
+              <tr key={i.name}><td>{i.name}</td>{ev.synthetic?.before && <td className="r num">{b == null ? "n/a" : pct1(b)}</td>}<td className="r num">{pct1(i.pass_share)}</td></tr>
+            ); })}</tbody>
+          </table>
+        )}
         <p className="c-sub"><a href="/classic/check">The full tables</a></p>
       </details>
     </section>
@@ -215,16 +236,14 @@ function Score({ ev }: { ev: Eval | null }) {
 
 export default function Check() {
   const [ev, setEv] = useState<Eval | null>(null);
-  const [real, setReal] = useState<string | null>(null);
+  const [real, setReal] = useState<string>(REALITY_PROJECT);
   useEffect(() => { call<Eval>("/api/eval").then((r) => { if (r.ok) setEv(r.data); }); }, []);
-  // The first inbox row is the engine's chosen hit; the fixed id covers an engine without /api/inbox.
-  useEffect(() => { const t = setTimeout(() => setReal((x) => x ?? REALITY_PROJECT), 6000); return () => clearTimeout(t); }, []);
   return (
     <div className="st">
       <StepHead title="Check" at={3} />
       <Validation />
-      <Reality ev={ev} id={real} />
-      <Inbox ev={ev} onFirst={(id) => setReal((x) => x ?? id)} />
+      <Reality ev={ev} id={real} onOther={() => setReal((x) => x === REALITY_PROJECT ? REALITY_MISS : REALITY_PROJECT)} />
+      <Inbox ev={ev} />
       <Score ev={ev} />
     </div>
   );

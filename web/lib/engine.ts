@@ -1,4 +1,5 @@
 import "server-only";
+import { mockCreateLead, mockGetLead, mockListLeads, mockPriors } from "./mockLeads";
 import { mockAsk, mockDesign, mockEval, mockHealth, mockInbox, mockProject, mockProjects, mockRefine, mockValidate } from "./mock";
 
 export const ENGINE_URL = process.env.ENGINE_URL || "http://localhost:8000";
@@ -23,13 +24,28 @@ function mock(method: string, path: string, search: URLSearchParams, body: any):
   return { status: 404, body: { error: `Mock has no route ${method} ${path}` } };
 }
 
+// v1.9 leads against a stand-in until the engine serves them (LEADS_MOCK=1, local only).
+const leadsMock = process.env.LEADS_MOCK === "1";
+function mockLeads(method: string, path: string, search: URLSearchParams, body: any): Out | null {
+  if (path === "/api/leads" && method === "POST") return { status: 200, body: mockCreateLead(body) };
+  if (path === "/api/leads") return { status: 200, body: mockListLeads(Number(search.get("limit") ?? 20)) };
+  if (path.startsWith("/api/leads/")) { const l = mockGetLead(decodeURIComponent(path.slice("/api/leads/".length))); return l ? { status: 200, body: l } : { status: 404, body: { error: "Lead not found" } }; }
+  if (path === "/api/intake/priors") return { status: 200, body: mockPriors() };
+  return null;
+}
+
 export async function callEngine(method: string, path: string, search: URLSearchParams, body?: unknown): Promise<Out> {
+  if (isMock || leadsMock) { const m = mockLeads(method, path, search, body); if (m) return m; }
   if (isMock) return mock(method, path, search, body);
   const qs = search.toString();
   try {
     const res = await fetch(`${ENGINE_URL}${path}${qs ? `?${qs}` : ""}`, {
       method,
-      headers: body ? { "content-type": "application/json" } : undefined,
+      headers: {
+        ...(body ? { "content-type": "application/json" } : {}),
+        // v1.9: reading leads needs the intake secret; server-side only, never sent to the browser.
+        ...(method === "GET" && path.startsWith("/api/leads") && process.env.INTAKE_SECRET ? { "X-Intake-Secret": process.env.INTAKE_SECRET } : {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
       signal: AbortSignal.timeout(20000),

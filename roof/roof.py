@@ -56,6 +56,15 @@ class RoofResult:
     segments: list[Segment] = field(default_factory=list)
     max_panels: int | None = None
     confidence: str = "estimate"   # measured | footprint | estimate
+    storeys: int | None = None
+    dwellings_class: str | None = None         # Zensus: dominant dwellings-per-building class in the cell
+    avg_flat_m2: float | None = None           # Zensus: average flat size in the cell
+    floor_area_m2: float | None = None
+    floor_area_confidence: str | None = None   # "estimate" when derived from the footprint and height
+    build_year_class: str | None = None        # Zensus 2022 100 m cell, modal class e.g. "1979 to 1990"
+    build_year_estimate: int | None = None     # class midpoint
+    heating_class: str | None = None           # dominant heating type in the cell
+    zensus_confidence: str | None = None       # "estimated from address (Zensus 2022, 100 m cell)"
     notes: list[str] = field(default_factory=list)
 
     def dict(self) -> dict:
@@ -275,7 +284,7 @@ def _rings(el) -> list[list[tuple[float, float, float]]]:
 
 
 def _tile_index(e: int, n: int) -> list[dict]:
-    idx = CACHE / "lod2" / f"{e}_{n}.json"
+    idx = CACHE / "lod2" / f"{e}_{n}.v2.json"   # v2 adds height and storeys
     if idx.exists():
         return json.loads(idx.read_text())
     gml = CACHE / "lod2" / f"{e}_{n}.gml"
@@ -299,12 +308,38 @@ def _tile_index(e: int, n: int) -> list[dict]:
         for f in foot[1:]:
             fp = fp.union(f)
         segs = [_plane(r) for r in roofs if len(r) >= 3]
+        def _num(tag):
+            t = b.findtext(f"bldg:{tag}", namespaces=NS)
+            try:
+                return float(t) if t else None
+            except ValueError:
+                return None
         buildings.append({"id": b.get(f"{{{NS['gml']}}}id"), "footprint": mapping(fp),
+                          "height": _num("measuredHeight"), "storeys": _num("storeysAboveGround"),
                           "segments": [[round(a, 2), round(p, 1), round(z)] for a, p, z in segs if a > 0.5]})
         b.clear()
     idx.write_text(json.dumps(buildings))
     gml.unlink()  # the index is all we need; tiles run to 160 MB
     return buildings
+
+
+FLOOR_NET = 0.72   # net-to-gross: walls, stairs, unheated space
+MULTI_UNIT_M2 = 350   # footprint x storeys above this is not a single-family home
+STOREY_M = 3.0
+
+
+def _floor_area(res: RoofResult, footprint: float, height: float | None, storeys: float | None) -> None:
+    """Heated floor area estimate: footprint x storeys x 0.8, storeys 1 to 3 (single-family homes)."""
+    if storeys:
+        n, how = int(storeys), "storeys in LoD2"
+    elif height:
+        n, how = round(height / STOREY_M), f"measured height {height:.1f} m / {STOREY_M:g} m"
+    else:
+        return
+    res.storeys = max(1, min(3, n))
+    res.floor_area_m2 = round(footprint * res.storeys * FLOOR_NET, 1)
+    res.floor_area_confidence = "estimate"
+    res.notes.append(f"floor area estimated from address: footprint {footprint:.0f} m2 x {res.storeys} storeys ({how}) x {FLOOR_NET}")
 
 
 def from_lod2(lat: float, lon: float, hit: dict | None = None) -> RoofResult:
@@ -325,6 +360,7 @@ def from_lod2(lat: float, lon: float, hit: dict | None = None) -> RoofResult:
     segs = [Segment(z if p >= 5 else None, p, a) for a, p, z in b["segments"]]
     res = RoofResult("bayern_lod2", lat, lon, round(poly.area, 1),
                      round(sum(s.area_m2 for s in segs), 1), segments=segs, confidence="measured")
+    _floor_area(res, poly.area, b.get("height"), b.get("storeys"))
     res.notes.append(f"LoD2 building {b['id']} (tile {e}_{n}), {len(segs)} roof planes")
     if best_d > 0:
         res.notes.append(f"point not inside a building; nearest is {best_d:.0f} m away")
@@ -334,6 +370,23 @@ def from_lod2(lat: float, lon: float, hit: dict | None = None) -> RoofResult:
 # ---------- chain ----------
 
 SOURCES = {"bayern_lod2": from_lod2, "google_solar": from_google, "osm": from_osm}
+
+
+def _add_zensus(res: RoofResult) -> None:
+    import zensus
+    z = zensus.lookup(res.lat, res.lon) if res.lat is not None else None
+    if z:
+        dmin = z.pop("dwellings_min", None)   # None = dwellings class unknown
+        for k, v in z.items():
+            setattr(res, k, v)
+        gross = (res.footprint_m2 or 0) * (res.storeys or 0)
+        if res.floor_area_m2 and z.get("avg_flat_m2") and ((dmin >= 3) if dmin is not None else gross > MULTI_UNIT_M2):
+            res.notes.append(f"multi-unit building ({res.dwellings_class or 'footprint x storeys ' + str(round(gross)) + ' m2'}): "
+                             f"floor area is the cell's average flat size, whole building was {res.floor_area_m2} m2")
+            res.floor_area_m2 = z["avg_flat_m2"]
+            res.floor_area_confidence = "estimated from address (Zensus average flat size)"
+    else:
+        res.notes.append("Zensus 100 m cell: not available (run `python zensus.py build`, or address outside Munich region)")
 
 
 def lookup(address: str, source: str | None = None) -> RoofResult:
@@ -348,6 +401,7 @@ def lookup(address: str, source: str | None = None) -> RoofResult:
         try:
             res = SOURCES[key](lat, lon, hit)
             res.notes = [name] + tried + res.notes
+            _add_zensus(res)
             return res
         except (NotFound, RuntimeError, httpx.HTTPError) as e:
             tried.append(str(e))

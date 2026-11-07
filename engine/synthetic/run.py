@@ -33,8 +33,13 @@ def main():
         for h in homes:
             f.write(json.dumps(h) + "\n")
 
-    errors = {h["_id"]: e for h in homes if (e := oracle.input_error(h))}
-    valid = [h for h in homes if h["_id"] not in errors]
+    errors, valid = {}, []
+    for h in homes:
+        e, h2 = oracle.input_check(h)
+        if e:
+            errors[h["_id"]] = e
+        else:
+            valid.append(h2)
     normal = [h for h in valid if h["_split"] != "adversarial"]
     batch, keys = [oracle.strip(h) for h in valid], []
     for name, applies, tf in iv.VARIANTS:

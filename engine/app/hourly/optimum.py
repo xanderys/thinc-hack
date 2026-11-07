@@ -9,9 +9,9 @@ def _design(base, pv, bat):
     return {**base, "pv_kwp": pv or None, "inverter_kw": rules.inverter_kw(pv) if pv else None, "battery_kwh": bat or None}
 
 
-def optimum(inputs: dict, catalogue: dict, proposal: dict | None = None, location="Munich") -> dict:
+def optimum(inputs: dict, catalogue: dict, proposal: dict | None = None, location="Munich", year=None) -> dict:
     """catalogue: {"pv_kwp": [...], "battery_kwh": [...]}; 0 means none and is always tried.
-    Heat pump and wallbox are kept from the proposal."""
+    Heat pump and wallbox are kept from the proposal. year "2025" optimises on the 2025 replay instead of the typical year."""
     base = {k: (proposal or {}).get(k) for k in ("heatpump_kw", "wallbox_kw")}
     pvs = sorted({0.0, *map(float, catalogue.get("pv_kwp", []))})
     bats = sorted({0.0, *map(float, catalogue.get("battery_kwh", []))})
@@ -21,7 +21,7 @@ def optimum(inputs: dict, catalogue: dict, proposal: dict | None = None, locatio
             if bat and not pv and not inputs.get("has_solar"):
                 continue
             d = _design(base, pv, bat)
-            e = simulate(inputs, d, location).economics
+            e = simulate(inputs, d, location, year).economics
             runs.append((e["annual"]["npv_20y_eur"] or 0.0, e["capex_eur"], d, e))
     best = max(r[0] for r in runs)
     near = [r for r in runs if r[0] >= best - max(NPV_TIE_EUR, NPV_TIE_SHARE * abs(best))]
@@ -34,7 +34,7 @@ def optimum(inputs: dict, catalogue: dict, proposal: dict | None = None, locatio
 
     out = {"design": design, "economics": econ}
     if proposal:
-        pe = simulate(inputs, proposal, location).economics
+        pe = simulate(inputs, proposal, location, year).economics
         out["delta_vs_proposal"] = {
             "capex_eur": float(round(econ["capex_eur"] - pe["capex_eur"], -1)),
             "annual_saving_eur": float(round(econ["annual_saving_eur"] - pe["annual_saving_eur"], -1)),

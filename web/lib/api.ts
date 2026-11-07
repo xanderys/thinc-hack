@@ -21,16 +21,19 @@ export interface HomeInputs {
   has_solar: boolean; existing_solar_kwp?: number;
   has_storage: boolean; existing_storage_kwh?: number;
   address?: string;   // v1.6
+  preference?: "independence" | "payback" | "upfront";   // v1.7, reorders variants only
   roof?: RoofResult;  // v1.6
 }
 
 export interface RoofResult {
-  source: "lod2" | "google-solar" | "osm" | "none";
+  source: "lod2" | "google-solar" | "osm" | "postcode" | "none";
   matched_address: string; lat: number | null; lon: number | null;
   footprint_m2: number | null; roof_area_m2: number | null; usable_area_m2: number | null;
   segments: { azimuth: number; pitch: number; area_m2: number }[];
   max_panels: number | null; max_kwp: number | null;
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
+  floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";   // v1.6.1, upper bound
+  build_year_class?: string | null; build_year_estimate?: number | null; heating_class?: string | null; zensus_confidence?: string; // heating_class is the system type, never the fuel
 }
 
 export interface Derivation {   // v1.5
@@ -81,6 +84,11 @@ export interface Optimum {               // v1.2
 
 export type ComponentKey = "pv" | "battery" | "heatpump" | "wallbox";
 
+export interface Variant {   // v1.7
+  key: "expert" | "independence" | "payback" | "upfront";
+  label: string; design: Design; economics: Economics; note: string;
+}
+
 export interface DesignResponse {
   design: Design;
   explanation: string[];
@@ -88,6 +96,7 @@ export interface DesignResponse {
   plausibility: Plausibility[];
   economics: Economics;
   optimum?: Optimum;
+  variants?: Variant[];   // v1.7
   model_version: string;
 }
 
@@ -118,6 +127,13 @@ export interface Eval {
   ceiling?: { method: string; pv_agreement_share: number; battery_agreement_share: number };
   per_installer: Record<InstallerId, { test: number; design_match_share: number; baseline_design_match_share?: number }>;
   deviations: { project_id: string; component: string; ours: number | null; expert: number | null; note: string }[];
+  synthetic?: Synthetic;
+}
+
+export interface Synthetic {
+  n: number; plausible_share: number; monotonicity_violations: number; headline: string; headline_short: string;
+  invariants: { name: string; group: string; pass_share: number; n_checked: number }[];
+  before?: { pass_share: Record<string, number> };
 }
 
 // Contract v1.1: an override value of "include" asks the engine to include and size the component.
@@ -143,8 +159,21 @@ export interface InboxRow {
 }
 
 // LLM edge, web only
-export interface ReadFact { field: keyof HomeInputs; value: unknown; quote: string; }
-export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; }
+export interface ReadFact { field: keyof HomeInputs | "wants" | "monthly_bill_eur" | "postcode"; value: unknown; quote: string; }
+export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; source?: "call"; origin?: Record<string, "form" | "call" | "estimated">; postcode?: string; }
 export interface WriteResponse { text: string; grounded: boolean; lines: Partial<Record<ComponentKey, string | null>>; cached?: boolean; }
 
 export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Installer A", "23c108b7": "Installer B" };
+
+// v1.9: the engine runs the call, one rolling draft per lead.
+export interface LeadChange { component: string; from: number | null; to: number | null; why: string; }
+export interface NextQuestion { field: string; question: string; why: string; options?: { value: unknown; label: string }[]; expected_swing: string; }
+export interface LeadCreated { lead_id: string; draft: DesignResponse; facts: HomeInputs; unknown: string[]; next_question: NextQuestion | null; }
+export interface Lead {
+  lead_id: string; status: "draft" | "in_call" | "done"; customer_name: string; address_or_postcode: string;
+  facts: HomeInputs; draft: DesignResponse;
+  history: { step: number; field: string; answer: unknown; changed: LeadChange[]; at: string }[];
+  next_question: NextQuestion | null; questions_asked: number; created_at: string; updated_at: string;
+}
+export interface LeadRow { lead_id: string; status: Lead["status"]; title: string; customer_name?: string; address_or_postcode?: string; created_at?: string; }
+export interface Priors { n_steps_logged: number; order: { field: string; mean_swing: number; times_asked: number }[]; }

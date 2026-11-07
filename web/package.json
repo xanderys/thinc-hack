@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",
+    "@elevenlabs/react": "1.21.1",
     "next": "^15.5.29",
     "react": "19.1.1",
     "react-dom": "19.1.1",

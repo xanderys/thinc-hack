@@ -1,6 +1,10 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Lead from "@/components/stage/Lead";
+import Lead, { type Pref } from "@/components/stage/Lead";
+import dynamic from "next/dynamic";
+import type { CallLead } from "@/components/stage/Calls";
+const Calls = dynamic(() => import("@/components/stage/Calls"), { ssr: false });
+const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 import Plan, { type Variant } from "@/components/stage/Plan";
 import StepHead from "@/components/stage/StepHead";
 import Refine, { type Moved } from "@/components/stage/Refine";
@@ -37,6 +41,7 @@ export default function Stage() {
   const [write, setWrite] = useState<WriteResponse | null>(null);
   const [writeBusy, setWriteBusy] = useState(false);
   const [pvOnly, setPvOnly] = useState<RefineResponse | null>(null);
+  const [pref, setPref] = useState<Pref>("expert");
   const last = useRef<DesignResponse | null>(null);
   const cause = useRef<string | null>(null);
   const [moved, setMoved] = useState<Moved | null>(null);
@@ -73,10 +78,26 @@ export default function Stage() {
     const r = await call<ReadResponse>("/api/read", { lead });
     setReadBusy(false);
     if (!r.ok) { setReadErr(r.error); return; }
+    await begin(r.data);
+  }
+
+  // Facts from the call: everything was said, so nothing is asked.
+  // Facts from a homeowner call, each tagged form, call or estimated; nothing is asked.
+  function onCall(l: CallLead) {
+    const { preference, ...rest } = l.inputs as Partial<HomeInputs>;
+    if (rest.installer_id) setInstaller(rest.installer_id as InstallerId);
+    setPref(preference ?? "expert");
+    setLead(l.facts.summary ?? "");
+    begin({ inputs: rest, found: [], unknown: [], source: "call", origin: l.sources });
+  }
+
+  async function begin(data: ReadResponse) {
+    const r = { data };
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(null); setPrev(null); last.current = null;
     setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
     setRead(r.data); setRoof(null);
-    if (r.data.inputs.address) call<RoofResult>(`/api/roof?address=${encodeURIComponent(r.data.inputs.address)}`).then((x) => setRoof(x.ok ? x.data : null));
+    const where = r.data.inputs.address ? `address=${encodeURIComponent(r.data.inputs.address)}` : r.data.postcode ? `postcode=${r.data.postcode}` : null;
+    if (where) call<RoofResult>(`/api/roof?${where}`).then((x) => setRoof(x.ok ? x.data : null));
     const base: HomeInputs = { ...DEFAULTS, ...r.data.inputs, installer_id: installer };
     // A restarting engine answers 502 for about 35 s: wait and ask again rather than skip the question.
     for (let k = 0; ; k++) {
@@ -142,7 +163,7 @@ export default function Stage() {
   // The PV-only variant for the current home.
   useEffect(() => {
     setPvOnly(null);
-    if (!res || res.design.battery_kwh == null) return;
+    if (!res || res.design.battery_kwh == null || res.variants?.length) return;
     const ctl = new AbortController();
     call<RefineResponse>("/api/refine", { inputs, overrides: { ...overrides, battery_kwh: null } }, ctl.signal)
       .then((r) => { if (r.ok) setPvOnly(r.data); }).catch(() => {});
@@ -151,14 +172,25 @@ export default function Stage() {
 
   const variants: Variant[] = useMemo(() => {
     if (!res) return [];
+    // Engine v1.7: four offers the homeowner can choose between; the preference only reorders them.
+    const ev = (Object.keys(overrides).length ? drafted?.variants : null) ?? res.variants ?? drafted?.variants;
+    if (ev?.length) {
+      const order = [...ev].sort((a, b) => (b.key === pref ? 1 : 0) - (a.key === pref ? 1 : 0));
+      return order.map((v, n) => {
+        const [name, how] = v.label.split(" (");
+        return { name, tag: n === 0 ? "Preferred" : v.key === "expert" ? (how ? how.replace(/\)$/, "").replace(/^./, (c) => c.toUpperCase()).replace(" here ", " ") : "As planners design it") : "",
+          design: v.design, e: v.economics, note: v.key === "expert" ? "" : v.note, current: same(v.design, res.design),
+          overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } };
+      });
+    }
     const fixed = Object.keys(overrides).length > 0;
-    const out: Variant[] = [{ name: variantName(res.design), tag: fixed ? "Chosen" : "Recommended", design: res.design, e: res.economics, overrides: null, current: true }];
-    if (fixed && drafted && !same(drafted.design, res.design)) out.push({ name: variantName(drafted.design, res.design), tag: "Recommended", design: drafted.design, e: drafted.economics, overrides: {}, current: false });
+    const out: Variant[] = [{ name: variantName(res.design), tag: fixed ? "Chosen" : "", design: res.design, e: res.economics, overrides: null, current: true }];
+    if (fixed && drafted && !same(drafted.design, res.design)) out.push({ name: variantName(drafted.design, res.design), tag: "Agent's draft", design: drafted.design, e: drafted.economics, overrides: {}, current: false });
     const o = res.optimum;
     if (o && !same(o.design, res.design)) out.push({ name: variantName(o.design, res.design), tag: "Earns most", design: o.design, e: o.economics, overrides: { ...overrides, pv_kwp: o.design.pv_kwp, battery_kwh: o.design.battery_kwh }, current: false });
     if (res.design.battery_kwh != null) out.push({ name: "PV only", tag: "Cheapest", design: pvOnly?.design ?? { ...res.design, battery_kwh: null }, e: pvOnly?.economics ?? null, overrides: { ...overrides, battery_kwh: null }, current: false });
     return out.filter((v, k) => out.findIndex((w) => w.name === v.name) === k);
-  }, [res, drafted, pvOnly, overrides]);
+  }, [res, drafted, pvOnly, overrides, pref]);
 
   useEffect(() => { call<{ available: boolean }>("/api/interpret").then((r) => setLlm(r.ok ? r.data.available : false)); }, []);
 
@@ -212,7 +244,7 @@ export default function Stage() {
   function onApprove() {
     if (!res) return;
     const at = new Date();
-    try { sessionStorage.setItem("marquee.approved", JSON.stringify({ inputs, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
+    try { sessionStorage.setItem("marquee.approved", JSON.stringify({ inputs: pref === "expert" ? inputs : { ...inputs, preference: pref }, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
     setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
   }
 
@@ -230,10 +262,11 @@ export default function Stage() {
       <div className="s-stage">
         <Lead lead={lead} setLead={setLead} read={read} busy={readBusy} error={readErr} onRead={doRead} onEdit={() => setRead(null)}
           inputs={inputs} changed={changed} setInstaller={setInstaller} roof={roof}
-          question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} />
+          question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} pref={pref} setPref={setPref} asking={!!read && question === undefined}
+          call={VOICE && !read ? <Calls installer={installer} onLead={onCall} /> : null} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-          {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} />}
+          {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} />}
           {res && <Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
             moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} />}
         </div>

@@ -11,7 +11,7 @@ export default function Flow({ e, design, hasEv, moved }: { e: Economics; design
   const bat = design.battery_kwh != null && a.battery_charged_kwh != null ? a.battery_charged_kwh : null;
   const car = hasEv && split && a.ev_from_pv_kwh != null ? a.ev_from_pv_kwh : null;
   const used = split ? a.home_from_pv_kwh! : a.self_consumed_kwh;
-  const usedLabel = split ? "Home" : hasEv ? "Home and car" : "Home";
+  const usedLabel = split ? "Used at home" : hasEv ? "Used at home and by the car" : "Used at home";
   const nv = moved ? "nv moved" : "nv";
   return (
     <figure className="s-flow">

@@ -4,7 +4,7 @@ import numpy as np
 YIELD = 950  # kWh per kWp per year, Germany (domain.md 1: 880 to 1,350)
 PRICE_CT = 32.0
 FEEDIN_LOW, FEEDIN_HIGH = 7.70, 6.66  # ct/kWh, up to 10 kWp / 10 to 40 kWp portion, EEG from 1 Aug 2026
-EV_KWH_PER_KM = 0.2
+EV_KWH_PER_KM = 0.18  # 18 kWh per 100 km, same as the hourly simulation
 HP_COST = 36_400  # mean of 160 real offers, before subsidy
 WALLBOX_COST = 1_200
 HP_SUBSIDY = 0.30            # BEG base subsidy; bonuses up to 70% exist but depend on the household (docs/domain.md 3)
@@ -192,6 +192,11 @@ def plausibility(inp, design, econ):
     if bat and pv:
         r = bat / pv
         msgs.append({"level": "ok" if 0.5 <= r <= 1.5 else "warn", "message": f"Battery {r:.1f} kWh per kWp (typical about 1)."})
+    if inp.get("_estimated"):
+        what = " and ".join(inp["_estimated"])
+        src = ("the postcode (Zensus 2022 100 m cell at its centre)" if (inp.get("roof") or {}).get("source") == "postcode"
+               else "the address (LoD2 building, Zensus 2022 100 m cell)")
+        msgs.append({"level": "ok", "message": f"{what[0].upper() + what[1:]} estimated from {src}; confirm with the homeowner."})
     if inp.get("existing_solar_kwp") and not inp.get("has_solar"):
         msgs.append({"level": "warn", "message": f"Existing PV of {inp['existing_solar_kwp']:g} kWp is given but has_solar is false; it was ignored. Confirm whether the home has PV."})
     if inp.get("existing_storage_kwh") and not inp.get("has_storage"):

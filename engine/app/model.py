@@ -14,6 +14,7 @@ from . import hourly, rules
 
 log = logging.getLogger("engine")
 from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES, date_t
+from .hourly.optimum import NPV_TIE_EUR, NPV_TIE_SHARE
 
 SEED = 42
 K = 15
@@ -26,6 +27,14 @@ TARGET = {"pv": "pv_kwp", "battery": "battery_kwh", "heatpump": "heatpump_kw", "
 NAMES = {"pv": "PV", "battery": "a battery", "heatpump": "a heat pump", "wallbox": "a wallbox"}
 
 
+# Grey-box (lab iteration 3): base = physics optimum (20-year NPV over the installer's catalogue, no expert label, PV capped
+# at the roof when known). mode "ratio": the size regressors learn expert / optimum; "residual": expert minus optimum;
+# "feature": the optimum is a feature; "batfeat" (iteration 4): only the optimum battery for the stage PV, as a feature of the battery stage. Decisions keep the classifiers. base "argmax" best NPV, "cheap" cheapest in the tie band.
+# grid: an Engine whose catalogue the optimum uses (lab/greybox.py sets the full-train one in CV so cached grids stay valid).
+GREYBOX = {"mode": None, "base": "argmax", "grid": None}
+_GRID = {}  # memo: (installer, inputs, catalogue) -> (pv sizes, battery sizes, NPV matrix)
+
+PRIORS: dict = {}  # field -> mean swing from engine/.cache/leads/steps.jsonl; tie-breaker in ask()
 MONO = True  # monotone in demand (PV) and price (battery); 4,500 kWh default imputed, missing price = 32 ct
 DEMAND_IMPUTE: dict = {}  # load profile -> median non-default demand in train
 
@@ -106,6 +115,10 @@ class Engine:
         self.excluded = {"outliers": int(out.sum()), "rule": "PV over 40 kWp, battery over 40 kWh, or demand outside 500 to 30,000 kWh"}
         df = df[~out].reset_index(drop=True)
         tr, te = train_test_split(df, test_size=0.2, random_state=SEED, stratify=df.installer_id)
+        return self.fit_on(tr, te)
+
+    def fit_on(self, tr: pd.DataFrame, te: pd.DataFrame):
+        """Fit on a given train frame; te is only stored (scored by evaluate). lab/cv.py calls this per fold."""
         self.train, self.test = tr.reset_index(drop=True), te.reset_index(drop=True)
         tr = self.train
         T_NOW["t"] = max(date_t(x) for x in tr.offer_date)
@@ -118,7 +131,6 @@ class Engine:
         X = pd.DataFrame([base_features(r, r["installer_id"]) for r in tr.to_dict("records")])
         # offer date picks the battery catalogue only; as a model feature it lowered the scoreboard (README)
         X = X.drop(columns=["t"])
-        self.cols = list(X.columns)
 
         for inst in INSTALLERS:
             t = tr[tr.installer_id == inst]
@@ -142,24 +154,40 @@ class Engine:
             cat["bat_s"] = tb.battery_kwh.values.astype(float)
             self.knn[inst] = {"V": (V - mu) / sd * KNN_W, "mu": mu, "sd": sd, "rows": t.reset_index(drop=True)}
 
+        gb = GREYBOX["mode"]
+        if gb:
+            rows_ = tr.to_dict("records")
+            grids = [self.opt_grid(row_inputs(r), r["installer_id"], date_t(r["offer_date"])) for r in rows_]
+            opt_pv = np.array([opt_base(g)[0] for g in grids])
+            if gb == "feature":
+                X = X.assign(opt_pv=opt_pv, opt_bat=[opt_base(g)[1] for g in grids])
+        self.cols = list(X.columns)
         y = {c: tr[TARGET[c]].values for c in COMPONENTS}
         mono_pv = {"demand": 1, "log_demand": 1} if MONO else None
         mono_bat = {"price": 1} if MONO else None
         clf = lambda m=None: HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=4, min_samples_leaf=15, random_state=SEED, monotonic_cst=m)
         reg = lambda m=None: HistGradientBoostingRegressor(max_iter=300, learning_rate=0.05, max_depth=4, min_samples_leaf=15, loss="absolute_error", random_state=SEED, monotonic_cst=m)
 
-        # PV
+        # PV (grey-box: the regressor learns the expert's deviation from the optimum; gb_fwd/gb_inv in this module)
+        b_pv = np.array([gb_floor(v, self.grid_cat(i)["pv"]) for v, i in zip(opt_pv, tr.installer_id)]) if gb in ("ratio", "residual") else None
         self.models["pv_dec"] = clf(mono_pv).fit(X, y["pv"] > 0)
         m = y["pv"] > 0
-        self.models["pv_size"] = reg(mono_pv).fit(X[m], y["pv"][m])
-        pv_oof = np.where(cross_val_predict(clf(mono_pv), X, y["pv"] > 0, cv=5), cross_val_predict(reg(mono_pv), X, y["pv"], cv=5), 0.0)
+        self.models["pv_size"] = reg(mono_pv).fit(X[m], gb_fwd(y["pv"], b_pv)[m])
+        pv_oof = np.where(cross_val_predict(clf(mono_pv), X, y["pv"] > 0, cv=5), gb_inv(cross_val_predict(reg(mono_pv), X, gb_fwd(y["pv"], b_pv), cv=5), b_pv), 0.0)
         X1 = X.assign(pv=pv_oof)
-        # battery given PV
+        # battery given PV (base: the optimum battery for the chained PV)
+        b_bat = None
+        if gb:
+            ob = np.array([opt_base(g, p)[1] for g, p in zip(grids, pv_oof)])
+            if gb in ("feature", "batfeat"):
+                X1 = X1.assign(opt_bat_pv=ob)
+            else:
+                b_bat = np.array([gb_floor(v, self.grid_cat(i)["battery"]) for v, i in zip(ob, tr.installer_id)])
         self.models["bat_dec"] = clf(mono_bat).fit(X1, y["battery"] > 0)
         m = y["battery"] > 0
-        self.models["bat_size"] = reg(mono_bat).fit(X1[m], y["battery"][m])
-        bat_oof = np.where(cross_val_predict(clf(mono_bat), X1, y["battery"] > 0, cv=5), cross_val_predict(reg(mono_bat), X1, y["battery"], cv=5), 0.0)
-        X2 = X1.assign(battery=bat_oof)
+        self.models["bat_size"] = reg(mono_bat).fit(X1[m], gb_fwd(y["battery"], b_bat)[m])
+        bat_oof = np.where(cross_val_predict(clf(mono_bat), X1, y["battery"] > 0, cv=5), gb_inv(cross_val_predict(reg(mono_bat), X1, gb_fwd(y["battery"], b_bat), cv=5), b_bat), 0.0)
+        X2 = (X1.drop(columns="opt_bat_pv") if gb == "batfeat" else X1).assign(battery=bat_oof)
         # heat pump: too few sold to learn a size; decision from data, size from physics
         self.hp_positive = int((y["heatpump"] > 0).sum())
         self.models["hp_dec"] = clf().fit(X2, y["heatpump"] > 0) if self.hp_positive >= 5 else None
@@ -194,7 +222,7 @@ class Engine:
                 "median_size": q(50), "p25": q(25), "p75": q(75)}
 
     # ---------- prediction ----------
-    def predict(self, inp: dict, overrides: dict | None = None, full: bool = True) -> dict:
+    def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """full=False skips the hourly simulation and optimum (used by the scoreboard, which only needs sizes)."""
         inst = inp["installer_id"]
         if inst not in self.catalogue:
@@ -202,9 +230,23 @@ class Engine:
         ov = overrides or {}
         cat = self.catalogue[inst]
         f = base_features(inp, inst)
+        gb = GREYBOX["mode"]
+        g = self.opt_grid(inp, inst, f["t"]) if gb else None
+        if gb == "feature":
+            f["opt_pv"], f["opt_bat"] = opt_base(g)
         X = pd.DataFrame([f])[self.cols]
         nb = self.neighbours(inp, inst)
         comps, design = {}, {}
+        gc = self.grid_cat(inst) if gb else None
+        b_pv = gb_floor(opt_base(g)[0], gc["pv"]) if gb in ("ratio", "residual") else None
+
+        def bat_frame(pv):
+            X1 = X.assign(pv=pv)
+            return X1.assign(opt_bat_pv=opt_base(g, pv)[1]) if gb in ("feature", "batfeat") else X1
+
+        def bat_fn(X1, pv):
+            b = gb_floor(opt_base(g, pv)[1], gc["battery"]) if gb in ("ratio", "residual") else None
+            return snap(float(gb_inv(self.models["bat_size"].predict(X1), b)[0]), self.battery_catalogue(inst, f["t"]))
 
         def choose(key, p, size_fn):
             """Planner number/null fixes it; "include" forces it in and the engine sizes it; else the model decides."""
@@ -216,13 +258,13 @@ class Engine:
 
         # PV
         p_pv = float(self.models["pv_dec"].predict_proba(X)[0, 1])
-        pv_fn = lambda: self.roof_cap(inp, snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"]), cat["pv"])
+        pv_fn = lambda: self.roof_cap(inp, snap(float(gb_inv(self.models["pv_size"].predict(X), b_pv)[0]), cat["pv"]), cat["pv"])
         pv, src = choose("pv_kwp", p_pv, pv_fn)
         comps["pv"] = self._detail("pv", pv, p_pv, nb, inp, src)
         # battery
-        X1 = X.assign(pv=pv)
+        X1 = bat_frame(pv)
         p_b = float(self.models["bat_dec"].predict_proba(X1)[0, 1])
-        bat, src = choose("battery_kwh", p_b, lambda: snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"])))
+        bat, src = choose("battery_kwh", p_b, lambda: bat_fn(X1, pv))
         # a battery needs PV to charge: without PV, new or recorded, propose PV or drop the battery
         nopv_note = None
         if bat and not pv and not inp.get("has_solar") and src == "model":
@@ -230,8 +272,8 @@ class Engine:
                 pv = pv_fn()
                 comps["pv"] = self._detail("pv", pv, p_pv, nb, inp, "model")
                 comps["pv"]["reason"] = f"A battery needs PV to charge and none is recorded, so PV is proposed; {comps['pv']['reason']}"
-                X1 = X.assign(pv=pv)
-                bat = snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"]))
+                X1 = bat_frame(pv)
+                bat = bat_fn(X1, pv)
             else:
                 bat, nopv_note = 0.0, "No PV, new or recorded, so no battery: it could not charge from solar."
         if pv and inp.get("roof") and inp["roof"].get("max_kwp"):
@@ -244,7 +286,7 @@ class Engine:
         comps["battery"] = self._detail("battery", bat, p_b, nb, inp, src, pv=pv)
         if nopv_note:
             comps["battery"]["reason"] = nopv_note
-        X2 = X1.assign(battery=bat)
+        X2 = (X1.drop(columns="opt_bat_pv") if gb == "batfeat" else X1).assign(battery=bat)
         # heat pump: never proposed where one exists; a planner "include" there is a replacement job
         p_h = float(self.models["hp_dec"].predict_proba(X2)[0, 1]) if self.models.get("hp_dec") else 0.0
         if inp.get("heating_type") == "Heatpump" and "heatpump_kw" not in ov:
@@ -262,7 +304,7 @@ class Engine:
         inv = ov["inverter_kw"] if isinstance(ov.get("inverter_kw"), (int, float)) else rules.inverter_kw(pv)
         design = {"pv_kwp": pv or None, "inverter_kw": inv if pv else None, "battery_kwh": bat or None,
                   "heatpump_kw": hp or None, "wallbox_kw": wb or None}
-        econ, plaus, opt = self._physics(inp, design, inst, f["t"], full)
+        econ, plaus, opt = self._physics(inp, design, inst, f["t"], full, extras)
         if full:
             try:
                 for c in COMPONENTS:
@@ -273,7 +315,7 @@ class Engine:
                "components": comps, "plausibility": plaus, "economics": econ, "model_version": MODEL_VERSION}
         if opt:
             out["optimum"] = opt
-        if full and design.get("pv_kwp"):
+        if full and extras and design.get("pv_kwp"):
             try:
                 out["variants"] = self.variants(inp, design, econ)
             except Exception as e:
@@ -284,6 +326,8 @@ class Engine:
         """Sizes only, no overrides, for many homes in one pass per model; same logic as predict()."""
         if not inps:
             return []
+        if GREYBOX["mode"]:  # lab only: the grey-box path goes through predict()
+            return [self.predict(i, full=False)["design"] for i in inps]
         F = [base_features(i, i["installer_id"]) for i in inps]
         X = pd.DataFrame(F)[self.cols]
         n = len(inps)
@@ -321,6 +365,40 @@ class Engine:
                         "battery_kwh": float(bats[k]) or None, "heatpump_kw": hp or None, "wallbox_kw": wb or None})
         return out
 
+    def grid_cat(self, inst):
+        src = GREYBOX["grid"] or self
+        return src.catalogue[inst]
+
+    def opt_grid(self, inp: dict, inst: str, t: float):
+        """20-year NPV of every catalogue PV and battery size (none included) for this home, hourly simulation; PV no
+        larger than a known roof holds. No heat pump, no wallbox, no expert label: the base of the grey-box model."""
+        src = GREYBOX["grid"] or self
+        pvs = np.concatenate([[0.0], src.catalogue[inst]["pv"]])
+        bats = np.concatenate([[0.0], src.battery_catalogue(inst, t)])
+        roof = inp.get("roof") or {}
+        if roof.get("max_kwp"):
+            pvs = pvs[pvs <= roof["max_kwp"] + 1e-9]
+        clean = {k: v for k, v in inp.items() if not k.startswith("_") and k not in ("offer_date", "installer_id", "roof")}
+        key = (inst, tuple(sorted(clean.items(), key=lambda kv: kv[0])), tuple(pvs), tuple(bats))
+        if roof:
+            key = key + (repr(sorted(roof.items(), key=lambda kv: kv[0])),)
+        if key in _GRID:
+            return _GRID[key]
+        sim_in = roof_to_sim({**clean, "roof": roof}) if roof else clean
+        sim_in = {k: v for k, v in sim_in.items() if k != "roof"} if not roof else sim_in
+        npv = np.full((len(pvs), len(bats)), np.nan)
+        for i, pv in enumerate(pvs):
+            for j, b in enumerate(bats):
+                if not pv and not b:
+                    npv[i, j] = 0.0
+                    continue
+                if b and not pv and not clean.get("has_solar"):
+                    continue
+                d = {"pv_kwp": pv or None, "inverter_kw": rules.inverter_kw(pv) if pv else None, "battery_kwh": b or None}
+                npv[i, j] = hourly.simulate(sim_in, d).economics["annual"]["npv_20y_eur"] or 0.0
+        _GRID[key] = (pvs, bats, npv)
+        return _GRID[key]
+
     _capped: ClassVar[dict] = {}  # inputs whose PV the roof capped, for the reason line
 
     def roof_cap(self, inp, pv, cat) -> float:
@@ -354,7 +432,8 @@ class Engine:
             cands.append(("heating_type", inp.get("heating_type", "Unknown"),
                           [("Gas", "Gas", {"heating_type": "Gas"}), ("Heatpump", "Heat pump", {"heating_type": "Heatpump"})]))
         if ask_("has_ev", not inp.get("has_ev")):
-            cands.append(("has_ev", False, [(True, "Yes, about 12,000 km a year", {"has_ev": True, "ev_annual_km": 12000})]))
+            cands.append(("has_ev", inp.get("has_ev", False), [(True, "Yes, about 12,000 km a year", {"has_ev": True, "ev_annual_km": 12000}),
+                                                               (False, "No", {"has_ev": False, "ev_annual_km": None})]))
         if ask_("annual_demand_kwh", not inp.get("annual_demand_kwh") or inp.get("annual_demand_kwh") == 4500):
             cands.append(("annual_demand_kwh", inp.get("annual_demand_kwh"),
                           [(3000, "about 3,000 kWh (two people)", {"annual_demand_kwh": 3000}),
@@ -364,7 +443,8 @@ class Engine:
             cands.append(("heating_demand_kwh", None,
                           [(12000, "12,000 kWh", {"heating_demand_kwh": 12000}), (20000, "20,000 kWh", {"heating_demand_kwh": 20000})]))
         if ask_("has_solar", not inp.get("has_solar")):
-            cands.append(("has_solar", False, [(True, "Yes, about 6 kWp", {"has_solar": True, "existing_solar_kwp": 6.0})]))
+            cands.append(("has_solar", inp.get("has_solar", False), [(True, "Yes, about 6 kWp", {"has_solar": True, "existing_solar_kwp": 6.0}),
+                                                                     (False, "No", {"has_solar": False, "existing_solar_kwp": None})]))
         variants = [inp] + [{**inp, **ch} for _, _, opts in cands for _, _, ch in opts]
         designs = self.sizes_batch(variants)
         base, rest = designs[0], designs[1:]
@@ -382,13 +462,20 @@ class Engine:
                 options.append({"value": val, "label": label, "design": d})
             if spread > 0:
                 qs.append({"field": field_, "current": cur, "options": options, "spread": round(spread, 2)})
-        return sorted(qs, key=lambda q: -q["spread"])[:3]
+        given = inp.get("_given")
+        no_use = (unknown is not None and "annual_demand_kwh" in unknown) or (given is not None and "annual_demand_kwh" not in given)
+        # annual use is the prerequisite: when the lead gives none, it is asked first whatever the spread
+        # priors from the intake log (v1.9) only break ties in spread
+        return sorted(qs, key=lambda q: (not (no_use and q["field"] == "annual_demand_kwh"), -q["spread"], -PRIORS.get(q["field"], 0.0)))[:3]
 
     def inbox(self, limit: int = 20) -> list:
         """Held-out new-system jobs in demo order: a PV and battery hit first, then varied installers and kinds."""
         if getattr(self, "_inbox", None) is None:
             te = self.test
-            te = te[(te.pv_kwp > 0) | te.has_solar].reset_index(drop=True)
+            te = te[(te.pv_kwp > 0) | te.has_solar]
+            # show real new-system homes with real inputs: no sub-2 kWp leftovers, no untouched 4,500 kWh defaults
+            te = te[~((te.pv_kwp < 2) & ~te.has_solar) & ~((te.annual_demand_kwh == 4500) & (te.heating_type == "Unknown"))]
+            te = te.reset_index(drop=True)
             rows = te.to_dict("records")
             drafts = self.sizes_batch([row_inputs(r) for r in rows])
             items = []
@@ -425,11 +512,20 @@ class Engine:
             note = ""
             if not w["all"]:
                 c = next(c for c in ("pv", "battery", "wallbox", "heatpump") if not w[c])
-                note = self._deviation_note(c, r, d[TARGET[c]] or 0.0, float(r[TARGET[c]]))
+                note = self._inbox_note(c, r, d[TARGET[c]] or 0.0, float(r[TARGET[c]]))
             out.append({"project_id": r["project_id"], "installer_id": r["installer_id"], "inputs": inp,
-                        "draft": full["design"], "confidence": round(float(np.mean([c["confidence"] for c in inc])), 2) if inc else 0.0,
+                        "draft": full["design"], "confidence": self.agreement(inp, full["design"]),
                         "expert": row_design(r), "within": w, "note": note, "_row": r})
-        return out
+        return sorted(out, key=lambda x: x["confidence"])  # least sure first: the planner's review queue
+
+    def agreement(self, inp, draft) -> float:
+        """Share of the 15 most similar past homes whose design is within tolerance of the draft on all four components."""
+        nb = self.neighbours(inp, inp["installer_id"])
+        hit = np.ones(len(nb), bool)
+        for c in COMPONENTS:
+            k = TARGET[c]
+            hit &= rules.within(c, np.full(len(nb), draft.get(k) or 0.0), nb[k].values)
+        return round(float(hit.mean()), 2)
 
     def _derivation(self, comp, inp, design, detail, nb) -> dict:
         """Why this number (v1.5): one physical axiom with this home's numbers, then the learned adjustment that
@@ -437,7 +533,9 @@ class Engine:
         key = TARGET[comp]
         final = design.get(key)
         n = len(nb)
-        src_of = lambda k: "lead" if inp.get(k) not in (None, False, "Unknown") else "default"
+        given = inp.get("_given")
+        src_of = (lambda k: "lead" if k in given else "default") if given is not None else \
+                 (lambda k: "lead" if inp.get(k) not in (None, False, "Unknown") else "default")
         planner = detail["reason"].startswith(("Set by the planner", "Included by the planner"))
         s = nb[key].values
         sim_in = roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")})
@@ -534,7 +632,7 @@ class Engine:
             adj = {"label": "set by the planner" if planner else detail["reason"], "value": (final or 0) / ax if ax else 0.0, "n_similar": n}
         return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax, "adjustment": adj, "final": final}
 
-    def _physics(self, inp, design, inst, t, full):
+    def _physics(self, inp, design, inst, t, full, extras=True):
         """Hourly simulation (app/hourly) when it runs; the annual ratio model otherwise. Economics.method says which."""
         lookup = rules.economics(inp, design)
         lookup["method"] = "annual-lookup"
@@ -545,6 +643,11 @@ class Engine:
             sim = hourly.simulate(clean, design)
             econ = sim.economics
             phys = hourly.validate_physics(clean, design, sim=sim)
+            rep, why = hourly.replay_2025(clean, design)  # additive: the typical-year economics above stay as they are
+            if rep:
+                econ["replay_2025"] = rep
+            else:
+                econ["assumptions"].append(f"2025 replay unavailable ({why}).")
         except Exception as e:  # keep serving with the ratio model; say why
             log.warning("hourly simulation failed, using annual lookup: %s", e)
             lookup["assumptions"].append(f"Hourly simulation unavailable ({e}); annual ratio model used.")
@@ -558,7 +661,7 @@ class Engine:
             near = near[np.unique(np.linspace(0, len(near) - 1, min(8, len(near))).round().astype(int))] if len(near) else pvs
             cat = {"pv_kwp": sorted({float(x) for x in near} | {float(pv0)}),
                    "battery_kwh": [float(x) for x in self.battery_catalogue(inst, t)]}
-            opt = hourly.optimum(clean, cat, design) if design.get("pv_kwp") else None
+            opt = hourly.optimum(clean, cat, design) if design.get("pv_kwp") and extras else None
         except Exception as e:
             log.warning("optimum failed: %s", e)
         return econ, plaus, opt
@@ -840,13 +943,31 @@ class Engine:
             "deviations": dev,
         }
 
+    NOTE_NAME = {"pv": "Solar", "battery": "Battery", "heatpump": "Heat pump", "wallbox": "Wallbox"}
+
+    def _inbox_note(self, comp, r, ours, expert) -> str:
+        """One plain sentence, no quotes or line breaks: what the expert fitted, the draft, and what similar homes got."""
+        unit = UNITS[comp]
+        s = self.neighbours(row_inputs(r), r["installer_id"])[TARGET[comp]].values
+        inc = s[s > 0]
+        g = lambda x: f"{x:g}" if x else "none"
+        tail = ""
+        if len(inc):
+            med = float(np.median(inc))
+            k = int((np.abs(inc - med) <= rules.tolerance(comp, med)).sum())
+            tail = f"; {k} of {len(s)} similar homes got about {med:g}"
+        else:
+            tail = f"; none of {len(s)} similar homes got one"
+        e = f"{expert:g} {unit}" if expert else "none"
+        return f"{self.NOTE_NAME[comp]}: expert fitted {e}, draft {g(ours)}{tail}."
+
     def _deviation_note(self, comp, r, ours, expert) -> str:
         """Neighbour evidence plus the missing input that explains the gap."""
         unit = UNITS[comp]
         inp = row_inputs(r)
         nb = self.neighbours(inp, r["installer_id"])
         s = nb[TARGET[comp]].values
-        near = int((np.abs(s - expert) <= rules.tolerance(comp, expert or 1)).sum()) if expert else int((s == 0).sum())
+        near = int(((s > 0) & (np.abs(s - expert) <= rules.tolerance(comp, expert or 1))).sum()) if expert else int((s == 0).sum())
         ev = (f"{near} of {len(s)} similar homes got about {fmt(expert, unit)}" if expert else f"{near} of {len(s)} similar homes got none")
         ev += f", median {fmt(float(np.median(s[s > 0])), unit)}" if (s > 0).any() else ""
         why = []
@@ -865,7 +986,7 @@ class Engine:
                 why.append("battery follows the PV size, which the inputs only weakly predict")
         if r["annual_demand_kwh"] == 4500:
             why.append("demand is the 4,500 kWh default")
-        return f"Expert {fmt(expert or None, unit)}, ours {fmt(ours or None, unit)}. {ev}; {', '.join(why)}."
+        return f"Expert fitted {fmt(expert or None, unit)}, draft {fmt(ours or None, unit)}; {ev}; {', '.join(why)}."
 
     def ceiling(self, te) -> dict:
         """How often near-identical homes got designs within tolerance of each other: the median design of training
@@ -938,6 +1059,43 @@ def physics_component(msg: str) -> str:
     if "wallbox" in m:
         return "wallbox"
     return "pv"
+
+
+def opt_base(g, pv=None):
+    """(PV kWp, battery kWh) of the optimum; with pv given, the optimum battery for the nearest catalogue PV size."""
+    pvs, bats, npv = g
+    if pv is not None:
+        i = int(np.argmin(np.abs(pvs - pv)))
+        sub = np.full_like(npv, np.nan)
+        sub[i] = npv[i]
+    else:
+        sub = npv
+    best = np.nanmax(sub)
+    if GREYBOX["base"] == "cheap":  # cheapest design inside the optimum's NPV tie band (app/hourly/optimum.py)
+        near = sub >= best - max(NPV_TIE_EUR, NPV_TIE_SHARE * abs(best))
+        capex = (pvs * np.array([rules.pv_cost_per_kwp(p) if p else 0 for p in pvs]))[:, None] + 450 * bats[None, :]
+        i, j = np.unravel_index(np.argmin(np.where(near, capex, np.inf)), capex.shape)
+    else:
+        i, j = np.unravel_index(np.nanargmax(sub), sub.shape)
+    return float(pvs[i]), float(bats[j])
+
+
+def gb_floor(v, cat):
+    """Optimum as the base of the learned deviation; where the optimum is none, the smallest catalogue size."""
+    return float(v) if v > 0 else (float(cat.min()) if len(cat) else 1.0)
+
+
+def gb_fwd(y, b):
+    """Target the regressor learns: the size itself, expert / base (ratio) or expert minus base (residual)."""
+    if b is None:
+        return y
+    return y / b if GREYBOX["mode"] == "ratio" else y - b
+
+
+def gb_inv(r, b):
+    if b is None:
+        return r
+    return r * b if GREYBOX["mode"] == "ratio" else r + b
 
 
 def row_inputs(r: dict) -> dict:
