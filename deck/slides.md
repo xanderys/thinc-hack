@@ -38,7 +38,7 @@ footer: Marquee
 
 [UNCONFIRMED: screenshot of the board grouped Visit, Call first, Decline, from THINC HACK MASTER about 01:30 Munich]
 
-<p class="brief">Estimates until the site visit. Installer B: 342 offers in about 10 months.</p>
+<p class="brief">Estimates until the site visit. Installer B, 342 projects in about 10 months, from the pack.</p>
 
 ---
 
