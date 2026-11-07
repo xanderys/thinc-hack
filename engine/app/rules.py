@@ -192,6 +192,10 @@ def plausibility(inp, design, econ):
     if bat and pv:
         r = bat / pv
         msgs.append({"level": "ok" if 0.5 <= r <= 1.5 else "warn", "message": f"Battery {r:.1f} kWh per kWp (typical about 1)."})
+    if inp.get("existing_solar_kwp") and not inp.get("has_solar"):
+        msgs.append({"level": "warn", "message": f"Existing PV of {inp['existing_solar_kwp']:g} kWp is given but has_solar is false; it was ignored. Confirm whether the home has PV."})
+    if inp.get("existing_storage_kwh") and not inp.get("has_storage"):
+        msgs.append({"level": "warn", "message": f"Existing storage of {inp['existing_storage_kwh']:g} kWh is given but has_storage is false; it was ignored."})
     if wb and not inp.get("has_ev"):
         msgs.append({"level": "warn", "message": "Wallbox with no EV recorded: confirm a car is planned."})
     if inp.get("has_ev") and not wb and not inp.get("has_wallbox"):

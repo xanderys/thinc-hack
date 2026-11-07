@@ -158,7 +158,7 @@ async def bad_request(_: Request, exc: RequestValidationError):
     return err(422, " ".join(parts) or "Invalid request.")
 
 
-RANGES = {"annual_demand_kwh": (300, 100_000, "kWh a year"), "num_inhabitants": (1, 20, "people"),
+RANGES = {"annual_demand_kwh": (500, 30_000, "kWh a year (single-family homes; the training data covers this range)"), "num_inhabitants": (1, 20, "people"),
           "house_size_sqm": (20, 1_000, "m2"), "house_built_year": (1800, 2027, ""), "ev_annual_km": (0, 100_000, "km a year"),
           "heating_cost_per_year_eur": (0, 20_000, "EUR a year"), "heating_demand_kwh": (0, 100_000, "kWh a year"),
           "electricity_price_ct_kwh": (5, 100, "ct/kWh"), "existing_solar_kwp": (0, 100, "kWp"), "existing_storage_kwh": (0, 100, "kWh")}

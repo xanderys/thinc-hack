@@ -36,9 +36,9 @@ def base_features(inp: dict, installer: str) -> dict:
         "ev_km": inp.get("ev_annual_km") if inp.get("has_ev") and inp.get("ev_annual_km") is not None else np.nan,  # stale mileage never counts
         "has_wallbox": float(bool(inp.get("has_wallbox"))),
         "has_solar": float(bool(inp.get("has_solar"))),
-        "solar_kwp": inp.get("existing_solar_kwp") if inp.get("existing_solar_kwp") is not None else np.nan,
+        "solar_kwp": inp.get("existing_solar_kwp") if inp.get("has_solar") and inp.get("existing_solar_kwp") is not None else np.nan,
         "has_storage": float(bool(inp.get("has_storage"))),
-        "storage_kwh": inp.get("existing_storage_kwh") if inp.get("existing_storage_kwh") is not None else np.nan,
+        "storage_kwh": inp.get("existing_storage_kwh") if inp.get("has_storage") and inp.get("existing_storage_kwh") is not None else np.nan,
         "heat_cost": inp.get("heating_cost_per_year_eur") if inp.get("heating_cost_per_year_eur") is not None else np.nan,
         "heat_demand": inp.get("heating_demand_kwh") if inp.get("heating_demand_kwh") is not None else np.nan,
         "price": inp.get("electricity_price_ct_kwh") if inp.get("electricity_price_ct_kwh") is not None else np.nan,
