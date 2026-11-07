@@ -24,6 +24,8 @@ export default function Listen({ onSentence, busy }: { onSentence: (s: string) =
   const [line, setLine] = useState("");
   const [last, setLast] = useState<{ text: string; applied: boolean | null } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [why, setWhy] = useState<string | null>(null);
+  const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rec = useRef<Rec | null>(null);
   const want = useRef(false);
   const queue = useRef<string[]>([]);
@@ -52,7 +54,7 @@ export default function Listen({ onSentence, busy }: { onSentence: (s: string) =
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript.trim();
-        if (e.results[i].isFinal) { if (t.split(/\s+/).length >= 3) { queue.current.push(t); drain(); } setLine(t); }
+        if (e.results[i].isFinal) { arm(); if (t.split(/\s+/).length >= 3) { queue.current.push(t); drain(); } setLine(t); }
         else interim += `${t} `;
       }
       if (interim) setLine(interim.trim());
@@ -60,18 +62,39 @@ export default function Listen({ onSentence, busy }: { onSentence: (s: string) =
     r.onerror = (e) => { if (e.error === "not-allowed" || e.error === "service-not-allowed") { want.current = false; setOn(false); setErr("The browser blocked the microphone. Allow it in the address bar, then try again."); } else if (e.error !== "no-speech" && e.error !== "aborted") setErr(`Speech recognition said: ${e.error}`); };
     // Chrome ends a session after a pause; keep listening until Stop.
     r.onend = () => { if (want.current) { try { r.start(); } catch { /* already restarting */ } } };
-    rec.current = r; want.current = true; setErr(null); setOn(true); setLine("");
+    rec.current = r; want.current = true; setErr(null); setWhy(null); setOn(true); setLine(""); arm();
     try { r.start(); } catch (e) { setErr(String(e)); }
   }
-  function stop() { want.current = false; rec.current?.stop(); setOn(false); }
-  useEffect(() => () => { want.current = false; rec.current?.abort(); }, []);
+  function stop(reason?: string) {
+    want.current = false; rec.current?.stop(); setOn(false);
+    if (idle.current) clearTimeout(idle.current);
+    setWhy(reason ?? null);
+  }
+  // A room left listening must not keep changing a lead: 90 s without a recognised sentence ends the session.
+  function arm() {
+    if (idle.current) clearTimeout(idle.current);
+    idle.current = setTimeout(() => { if (want.current) stop("Stopped after 90 s without speech."); }, 90000);
+  }
+  // Leaving the tab or the window ends listening; it stays off on return until pressed again.
+  useEffect(() => {
+    const away = () => { if (want.current) stop("Stopped when you left the tab."); };
+    const vis = () => { if (document.visibilityState === "hidden") away(); };
+    document.addEventListener("visibilitychange", vis); window.addEventListener("blur", away); window.addEventListener("pagehide", away);
+    return () => { document.removeEventListener("visibilitychange", vis); window.removeEventListener("blur", away); window.removeEventListener("pagehide", away); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => () => { want.current = false; rec.current?.abort(); if (idle.current) clearTimeout(idle.current); }, []);
 
   if (!supported) return <p className="s-quiet">Listening needs Chrome. Type the change instead.</p>;
   return (
     <div className="s-listen">
-      <button type="button" className={on ? "btn ghost on" : "btn ghost"} onClick={on ? stop : start} aria-pressed={on}>
-        {on ? <><span className="dot" aria-hidden />Stop listening</> : "Listening"}
-      </button>
+      {on ? (
+        <div className="s-live" role="status">
+          <span className="s-chip"><span className="dot" aria-hidden />Listening</span>
+          <button type="button" className="btn ghost" onClick={() => stop()}>Stop</button>
+        </div>
+      ) : <button type="button" className="btn ghost" onClick={start} aria-pressed={false}>Listen</button>}
+      {!on && why && <p className="s-quiet">{why}</p>}
       {on && <p className="s-heard" aria-live="polite">{line || "Waiting for speech"}</p>}
       {last && <p className="s-quiet s-last">{last.applied == null || busy ? `Reading: "${last.text}"` : last.applied ? `Applied: "${last.text}"` : `Heard, nothing to change: "${last.text}"`}</p>}
       {err && <div className="error" role="alert"><span><span className="src">Microphone</span>{err}</span><button className="btn ghost" onClick={start}>Retry</button></div>}
