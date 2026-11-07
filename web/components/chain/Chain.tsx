@@ -242,7 +242,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
           <p className={s.varC}>the residential version of Reonic&apos;s optimiser sliders</p>
           {variants.map((v) => (
             <div key={v.name} className={s.vrow}>
-              <div><b>{v.name}</b><Chips d={v.design} /></div>
+              <div><b>{v.name}</b>{v.also?.length ? <span className={s.vAlso}>{v.also.join(", ")}{v.current ? ", selected" : ""}</span> : null}<Chips d={v.design} /></div>
               <div className={s.vprice}>{v.e ? eur(v.e.capex_eur) : ""}</div>
               {v.current ? <span className={s.vsel}>Selected</span> : <button type="button" className={s.vbtn} onClick={() => onVariant(v)} disabled={!v.overrides}>Select</button>}
             </div>
@@ -271,7 +271,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
             <div className={s.varList}>
               {variants.map((v) => (
                 <div key={v.name} className={s.vrow}>
-                  <div><b>{v.name}</b><Chips d={v.design} /></div>
+                  <div><b>{v.name}</b>{v.also?.length ? <span className={s.vAlso}>{v.also.join(", ")}{v.current ? ", selected" : ""}</span> : null}<Chips d={v.design} /></div>
                   <div className={s.vprice}>{v.e ? eur(v.e.capex_eur) : ""}</div>
                   {v.current ? <span className={s.vsel}>Selected</span> : <button type="button" className={s.vbtn} onClick={() => onVariant(v)} disabled={!v.overrides}>Select</button>}
                 </div>
@@ -334,7 +334,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
                   <p className={s.varC}>the residential version of Reonic&apos;s optimiser sliders</p>
                   {variants.map((v) => (
                     <div key={v.name} className={s.vrow}>
-                      <div><b>{v.name}</b><Chips d={v.design} /></div>
+                      <div><b>{v.name}</b>{v.also?.length ? <span className={s.vAlso}>{v.also.join(", ")}{v.current ? ", selected" : ""}</span> : null}<Chips d={v.design} /></div>
                       <div className={s.vprice}>{v.e ? eur(v.e.capex_eur) : ""}</div>
                       {v.current ? <span className={s.vsel}>Selected</span> : <button type="button" className={s.vbtn} onClick={() => onVariant(v)} disabled={!v.overrides}>Select</button>}
                     </div>
