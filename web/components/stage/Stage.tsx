@@ -119,11 +119,16 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   // Each answer from the call: the facts move, the design reruns, and what moved carries the engine's why.
   const liveWhy = useRef<{ component: string; why: string }[] | null>(null);
+  const liveSeen = useRef(false);
   useEffect(() => {
     if (!live || !read) return;
+    // A call that already ended is part of the lead as it opens: its facts apply quietly (no redraft stamp, no
+    // moved stages, the card still lands on Offer). Only answers arriving while the card is open redraft in place.
+    const replay = !liveSeen.current && live.asking == null;
+    liveSeen.current = true;
     const { installer_id: _i, ...facts } = live.facts as Partial<HomeInputs> & { installer_id?: string }; void _i;
     if (Object.entries(facts).every(([k, v]) => JSON.stringify((read.inputs as Record<string, unknown>)[k]) === JSON.stringify(v))) return;
-    cause.current = "From the call:"; liveWhy.current = live.changed;
+    cause.current = replay ? null : "From the call:"; liveWhy.current = replay ? null : live.changed;
     setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts } });
   }, [live?.step]); // eslint-disable-line react-hooks/exhaustive-deps
 
