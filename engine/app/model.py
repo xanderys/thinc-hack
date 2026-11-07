@@ -17,7 +17,7 @@ from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES, date_t
 
 SEED = 42
 K = 15
-MODEL_VERSION = "chain-hgb-knn-6+hourly"
+MODEL_VERSION = "chain-hgb-knn-7-mono+hourly"
 NO_PV_RULE = "pv"  # "pv": propose PV when a battery would otherwise have none; "battery_none": drop the battery
 T_NOW = {"t": 2026.3}  # latest offer date in train; used when a request carries no offer_date
 COMPONENTS = ["pv", "battery", "heatpump", "wallbox"]
@@ -26,7 +26,7 @@ TARGET = {"pv": "pv_kwp", "battery": "battery_kwh", "heatpump": "heatpump_kw", "
 NAMES = {"pv": "PV", "battery": "a battery", "heatpump": "a heat pump", "wallbox": "a wallbox"}
 
 
-MONO = False  # monotone in demand (PV) and price (battery); 4,500 kWh default imputed, missing price = 32 ct
+MONO = True  # monotone in demand (PV) and price (battery); 4,500 kWh default imputed, missing price = 32 ct
 DEMAND_IMPUTE: dict = {}  # load profile -> median non-default demand in train
 
 
@@ -555,7 +555,7 @@ class Engine:
             pvs = self.catalogue[inst]["pv"]
             pv0 = design["pv_kwp"] or 0
             near = pvs[(pvs >= 0.5 * pv0) & (pvs <= 1.6 * pv0)]
-            near = near[np.unique(np.linspace(0, len(near) - 1, min(12, len(near))).round().astype(int))] if len(near) else pvs
+            near = near[np.unique(np.linspace(0, len(near) - 1, min(8, len(near))).round().astype(int))] if len(near) else pvs
             cat = {"pv_kwp": sorted({float(x) for x in near} | {float(pv0)}),
                    "battery_kwh": [float(x) for x in self.battery_catalogue(inst, t)]}
             opt = hourly.optimum(clean, cat, design) if design.get("pv_kwp") else None
@@ -575,8 +575,8 @@ class Engine:
         pv0 = design.get("pv_kwp") or float(np.median(pvs))
         cap = (inp.get("roof") or {}).get("max_kwp") or 1e9
         cand = pvs[(pvs >= 0.4 * pv0) & (pvs <= 2.0 * pv0) & (pvs <= cap + 1e-9)]
-        if len(cand) > 10:
-            cand = cand[np.unique(np.linspace(0, len(cand) - 1, 10).round().astype(int))]
+        if len(cand) > 8:  # 8 PV sizes x the battery packages keeps /api/design under 300 ms
+            cand = cand[np.unique(np.linspace(0, len(cand) - 1, 8).round().astype(int))]
         bats = [0.0] + [float(x) for x in self.battery_catalogue(inst, base_features(inp, inst)["t"])]
         keep = {k: design.get(k) for k in ("heatpump_kw", "wallbox_kw")}
         runs = []

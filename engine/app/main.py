@@ -382,16 +382,14 @@ def inbox(limit: int = 20):
 def evaluation():
     engine()
     out = dict(STATE["eval"])
-    rep = synthetic_report()
-    if rep is not None:
-        out["synthetic"] = rep
+    out["synthetic"] = synthetic_report()  # v1.4: null until the suite has written a report
     return out
 
 
 def synthetic_report():
     """eval.synthetic (v1.4) from engine/synthetic when that package and its report exist; absent otherwise."""
     try:
-        from synthetic.report import load_report  # engine/ is the working directory
+        from synthetic import load_report  # engine/ is the working directory
     except ImportError:
         return None
     try:
