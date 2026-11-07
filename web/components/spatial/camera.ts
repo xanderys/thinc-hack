@@ -16,7 +16,7 @@ export const POSES: Record<StageView, Pose> = {
   solar: { focus: "roof", az: 110, el: 45, dist: 0.8 },          // look down the roof planes
   storage: { focus: "battery", az: 200, el: 48, dist: 0.72 },     // pull back and tilt so the battery block reads
   extras: { focus: "wallbox", az: 120, el: 44, dist: 0.72 },     // the wallbox at the drive
-  heatpump: { focus: "west", az: 250, el: 52, dist: 0.72 },       // the heat pump position on the west wall
+  heatpump: { focus: "west", az: 250, el: 40, dist: 1.05 },       // the heat pump wall, pulled back so the envelope x-ray reads whole
   heat: { focus: "house", az: 180, el: 88, dist: 1.1, topDown: true },
   sanity: { focus: "house", az: 180, el: 88, dist: 1.1, topDown: true },
   offer: { focus: "house", az: 180, el: 88, dist: 1.1, topDown: true },
