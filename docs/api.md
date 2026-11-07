@@ -1,4 +1,4 @@
-# Engine API contract (v1.3.1)
+# Engine API contract (v1.5)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -44,6 +44,16 @@ interface ComponentDetail {
   reason: string;                       // one sentence, grounded in data or physics
   alternatives: { size: number | null; label: string; share: number }[];
   neighbours: Neighbours;               // "homes like this one"
+  derivation?: Derivation;              // v1.5, "why this number"
+}
+
+interface Derivation {                    // one axiom per component; the learned adjustment closes the gap honestly
+  axiom: string;                          // one plain sentence, e.g. "A year of sun here should cover a year of use, then planners oversize."
+  equation: string;                       // with this home's numbers, e.g. "5,000 kWh / 1,050 kWh per kWp = 4.8 kWp"
+  inputs: { name: string; value: number | string; unit: string; source: "lead" | "answer" | "pvgis" | "iwu" | "installer history" | "catalogue" | "default" }[];
+  axiom_result: number | null;            // 4.8
+  adjustment: { label: string; value: number; n_similar: number } | null;  // "planners like yours oversize", x1.6, from 15 similar homes; null when the axiom alone gives the number
+  final: number | null;                   // equals design.<component>; null = none
 }
 
 interface Plausibility { level: "ok" | "warn"; message: string; }
@@ -99,6 +109,7 @@ interface Eval {
   ceiling?: { method: string; pv_agreement_share: number; battery_agreement_share: number };  // planner self-agreement on near-identical inputs, v1.1
   per_installer: Record<InstallerId, { test: number; design_match_share: number }>;
   deviations: { project_id: string; component: string; ours: number | null; expert: number | null; note: string }[]; // top 20
+  synthetic?: { n: number; generated_at: string; plausible_share: number; monotonicity_violations: number; invariants: { name: string; pass_share: number; n_checked: number; worst: unknown[] }[] }; // v1.4, from engine/synthetic
 }
 ```
 
