@@ -648,6 +648,17 @@ def get_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     return _lead_out(lead)
 
 
+@app.delete("/api/leads/{lead_id}")
+def delete_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    leads.delete(lead["lead_id"])
+    return {"deleted": lead["lead_id"]}
+
+
 @app.get("/api/leads")
 def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
