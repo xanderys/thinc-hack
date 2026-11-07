@@ -152,6 +152,7 @@ def explain(eng, inp: dict, design: dict | None) -> dict:
                            "shaded": bool(lo and lo["shaded"]), "battery_kwh_used": design.get("battery_kwh") or 0,
                            "heat_load_kw_used": hp_kw, "same_run_id": rid,
                            "design_economics_match": all(a == b for a, b in pairs.values())}}
+    out.update(bars(out, resp, inp))
     _CACHE[k] = out
     return out
 
@@ -224,3 +225,156 @@ def explain_grid(eng, inp: dict, design: dict | None) -> dict:
            "sources": SOURCES, "economics": econ}
     _CACHE[k] = out
     return out
+
+
+# ---------- v2.6: derivation bars (Reonic-style working, chain order) ----------
+
+ADDRESS_SOURCES = ("lod2", "pvgis", "bdom", "dom20", "zensus", "envelope", "roof", "address", "google-solar", "osm")
+KIND_NAME = {"roof": "Roof", "wall": "Outer walls", "window": "Windows", "floor": "Floor", "ceiling": "Top ceiling", "door": "Doors"}
+
+
+def tagger(inp: dict, lead: dict | None):
+    """lead | rina | address | default for a field: a fact from a call step is Rina's, one in the form the lead's."""
+    rina = set()
+    if lead:
+        for h in lead.get("history") or []:
+            if (h.get("step") or 0) >= 1 or (lead.get("source") == "call" and h.get("step") == 0):
+                rina |= set((h.get("answer") or {}).keys())
+    given = set(inp.get("_given") or [])
+    est = set(inp.get("_estimated") or [])
+
+    def tag(field=None, source=None):
+        if field and field in rina:
+            return "rina"
+        if field and field in given and not (field == "house_built_year" and "build year" in est):
+            return "lead"
+        s = (source or "").lower()
+        if s in ("lead", "inputs"):
+            return "lead"
+        if any(a in s for a in ADDRESS_SOURCES):
+            return "address"
+        return "default"
+    return tag
+
+
+def _face_name(p):
+    az = p.get("azimuth")
+    if az is None:
+        return "Flat roof"
+    d = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][int(((az + 22.5) % 360) // 45)]
+    return f"{d.capitalize()} face ({az:.0f} degrees, {p.get('pitch') or 0:.0f} degree pitch)"
+
+
+def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
+    tag = tagger(inp, lead)
+    d = out["chosen"]
+    pv = d.get("pv_kwp") or 0
+    comps = resp.get("components") or {}
+    res = []
+
+    # ROOF
+    segs = []
+    planes = (out.get("planes") or {}).get("planes") or []
+    for p in planes:
+        n = len(p.get("chosen_panels") or [])
+        if not p.get("is_target") or not n:
+            continue
+        y = p.get("yield_shaded_kwh_per_kwp") or p.get("yield_kwh_per_kwp")
+        loss = p.get("shade_loss_share")
+        segs.append({"name": _face_name(p), "value": round(n * 0.45, 2), "unit": "kWp", "modules": n, "source_tag": "address",
+                     "citation": f"LoD2 roof plane, {y:,.0f} kWh per kWp after shade" + (f" ({loss:.0%} lost to shade, DOM20 ray-cast)" if loss is not None else "")})
+    pv_reason = (comps.get("pv") or {}).get("reason") or ""
+    roof_cap = ((inp.get("roof") or {}).get("max_kwp"))
+    res.append({"key": "roof", "title": "Roof", "total": pv, "unit": "kWp", "segments": segs,
+                "sentence": pv_reason + (f" The roof holds up to {roof_cap:g} kWp." if roof_cap else ""),
+                "sources": ["lod2", "bdom", "pvgis"]})
+
+    # HEAT LOSS
+    env = (out.get("planes") or {}).get("envelope") or inp.get("envelope") or {}
+    segs = []
+    if env.get("faces"):
+        by = {}
+        for f in env["faces"]:
+            by[f.get("kind")] = by.get(f.get("kind"), 0.0) + float(f.get("loss_w") or 0)
+        for k, w in sorted(by.items(), key=lambda kv: -kv[1]):
+            segs.append({"name": KIND_NAME.get(k, str(k).capitalize()), "value": round(w / 1000, 2), "unit": "kW", "source_tag": "address",
+                         "citation": "U-value (IWU typology) x LoD2 area x temperature difference, DIN EN 12831 simplified"})
+        if env.get("ventilation_w"):
+            de = env.get("design") or {}
+            segs.append({"name": "Ventilation", "value": round(env["ventilation_w"] / 1000, 2), "unit": "kW", "source_tag": "address",
+                         "citation": f"{de.get('volume_m3', 0):,.0f} m3 x {de.get('air_changes_per_h', 0.5):g} air changes x 0.34 Wh/m3K x temperature difference"})
+        if env.get("thermal_bridges_w"):
+            segs.append({"name": "Thermal bridges", "value": round(env["thermal_bridges_w"] / 1000, 2), "unit": "kW", "source_tag": "address",
+                         "citation": "IWU allowance on the envelope area"})
+        de = env.get("design") or {}
+        yr = env.get("build_year")
+        yr_tag = tag("house_built_year", env.get("build_year_source"))
+        sentence = (f"At {de.get('outside_c', -16):g} C outside the house loses about {env.get('design_heat_load_kw'):g} kW"
+                    + (f" if the {int(yr)} fabric is unrenovated" if yr else "") + "; Reonic's room scan refines this on site.")
+        segs.append({"name": "Build year", "value": yr, "unit": "", "source_tag": yr_tag, "citation": "sets the IWU typology and U-values"})
+        total = env.get("design_heat_load_kw")
+    else:
+        sentence, total = "No building model for this address yet, so no heat-loss breakdown.", None
+    res.append({"key": "heat_loss", "title": "Heat loss", "total": total, "unit": "kW", "segments": segs, "sentence": sentence,
+                "sources": env.get("sources") or ["IWU, Deutsche Wohngebaeudetypologie (Loga et al. 2015)", "DIN EN 12831"]})
+
+    # DAY
+    hrs = (out.get("day") or {}).get("hours") or []
+    night = out.get("night") or {}
+    direct = sum(x.get("direct_self_kw", 0) for x in hrs)
+    from_bat = sum(max(x.get("battery_kw", 0), 0) for x in hrs)
+    imp = sum(max(x.get("grid_kw", 0), 0) for x in hrs)
+    exp = sum(max(-x.get("grid_kw", 0), 0) for x in hrs)
+    load = sum(x.get("load_kw", 0) for x in hrs)
+    bat = d.get("battery_kwh") or 0
+    segs = [{"name": "Solar used directly", "value": round(direct, 1), "unit": "kWh", "source_tag": "address", "citation": "hourly simulation on the laid-out planes"},
+            {"name": "From the battery", "value": round(from_bat, 1), "unit": "kWh", "source_tag": "default", "citation": "greedy self-consumption, 90% usable"},
+            {"name": "From the grid", "value": round(imp, 1), "unit": "kWh", "source_tag": "default", "citation": "hourly simulation"},
+            {"name": "Evening use (after sunset)", "value": night.get("evening_kwh"), "unit": "kWh", "source_tag": tag("annual_demand_kwh"), "citation": "BDEW H25 load, this home's annual use"},
+            {"name": "Night use (before sunrise)", "value": night.get("night_kwh"), "unit": "kWh", "source_tag": tag("annual_demand_kwh"), "citation": "BDEW H25 load, this home's annual use"},
+            {"name": "Battery per kWp", "value": round(bat / pv, 2) if pv else None, "unit": "kWh/kWp", "source_tag": "default",
+             "citation": "0.7 to 1.0 kWh per kWp is the usual range; snapped to the installer's package"}]
+    res.append({"key": "day", "title": "A day", "total": round(load, 1), "unit": "kWh", "segments": segs,
+                "sentence": (f"On {(out.get('day') or {}).get('date', 'a typical day').split(' (')[0]} the home uses {load:.1f} kWh: the panels cover "
+                             f"{direct:.1f} directly, the battery {from_bat:.1f} after sunset and the grid {imp:.1f}; {exp:.1f} kWh go to the grid."),
+                "sources": ["pvgis", "bdew", "pvlib"]})
+
+    # CHARGING
+    ev = out.get("ev")
+    if ev:
+        segs = [{"name": "Driving", "value": ev["annual_km"], "unit": "km a year", "source_tag": tag("ev_annual_km"), "citation": "the lead or the call"},
+                {"name": "Consumption", "value": ev["kwh_per_100km"], "unit": "kWh/100 km", "source_tag": "default", "citation": EV_SOURCES[0]["citation"]},
+                {"name": "Energy a year", "value": ev["annual_kwh"], "unit": "kWh", "source_tag": "default", "citation": "km x consumption"},
+                {"name": "Charged at home", "value": ev["home_share"], "unit": "", "source_tag": "default", "citation": EV_SOURCES[1]["citation"]},
+                {"name": "A typical night", "value": ev["kwh_per_night_typical"], "unit": "kWh", "source_tag": "default", "citation": "energy at home / 365, 18:00 to 06:00"},
+                {"name": "Power needed", "value": ev["kw_needed"], "unit": "kW", "source_tag": "default", "citation": "a night's kWh over the 12-hour window"}]
+        res.append({"key": "charging", "title": "Charging", "total": ev["kwh_per_night_typical"], "unit": "kWh a night", "segments": segs,
+                    "sentence": (f"{ev['annual_km']:,.0f} km a year is about {ev['kwh_per_night_typical']:g} kWh a night; 11 kW refills that in about "
+                                 f"{ev['kwh_per_night_typical'] / 11 * 60:.0f} minutes ({ev['km_per_hour_at_11kw']} km of range an hour). {ev['note_22kw']}."),
+                    "sources": [x["citation"] for x in EV_SOURCES]})
+    else:
+        res.append({"key": "charging", "title": "Charging", "total": 0, "unit": "kWh a night", "segments": [],
+                    "sentence": "No electric car now or planned, so no wallbox.", "sources": []})
+
+    # CHECKS
+    econ = out.get("economics") or {}
+    pb, aut = econ.get("payback_years"), econ.get("autarky_share")
+    inv = d.get("inverter_kw")
+    c = out.get("consistency") or {}
+    checks = [{"name": "Payback", "value": pb, "unit": "years", "pass": bool(pb and 5 <= pb <= 15), "band": "5 to 15 years"},
+              {"name": "Autarky", "value": aut, "unit": "share", "pass": bool(aut is not None and 0.3 <= aut <= 0.9), "band": "30 to 90%"},
+              {"name": "DC/AC ratio", "value": round(pv / inv, 2) if pv and inv else None, "unit": "", "pass": bool(pv and inv and 1.0 <= pv / inv <= 1.35),
+               "band": "1.1 to 1.3 usual"},
+              {"name": "Roof fit", "value": c.get("modules_on_roof"), "unit": "modules",
+               "pass": c.get("modules_on_roof") is None or c.get("modules_on_roof") == c.get("modules_in_design"),
+               "band": f"{c.get('modules_in_design')} modules in the design"}]
+    # roof, day and charging are REONIC PHYSICS's when planner_rules has bars(); heat loss and the checks stay here
+    try:
+        from .planner_rules import bars as physics_bars
+        theirs = {b["key"]: b for b in physics_bars(inp, d) or [] if b.get("key") in ("roof", "day", "charging")}
+        res = [theirs.get(b["key"], b) for b in res]
+    except ImportError:
+        pass
+    except Exception as e:
+        log.warning("planner_rules.bars failed, engine bars used: %s", e)
+    return {"bars": res, "checks": checks}

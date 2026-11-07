@@ -500,6 +500,7 @@ def roof_model_file(address: str = "", build_year: Optional[int] = None):
 class LayersReq(BaseModel):
     inputs: HomeInputs
     design: Optional[Design] = None
+    lead_id: Optional[str] = None  # v2.6: tags facts from call steps as Rina's in the bars
 
 
 @app.post("/api/explain/layers")
@@ -508,7 +509,12 @@ def explain_layers(req: LayersReq):
     from . import layers
     inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
     check_inputs(inp)
-    return layers.explain(engine(), inp, req.design.model_dump() if req.design else None)
+    out = layers.explain(engine(), inp, req.design.model_dump() if req.design else None)
+    if req.lead_id:
+        lead = leads.LEADS.get(req.lead_id) or next((l for l in leads.LEADS.values() if req.lead_id in l.get("aliases", [])), None)
+        if lead:  # re-tag with the lead's history (cached bars carry form-level tags)
+            out = {**out, **layers.bars(out, engine().predict(dict(inp), extras=False), inp, lead)}
+    return out
 
 
 class AskReq(BaseModel):
