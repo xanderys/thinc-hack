@@ -1,5 +1,5 @@
 """Economic optimum over the installer's catalogue sizes."""
-from .. import physics as rules
+from .. import rules
 from .sim import simulate
 
 NPV_TIE_EUR, NPV_TIE_SHARE = 500, 0.10  # NPV gaps below this are inside the model error
@@ -59,6 +59,9 @@ def _note(prop, opt, oe, pe):
     same = (prop.get("pv_kwp") or 0) == (opt.get("pv_kwp") or 0) and (prop.get("battery_kwh") or 0) == (opt.get("battery_kwh") or 0)
     if same:
         return f"The proposal ({_label(prop)}) is at the economic optimum for this home."
-    da = oe["autarky_share"] - pe["autarky_share"]
-    return (f"{_label(opt)} earns EUR {dn:,.0f} more over 20 years than the proposal ({_label(prop)}), "
-            f"at {abs(da) * 100:.0f} points {'more' if da >= 0 else 'less'} autarky.")
+    if dn <= 0:
+        return f"The proposal ({_label(prop)}) is within the model's error of the economic optimum."
+    pts = round(abs(oe["autarky_share"] - pe["autarky_share"]) * 100)
+    more = oe["autarky_share"] >= pe["autarky_share"]
+    tail = "the same autarky" if pts == 0 else f"{pts} point{'s' if pts > 1 else ''} {'more' if more else 'less'} autarky"
+    return f"{_label(opt)} earns EUR {dn:,.0f} more over 20 years than the proposal ({_label(prop)}), at {tail}."

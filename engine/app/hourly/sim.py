@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .. import physics as rules  # cost curve and constants shared with the ratio model
+from .. import rules  # cost curve and constants shared with the ratio model
 
 HERE = Path(__file__).parent
 CACHE = HERE.parent.parent / ".cache" / "pvgis"
@@ -29,7 +29,7 @@ HEAT_EUR_PER_KWH = 0.12     # fossil heat incl. boiler losses, when no cost give
 HP_DEFAULT_HEAT_KWH = 15_000
 DHW_SHARE = 0.15            # hot water share of annual heat, flat over the year
 HEAT_BASE_C = 15.0          # heating degree-hour base
-LOAD_SD_DAY, LOAD_SD_HOUR = 0.3, 0.8  # calibrated: 1 kWp per MWh, no battery, near HTW 30%
+LOAD_SD_DAY, LOAD_SD_HOUR = 0.35, 1.2  # fitted to 25 points of the HTW Unabhaengigkeitsrechner tables
 NEG_PRICE_HOURS = 573      # SMARD, 2025
 OPEX_SHARE = 0.015
 YEARS, DISCOUNT, PRICE_RISE, DEGRADATION = 20, 0.03, 0.02, 0.005
