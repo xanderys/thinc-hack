@@ -1,6 +1,6 @@
 # Pitch script (4:00)
 
-Draft v2, against the north star (enquiry to signed install, faster). Slides 3 and 6 numbers approved by Xander (v2 engine); battery and all four may move once by 19:30. Speakers: Zi Yuan tells the planner's story, Xander runs the demo and the score, Jamon the roadmap. [UNCONFIRMED: speaker split carried over from v1; roadmap moved to Jamon]
+Draft v2, against the north star (enquiry to signed install, faster). The engine is now a transparent formula and the dataset is the exam; hero and scoreboard numbers are re-marked until THINC HACK MASTER sends the new set. Speakers: Zi Yuan tells the planner's story, Xander runs the demo and the score, Jamon the roadmap. [UNCONFIRMED: speaker split carried over from v1; roadmap moved to Jamon]
 
 ## 0:00 to 0:20, slide 1, Zi Yuan
 "At one installer on Reonic, the median time from enquiry to offer is 8 days, across 260 projects. And the first credible offer often wins. Marquee takes the design and the draft from days to seconds."
@@ -26,7 +26,7 @@ Read figures off the screen; say none we have not seen live.
 [UNCONFIRMED: slide 5 wording]
 
 ## 2:50 to 3:25, slide 6, Xander
-"Does it match the experts? We held back 258 signed projects the model never saw. All four components match the expert 17.1% of the time; the textbook gets 6.6%, and near-identical homes at the same installer agree with each other 16.1%. On PV alone we hit 37.6%, the textbook 17.8%. Near-identical homes at the same installer only agree that often, so this is a planner's level of agreement, drafted in seconds."
+"Does it match the experts? We held back 258 signed projects the model never saw. [UNCONFIRMED: new scoreboard tonight, transparent engine vs learned black box vs textbook vs near-identical homes, on 1,619 expert designs] Near-identical homes at the same installer only agree that often, so this is a planner's level of agreement, drafted in seconds."
 
 ## 3:25 to 3:50, slide 7, Jamon
 "Today, every design replays through Munich's real 2025: real weather and real day-ahead prices, including the 576 hours when prices went negative. Next, only Reonic can do this: the installed systems' meter and inverter data flows back through Reonic and teaches the next design what actually worked. Every install makes the next offer better."

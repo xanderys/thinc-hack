@@ -38,6 +38,8 @@ footer: Marquee
 
 <div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>7.2 kWp</b>, <b>7 kWh</b>, payback <b>10.8 years</b><br>after one sentence <b>9.45 kWp</b>, <b>10 kWh</b>, <b>11 kW</b> wallbox, <b>10.5 years</b><br>variants ready: lowest upfront <b>4,250 EUR</b>, best payback <b>8.8 years</b></div>
 
+[UNCONFIRMED: hero numbers come from the learned model; new transparent-engine numbers due tonight]
+
 <p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
 
 
@@ -49,7 +51,7 @@ footer: Marquee
 
 ## The share of PV size that the usual intake explains.
 
-<div class="data">so the agent asks for the fact that would move the design most<br>and stays silent when nothing would</div>
+<div class="data">installer A designs from placeholder numbers:<br>default price on about <b>75%</b> of projects, default <b>4,500 kWh</b> demand on <b>32%</b><br>Rina replaces placeholders with stated facts in <b>3 minutes</b></div>
 
 <p class="brief">Reonic, Manuel Schneider: “Im Zweifelsfall sind unsere Produkte immer so entwickelt, den Nutzer zu fragen.” (pv magazine, 8 Jun 2026)</p>
 
@@ -69,13 +71,19 @@ footer: Marquee
 
 ---
 
-<p class="label">Checked on 258 held-out signed projects</p>
+<p class="label">Design: every installer has a style</p>
 
-<div class="stat">17.1%</div>
+## Same 4,500 kWh home, two installers.
 
-## Every component right, more often than near-identical homes agree.
+<div class="data">installer A <b>8.6 kWp</b><br>installer B <b>10.8 kWp</b>, and a fixed <b>9 kWh</b> pack on <b>99%</b> of jobs</div>
 
-<div class="data">all four: ours <b>17.1%</b>, textbook <b>6.6%</b>, near-identical homes <b>16.1%</b><br>PV within 1 kWp or 15%: ours <b>37.6%</b>, textbook <b>17.8%</b></div>
+---
+
+<p class="label">The exam: 1,619 real expert designs</p>
+
+## A transparent engine a planner can read, next to a black box trained on the same data.
+
+<div class="data">transparent engine <b>[UNCONFIRMED: score]</b><br>black box, learned <b>[UNCONFIRMED: score]</b><br>textbook <b>[UNCONFIRMED: score]</b>, near-identical homes <b>[UNCONFIRMED: score]</b></div>
 
 <p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
 
