@@ -472,6 +472,20 @@ def roof_model_file(address: str = ""):
     return FileResponse(g, media_type="model/gltf-binary", headers={"Cache-Control": "public, max-age=86400"})
 
 
+class LayersReq(BaseModel):
+    inputs: HomeInputs
+    design: Optional[Design] = None
+
+
+@app.post("/api/explain/layers")
+def explain_layers(req: LayersReq):
+    """v2.3: the data behind the spatial demonstration (planes, one day, the night, the cost-to-value frontier)."""
+    from . import layers
+    inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
+    check_inputs(inp)
+    return layers.explain(engine(), inp, req.design.model_dump() if req.design else None)
+
+
 class AskReq(BaseModel):
     inputs: HomeInputs
     unknown: Optional[list[str]] = None  # fields the lead did not state; only these are asked
