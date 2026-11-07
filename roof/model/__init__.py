@@ -16,7 +16,7 @@ from trimesh.visual.material import PBRMaterial
 from trimesh.visual.texture import TextureVisuals
 
 import roof as R
-from . import geometry, layout, sun, texture
+from . import geometry, layout, shade, sun, texture
 from .layout import lay_out  # noqa: F401  (public)
 
 OUT = R.CACHE / "model"
@@ -157,6 +157,7 @@ def _build(address: str) -> dict:
             "source": "Bayern LoD2 CityGML" + (" + DOP20 orthophoto (WMS by_dop20c)" if img is not None else ""),
             "licence": texture.ATTRIBUTION, "sun_source": sun.source(), "sun_best_kwh_per_kwp": best,
             "planes": planes}
+    shade.annotate(meta, s, k)
     (OUT / f"{k}.base.json").write_text(json.dumps(meta, ensure_ascii=False))
     return meta
 
@@ -167,7 +168,7 @@ def model(address: str, kwp: float | None = None) -> dict:
     k = key(address)
     base = OUT / f"{k}.base.json"
     meta = json.loads(base.read_text()) if base.exists() and (OUT / f"{k}.glb").exists() else None
-    if meta is None or not meta["textured"]:   # an untextured build retries the WMS next time
+    if meta is None or not meta["textured"] or "shade_source" not in meta:   # untextured or pre-shade builds rebuild
         meta = _build(address)
     meta["layout"] = lay_out(meta["planes"], kwp)
     path = OUT / f"{k}.json"

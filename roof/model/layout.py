@@ -66,14 +66,24 @@ def lay_out(planes: list[dict], kwp: float | None) -> dict:
     Sets plane["chosen_panels"]; returns the totals."""
     need = math.inf if kwp is None else math.ceil(kwp * 1000 / PANEL_W - 1e-9)
     placed = 0
+    y = lambda p: p.get("yield_shaded_kwh_per_kwp", p["yield_kwh_per_kwp"])
     for p in planes:
         p["chosen_panels"] = []
-    for p in sorted(planes, key=lambda p: -p["yield_kwh_per_kwp"]):
-        if placed >= need or p["sun"] < MIN_SUN or not p["is_target"]:
+        p.pop("skipped", None)
+    for p in sorted(planes, key=lambda p: -y(p)):
+        if not p["is_target"]:
+            continue
+        if p.get("sun_shaded", p["sun"]) < MIN_SUN:
+            unshaded_ok = p["sun"] >= MIN_SUN
+            p["skipped"] = (p.get("shade_reason") or "shaded") + f", loses {p['shade_loss_share']:.0%} of its sun" \
+                if unshaded_ok and p.get("shade_loss_share") else \
+                f"faces {'north' if p['azimuth'] is not None else 'nowhere useful'}: {y(p):.0f} kWh per kWp"
+            continue
+        if placed >= need:
             continue
         s = slots(p)[: int(min(need - placed, 10 ** 6))]
         p["chosen_panels"] = s
         placed += len(s)
-    kwh = sum(len(p["chosen_panels"]) * PANEL_W / 1000 * p["yield_kwh_per_kwp"] for p in planes)
+    kwh = sum(len(p["chosen_panels"]) * PANEL_W / 1000 * y(p) for p in planes)
     return {"requested_kwp": kwp, "panels": placed, "kwp": round(placed * PANEL_W / 1000, 2),
             "kwh_per_year": round(kwh), "short_by_panels": 0 if kwp is None else max(0, need - placed)}
