@@ -8,9 +8,11 @@
 // by the LRU cache, which the policy keeps small; leaving mesh mode disposes the whole renderer.
 import * as THREE from "three";
 import type { TilesRenderer } from "3d-tiles-renderer/three";
+import { whiteOn } from "./whiteMode";
 
 const NEAR = 25;     // metres around the house at full detail
-const FLOOR = 0.06;  // far tiles refine as if about 16 times further away
+const FLOOR = 0.06;  // white look: far tiles refine as if about 16 times further away
+const FLOOR_REAL = 0.02; // real look: the mesh outside the house is discarded, so far tiles stay as coarse as possible
 
 type ViewTarget = { inView: boolean; error: number; distanceFromCamera: number };
 type Tile = { engineData: { boundingVolume: { distanceToPoint: (p: THREE.Vector3) => number } } };
@@ -29,7 +31,7 @@ export function applyTileLod(tiles: TilesRenderer, house: THREE.Vector3, o: { ph
   t.calculateTileViewError = (tile, target) => {
     own(tile, target);
     const d = tile.engineData.boundingVolume.distanceToPoint(local);
-    if (d > near) target.error *= Math.max(FLOOR, Math.pow(near / d, 1.6));
+    if (d > near) target.error *= Math.max(whiteOn() ? FLOOR : FLOOR_REAL, Math.pow(near / d, 1.6));
   };
 
   // Keep only what the near detail needs in memory; far tiles are coarse and few.
