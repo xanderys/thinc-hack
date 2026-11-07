@@ -36,7 +36,7 @@ footer: Marquee
 
 # “The family buys an EV next year.”
 
-<div class="data">paste the lead<br>one question: what heats the house<br>the offer, with its proof<br>change it in a sentence</div>
+<div class="data">paste the lead<br>one question: how much electricity a year<br>the offer, with its proof<br>change it in a sentence</div>
 
 <p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
 
