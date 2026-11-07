@@ -9,6 +9,12 @@ def _read(name):
 
 
 def load_split() -> tuple[list[str], list[str]]:
+    """Read the id files; when absent (a clean clone, they are gitignored), rebuild the same split from seed 42 and write them."""
+    if not ((HERE / "fit_ids.txt").exists() and (HERE / "test_ids.txt").exists()):
+        from .make_split import build
+        fit, test = build()
+        (HERE / "fit_ids.txt").write_text("\n".join(fit) + "\n")
+        (HERE / "test_ids.txt").write_text("\n".join(test) + "\n")
     return _read("fit_ids.txt"), _read("test_ids.txt")
 
 

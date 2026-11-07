@@ -41,6 +41,7 @@ Contract between units: `docs/api.md`. Change it only through the orchestrator.
 - Deploy: MARQUEE SHIP runs vercel deploy --prod from the repo root then vercel alias set; Git deploys are cancelled by the ignore step.
 
 ## Next
+- 19:45 Munich: board of house cards live (open card, converging call, Listening), spatial 8 layers on the house, homeowner site with iPhone call, engine frozen on readable rules with the sealed scoreboard. Remaining: spatial layers 4 to 8 into production, Xander and Yuan's Listening rehearsal, deck (paused on Xander), video 08:30 Sunday, submission 13:30.
 - 15:55 Munich (earlier stamps above were read off the mini clock, Singapore time; subtract 7 h) Live: full stage with why-reveal, facts panel with preference variants, bands, judge fixes; voice wired behind a flag (off on production). Remaining tonight: Reality hero pinned to a hit, inbox heading wording, engine inbox filter. 23:00 freeze except demo-path bugs. Sun 08:00: Xander tests the voice call on preview, decides the flag; 08:30 video recording; 10:00 deck and README final; 13:30 submit.
 - Stage: step 5 and 6, then the why-this-number reveal, facts panel with preference control, synthetic line, voice behind a flag. Deck and video re-pinned to hero v2. Sun 08:00 freeze, 10:00 video and deck final, 13:30 submit.
 - 15:45 Product plan approved (see docs/briefs/stage.md): agentic stage at /, Reality at /check, old pages at /classic. Engine adds /api/ask and /api/inbox (v1.3). Deck resumed.

@@ -1,4 +1,4 @@
-# Engine API contract (v2.3)
+# Engine API contract (v2.5)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -36,6 +36,7 @@ interface RoofResult {                  // v1.6, from GET /api/roof?address=... 
   segments: { azimuth: number; pitch: number; area_m2: number }[];
   max_panels: number | null; max_kwp: number | null;      // usable_area_m2 / 5.5
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
+  pending?: boolean;                    // v2.4: the LoD2 tile is still downloading; result returns immediately with the standard face; poll again in 3 s
   floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";          // v1.6.1: LoD2 footprint x storeys x 0.8, upper bound
   build_year_class?: string | null; build_year_estimate?: number | null; heating_class?: string | null; // v1.6.1: Zensus 2022 100 m cell; heating_class is the system type (central, district, floor, stoves), never the fuel
   zensus_confidence?: string;                                                                          // "estimated from address (Zensus 2022, 100 m cell)"
@@ -170,6 +171,9 @@ State lives in the engine (in-memory plus JSON under `engine/.cache/leads/`). Th
 
 ## v2.3: explanation layers for the spatial demonstration
 - `POST /api/explain/layers` body `{ inputs: HomeInputs, design?: Design }` → `{ planes: (as /api/roof/model, with chosen_panels for this design), day: { date: string; hours: { h: number; pv_kw: number; load_kw: number; battery_kw: number; grid_kw: number; soc_kwh: number }[] }, night: { evening_kwh: number; night_hours: number; battery_kwh: number; htw_cap_kwh: number }, frontier: { kwp: number; kwh: number; capex_eur: number; npv_20y_eur: number; autarky_share: number; payback_years: number | null; chosen: boolean; label?: string }[], chosen: Design, objective: { name: string; sentence: string; sources: string[] }, sources: { key: string; citation: string; url?: string }[] }`. Day = a representative spring weekday from the hourly year. Cached per inputs hash.
+
+## v2.5: homeowner decision (demo acceptance, not a qualified e-signature)
+- `POST /api/leads/{lead_id}/decision` body `{ action: "sign" | "decline" | "question", name?: string, accepted?: boolean, signature_png?: string (data URL, under 200 KB), question?: string, proposal_hash: string }` → `{ ok, status, decided_at, proposal_hash }`. Open to the homeowner site (no secret), rate limited; the engine stores the signature image under `engine/.cache/leads/sig/<lead_id>.png`, never in the API response beyond `has_signature`. Lead status becomes `signed`, `declined` or `question`; `decision: { action, name, decided_at, proposal_hash, has_signature, question? }` appears on GET /api/leads and /api/leads/{id}. `proposal_hash` = sha256 of the design, variant key and investment the homeowner saw; the planner's card shows a warning if the current draft's hash differs.
 
 Natural-language refinement ("the family buys an EV next year") is handled in `web/` (`POST /api/interpret` → `{ changes: { field, from, to, note }[], inputs: HomeInputs }`) with the Claude API, then `web/` calls `/api/refine`. The engine has no LLM.
 

@@ -10,7 +10,8 @@ const SCRIPT: { field: keyof HomeInputs; value: unknown; question: string; why: 
   { field: "num_inhabitants", value: 4, question: "How many people live there?", why: "Shapes the evening load the battery covers." },
 ];
 const STEP_MS = 5000;
-const leads = new Map<string, { created: number; name: string; place: string; facts: HomeInputs; extra?: { facts: Partial<HomeInputs>; at: number }[] }>();
+// On globalThis so dev reloads keep the scripted leads.
+const leads: Map<string, { created: number; name: string; place: string; facts: HomeInputs; extra?: { facts: Partial<HomeInputs>; at: number }[] }> = ((globalThis as unknown as { __mockLeads?: Map<string, { created: number; name: string; place: string; facts: HomeInputs; extra?: { facts: Partial<HomeInputs>; at: number }[] }> }).__mockLeads ??= new Map());
 const NAME: Record<string, string> = { pv_kwp: "pv", inverter_kw: "inverter", battery_kwh: "battery", heatpump_kw: "heatpump", wallbox_kw: "wallbox" };
 
 function nq(i: number): NextQuestion | null {

@@ -24,7 +24,7 @@ function Est({ k, v, u, was }: { k: string; v: string; u: string; was?: string |
   );
 }
 
-export default function Plan({ res, prev, inputs, write, writeBusy, flag, variants, onVariant, busy, answered }: Props) {
+export default function Plan({ res, prev, inputs, write, writeBusy, flag, variants, onVariant, busy, answered, bare, roofNote }: Props & { bare?: boolean; roofNote?: string }) {
   const [open, setOpen] = useState<string | null>(null);
   const [level, setLevel] = useState(1);
   const [closing, setClosing] = useState(false);
@@ -54,7 +54,7 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
 
   return (
     <section className="s-plan" aria-label="Plan system" aria-busy={busy}>
-      <p className="s-steps">Read, asked one thing, designed, checked, drafted. The planner signs off.</p>
+      {!bare && <p className="s-steps">Read, asked one thing, designed, checked, drafted. The planner signs off.</p>}
       <p className="s-prose" aria-live="polite">
         {prose ?? <span className="s-wait">Writing</span>}
         {prose && <span className={flag ? "flag" : "flag none"}> {flag ? <>One thing to check: {named(flag)}</> : "Nothing to check."}</span>}
@@ -68,7 +68,7 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
       <div className={spatial ? "s-top solo" : "s-top"}>
         <div className="s-house">
           {!spatial && <House design={res.design} />}
-          {roofLine && <p className="s-roof" title={roofLine.credit}>{roofLine.text}</p>}
+          {roofNote && !roofLine ? <p className="s-roof" aria-live="polite">{roofNote}</p> : roofLine && <p className="s-roof" title={roofLine.credit}>{roofLine.text}</p>}
         </div>
         <div>
           <dl className="s-est">
