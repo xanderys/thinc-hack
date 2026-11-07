@@ -36,7 +36,7 @@ const SEG_COLOUR: Record<string, string> = {
 
 type Props = {
   res: DesignResponse; prev: DesignResponse | null; inputs: HomeInputs; leadId?: string | null;
-  variants: Variant[]; onVariant: (v: Variant) => void; canUndo: boolean; onUndo: () => void;
+  variants: Variant[]; onVariant: (v: Variant) => void; canUndo: boolean; onUndo: () => void; decide?: ReactNode;
   answered: boolean; refine: ReactNode;
 };
 
@@ -46,7 +46,7 @@ function useReduce() {
   return r;
 }
 
-export default function Chain({ res, prev, inputs, leadId, variants, onVariant, canUndo, onUndo, answered, refine }: Props) {
+export default function Chain({ res, prev, inputs, leadId, variants, onVariant, canUndo, onUndo, answered, refine, decide }: Props) {
   const reduce = useReduce();
   const [stage, setStage] = useState(1);
   const [auto, setAuto] = useState(true);
@@ -212,6 +212,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
                   ))}
                 </div>
               )}
+              {open && n === 8 && decide && <div className={s.decide}>{decide}</div>}
               {open && WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation && (
                 <div className={s.whyrow}>
                   <button type="button" className={s.whyb} aria-expanded={why?.k === WHY_AT[n]} onClick={() => setWhy((w) => (w?.k === WHY_AT[n] ? null : { k: WHY_AT[n]!, level: 1 }))}>Why</button>

@@ -8,6 +8,7 @@ import { askOptions, Marked, PREFS, type Pref } from "./Lead";
 import { STEP, UNIT } from "./Refine";
 
 type Props = {
+  noDecide?: boolean;   // the open card: preference, locks and Approve live in the Offer stage
   lead: string; read: ReadResponse; inputs: HomeInputs; roof: RoofResult | null;
   onFact: (f: keyof HomeInputs, v: unknown, label: string) => void; setInstaller: (i: InstallerId) => void;
   liveAsking?: string | null;
@@ -79,7 +80,20 @@ export default function TopBar(p: Props) {
           <div className="t-edit"><span className="seg">{(Object.keys(INSTALLER_NAME) as InstallerId[]).map((id) => <button key={id} type="button" aria-pressed={i.installer_id === id} onClick={() => p.setInstaller(id)}>{INSTALLER_NAME[id]}</button>)}</span></div>
         </details>
       </div>
-      <div className="t-row">
+      {!p.noDecide && <Decide {...p} />}
+      {(p.lead || p.read.found.length > 0) && (
+        <details className="t-mail"><summary>{p.read.source === "call" ? "From the call" : "The enquiry"}</summary>
+          <div className="s-mail">{p.read.source === "call" ? p.lead || "Facts from the call." : <Marked text={p.lead} quotes={p.read.found.map((f) => f.quote)} />}</div>
+        </details>
+      )}
+    </section>
+  );
+}
+
+// Preference, locks, Undo and Approve: the top bar on the stage page, the Offer stage in the open card.
+export function Decide(p: Pick<Props, "pref" | "setPref" | "res" | "overrides" | "setOverride" | "canUndo" | "onUndo" | "approvedAt" | "onApprove">) {
+  return (
+    <div className="t-row">
         <div className="s-pref t-pref" role="group" aria-label="Preference">
           {PREFS.map(([k, label]) => <button key={k} type="button" aria-pressed={p.pref === k} onClick={() => p.setPref(k)}>{label}</button>)}
         </div>
@@ -97,12 +111,6 @@ export default function TopBar(p: Props) {
             ? <span className="s-approved s-mark">Approved {p.approvedAt}</span>
             : <button className="btn" onClick={p.onApprove}>Approve</button>)}
         </span>
-      </div>
-      {(p.lead || p.read.found.length > 0) && (
-        <details className="t-mail"><summary>{p.read.source === "call" ? "From the call" : "The enquiry"}</summary>
-          <div className="s-mail">{p.read.source === "call" ? p.lead || "Facts from the call." : <Marked text={p.lead} quotes={p.read.found.map((f) => f.quote)} />}</div>
-        </details>
-      )}
-    </section>
+    </div>
   );
 }
