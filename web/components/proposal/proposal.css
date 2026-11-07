@@ -1,0 +1,103 @@
+/* v2.5 homeowner proposal, Reonic's offer look: navy cover with a solar-yellow band, white hairline cards. */
+.pp {
+  --pp-ground: #fdfdfb; --pp-card: #fff; --pp-rule: #e4e4e7; --pp-ink: #1b1d20; --pp-ink-2: #5f6168; --pp-soft: #f4f4f5;
+  --pp-blue: #374be6; --pp-navy: #071b71; --pp-pv: #ffc043; --pp-bat: #24a148; --pp-hp: #e93f25; --pp-ev: #1c71ef;
+  max-width: 760px; margin: 0 auto; padding: 0 0 48px; color: var(--pp-ink); font-family: var(--font-sans), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.pp h1, .pp h2 { font-family: var(--font-sans), system-ui, sans-serif; color: inherit; }
+
+.pp-cover { position: relative; overflow: hidden; background: var(--pp-navy); color: #fff; min-height: 248px; padding: 20px 16px 22px; display: flex; flex-direction: column; justify-content: space-between; }
+.pp-band { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pp-band polygon { fill: var(--pp-pv); }
+.pp-brand { position: relative; margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.pp-title { position: relative; margin-top: 128px; }
+.pp-title h1 { font-size: 34px; font-weight: 600; line-height: 1.1; letter-spacing: -0.025em; margin: 0; }
+.pp-title p { margin: 8px 0 0; font-size: 15px; color: rgba(255, 255, 255, 0.78); }
+
+.pp-house { margin: 16px 16px 0; }
+.pp-spatial { border: 1px solid var(--pp-rule); border-radius: 12px; overflow: hidden; background: var(--pp-card); }
+.pp-drawing { border: 1px solid var(--pp-rule); border-radius: 12px; background: var(--pp-card); padding: 8px 4px; }
+
+.pp-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 16px 16px 0; }
+.pp-kpi { background: var(--pp-card); border: 1px solid var(--pp-rule); border-radius: 12px; padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pp-kpi span { font-size: 13.5px; color: var(--pp-ink-2); }
+.pp-kpi b { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+.pp-kpi small { font-size: 12px; line-height: 1.35; color: var(--pp-ink-2); }
+
+.pp-card { background: var(--pp-card); border: 1px solid var(--pp-rule); border-radius: 12px; margin: 16px 16px 0; padding: 16px; }
+.pp-card h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; margin: 0 0 12px; }
+
+.pp-vars { list-style: none; margin: 0; padding: 0; }
+.pp-vars li { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name num" "chips num"; align-items: start; gap: 6px 12px; padding: 12px 0; border-top: 1px solid var(--pp-rule); }
+.pp-vars li:first-child { border-top: 0; padding-top: 0; }
+.pp-vname { grid-area: name; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pp-vars li:not(.on) .pp-vname { font-weight: 500; color: var(--pp-ink-2); }
+.pp-vnum { grid-area: num; text-align: right; font-size: 15px; font-weight: 600; display: flex; flex-direction: column; gap: 2px; }
+.pp-vnum small { font-size: 12.5px; font-weight: 400; color: var(--pp-ink-2); }
+.pp-vars .pp-chips { grid-area: chips; }
+.pp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pp-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 11px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.pp-pill.blue { background: #eceefd; color: var(--pp-blue); }
+.pp-pill.pv { background: #fff3d6; color: #7a5300; }
+.pp-pill.battery { background: #e3f4e8; color: #17692e; }
+.pp-pill.heatpump { background: #fde6e2; color: #a82512; }
+.pp-pill.wallbox { background: #e3edfe; color: #1450b3; }
+
+.pp-parts { list-style: none; margin: 0; padding: 0; }
+.pp-parts li { display: grid; grid-template-columns: 12px 1fr; gap: 2px 10px; padding: 10px 0; border-top: 1px solid var(--pp-rule); }
+.pp-parts li:first-child { border-top: 0; padding-top: 0; }
+.pp-parts p { grid-column: 2; margin: 2px 0 0; font-size: 14.5px; line-height: 1.4; color: var(--pp-ink-2); }
+.pp-parts li.off .pp-pname b { color: var(--pp-ink-2); font-weight: 500; }
+.pp-dot { width: 12px; height: 12px; border-radius: 3px; margin-top: 4px; }
+.pp-dot.pv { background: var(--pp-pv); } .pp-dot.battery { background: var(--pp-bat); } .pp-dot.heatpump { background: var(--pp-hp); } .pp-dot.wallbox { background: var(--pp-ev); }
+.pp-parts li.off .pp-dot { background: transparent; border: 1.5px solid var(--pp-rule); }
+.pp-pname { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
+.pp-size { font-family: var(--font-mono), ui-monospace, monospace; font-size: 14px; }
+.pp-wait { grid-column: 2; display: block; height: 14px; margin-top: 4px; border-radius: 4px; background: var(--pp-soft); width: 70%; }
+.pp-why { margin: 10px 0 0; padding: 10px 0 0 18px; border-top: 1px solid var(--pp-rule); font-size: 14.5px; line-height: 1.45; color: var(--pp-ink-2); }
+
+.pp-sign fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.pp-sign fieldset:disabled { opacity: 0.55; }
+.pp-l { display: block; font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+.pp-sighead { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; }
+.pp-input { width: 100%; min-height: 48px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--pp-rule); background: #fff; font: inherit; font-size: 16px; color: var(--pp-ink); }
+.pp-area { padding: 10px 12px; min-height: 88px; resize: vertical; }
+.pp-canvas { display: block; width: 100%; height: 140px; border: 1px solid var(--pp-rule); border-radius: 8px; background: #fff linear-gradient(var(--pp-rule), var(--pp-rule)) no-repeat 16px calc(100% - 34px) / calc(100% - 32px) 1px; touch-action: none; cursor: crosshair; }
+.pp-tick { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; font-size: 15px; min-height: 44px; cursor: pointer; }
+.pp-tick input { width: 20px; height: 20px; accent-color: var(--pp-blue); margin: 0; }
+.pp-time { margin: 2px 0 12px; font-size: 13.5px; color: var(--pp-ink-2); }
+.pp-go { width: 100%; min-height: 52px; border: 0; border-radius: 26px; background: var(--pp-blue); color: #fff; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
+.pp-go:disabled { background: #c9cdf7; cursor: default; }
+.pp-go.pp-no { background: #fff; color: var(--pp-hp); border: 1px solid var(--pp-hp); }
+.pp-alt { display: flex; gap: 8px; margin-top: 12px; }
+.pp-sec { flex: 1; min-height: 44px; border-radius: 22px; border: 1px solid var(--pp-rule); background: #fff; color: var(--pp-ink); font: inherit; font-size: 15px; cursor: pointer; }
+.pp-sec[aria-expanded="true"] { border-color: var(--pp-ink); }
+.pp-more { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.pp-link { background: none; border: 0; padding: 0; font: inherit; font-size: 14px; color: var(--pp-blue); cursor: pointer; }
+.pp-link:disabled { color: var(--pp-ink-2); opacity: 0.6; cursor: default; }
+.pp-err { margin: 10px 0 0; font-size: 14px; color: #b3261e; }
+.pp-state { margin: -4px 0 12px; font-size: 14.5px; line-height: 1.4; color: var(--pp-ink); background: var(--pp-soft); border-radius: 8px; padding: 10px 12px; }
+.pp-small { margin: 14px 0 0; font-size: 12px; color: var(--pp-ink-2); }
+.pp-go:focus-visible, .pp-sec:focus-visible, .pp-link:focus-visible, .pp-input:focus-visible, .pp-tick input:focus-visible { outline: 2px solid var(--pp-blue); outline-offset: 2px; }
+
+.pp-done p { margin: 0; font-size: 15px; }
+.pp-clock { margin: 14px 0 0; display: grid; gap: 8px; }
+.pp-clock div { display: flex; justify-content: space-between; gap: 12px; padding-top: 8px; border-top: 1px solid var(--pp-rule); font-size: 14.5px; }
+.pp-clock dt { color: var(--pp-ink-2); }
+.pp-clock dd { margin: 0; font-weight: 600; text-align: right; }
+
+@media (min-width: 720px) {
+  .pp { padding-top: 24px; }
+  .pp-cover { border-radius: 12px; margin: 0 16px; min-height: 300px; padding: 28px 32px; }
+  .pp-title { margin-top: 150px; }
+  .pp-title h1 { font-size: 44px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pp-done { animation: pp-in 500ms var(--spring-smooth) both; }
+  @keyframes pp-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pp-done { animation: pp-fade 200ms linear both; }
+  @keyframes pp-fade { from { opacity: 0; } to { opacity: 1; } }
+}

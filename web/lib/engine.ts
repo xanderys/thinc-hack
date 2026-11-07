@@ -1,5 +1,5 @@
 import "server-only";
-import { mockCreateLead, mockGetLead, mockListLeads, mockPriors, mockStep } from "./mockLeads";
+import { mockApprove, mockCreateLead, mockDecision, mockGetLead, mockListLeads, mockPriors, mockStep } from "./mockLeads";
 import { mockAsk, mockDesign, mockEval, mockHealth, mockInbox, mockProject, mockProjects, mockRefine, mockValidate } from "./mock";
 
 export const ENGINE_URL = process.env.ENGINE_URL || "http://localhost:8000";
@@ -29,6 +29,9 @@ const leadsMock = process.env.LEADS_MOCK === "1";
 function mockLeads(method: string, path: string, search: URLSearchParams, body: any): Out | null {
   if (path === "/api/leads" && method === "POST") return { status: 200, body: mockCreateLead(body) };
   if (path === "/api/leads") return { status: 200, body: mockListLeads(Number(search.get("limit") ?? 20)) };
+  const v25 = path.match(/^\/api\/leads\/([^/]+)\/(approve|decision)$/);   // v2.5
+  if (v25 && v25[2] === "approve" && method === "PUT") return mockApprove(decodeURIComponent(v25[1]), body);
+  if (v25 && v25[2] === "decision" && method === "POST") return mockDecision(decodeURIComponent(v25[1]), body);
   if (path.startsWith("/api/leads/")) { const l = mockGetLead(decodeURIComponent(path.slice("/api/leads/".length))); return l ? { status: 200, body: l } : { status: 404, body: { error: "Lead not found" } }; }
   if (path === "/api/intake/priors") return { status: 200, body: mockPriors() };
   if (path === "/api/intake/step" && method === "POST") { const r = mockStep(body); return r ? { status: 200, body: r } : { status: 404, body: { error: "Lead not found" } }; }
@@ -45,7 +48,8 @@ export async function callEngine(method: string, path: string, search: URLSearch
       headers: {
         ...(body ? { "content-type": "application/json" } : {}),
         // v1.9: reading leads needs the intake secret; server-side only, never sent to the browser.
-        ...(((method === "GET" && path.startsWith("/api/leads")) || (method === "POST" && path === "/api/intake/step")) && process.env.INTAKE_SECRET ? { "X-Intake-Secret": process.env.INTAKE_SECRET } : {}),
+        // v2.5: approve also needs it; the homeowner's decision POST goes through without it.
+        ...(((method === "GET" && path.startsWith("/api/leads")) || (method === "POST" && path === "/api/intake/step") || (method === "PUT" && /^\/api\/leads\/[^/]+\/approve$/.test(path))) && process.env.INTAKE_SECRET ? { "X-Intake-Secret": process.env.INTAKE_SECRET } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",

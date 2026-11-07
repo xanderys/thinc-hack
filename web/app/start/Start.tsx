@@ -4,6 +4,7 @@ import { ConversationProvider, useConversation } from "@elevenlabs/react";
 import { endTone, startRing, stopRing, tick, unlock } from "./sounds";
 import type { Lead } from "@/lib/api";
 import { designLine, n0, n2, pct } from "@/lib/stage";
+import Proposal, { span, TODAY_LINE } from "@/components/proposal/Proposal";
 import { HOME_FORM, homeFacts, INSTALLER_BRAND, homeFirstMessage, homeNote, homeVariables, type HomeAnswers, type InstallerId, type RoofInfo } from "./intake";
 
 type Props = { agentId: string; installerId: InstallerId };
@@ -22,8 +23,10 @@ type Opt = "people" | "heating" | "ev" | "bill_band" | "roof";
 
 const locationOk = (s: string) => /\b\d{5}\b/.test(s);
 const first = (s: string) => s.trim().split(/\s+/)[0] ?? "";
-// Lead to offer today, from the installer B figure the coordinator gave (docs to confirm).
-const TODAY_MEDIAN_DAYS = 8;
+// Engine statuses before the call has finished; everything else has a design to show.
+const CALLING = new Set(["draft", "in_call"]);
+// Planner steps only: the engine also logs the homeowner's decision as a history row with no step.
+const steps = (l: Lead) => l.history.filter((h) => h.step != null).length;
 // "now with a wallbox", "now 13.05 kWp of solar": the biggest news first.
 function whatsNew(a: Lead["draft"]["design"], b: Lead["draft"]["design"]): string {
   const add: [keyof typeof a, string][] = [["wallbox_kw", "a wallbox"], ["heatpump_kw", "a heat pump"], ["battery_kwh", "a battery"]];
@@ -55,6 +58,12 @@ function Page({ agentId, installerId }: Props) {
   const [doneAt, setDoneAt] = useState<number | null>(null);
   const [lead, setLead] = useState<Lead | null>(null);
   const [summary, setSummary] = useState(false);
+  // v2.5: the planner's release opens the proposal; the stopwatch runs on to the signature.
+  const [open, setOpen] = useState(false);
+  const openRef = useRef(false); openRef.current = open;
+  const [ready, setReady] = useState<string | null>(null);
+  const shownHash = useRef<string | null>(null);
+  const [signedAt, setSignedAt] = useState<number | null>(null);
   const [tickNow, setTickNow] = useState(0);
   const noted = useRef(false);
   const conversation = useConversation({
@@ -79,12 +88,12 @@ function Page({ agentId, installerId }: Props) {
     return () => clearInterval(t);
   }, [since]);
   useEffect(() => () => { if (ring.current) clearTimeout(ring.current); stopRing(); }, []);
-  // The stopwatch runs from Submit until the first design is ready.
+  // The stopwatch runs from Submit until the homeowner signs.
   useEffect(() => {
-    if (startedAt == null || doneAt != null) return;
+    if (startedAt == null || signedAt != null) return;
     const t = setInterval(() => setTickNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [startedAt, doneAt]);
+  }, [startedAt, signedAt]);
   // Keeps polling after the first design: a planner's change shows up as a second notification.
   const [update, setUpdate] = useState<string | null>(null);
   const seen = useRef(0);
@@ -96,11 +105,16 @@ function Page({ agentId, installerId }: Props) {
       const r = await fetch(`/api/leads/${leadId}`, { cache: "no-store" }).catch(() => null);
       if (!r?.ok) return;
       const l: Lead = await r.json();
-      if (l.status !== "done") return;
+      if (CALLING.has(l.status)) return;
       const prev = leadSeen.current;
       leadSeen.current = l; setLead(l);
-      if (!prev) { seen.current = l.history.length; setDoneAt(Date.now()); return; }
-      if (l.history.length > seen.current) { seen.current = l.history.length; updatedOnce.current = true; setUpdate(whatsNew(prev.draft.design, l.draft.design)); setSummary(false); }
+      if (l.status === "approved" && l.proposal_hash && l.proposal_hash !== shownHash.current) {
+        shownHash.current = l.proposal_hash;
+        if (!openRef.current) setReady(l.proposal_hash);
+      }
+      if (l.status === "signed" && l.decision?.action === "sign") setSignedAt((s) => s ?? Date.parse(l.decision!.decided_at));
+      if (!prev) { seen.current = steps(l); setDoneAt(Date.now()); return; }
+      if (steps(l) > seen.current) { seen.current = steps(l); updatedOnce.current = true; setReady(null); if (!openRef.current) { setUpdate(whatsNew(prev.draft.design, l.draft.design)); setSummary(false); } }
     }, 3000);
     return () => clearInterval(t);
   }, [leadId]);
@@ -111,6 +125,7 @@ function Page({ agentId, installerId }: Props) {
     setMiss(null); setError(null);
     unlock();   // the submit tap allows every sound that follows
     setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false);
+    setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null);
     fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form" }) })
       .then(async (r) => { const b = await r.json().catch(() => ({})); if (r.ok && b.lead_id) setLeadId(b.lead_id); })
@@ -167,6 +182,23 @@ function Page({ agentId, installerId }: Props) {
 
   const took = startedAt != null ? Math.max(0, Math.round(((doneAt ?? tickNow) - startedAt) / 1000)) : 0;
   const notify = doneAt != null && !summary && (step === "thanks" || step === "declined" || step === "form");
+  const signTook = startedAt != null ? Math.max(0, (signedAt ?? tickNow) - startedAt) : 0;
+  const openProposal = () => { setOpen(true); setReady(null); setUpdate(null); window.scrollTo(0, 0); };
+
+  // The planner released the proposal: an iOS notification that opens it.
+  const readyBanner = ready && !open && step !== "ringing" && step !== "call" && (
+    <button type="button" key={ready} className="ios-banner ios-note" onClick={openProposal}>
+      <span className="ios-app" aria-hidden>{brand.charAt(0)}</span>
+      <span className="ios-note-t"><small><b>{brand}</b><span>now</span></small>Your proposal is ready</span>
+    </button>
+  );
+
+  if (open && lead)
+    return (
+      <div className="h-prop">
+        <Proposal lead={lead} brand={brand} startedAt={startedAt} onDecided={(st, at) => { if (st === "signed") setSignedAt(at); }} />
+      </div>
+    );
 
   if (summary && lead) {
     const d = lead.draft, e = d.economics, v = d.variants?.[0];
@@ -179,28 +211,35 @@ function Page({ agentId, installerId }: Props) {
     return (
       <div className="h-page">{head}
         <section className="h-card h-in h-sum" key="sum">
-          <h1>{(lead.history.length > seen.current || updatedOnce.current) ? `Your updated design, ${first(a.name)}` : `Your first design, ${first(a.name)}`}</h1>
+          <h1>{updatedOnce.current ? `Your updated design, ${first(a.name)}` : `Your first design, ${first(a.name)}`}</h1>
           <dl className="h-nums">
             {e.annual && <div><dt>Solar a year</dt><dd>{n0(e.annual.pv_yield_kwh)} kWh</dd></div>}
-            <div><dt>Self-sufficiency</dt><dd>{pct(e.autarky_share)}%</dd></div>
+            <div><dt>Self-sufficiency</dt><dd>{pct(e.autarky_share)} %</dd></div>
             <div><dt>Investment</dt><dd>{n0(e.capex_eur)} EUR</dd></div>
             <div><dt>Payback</dt><dd>{e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`}</dd></div>
           </dl>
           <ul className="h-parts">{say.map((x) => <li key={x}>{x}</li>)}</ul>
           {v && <p className="h-pref"><b>{v.label.split(" (")[0]}</b> {designLine(v.design)}</p>}
-          <p className="h-times"><span>Enquiry to design: {Math.floor(took / 60)} min {took % 60} s</span><span>Today: a median {TODAY_MEDIAN_DAYS} days</span></p>
-          <p className="h-send">{brand} will send the full offer.</p>
+          <dl className="h-times">
+            <div><dt>Enquiry to design</dt><dd>{Math.floor(took / 60)} min {took % 60} s</dd></div>
+            <div><dt>Enquiry to signature</dt><dd>{signedAt != null ? span(signTook) : clock(Math.floor(signTook / 1000))}</dd></div>
+            <p>{TODAY_LINE}</p>
+          </dl>
+          {lead.status === "approved" || lead.status === "signed" || lead.status === "question"
+            ? <button type="button" className="h-go" onClick={openProposal}>Open your proposal</button>
+            : <p className="h-send">{brand} will send the full offer.</p>}
         </section>
+        {readyBanner}
       </div>
     );
   }
 
-  const banner = notify && (
+  const banner = readyBanner || (notify && (
     <button type="button" key={update ?? "first"} className="ios-banner ios-note" onClick={() => { setSummary(true); setUpdate(null); }}>
       <span className="ios-app" aria-hidden>{brand.charAt(0)}</span>
       <span className="ios-note-t"><small><b>{brand}</b><span>now</span></small>{update ? `Your design was updated, ${update}` : "Your first design is ready"}</span>
     </button>
-  );
+  ));
 
   if (step === "thanks" || step === "declined")
     return (
@@ -277,6 +316,7 @@ function Page({ agentId, installerId }: Props) {
           {error && <p className="ios-err" role="alert">{error} <button type="button" className="ios-retry" onClick={accept}>Try again</button></p>}
         </div>
       )}
+      {step === "form" && banner}
     </div>
   );
 }
