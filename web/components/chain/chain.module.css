@@ -225,3 +225,4 @@
   .shadeOver { display: none; }
   .shadeUnder { display: block; order: -1; min-width: 0; margin-bottom: 8px; }
 }
+@media (max-width: 760px) { .hero.heroTall { height: 60vh; min-height: 360px; } }

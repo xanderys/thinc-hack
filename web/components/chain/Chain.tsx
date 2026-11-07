@@ -359,7 +359,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
         })}
       </ol>}
 
-      <div className={s.hero}>
+      <div className={`${s.hero} ${onPanels && shading ? s.heroTall : ""}`}>
         {address && spatial !== false ? (
           <SpatialDemo inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatmap ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && !shading && !heatmap}>
@@ -374,7 +374,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
         )}
       </div>
 
-      {FIVE && onPanels && address && spatial !== false && <div className={s.shadeUnder}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage /></div>}
+      {FIVE && onPanels && address && spatial !== false && <div className={s.shadeUnder}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}
       <div className={s.say}>{refine}</div>
       {prev && JSON.stringify(prev.design) !== JSON.stringify(res.design) && <span className={s.srOnly} aria-live="polite">Draft updated.</span>}
     </div>
