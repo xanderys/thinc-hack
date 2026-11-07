@@ -40,17 +40,26 @@ def _compass(az):
 
 def roof_bar(inputs, design, pl):
     pv = float(design.get("pv_kwp") or 0)
-    alloc = P.fill(pl, pv) if pv else [0.0] * len(pl)
+    tag = "default" if pl and pl[0]["assumed"] else "address"
+    src = pl[0]["source"] if pl else ""
+    if inputs.get("pv_planes") and pv:  # the engine's layout, as the 3D panels, economics and day use it
+        faces_used = []
+        for x in inputs["pv_planes"]:
+            t, a, sh = map(float, x[:3])
+            sc = float(x[3]) if len(x) > 3 else 1.0
+            faces_used.append((t, a, sh * pv, round(P._plane_yield(t, a) * sc)))
+        src = "the engine's module layout by shaded yield; " + src
+    else:
+        faces_used = [(p["tilt"], p["azimuth"], k, p["yield_kwh_kwp"]) for p, k in zip(pl, P.fill(pl, pv) if pv else [])]
     segs, used, kwh = [], 0, 0.0
-    for j, (p, k) in enumerate(zip(pl, alloc)):
-        if not k:
+    for t, a, k, y in faces_used:
+        if k < P.MODULE_KWP / 2:
             continue
         n = round(k / P.MODULE_KWP)
-        tag = "default" if p["assumed"] else "address"
-        segs.append(_seg(f"{_compass(p['azimuth'])} face {p['tilt']:.0f} deg", round(k, 2), "kWp", tag,
-                         f"{n} modules x {P.MODULE_KWP * 1000:.0f} W, {p['yield_kwh_kwp']:,} kWh per kWp a year; {p['source']}"))
+        segs.append(_seg(f"{_compass(a)} face {t:.0f} deg", round(k, 2), "kWp", tag,
+                         f"{n} modules x {P.MODULE_KWP * 1000:.0f} W, {y:,} kWh per kWp a year; {src}"))
         used += 1
-        kwh += k * p["yield_kwh_kwp"]
+        kwh += k * y
     cap = P.max_kwp(pl)
     faces = sum(1 for p in pl if p["max_kwp"] >= P.MODULE_KWP)
     if pv:
@@ -64,8 +73,8 @@ def roof_bar(inputs, design, pl):
             "sources": [SOURCES["pvgis"]] + ([] if pl and pl[0]["assumed"] else [SOURCES["lod2"]])}
 
 
-def day_bar(inputs, design, pl, provenance):
-    d = P.day(inputs, design, _pl=pl)
+def day_bar(inputs, design, pl, provenance, day_date=None):
+    d = P.day(inputs, design, _pl=pl, date=day_date or inputs.get("day_date"))
     hrs, nt = d["hours"], d["night"]
     solar = sum(min(h["pv_kw"], h["load_kw"]) for h in hrs)
     from_bat = sum(max(h["battery_kw"], 0.0) for h in hrs)
@@ -119,11 +128,13 @@ def charging_bar(inputs, design, provenance):
             "sentence": s, "sources": [SOURCES["ev"], SOURCES["isi"], SOURCES["wb"]]}
 
 
-def bars(inputs: dict, design: dict, roof: dict | None = None, provenance: dict | None = None) -> list[dict]:
-    """Roof, day and charging bars in chain order (charging only with an EV)."""
+def bars(inputs: dict, design: dict, roof: dict | None = None, provenance: dict | None = None,
+         day_date: str | None = None) -> list[dict]:
+    """Roof, day and charging bars in chain order (charging only with an EV). Pass the engine's laid-out
+    inputs["pv_planes"] and the Day layer's date (day_date or inputs["day_date"]) so all bars share one run."""
     inp = dict(inputs)
     pl = P.planes(inp, roof)
-    out = [roof_bar(inp, design, pl), day_bar(inp, design, pl, provenance), charging_bar(inp, design, provenance)]
+    out = [roof_bar(inp, design, pl), day_bar(inp, design, pl, provenance, day_date), charging_bar(inp, design, provenance)]
     return [b for b in out if b]
 
 

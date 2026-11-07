@@ -556,18 +556,32 @@ def _spring_weekdays():
     return d, m
 
 
-def day(inputs: dict, design: dict, roof: dict | None = None, _pl=None) -> dict:
-    """A representative spring weekday (the April-May weekday with the median PV) hour by hour, and that night."""
+def day(inputs: dict, design: dict, roof: dict | None = None, _pl=None, date: str | None = None) -> dict:
+    """A representative spring weekday (the April-May weekday with the median PV) hour by hour, and that night.
+    inputs["pv_planes"] (the engine's laid-out planes) is used as given; date ("YYYY-MM-DD") picks the day."""
     inp = dict(inputs)
-    pl = _pl or planes(inp, roof)
     pv_k = design.get("pv_kwp") or 0
-    i2 = {**inp, "pv_planes": _planes_arg(pl, pv_k)} if pv_k else inp
+    if inp.get("pv_planes"):
+        i2 = inp
+    else:
+        pl = _pl or planes(inp, roof)
+        i2 = {**inp, "pv_planes": _planes_arg(pl, pv_k)} if pv_k else inp
     f = S._flows(i2, design, "Munich")
     soc = _soc(f["pv"] - f["direct"], f["load"] - f["direct"], f["bat"])
     d, m = _spring_weekdays()
     days = sorted(set(d[m]))
     ppd = {x: f["pv"][d == x].sum() for x in days}
-    if pv_k:
+    want = None
+    if date:
+        import pandas as pd
+        try:
+            want = pd.Timestamp(date) if any(c.isdigit() for c in str(date)[:4]) and "-" in str(date) else pd.Timestamp(f"{date} 2001")
+        except Exception:
+            want = None
+    pick = sorted(x for x in set(d) if want is not None and (x.month, x.day) == (want.month, want.day))
+    if pick:
+        target = pick[0]
+    elif pv_k:
         target = sorted(days, key=lambda x: ppd[x])[len(days) // 2]
     else:
         target = days[len(days) // 2]
