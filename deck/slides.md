@@ -59,7 +59,7 @@ footer: Marquee
 
 ## [UNCONFIRMED: headline]
 
-<div class="data">[UNCONFIRMED: offers per week x hours saved x € per hour, plus win rate, each with a source]</div>
+<div class="data">[UNCONFIRMED: from Jamon via Reonic experts: offers per planner per week, minutes per design, planner hourly cost, win-rate lift]</div>
 
 ---
 
@@ -67,9 +67,9 @@ footer: Marquee
 
 <p class="label">Inside Reonic</p>
 
-## [UNCONFIRMED: roadmap headline]
+## From first draft to checked offer.
 
-<div class="data">[UNCONFIRMED: per-installer style, intake fields (roof area, household size), validation view, homeowner view]</div>
+<div class="data"><b>1</b> learns each installer’s catalogue and defaults<br><b>2</b> roof area and household size at intake<br><b>3</b> flags a design unusual for homes like this one<br><b>4</b> homeowner switches the battery and sees the bill change</div>
 
 ---
 
