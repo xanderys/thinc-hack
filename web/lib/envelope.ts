@@ -4,7 +4,11 @@
 import type { Envelope } from "@/components/spatial/types";
 
 export type ElementKey = "wall" | "window" | "floor" | "ceiling" | "roof" | "ventilation" | "bridges";
-export interface Element { key: ElementKey; name: string; w: number; share: number; colour: string }
+export interface Element { key: ElementKey; name: string; w: number; share: number; colour: string; note?: string | null }
+// v2.7 engine block: elements[] (the tint and the bar both read share), constants, window share per face.
+type EngElement = { element: string; label?: string; w: number; share?: number | null; note?: string | null };
+type V27 = { elements?: EngElement[] | null; estimated_from?: string | null };
+const ENG_KEY: Record<string, ElementKey> = { outer_wall: "wall", window: "window", floor: "floor", ceiling: "ceiling", roof: "roof", ventilation: "ventilation", thermal_bridges: "bridges" };
 
 const NAMES: Record<ElementKey, string> = {
   wall: "Outer walls", window: "Windows", floor: "Floor", ceiling: "Ceiling", roof: "Roof", ventilation: "Ventilation", bridges: "Thermal bridges",
@@ -23,6 +27,16 @@ export function lossRgb(t: number): [number, number, number] {
 export const LOSS_GRADIENT = "linear-gradient(90deg, rgb(61,111,224), rgb(233,228,218) 50%, rgb(232,115,12))";
 
 export function elementsOf(env: Envelope): { list: Element[]; total: number; scale: (share: number) => [number, number, number] } {
+  const els = (env as Envelope & V27).elements;
+  if (els?.length) {
+    const tot = els.find((e) => e.element === "total")?.w ?? els.filter((e) => e.element !== "total").reduce((a, e) => a + (e.w || 0), 0);
+    const rows = els.filter((e) => ENG_KEY[e.element]).map((e) => ({ key: ENG_KEY[e.element], name: e.label || NAMES[ENG_KEY[e.element]], w: e.w || 0, share: e.share ?? (tot ? (e.w || 0) / tot : 0), note: e.note ?? null }));
+    const pos = rows.filter((r) => r.w > 0).map((r) => r.share);
+    const lo = Math.min(...pos), hi = Math.max(...pos);
+    const scale = (x: number) => lossRgb(hi > lo ? (x - lo) / (hi - lo) : 0.5);
+    rows.sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key));
+    return { list: rows.map((r) => ({ ...r, colour: `rgb(${scale(r.share).join(",")})` })), total: tot || 1, scale };
+  }
   const w: Partial<Record<ElementKey, number>> = {};
   env.faces.forEach((f) => { const k = kindOf(f.kind); if (k) w[k] = (w[k] ?? 0) + (f.loss_w || 0); });
   if (env.ventilation_w) w.ventilation = env.ventilation_w;
@@ -40,7 +54,15 @@ export function elementsOf(env: Envelope): { list: Element[]; total: number; sca
 
 // Window share of the wall at this azimuth: the engine's own per-face figure when it sends one, else window area over
 // wall plus window area on that side, else 20 %.
-type Extra = { window_share?: number | null; window_share_of_wall?: number | null };
+type Extra = { window_share?: number | null; window_share_of_wall?: number | null; window_share_source?: string | null };
+
+// "20 % of wall, typology assumption": windows are never measured, the source says so.
+export function windowNote(env: Envelope): string | null {
+  const f = env.faces.find((x) => (x as Extra).window_share != null || kindOf(x.kind) === "window") as (Envelope["faces"][0] & Extra) | undefined;
+  if (!f) return null;
+  const share = f.window_share ?? windowShare(env, f.azimuth ?? 0);
+  return `${Math.round(share * 100)} % of wall, typology assumption`;
+}
 export function windowShare(env: Envelope, az: number): number {
   const near = (a: number | null) => a != null && Math.abs(((a - az + 540) % 360) - 180) < 23;
   const wall = env.faces.find((f) => kindOf(f.kind) === "wall" && near(f.azimuth)) as (Envelope["faces"][0] & Extra) | undefined;
@@ -52,20 +74,17 @@ export function windowShare(env: Envelope, az: number): number {
 }
 
 // Named constants, read from the engine when present.
-type Consts = { bivalence_c?: number | null; hot_water_kw_per_person?: number | null; constants?: { bivalence_c?: number; hot_water_kw_per_person?: number } };
+type Const = number | { value: number; unit?: string; label?: string; source?: string };
+type Consts = { bivalence_c?: number | null; hot_water_kw_per_person?: number | null; constants?: { bivalence_c?: Const; hot_water_kw_per_person?: Const } };
+const val = (c: Const | null | undefined) => (c == null ? null : typeof c === "number" ? c : c.value);
 export function constantsOf(env: Envelope) {
   const e = env as Envelope & Consts;
+  const src = (c: Const | undefined) => (c && typeof c === "object" ? c.source ?? null : null);
   return {
-    bivalence_c: e.bivalence_c ?? e.constants?.bivalence_c ?? -6,
-    hot_water_kw_per_person: e.hot_water_kw_per_person ?? e.constants?.hot_water_kw_per_person ?? 0.5,
+    bivalence_c: e.bivalence_c ?? val(e.constants?.bivalence_c) ?? -6,
+    bivalence_source: src(e.constants?.bivalence_c),
+    hot_water_kw_per_person: e.hot_water_kw_per_person ?? val(e.constants?.hot_water_kw_per_person) ?? 0.5,
+    hot_water_source: src(e.constants?.hot_water_kw_per_person),
     design_outdoor_c: env.design?.outside_c ?? env.design_outdoor_c ?? -16,
   };
-}
-
-// Multi-unit buildings get no x-ray. Stub until web/lib/building.ts (isMultiUnit) is on origin/web.
-type RoofLike = { floor_area_confidence?: string | null; dwellings_class?: number | null; notes?: string[] | null } | null | undefined;
-export function isMultiUnit(roof: RoofLike): boolean {
-  if (!roof) return false;
-  if ((roof.dwellings_class ?? 0) >= 3) return true;
-  return /average flat size/i.test(roof.floor_area_confidence ?? "") || (roof.notes ?? []).some((n) => /whole-building|average flat size/i.test(n));
 }

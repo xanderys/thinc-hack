@@ -5,7 +5,7 @@
 // One spring (0.5 s, bounce 0) fades it in and out; it never moves anything, so Reduce Motion keeps the same fade.
 import * as THREE from "three";
 import type { Envelope, RoofPlane, V3 } from "./types";
-import { constantsOf, elementsOf, windowShare, type ElementKey } from "@/lib/envelope";
+import { elementsOf, windowShare, type ElementKey } from "@/lib/envelope";
 
 type Label = { key: string; at: THREE.Vector3; html: string; cls?: string };
 export interface XrayHost { walls: () => THREE.Mesh | null; box: THREE.Box3; planes: () => RoofPlane[]; root: THREE.Object3D }
@@ -31,9 +31,10 @@ export class Xray {
     const same = this.env === env && this.g.children.length > 0;
     this.env = env; this.goal = 1;
     if (!same) this.build();
-    const kw = env.design_heat_load_kw, t = constantsOf(env).design_outdoor_c;
+    // The step leads on shares: the element that loses most, as the bar shows it.
+    const top = [...elementsOf(env).list].sort((x, y) => y.share - x.share)[0];
     const b = this.host.box, at = new THREE.Vector3((b.min.x + b.max.x) / 2, b.max.y + 0.8, (b.min.z + b.max.z) / 2);
-    return [{ key: "xray", at, html: `<b>${kw.toLocaleString("en-GB", { maximumFractionDigits: 1 })} kW</b> at ${t} °C<br/><span>estimated from address</span>` }];
+    return top ? [{ key: "xray", at, html: `<b>${top.name} ${Math.round(top.share * 100)} %</b> of the heat loss<br/><span>estimated from address</span>` }] : [];
   }
 
   private clear() {
