@@ -8,7 +8,7 @@ import numpy as np
 
 from ..hourly import sim as S
 
-RULES_VERSION = "rules-1"
+RULES_VERSION = "rules-1-calibrated"
 FITTED = Path(__file__).with_name("constants.json")
 MODULE_KWP = 0.45
 FULL_LOAD_H = 2300

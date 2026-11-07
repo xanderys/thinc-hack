@@ -226,9 +226,8 @@ class Engine:
     # ---------- prediction ----------
     def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain."""
-        if RECOMMENDER["mode"] == "rules":
-            return self.predict_rules(inp, overrides, full, extras)
-        return self.predict_ml(inp, overrides, full, extras)
+        out = self.predict_rules(inp, overrides, full, extras) if RECOMMENDER["mode"] == "rules" else self.predict_ml(inp, overrides, full, extras)
+        return with_heat_bound(inp, out)
 
     def rules_catalogue(self, inst: str, t: float) -> dict:
         cat = self.catalogue[inst]
@@ -244,7 +243,8 @@ class Engine:
             raise ValueError(f"Unknown installer_id {inst}")
         ov = overrides or {}
         t = base_features(inp, inst)["t"]
-        r = planner_rules.recommend(roof_to_sim({k: v for k, v in inp.items() if k != "_estimated"}), self.rules_catalogue(inst, t), ov)
+        rec_in = self.rules_inputs(inp)
+        r = rules_cached(planner_rules.recommend, rec_in, self.rules_catalogue(inst, t), ov)
         design = {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
         nb = self.neighbours(inp, inst)
         comps = {}
@@ -257,17 +257,39 @@ class Engine:
             if rc.get("derivation"):
                 d["derivation"] = rc["derivation"]
             comps[c] = d
-        econ, plaus, opt = self._physics(inp, design, inst, t, full, extras)
-        out = {"design": design, "explanation": list(r.get("explanation") or [])[:5], "components": comps, "plausibility": plaus,
-               "economics": econ, "model_version": getattr(planner_rules, "RULES_VERSION", "rules"), "rules": r.get("rules", [])}
+        phys_inp = {**inp, **(r.get("sim_inputs") or {})}  # the planes and yields rules-2 swept, so economics match its pick
+        econ, plaus, opt = self._physics(phys_inp, design, inst, t, full, extras)
+        out = {"design": design, "explanation": list(r.get("explanation") or [])[:6], "components": comps, "plausibility": plaus,
+               "economics": econ, "model_version": r.get("version") or getattr(planner_rules, "RULES_VERSION", "rules"),
+               "rules": r.get("rules", [])}
+        if r.get("objective"):
+            out["objective"] = r["objective"]
         if opt:
             out["optimum"] = opt
         if full and extras and design.get("pv_kwp"):
             try:
-                out["variants"] = self.variants(inp, design, econ)
+                out["variants"] = self.variants(phys_inp, design, econ)
             except Exception as e:
                 log.warning("variants failed: %s", e)
         return out
+
+    def rules_inputs(self, inp: dict) -> dict:
+        """What the rules read: the inputs, the roof as the simulation sees it, and the built house model when cached."""
+        rec_in = roof_to_sim({k: v for k, v in inp.items() if k != "_estimated"})
+        if "floor area" in (inp.get("_estimated") or []):  # an address estimate is not something the lead said
+            rec_in.pop("house_size_sqm", None)
+        if inp.get("address") and inp.get("roof"):
+            m = __import__("app.roofs", fromlist=["model_json_cached"]).model_json_cached(inp["address"], inp.get("house_built_year"))
+            if m:
+                rec_in["roof_model"] = m
+        return rec_in
+
+    def predict_calibrated(self, inp: dict) -> dict:
+        """rules-1 (fitted constants), the fast comparison column; also ranks /api/ask questions in rules mode."""
+        from .planner_rules import calibrated
+        t = base_features(inp, inp["installer_id"])["t"]
+        r = calibrated.recommend(self.rules_inputs(inp), self.rules_catalogue(inp["installer_id"], t), None)
+        return {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
 
     def predict_ml(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """full=False skips the hourly simulation and optimum (used by the scoreboard, which only needs sizes)."""
@@ -375,8 +397,8 @@ class Engine:
             return []
         if GREYBOX["mode"]:  # lab only: the grey-box path goes through predict()
             return [self.predict(i, full=False)["design"] for i in inps]
-        if RECOMMENDER["mode"] == "rules":
-            return [self.predict_rules(i, full=False)["design"] for i in inps]
+        if RECOMMENDER["mode"] == "rules":  # rules-2 takes about 0.6 s a home; questions are ranked on the calibrated rules
+            return [self.predict_calibrated(i) for i in inps]
         F = [base_features(i, i["installer_id"]) for i in inps]
         X = pd.DataFrame(F)[self.cols]
         n = len(inps)
@@ -642,7 +664,7 @@ class Engine:
             heat = inp.get("heating_demand_kwh") or (inp["heating_cost_per_year_eur"] / 0.12 if inp.get("heating_cost_per_year_eur") else None)
             axiom = "A heat pump runs about 2,300 full-load hours a year, so heat demand over 2,300 hours gives its size."
             env = inp.get("envelope") or {}
-            if not inp.get("heating_demand_kwh") and env.get("design_heat_load_kw"):
+            if not inp.get("heating_demand_kwh") and not inp.get("heating_cost_per_year_eur") and env.get("design_heat_load_kw"):
                 ax = round(float(env["design_heat_load_kw"]), 1)
                 ins = [{"name": "design heat load", "value": ax, "unit": "kW", "source": "envelope (LoD2, IWU)"}]
                 eq = f"design heat load {ax:g} kW from the walls, roof and windows of this house"
@@ -1057,10 +1079,11 @@ class Engine:
         for name, rows_df in sets.items():
             rows = rows_df.to_dict("records")
             e = rows_df
-            preds = {"formula": [], "blackbox": [], "textbook": []}
+            preds = {"formula": [], "calibrated": [], "blackbox": [], "textbook": []}
             for r in rows:
                 inp = row_inputs(r)
                 preds["formula"].append(self.predict_rules(inp, full=False)["design"])
+                preds["calibrated"].append(self.predict_calibrated(inp))
                 preds["blackbox"].append(self.predict_ml(inp, full=False)["design"])
                 preds["textbook"].append(self.baseline(inp))
             block = {}
@@ -1159,6 +1182,36 @@ def variant_note(d, e, d0, e0) -> str:
         if abs(dp) >= 0.1:
             parts.append(f"pays back {abs(dp):.1f} years {'later' if dp > 0 else 'sooner'}")
     return f"{_kit(d)}: " + (", ".join(parts) if parts else "about the same as the planners' design") + "."
+
+
+_RULES_MEMO: dict = {}
+
+
+def rules_cached(fn, inputs, catalogue, overrides):
+    """recommend() takes 0.5 to 0.8 s (a sweep of the home's own physics): memoised per inputs, catalogue and overrides."""
+    import hashlib
+    import json as _j
+    k = hashlib.sha256(_j.dumps([{kk: v for kk, v in inputs.items() if kk != "roof_model"},
+                                 (inputs.get("roof_model") or {}).get("origin_utm32"), catalogue, overrides],
+                                sort_keys=True, default=str).encode()).hexdigest()
+    if k not in _RULES_MEMO:
+        if len(_RULES_MEMO) > 512:
+            _RULES_MEMO.clear()
+        _RULES_MEMO[k] = fn(inputs, catalogue, overrides)
+    return _RULES_MEMO[k]
+
+
+def with_heat_bound(inp: dict, out: dict) -> dict:
+    """The envelope's design heat load is an upper bound (unrenovated IWU U-values on the whole LoD2 volume): when a
+    heat figure from the lead or the bill exists, the heat pump is sized from that and the envelope is carried as a bound."""
+    env = (inp.get("envelope") or {}).get("design_heat_load_kw")
+    if env and (inp.get("heating_demand_kwh") or inp.get("heating_cost_per_year_eur")):
+        hp = out["components"]["heatpump"]
+        hp["heat_load_upper_bound_kw"] = round(float(env), 1)
+        yr = inp.get("house_built_year")
+        hp["heat_load_upper_bound_note"] = (f"up to {env:.0f} kW if the {int(yr)} fabric is unrenovated" if yr
+                                            else f"up to {env:.0f} kW if the fabric is unrenovated")
+    return out
 
 
 def physics_component(msg: str) -> str:

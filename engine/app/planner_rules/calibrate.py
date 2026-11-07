@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from .. import rules as R
-from . import core
+from . import calibrated as core
 from .split import halves
 
 INSTALLERS = ["2a8ba8e2", "23c108b7"]
