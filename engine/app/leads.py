@@ -82,9 +82,17 @@ def _bool(v):
     raise ValueError(f"'{v}' is not yes or no")
 
 
+WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+         "eins": 1, "zwei": 2, "drei": 3, "vier": 4, "fünf": 5, "sechs": 6}
+KNOWN: set = set()  # HomeInputs field names, set by main; unknown keys are dropped, not coerced
+
+
 def _num(v):
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         return float(v)
+    w = str(v).strip().lower()
+    if w in WORDS:
+        return float(WORDS[w])
     t = str(v).lower().replace("kwh", "").replace("eur", "").replace("€", "").replace("km", "").strip()
     t = t.replace(".", "").replace(",", "") if re.fullmatch(r"\d{1,3}([.,]\d{3})+", t) else t.replace(",", ".")
     m = re.search(r"\d+(\.\d+)?", t)
@@ -100,12 +108,22 @@ BOOLS = {"has_ev", "has_wallbox", "has_solar", "has_storage"}
 STRINGS = {"installer_id", "load_profile", "address", "postcode", "preference", "roof_orientation", "offer_date"}
 
 
-def normalise(answers) -> dict:
-    """Answers from a form or a voice agent: a dict, or a list of {field, value}; spoken values are normalised."""
+def normalise(answers, dropped: list | None = None) -> dict:
+    """Answers from a form or a voice agent: a dict, or a list of {field, value}; spoken values are normalised.
+    With `dropped`, a value that cannot be read is skipped and recorded there instead of raising."""
     if isinstance(answers, list):
         answers = {a.get("field"): a.get("value") for a in answers if isinstance(a, dict) and a.get("field")}
     out = {}
     for k, v in (answers or {}).items():
+        if dropped is not None:
+            if KNOWN and k not in KNOWN:
+                dropped.append({"field": k, "value": v, "reason": "not a field the engine uses"})
+                continue
+            try:
+                out.update(normalise({k: v}))
+            except (ValueError, TypeError) as e:
+                dropped.append({"field": k, "value": v, "reason": str(e)})
+            continue
         if v is None:
             out[k] = None
         elif k == "heating_type":
@@ -123,8 +141,9 @@ def normalise(answers) -> dict:
 META = ("customer_name", "installer_name", "heating_age")
 
 
-def map_intake(f: dict) -> tuple[dict, dict]:
-    """Voice intake names to HomeInputs (latest value per field wins); returns (inputs, meta). Nulls are skipped."""
+def map_intake(f: dict, dropped: list | None = None) -> tuple[dict, dict]:
+    """Voice intake names to HomeInputs (latest value per field wins); returns (inputs, meta). Nulls are skipped.
+    With `dropped`, unreadable values are skipped and recorded instead of raising."""
     f = {k: v for k, v in (f or {}).items() if v is not None and v != ""}
     meta = {k: f.pop(k) for k in META if k in f}
     out = {}
@@ -132,16 +151,28 @@ def map_intake(f: dict) -> tuple[dict, dict]:
         ev = str(f.pop("ev")).strip().lower()
         out["has_ev"] = ev in ("now", "planned", "yes", "true")
     if "home_office" in f:
-        ho = _bool(f.pop("home_office"))
-        if ho and float(f.get("num_inhabitants") or 1) <= 1:
-            out["load_profile"] = "HomeOfficeOnePerson"
+        v = f.pop("home_office")
+        try:
+            ho = _bool(v)
+            people = out.get("num_inhabitants") or f.get("num_inhabitants") or 1
+            if ho and _num(people) <= 1:
+                out["load_profile"] = "HomeOfficeOnePerson"
+        except ValueError as e:
+            if dropped is None:
+                raise
+            dropped.append({"field": "home_office", "value": v, "reason": str(e)})
     bill = f.pop("monthly_bill_eur", None)
-    out.update(normalise(f))
+    out.update(normalise(f, dropped))
     if bill is not None and not out.get("annual_demand_kwh"):
-        price = (out.get("electricity_price_ct_kwh") or 32.0) / 100
-        # 90% of the bill is energy, 10% the standing charge (assumption); at the tariff
-        out["annual_demand_kwh"] = round(_num(bill) * 12 * 0.9 / price, -1)
-        meta["annual_demand_from_bill"] = f"EUR {_num(bill):g} a month at {price * 100:.0f} ct/kWh, 10% standing charge"
+        try:
+            price = (out.get("electricity_price_ct_kwh") or 32.0) / 100
+            # 90% of the bill is energy, 10% the standing charge (assumption); at the tariff
+            out["annual_demand_kwh"] = round(_num(bill) * 12 * 0.9 / price, -1)
+            meta["annual_demand_from_bill"] = f"EUR {_num(bill):g} a month at {price * 100:.0f} ct/kWh, 10% standing charge"
+        except ValueError as e:
+            if dropped is None:
+                raise
+            dropped.append({"field": "monthly_bill_eur", "value": bill, "reason": str(e)})
     return out, meta
 
 

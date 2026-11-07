@@ -424,6 +424,9 @@ def inbox(limit: int = 20):
 
 # ---------- v1.9: the engine runs the call ----------
 
+leads.KNOWN.update(HomeInputs.model_fields)
+
+
 class LeadReq(BaseModel):
     customer_name: str = ""
     address_or_postcode: str = ""
@@ -554,13 +557,22 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     eng = engine()
-    try:
-        if req.facts_so_far is not None:
-            ans, meta = leads.map_intake(req.facts_so_far)
-        else:
-            ans, meta = leads.normalise(req.answers or {}), {}
-    except ValueError as e:
-        return err(422, str(e))
+    dropped: list = []  # the call never fails on one bad value: it is skipped and named here
+    if req.facts_so_far is not None:
+        ans, meta = leads.map_intake(req.facts_so_far, dropped)
+    else:
+        ans, meta = leads.normalise(req.answers or {}, dropped), {}
+    for k in [k for k in ans if k not in HomeInputs.model_fields]:
+        dropped.append({"field": k, "value": ans.pop(k), "reason": "not a field the engine uses"})
+    for k in list(ans):  # per-field validation: drop what HomeInputs rejects or check_inputs would refuse
+        try:
+            HomeInputs(**{"installer_id": "2a8ba8e2", k: ans[k]})
+            lo_hi = RANGES.get(k)
+            if lo_hi and ans[k] is not None and not (lo_hi[0] <= ans[k] <= lo_hi[1]):
+                raise ValueError(f"must be between {lo_hi[0]:,} and {lo_hi[1]:,}")
+        except Exception as e:
+            msg = e.errors()[0]["msg"] if hasattr(e, "errors") else str(e)
+            dropped.append({"field": k, "value": ans.pop(k), "reason": msg})
     lead = leads.LEADS.get(req.lead_id) or next((l for l in leads.LEADS.values() if req.lead_id in l.get("aliases", [])), None)
     if not lead:  # upsert: link to the homeowner page's lead by name and place, else start one from what is known
         name = meta.get("customer_name") or ""
@@ -576,14 +588,11 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
             lead["history"].append({"step": 0, "field": None, "answer": ans, "changed": [], "note": "call started", "at": lead["created_at"]})
             leads.save(lead)
             return {"design": lead["draft"]["design"], "draft": lead["draft"], "changed": [], "next_question": lead["next_question"],
-                    "done": lead["next_question"] is None, "step": 0}
+                    "done": lead["next_question"] is None, "step": 0, "dropped": dropped}
     if meta:
         lead.setdefault("meta", {}).update(meta)
     # only fields that are new or changed count as this step's answer
     ans = {k: v for k, v in ans.items() if lead["inputs"].get(k) != v or k not in (lead["inputs"].get("_given") or [])}
-    unknown_fields = [k for k in ans if k not in HomeInputs.model_fields]
-    if unknown_fields:
-        return err(422, f"Unknown field: {', '.join(unknown_fields)}.")
     asked = (lead.get("next_question") or {}).get("field")
     raw = {**lead["inputs"], **ans, "_given": sorted(set(lead["inputs"].get("_given", [])) | set(ans))}
     if ans.get("has_ev") is True and not ans.get("ev_annual_km") and not raw.get("ev_annual_km"):
@@ -618,7 +627,8 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     if field_asked:
         model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
     _full_draft_later(lead["lead_id"], inp)
-    return {"design": draft["design"], "draft": draft, "changed": changed, "next_question": nq, "done": nq is None, "step": step}
+    return {"design": draft["design"], "draft": draft, "changed": changed, "next_question": nq, "done": nq is None, "step": step,
+            "dropped": dropped}
 
 
 def _lead_out(lead: dict) -> dict:
