@@ -78,7 +78,7 @@ export interface Layers {
 export type SourceTag = "lead" | "rina" | "address" | "default";
 export interface Bar { key: "roof" | "heat_loss" | "day" | "charging"; title: string; total: number; unit: string; segments: { name: string; value: number; unit: string; source_tag: SourceTag; citation?: string }[]; sentence: string; sources: string[] }
 // level (v2.7): "fail" is a real failure (red); "reference" is a published guide shown amber when outside; "info" is a tick with no verdict.
-export interface Check { name: string; value: number | string; unit: string; pass: boolean; band: string; level?: string; message?: string }
+export interface Check { name: string; value: number | string; unit: string; pass: boolean; band: string; level?: string; message?: string; inside_band?: boolean; informational?: boolean; class?: string }
 
 // The engine labels points with keys ("knee", "payback") or with words; show words.
 const LABEL: Record<string, string> = { knee: "Recommended", payback: "Best payback", independence: "Most independence", upfront: "Lowest upfront cost", value: "Best 20-year value", npv: "Best 20-year value", expert: "As planners design it", chosen: "Recommended", recommended: "Recommended", best_value: "Best 20-year value", lowest_upfront: "Lowest upfront cost", best_payback: "Best payback", most_independence: "Most independence" };

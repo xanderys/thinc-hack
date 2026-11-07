@@ -110,7 +110,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
   const e = le ? { ...res.economics, ...le, annual: { ...res.economics.annual!, ...(le.annual ?? {}) } } as typeof res.economics : res.economics, a = e.annual;
   const breakEven = layers?.economics?.break_even_year ?? (e as { break_even_year?: number | null }).break_even_year ?? null;
   const d = res.design;
-  const rot = rotLine(findRot(layers, res, layers?.economics));
+  const rot = rotLine(findRot(res.components.pv?.derivation, layers, res));
 
   const head: string[] = [
     bars[1] ? `${n2(bars[1].total)} kWp on ${bars[1].segments.filter((g) => g.unit === "kWp").length} faces` : address ? "Roof being measured" : "No street given, roof assumed standard face",
@@ -119,7 +119,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
     `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh battery` : "No battery",
     [d.wallbox_kw ? `${n1(d.wallbox_kw)} kW wallbox` : "No wallbox", d.heatpump_kw ? `${n1(d.heatpump_kw)} kW heat pump` : "no heat pump"].join(", "),
-    (() => { const c = layers?.checks ?? []; const bad = c.filter(isFail).length; return c.length ? (bad ? `${bad} of ${c.length} checks flag` : `All ${c.length} checks pass`) : "Checks"; })(),
+    (() => { const c = layers?.checks ?? []; const bad = c.filter(isFail).length, out = c.filter(refOut).length; return c.length ? (bad ? `${bad} of ${c.length} checks flag` : out ? "Checks pass; battery above Reonic’s guide" : `All ${c.length} checks pass`) : "Checks"; })(),
     `${eur(e.capex_eur)}${breakEven ? `, break-even in ${breakEven} years` : ""}`,
   ];
 
@@ -295,8 +295,10 @@ const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
 
 // Until the engine sends level, Reonic's battery guide is still a reference, never a red failure.
 const isRef = (c: Check) => c.level === "reference" || (!c.level && /battery per daily/i.test(c.name));
-const isInfo = (c: Check) => c.level === "info";
+const isInfo = (c: Check) => c.level === "info" || !!c.informational;
 const isFail = (c: Check) => !c.pass && !isRef(c) && !isInfo(c);
+// A reference guide is outside when the engine says so; older engines only had pass.
+const refOut = (c: Check) => isRef(c) && (c.inside_band != null ? !c.inside_band : !c.pass);
 
 function Checks({ checks }: { checks: Check[] }) {
   const val = (c: Check) => typeof c.value !== "number" ? String(c.value) : c.unit === "share" ? pc(c.value) : c.unit === "%" ? `${n0(c.value)} %` : `${c.value >= 100 ? n0(c.value) : n2(c.value)}${c.unit ? ` ${c.unit}` : ""}`;
@@ -306,8 +308,8 @@ function Checks({ checks }: { checks: Check[] }) {
     <div className={s.checks}>
       <ul>
         {checks.map((c) => {
-          const tone = isInfo(c) ? "info" : c.pass ? "pass" : isRef(c) ? "ref" : "fail";
-          const pill = { info: "Info", pass: isRef(c) ? "Inside guide" : "Pass", ref: "Above guide", fail: "Flag" }[tone];
+          const tone = isInfo(c) ? "info" : isRef(c) ? (refOut(c) ? "ref" : "pass") : c.pass ? "pass" : "fail";
+          const pill = { info: c.class ? cap(c.class) : "Info", pass: isRef(c) ? "Inside guide" : "Pass", ref: "Above guide", fail: "Flag" }[tone];
           return (
             <li key={c.name} className={tone === "fail" ? s.fail : tone === "ref" ? s.refRow : ""}>
               <span className={s.cn}>{cap(c.name)}</span>
@@ -316,7 +318,7 @@ function Checks({ checks }: { checks: Check[] }) {
               <span className={s.band}>{c.band}</span>
               {(() => {
                 const num = typeof c.value === "number" ? n2(c.value) : String(c.value);
-                const m = c.message ?? (isRef(c) && /battery/i.test(c.name) ? (c.pass ? `${num}, inside the guide` : `Battery ${num} kWh per kWh of daily use: above Reonic's 0.6 guide`) : null);
+                const m = c.message ?? (isRef(c) && /battery/i.test(c.name) ? (!refOut(c) ? `${num}, inside the guide` : `Battery ${num} kWh per kWh of daily use: above Reonic's 0.6 guide`) : null);
                 return m && tone !== "info" && (tone !== "pass" || isRef(c)) ? <p className={tone === "fail" ? s.failS : tone === "ref" ? s.refS : s.passS}>{m}</p> : null;
               })()}
             </li>

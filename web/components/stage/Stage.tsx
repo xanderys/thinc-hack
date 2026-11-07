@@ -11,6 +11,7 @@ import Refine, { type Moved } from "@/components/stage/Refine";
 import TopBar from "@/components/stage/TopBar";
 import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
 import { call } from "@/lib/client";
+import { approveLead } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
 import { buildFacts, DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
 import { COMPONENT_DESIGN_FIELD } from "@/lib/api";
@@ -301,8 +302,12 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!res) return;
     const at = new Date();
     try { sessionStorage.setItem("marquee.approved", JSON.stringify({ inputs: pref === "expert" ? inputs : { ...inputs, preference: pref }, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
-    setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
-    if (leadRef.current) onApproved?.(leadRef.current);
+    const done = () => { setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })); if (leadRef.current) onApproved?.(leadRef.current); };
+    const id = leadRef.current;
+    if (!id) { done(); return; }
+    // v2.5: release the proposal to the homeowner; the variant on screen is the one they sign.
+    const key = (res.variants ?? drafted?.variants ?? []).find((v) => same(v.design, res.design))?.key;
+    approveLead(id, key).then((r) => { if (r.ok) { setErr(null); done(); } else setErr(r.error); });
   }
 
   const onVariant = useCallback((v: Variant) => {

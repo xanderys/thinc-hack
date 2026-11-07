@@ -3,7 +3,11 @@
 type Rot = Record<string, unknown> | null | undefined;
 const f1 = (x: number) => x.toLocaleString("en-GB", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 function pick(r: Record<string, unknown>, re: RegExp): number | null {
-  for (const [k, v] of Object.entries(r)) if (re.test(k) && typeof v === "number" && isFinite(v)) return v;
+  for (const [k, v0] of Object.entries(r)) {
+    // /eval sends planners per installer: { all, <installer>: n }
+    const v = v0 && typeof v0 === "object" ? (v0 as Record<string, unknown>).all : v0;
+    if (re.test(k) && typeof v === "number" && isFinite(v)) return v;
+  }
   return null;
 }
 export function rotLine(r: Rot): string | null {
