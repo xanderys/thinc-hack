@@ -1,4 +1,4 @@
-# Engine API contract (v2.3)
+# Engine API contract (v2.4)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -36,6 +36,7 @@ interface RoofResult {                  // v1.6, from GET /api/roof?address=... 
   segments: { azimuth: number; pitch: number; area_m2: number }[];
   max_panels: number | null; max_kwp: number | null;      // usable_area_m2 / 5.5
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
+  pending?: boolean;                    // v2.4: the LoD2 tile is still downloading; result returns immediately with the standard face; poll again in 3 s
   floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";          // v1.6.1: LoD2 footprint x storeys x 0.8, upper bound
   build_year_class?: string | null; build_year_estimate?: number | null; heating_class?: string | null; // v1.6.1: Zensus 2022 100 m cell; heating_class is the system type (central, district, floor, stoves), never the fuel
   zensus_confidence?: string;                                                                          // "estimated from address (Zensus 2022, 100 m cell)"
