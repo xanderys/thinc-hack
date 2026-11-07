@@ -9,9 +9,12 @@ Draft v1. Figures on slide 4 are provisional until the engine's final eval; slid
 "So we built Marquee. A planner enters a few facts about a home and gets the design an experienced planner would draw: PV, battery, heat pump and wallbox, or none of them, each with the reason. The decisions are coupled, so the model is a chain: PV first, then the battery given that PV, then heat pump, then wallbox. Change one and the rest re-size. Xander will show you."
 
 ## 0:55 to 2:00, slide 3 (live), Xander
-"Here is a home: 4,500 kilowatt hours a year, gas heating, no car. Marquee proposes [read the design on screen] and says why, with the homes like this one it learned from.
-Now the planner types: the family buys an EV next year. The design moves [read what changed], and it tells you what moved and why.
-Last, a home it has never seen: our design next to the one the expert actually sold."
+Four steps, in the order and words of Reonic's demo moment. Read figures off the screen; say none we have not seen live.
+
+1. **A home is described.** "A planner enters a few basic facts about a project: [read the inputs on screen]."
+2. **A complete system appears.** "PV, battery and heat pump as appropriate, with a short explanation of why: [read the design and its reasons]. Here are the homes like this one it learned from."
+3. **The design is refined.** "The planner types: the family is buying an electric car next year. The design adapts: [read what moved and why]."
+4. **It is checked against reality.** "A home the model has never seen: our proposal next to the expert design for the same project. And across many projects, the next slide."
 
 ## 2:00 to 2:30, slide 4, Xander
 "Across every home we held back, our PV size lands within 1 kWp or 15% of the expert 38.5% of the time. That sounds low until you ask how often two planners agree on identical homes: 40.3%. We are at the level of a second planner. The textbook rule gets 14.6%. On the whole design, all four components, we reach 19.1% against a planner ceiling of 22.7%."

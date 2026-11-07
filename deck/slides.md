@@ -31,7 +31,7 @@ footer: Marquee
 
 <p class="label">Live</p>
 
-# The family buys an EV next year.
+# “The family is buying an electric car next year.”
 
 ---
 
