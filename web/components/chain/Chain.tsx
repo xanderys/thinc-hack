@@ -13,6 +13,7 @@ import type { Variant } from "@/components/stage/Plan";
 import House from "@/components/stage/House";
 import Why from "@/components/stage/Why";
 import s from "./chain.module.css";
+import { OfferValue, SiteVisitNote, useCardQualification } from "@/components/qualify/Verdict";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
 
@@ -55,6 +56,7 @@ function useReduce() {
 
 export default function Chain({ res, prev, inputs, leadId, variants, onVariant, canUndo, onUndo, answered, refine, decide, redraft }: Props) {
   const reduce = useReduce();
+  const q = useCardQualification(inputs, res, leadId);   // visit verdict: offer value, confidence, what to confirm on site
   // Draft first: the chain plays once, on the first open of a lead; after that the design is there at once and the
   // chain waits as a collapsed strip under the model.
   const [first] = useState(() => {
@@ -219,6 +221,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
       <div className={s.sim}>
         <p className={s.simH}><Bolt /> Simulation</p>
         <dl className={s.kpis}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}</dd></div>)}</dl>
+        <OfferValue q={q} />
       </div>
       {stage === N && variants.length > 0 && (
         <div className={s.variants}>
@@ -262,6 +265,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
               ))}
             </div>
           )}
+          {stage === N && <SiteVisitNote q={q} />}
           {decide && <div className={s.decide}>{decide}</div>}
         </div>
       )}
@@ -322,6 +326,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
                   ))}
                 </div>
               )}
+              {open && n === N && <SiteVisitNote q={q} />}
               {open && n === N && decide && <div className={s.decide}>{decide}</div>}
               {open && WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation && (
                 <div className={s.whyrow}>

@@ -11,7 +11,7 @@ export interface Qualification {
   verdict: Verdict;
   sentence: string;                       // "Visit: 10.35 kWp fits, payback 10 years, 7 of 9 facts stated."
   facts: { stated: number; total: number; list: { field: FactField | "roof"; source: FactSource }[] };   // roof is listed, never counted
-  expected_offer_eur: number | null;      // draft investment, rounded to 100 EUR; null when nothing is offered
+  expected_offer_eur: number | null;      // draft investment, rounded to 100 EUR; null on Decline
   confidence_line: string;                // "7 of 9 facts stated, roof measured from the address, consumption from the bill"
   confirm_on_site: string[];
 }
@@ -26,8 +26,9 @@ export const MAX_PAYBACK_YEARS = 20;
 type LeadLike = Pick<Lead, "status" | "facts" | "address_or_postcode"> & Partial<Pick<Lead, "history" | "decision">>;
 
 const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
+const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-GB");
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
-export const offerEur = (x: number | null) => x == null ? "Nothing to offer" : `${n0(x)} EUR, estimate`;
+export const offerEur = (x: number | null) => x == null ? "No offer" : `${n0(x)} EUR, estimate`;
 
 const isPostcode = (s: string | undefined | null) => !!s && /^\s*\d{5}\s*$/.test(s);
 // A roof face is usable when it is flat enough to tilt panels on, or not facing north (more than 60 degrees off north).
@@ -76,7 +77,7 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
   ];
 
   const out = (verdict: Verdict, why: string): Qualification => ({
-    verdict, sentence: `${VERDICT_WORD[verdict]}: ${why}`, facts: { stated, total, list }, expected_offer_eur: capex, confidence_line, confirm_on_site,
+    verdict, sentence: `${VERDICT_WORD[verdict]}: ${why}`, facts: { stated, total, list }, expected_offer_eur: verdict === "decline" ? null : capex, confidence_line, confirm_on_site,
   });
 
   // 1. The homeowner said no.
@@ -86,7 +87,8 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
   // 3. The roof cannot carry a system (only when it was really looked up at a street address).
   if (hasStreet && measuredRoof(roof)) {
     if (roof.segments.length > 0 && !roof.segments.some(usableFace)) return out("decline", "north-facing roof only, no usable face.");
-    if (roof.max_kwp != null && roof.max_kwp < MIN_KWP) return out("decline", `the roof fits only ${n2(roof.max_kwp)} kWp, under ${MIN_KWP} kWp.`);
+    // max_kwp already counts only the usable faces (the engine leaves north faces out of usable_area_m2).
+    if (roof.max_kwp != null && roof.max_kwp < MIN_KWP) return out("decline", `the roof fits only ${n1(roof.max_kwp)} kWp, under ${MIN_KWP} kWp.`);
   }
   // 4. One fact would change the design: the roof first, since everything sits on it.
   if (!hasStreet) return out("call_first", "roof not measured, ask the address.");

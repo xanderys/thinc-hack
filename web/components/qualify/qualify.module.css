@@ -7,11 +7,22 @@
 .line { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .sent { font-size: 13.5px; color: var(--ink-2); }
 
-.value { margin: 10px 0 0; padding: 10px 12px; border: 1px solid var(--rule, #e4e4e7); border-radius: 8px; background: #fff; }
+.value { margin: 8px 0 0; padding: 8px 10px; max-width: 360px; border: 1px solid var(--rule, #e4e4e7); border-radius: 8px; background: #fff; }
 .vH { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; color: var(--ink-2); }
-.vH b { font-size: 17px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.vH b { font-size: 15px; white-space: nowrap; color: var(--ink); font-variant-numeric: tabular-nums; }
 .conf { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-2); }
 .est { margin: 4px 0 0; font-size: 12px; color: var(--ink-3); }
 
 .note { margin: 12px 0 10px; font-size: 13px; color: var(--ink-2); line-height: 1.45; }
 .note b { color: var(--ink); font-weight: 600; }
+
+.head { margin: 6px 0 0; }
+.rina { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); }
+.group { margin-top: 22px; }
+.gH { display: flex; align-items: baseline; gap: 8px; margin: 0 0 10px; font-size: 15px; font-weight: 600; color: var(--navy); }
+.count { font-size: 13px; font-weight: 500; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cardValue { font-size: 13px; color: var(--ink-2); }
+:global(.b-card.live) .cardValue { color: rgba(255, 255, 255, 0.85); }
+.addRow :global(.b-card.b-add) { min-height: 64px; flex-direction: row; align-items: center; gap: 10px; }
+.cardWhy { font-size: 12.5px; color: var(--ink-2); line-height: 1.35; }
+:global(.b-card.live) .cardWhy { color: rgba(255, 255, 255, 0.85); }
