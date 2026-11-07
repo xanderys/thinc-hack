@@ -226,7 +226,11 @@ class Engine:
     # ---------- prediction ----------
     def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain."""
-        out = self.predict_rules(inp, overrides, full, extras) if RECOMMENDER["mode"] == "rules" else self.predict_ml(inp, overrides, full, extras)
+        mode = RECOMMENDER["mode"]
+        if mode in ("rules", "calibrated"):
+            out = self.predict_rules(inp, overrides, full, extras, engine=mode)
+        else:
+            out = self.predict_ml(inp, overrides, full, extras)
         return with_heat_bound(inp, out)
 
     def rules_catalogue(self, inst: str, t: float) -> dict:
@@ -235,7 +239,8 @@ class Engine:
                 "heatpump_kw": [float(x) for x in cat["heatpump"]], "inverter_kw": [float(x) for x in rules.INVERTER_SIZES],
                 "wallbox_kw": self.wallbox_default(inst)}
 
-    def predict_rules(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
+    def predict_rules(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True,
+                      engine: str = "rules") -> dict:
         """v2.0: design from app/planner_rules (REONIC PHYSICS), wrapped with the same evidence, physics and variants."""
         from . import planner_rules
         inst = inp["installer_id"]
@@ -244,7 +249,8 @@ class Engine:
         ov = overrides or {}
         t = base_features(inp, inst)["t"]
         rec_in = self.rules_inputs(inp)
-        r = rules_cached(planner_rules.recommend, rec_in, self.rules_catalogue(inst, t), ov)
+        fn = planner_rules.calibrated.recommend if engine == "calibrated" else planner_rules.recommend
+        r = rules_cached(fn, rec_in, self.rules_catalogue(inst, t), ov)
         design = {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
         nb = self.neighbours(inp, inst)
         comps = {}
@@ -260,7 +266,8 @@ class Engine:
         phys_inp = {**inp, **(r.get("sim_inputs") or {})}  # the planes and yields rules-2 swept, so economics match its pick
         econ, plaus, opt = self._physics(phys_inp, design, inst, t, full, extras)
         out = {"design": design, "explanation": list(r.get("explanation") or [])[:6], "components": comps, "plausibility": plaus,
-               "economics": econ, "model_version": r.get("version") or getattr(planner_rules, "RULES_VERSION", "rules"),
+               "economics": econ,
+               "model_version": "rules-1-calibrated" if engine == "calibrated" else (r.get("version") or planner_rules.RULES_VERSION),
                "rules": r.get("rules", [])}
         if r.get("objective"):
             out["objective"] = r["objective"]
@@ -268,9 +275,36 @@ class Engine:
             out["optimum"] = opt
         if full and extras and design.get("pv_kwp"):
             try:
-                out["variants"] = self.variants(phys_inp, design, econ)
+                out["variants"] = (self.variants_physics(inp, design, econ, rec_in, self.rules_catalogue(inst, t))
+                                   if engine == "calibrated" else self.variants(phys_inp, design, econ))
             except Exception as e:
                 log.warning("variants failed: %s", e)
+        return out
+
+    VARIANT_FROM_FRONTIER = (("value", "knee", "Best value"), ("payback", "payback", "Best payback"),
+                             ("independence", "independence", "Most independence"), ("upfront", "upfront", "Lowest upfront cost"))
+
+    def variants_physics(self, inp, design, econ, rec_in, cat) -> list:
+        """Calibrated design first, then rules-2-physics's own frontier points (knee, payback, independence, upfront), each
+        simulated on rules-2's planes so the numbers match its sweep. Preference only reorders."""
+        from . import planner_rules
+        r2 = rules_cached(planner_rules.recommend, rec_in, cat, None)
+        fr = rules_cached(_frontier, rec_in, cat, None)
+        sim_in = {**roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")}), **(r2.get("sim_inputs") or {})}
+        keep = {k: r2["design"].get(k) for k in ("heatpump_kw", "wallbox_kw")}
+        out = [{"key": "expert", "label": self.VARIANT_LABEL["expert"], "design": design, "economics": econ,
+                "note": "The design planners at this installer fit to homes like this one."}]
+        for key, lab, label in self.VARIANT_FROM_FRONTIER:
+            row = next((x for x in fr if x.get("label") == lab), None)
+            if not row:
+                continue
+            d = {"pv_kwp": row["kwp"] or None, "inverter_kw": rules.inverter_kw(row["kwp"]) if row["kwp"] else None,
+                 "battery_kwh": row["kwh"] or None, **keep}
+            e = hourly.simulate(sim_in, d).economics
+            out.append({"key": key, "label": label, "design": d, "economics": e, "note": variant_note(d, e, design, econ)})
+        pref = inp.get("preference")
+        if pref in ("independence", "payback", "upfront"):
+            out.sort(key=lambda v: v["key"] != pref)
         return out
 
     def rules_inputs(self, inp: dict) -> dict:
@@ -397,7 +431,7 @@ class Engine:
             return []
         if GREYBOX["mode"]:  # lab only: the grey-box path goes through predict()
             return [self.predict(i, full=False)["design"] for i in inps]
-        if RECOMMENDER["mode"] == "rules":  # rules-2 takes about 0.6 s a home; questions are ranked on the calibrated rules
+        if RECOMMENDER["mode"] in ("rules", "calibrated"):  # questions are ranked on the calibrated rules (under 1 ms a home)
             return [self.predict_calibrated(i) for i in inps]
         F = [base_features(i, i["installer_id"]) for i in inps]
         X = pd.DataFrame(F)[self.cols]
@@ -1187,11 +1221,17 @@ def variant_note(d, e, d0, e0) -> str:
 _RULES_MEMO: dict = {}
 
 
+def _frontier(inputs, catalogue, overrides):
+    from .planner_rules import frontier
+    return frontier(inputs, None, catalogue, overrides)
+
+
 def rules_cached(fn, inputs, catalogue, overrides):
     """recommend() takes 0.5 to 0.8 s (a sweep of the home's own physics): memoised per inputs, catalogue and overrides."""
     import hashlib
     import json as _j
-    k = hashlib.sha256(_j.dumps([{kk: v for kk, v in inputs.items() if kk != "roof_model"},
+    k = hashlib.sha256(_j.dumps([getattr(fn, "__module__", ""), getattr(fn, "__qualname__", repr(fn)),
+                                 {kk: v for kk, v in inputs.items() if kk != "roof_model"},
                                  (inputs.get("roof_model") or {}).get("origin_utm32"), catalogue, overrides],
                                 sort_keys=True, default=str).encode()).hexdigest()
     if k not in _RULES_MEMO:

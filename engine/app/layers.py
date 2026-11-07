@@ -83,7 +83,9 @@ def explain(eng, inp: dict, design: dict | None) -> dict:
             planes = {**json.loads(open(m["planes_json_path"]).read()), "glb_url": roofs.model_url(inp["address"])}
         except Exception as ex:
             planes = {"error": str(ex)}
-    obj = (resp or {}).get("objective") or {"name": "rules-2-physics", "sentence": "", "sources": []}
+    obj = (resp or {}).get("objective") or {"name": (resp or {}).get("model_version") or "rules-2-physics",
+                                            "sentence": "The design is the calibrated planner rules; the frontier is the home's own physics.",
+                                            "sources": []}
     out = {"planes": planes, "day": {"date": dy.get("date"), "hours": dy.get("hours")}, "night": dy.get("night"),
            "frontier": fr, "chosen": design, "objective": obj, "sources": P.sources()}
     _CACHE[k] = out
