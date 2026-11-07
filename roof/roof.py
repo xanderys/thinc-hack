@@ -57,6 +57,8 @@ class RoofResult:
     max_panels: int | None = None
     confidence: str = "estimate"   # measured | footprint | estimate
     storeys: int | None = None
+    dwellings_class: str | None = None         # Zensus: dominant dwellings-per-building class in the cell
+    avg_flat_m2: float | None = None           # Zensus: average flat size in the cell
     floor_area_m2: float | None = None
     floor_area_confidence: str | None = None   # "estimate" when derived from the footprint and height
     build_year_class: str | None = None        # Zensus 2022 100 m cell, modal class e.g. "1979 to 1990"
@@ -321,7 +323,8 @@ def _tile_index(e: int, n: int) -> list[dict]:
     return buildings
 
 
-FLOOR_NET = 0.8   # walls and stairs
+FLOOR_NET = 0.72   # net-to-gross: walls, stairs, unheated space
+MULTI_UNIT_M2 = 350   # footprint x storeys above this is not a single-family home
 STOREY_M = 3.0
 
 
@@ -373,8 +376,15 @@ def _add_zensus(res: RoofResult) -> None:
     import zensus
     z = zensus.lookup(res.lat, res.lon) if res.lat is not None else None
     if z:
+        dmin = z.pop("dwellings_min", None)   # None = dwellings class unknown
         for k, v in z.items():
             setattr(res, k, v)
+        gross = (res.footprint_m2 or 0) * (res.storeys or 0)
+        if res.floor_area_m2 and z.get("avg_flat_m2") and ((dmin >= 3) if dmin is not None else gross > MULTI_UNIT_M2):
+            res.notes.append(f"multi-unit building ({res.dwellings_class or 'footprint x storeys ' + str(round(gross)) + ' m2'}): "
+                             f"floor area is the cell's average flat size, whole building was {res.floor_area_m2} m2")
+            res.floor_area_m2 = z["avg_flat_m2"]
+            res.floor_area_confidence = "estimated from address (Zensus average flat size)"
     else:
         res.notes.append("Zensus 100 m cell: not available (run `python zensus.py build`, or address outside Munich region)")
 
