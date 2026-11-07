@@ -446,7 +446,7 @@ export class SpatialScene {
       const C = pr(at), E = pr([at[0] + r, at[1]]);
       out.push(`<circle class="pl-clear" cx="${f(C.x)}" cy="${f(C.y)}" r="${f(Math.hypot(E.x - C.x, E.y - C.y))}"/>`);
     });
-    const placed: { x: number; y: number }[] = [];
+    const placed: { x0: number; x1: number; y: number }[] = [];
     const cxAll = pts.length ? pts.reduce((a, q) => a + q[0], 0) / pts.length : 0, cyAll = pts.length ? pts.reduce((a, q) => a + q[1], 0) / pts.length : 0;
     [...(plan.equipment ?? []), ...(plan.markers ?? [])].forEach((m) => {
       const at = p2(m.at ?? m.position ?? (m.x != null && m.y != null ? [m.x, m.y] : null));
@@ -457,10 +457,12 @@ export class SpatialScene {
       // Labels only on the drawing (notes go in the caption); markers close together stack their labels.
       // Markers on the east half label to the left, so labels stay over the house and off the dimension lines.
       const C = pr([cxAll, cyAll]), left = P.x > C.x, lx = left ? P.x - 9 : P.x + 9;
+      const full = m.label ?? m.kind ?? "", text = this.host.clientWidth < 520 ? full.split(" ").slice(0, 2).join(" ") : full, w = text.length * 6.6 + 4;
+      const x0 = left ? lx - w : lx, x1 = left ? lx : lx + w;
       let ly = P.y + 4;
-      while (placed.some((q) => Math.abs(q.y - ly) < 14 && Math.abs(q.x - lx) < 90)) ly += 14;
-      placed.push({ x: lx, y: ly });
-      out.push(`<text class="pl-label" x="${f(lx)}" y="${f(ly)}" text-anchor="${left ? "end" : "start"}">${esc(m.label ?? m.kind ?? "")}</text>`);
+      while (placed.some((q) => Math.abs(q.y - ly) < 14 && q.x0 < x1 && x0 < q.x1)) ly += 14;
+      placed.push({ x0, x1, y: ly });
+      out.push(`<text class="pl-label" x="${f(lx)}" y="${f(ly)}" text-anchor="${left ? "end" : "start"}">${esc(text)}</text>`);
     });
     const html = out.join("");
     if (g.innerHTML !== html) g.innerHTML = html;
