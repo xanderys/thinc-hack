@@ -16,7 +16,7 @@ const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 type Card = { id: string; name: string; place: string; status: LeadT["status"]; updated: string; design?: Design; line: string; created?: string; decision?: LeadRow["decision"] };
 type LiveRow = { lead_id?: string | null; status: string; started_at: number | null; customer_name?: string | null; address_or_postcode?: string | null };
 
-const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "First design ready", approved: "Sent to homeowner", signed: "Signed", declined: "Declined", question: "Question" };
+const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "Draft", approved: "Approved", signed: "Signed", declined: "Declined", question: "Question" };
 const DECIDED = new Set(["signed", "declined", "question"]);
 const hm = (iso?: string | null) => iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
 // Enquiry to decision, in the largest unit that reads well.
@@ -46,11 +46,11 @@ function transition(fn: () => void) {
 function seedOf(l: LeadT): Seed {
   let stored: { read: ReadResponse; text: string } | null = null;
   try { stored = JSON.parse(sessionStorage.getItem(`marquee.read.${l.lead_id}`) ?? "null"); } catch { /* storage blocked */ }
-  if (stored) return { leadId: l.lead_id, read: stored.read, text: stored.text };
+  if (stored) return { leadId: l.lead_id, read: stored.read, text: stored.text, draft: l.draft };
   const place = l.address_or_postcode, pc = /^\d{5}$/.test(place.trim()) ? place.trim() : undefined;
   const inputs = { ...l.facts, ...(pc ? {} : { address: l.facts.address ?? place }) };
   const unknown = l.status === "draft" && l.next_question ? [l.next_question.field as keyof LeadT["facts"]] : [];
-  return { leadId: l.lead_id, read: { inputs, found: [], unknown, postcode: pc, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
+  return { leadId: l.lead_id, draft: l.draft, read: { inputs, found: [], unknown, postcode: pc, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
 }
 
 export default function Board({ openId: initial }: { openId?: string }) {
@@ -178,7 +178,11 @@ export default function Board({ openId: initial }: { openId?: string }) {
         <button type="button" className="b-close" onClick={close} aria-label="Close, back to the board"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 3l12 12M15 3L3 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></button>
         <div>
           <h1>{openCard?.name ?? seed?.read.inputs.address ?? "House"}</h1>
-          <p>{[openCard?.place, calling ? STATUS.in_call : openCard && (DECIDED.has(openCard.status) ? `${STATUS[openCard.status]} ${hm(openCard.decision?.decided_at)}` : approved[openCard.id] ? STATUS.approved : STATUS[openCard.status])].filter(Boolean).join(" · ")}</p>
+          <p>{openCard?.place}{(() => {
+            if (!openCard && !calling) return null;
+            const st = calling ? "in_call" : openCard && (DECIDED.has(openCard.status) || openCard.status === "approved") ? openCard.status : openCard && approved[openCard.id] ? "approved" : openCard?.status ?? "draft";
+            return <span className={`b-st b-chip ${st}`}>{STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${hm(openCard.decision?.decided_at)}` : ""}</span>;
+          })()}</p>
         </div>
         <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
       </div>

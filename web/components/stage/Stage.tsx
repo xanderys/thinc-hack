@@ -23,7 +23,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const COMPONENT_FIELD_SET: Record<string, true> = { pv_kwp: true, inverter_kw: true, battery_kwh: true, heatpump_kw: true, wallbox_kw: true };
 
 // A house opened from the board: the lead's id (refinements write back to it) and what was read.
-export type Seed = { leadId: string; read: ReadResponse; text?: string };
+export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null };   // draft: shown at once, before the first design call returns
 // While Rina's call runs: the lead's facts so far, the step count, what the last answer changed and what she is asking.
 export type Live = { step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null };
 
@@ -113,7 +113,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!seed) return;
     if (seed.read.inputs.installer_id) setInstaller(seed.read.inputs.installer_id as InstallerId);
     setLead(seed.text ?? "");
-    begin(seed.read, seed.leadId);
+    begin(seed.read, seed.leadId, seed.draft ?? null);
   }, [seed?.leadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Each answer from the call: the facts move, the design reruns, and what moved carries the engine's why.
@@ -126,10 +126,10 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts } });
   }, [live?.step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function begin(data: ReadResponse, leadId?: string) {
+  async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
     const r = { data };
-    setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(null); setPrev(null); last.current = null;
+    setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(draft); setPrev(null); last.current = draft;
     setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
     setRead(r.data); setRoof(null);
     const where = r.data.inputs.address ? `address=${encodeURIComponent(r.data.inputs.address)}` : r.data.postcode ? `postcode=${r.data.postcode}` : null;
@@ -327,7 +327,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
       {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
-      {res && <Chain res={res} prev={prev} inputs={inputs} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={history.length > 0} onUndo={onUndo} answered={answer != null}
+      {res && <Chain res={res} prev={prev} inputs={inputs} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={history.length > 0} onUndo={onUndo} answered={answer != null} redraft={moved}
         decide={<Decide pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />}
         refine={<Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
           moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} bare />} />}

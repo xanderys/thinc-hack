@@ -8,7 +8,7 @@ import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
 import { INSTALLER_NAME } from "@/lib/api";
 import type { Layers, Bar, Check, RoofModel } from "@/components/spatial/types";
 import { findRot, rotLine } from "@/lib/rot";
-import type { StageView } from "@/components/spatial/camera";
+import { POSES, type StageView } from "@/components/spatial/camera";
 import type { Variant } from "@/components/stage/Plan";
 import House from "@/components/stage/House";
 import Why from "@/components/stage/Why";
@@ -37,6 +37,7 @@ const SEG_COLOUR: Record<string, string> = {
 type Props = {
   res: DesignResponse; prev: DesignResponse | null; inputs: HomeInputs; leadId?: string | null;
   variants: Variant[]; onVariant: (v: Variant) => void; canUndo: boolean; onUndo: () => void; decide?: ReactNode;
+  redraft?: unknown;   // changes on every refinement (sentence, hand change, call step); a new design without one is not a redraft
   answered: boolean; refine: ReactNode;
 };
 
@@ -46,16 +47,29 @@ function useReduce() {
   return r;
 }
 
-export default function Chain({ res, prev, inputs, leadId, variants, onVariant, canUndo, onUndo, answered, refine, decide }: Props) {
+export default function Chain({ res, prev, inputs, leadId, variants, onVariant, canUndo, onUndo, answered, refine, decide, redraft }: Props) {
   const reduce = useReduce();
-  const [stage, setStage] = useState(1);
-  const [auto, setAuto] = useState(true);
+  // Draft first: the chain plays once, on the first open of a lead; after that the design is there at once and the
+  // chain waits as a collapsed strip under the model.
+  const [first] = useState(() => {
+    if (!leadId) return true;
+    try { return !localStorage.getItem(`marquee.chain.seen.${leadId}`); } catch { return true; }
+  });
+  useEffect(() => { if (leadId) try { localStorage.setItem(`marquee.chain.seen.${leadId}`, "1"); } catch { /* storage blocked: the chain plays again next time */ } }, [leadId]);
+  const [expanded, setExpanded] = useState(first);
+  const [stage, setStage] = useState(first ? 1 : 8);
+  const [auto, setAuto] = useState(first);
+  const [updated, setUpdated] = useState<number | null>(null);
+  const [, tick] = useState(0);
+  useEffect(() => { if (!updated) return; const t = setInterval(() => tick((x) => x + 1), 30000); return () => clearInterval(t); }, [updated]);
   const [layers, setLayers] = useState<Layers | null>(null);
   const [moved, setMoved] = useState<Set<number>>(new Set());
   const [spatial, setSpatial] = useState<boolean | null>(null);
   const [heatmap, setHeatmap] = useState(false);
   const [why, setWhy] = useState<{ k: ComponentKey; level: number } | null>(null);
   const lastLayers = useRef<Layers | null>(null);
+  const consumed = useRef<unknown>(redraft);
+  const redraftRef = useRef<unknown>(redraft); redraftRef.current = redraft;
   const rootRef = useRef<HTMLDivElement>(null);
   // One screen on desktop: the chain takes the height left under the top bar.
   useLayoutEffect(() => {
@@ -106,15 +120,20 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
       if (d0.wallbox_kw !== d1.wallbox_kw || d0.heatpump_kw !== d1.heatpump_kw) m.add(6);
     }
     if (JSON.stringify(was.ev ?? null) !== JSON.stringify(l.ev ?? null)) { m.add(2); m.add(3); }
-    if (!m.size) return;
+    if (!m.size || redraftRef.current === consumed.current) return;
+    consumed.current = redraftRef.current;
+    // A refinement redrafts in place: the changed layers light up and the camera goes to the first; no replay.
     setMoved(m);
     setStage(Math.min(...m));
-    setAuto(true);
+    setAuto(false);
+    setUpdated(Date.now());
   }
 
   const model: RoofModel | null = layers ? (Array.isArray(layers.planes) ? null : layers.planes) : null;
   const hasEnv = !!model?.envelope?.faces?.length, hasPlan = !!model?.plan?.outline?.length;
-  const layer = heatmap ? 2 : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, hasPlan ? 8 : 3, hasPlan ? 8 : 3][stage - 1];
+  // The planner's pick on the model (3D or Photo over the plan) holds until the stage changes.
+  const [pick, setPick] = useState<{ stage: number; layer: number } | null>(null);
+  const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, hasPlan ? 8 : 3, hasPlan ? 8 : 3][stage - 1];
   const bars = useMemo(() => Object.fromEntries((layers?.bars ?? []).map((b) => [BAR_AT[b.key], b])) as Record<number, Bar>, [layers]);
   // The four numbers come from the same run as the bars and checks when it is in; the design's own until then.
   const le = layers?.economics;
@@ -142,6 +161,8 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
     { k: "Break-even", v: breakEven == null ? "over 20 years" : `${breakEven} years` },
   ];
 
+  const ago = updated ? Math.round((Date.now() - updated) / 60000) : null;
+  const stamp = ago == null ? "Draft" : ago < 1 ? "Draft, updated just now" : `Draft, updated ${ago} min ago`;
   const go = (n: number) => { setAuto(false); setStage(n); setWhy(null); };
 
   const tools = ({ view: v, setView, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
@@ -185,8 +206,36 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
   );
 
   return (
-    <div className={s.root} ref={rootRef}>
-      <ol className={s.rail} aria-label="How the design was reached">
+    <div className={`${s.root} ${expanded ? "" : s.isCollapsed}`} ref={rootRef}>
+      {!expanded && (
+        <div className={s.collapsed}>
+          <div className={s.scrub} role="group" aria-label="How the design was reached">
+            {TITLES.map((t, i) => (
+              <button key={t} type="button" aria-pressed={stage === i + 1} className={moved.has(i + 1) ? s.hot : undefined} onClick={() => go(i + 1)}>
+                <span className={s.num}>{i + 1}</span>{t}
+              </button>
+            ))}
+          </div>
+          <div className={s.stampRow}>
+            <span className={s.draft}>{stamp}</span>
+            <button type="button" className={s.showR} onClick={() => setExpanded(true)}>Show reasoning</button>
+          </div>
+          {stage === 8 && variants.length > 0 && (
+            <div className={s.varList}>
+              {variants.map((v) => (
+                <div key={v.name} className={s.vrow}>
+                  <div><b>{v.name}</b><Chips d={v.design} /></div>
+                  <div className={s.vprice}>{v.e ? eur(v.e.capex_eur) : ""}</div>
+                  {v.current ? <span className={s.vsel}>Selected</span> : <button type="button" className={s.vbtn} onClick={() => onVariant(v)} disabled={!v.overrides}>Select</button>}
+                </div>
+              ))}
+            </div>
+          )}
+          {decide && <div className={s.decide}>{decide}</div>}
+        </div>
+      )}
+      {expanded && <ol className={s.rail} aria-label="How the design was reached">
+        <li className={s.stampRow}><span className={s.draft}>{stamp}</span>{!auto || stage >= 8 ? <button type="button" className={s.showR} onClick={() => setExpanded(false)}>Hide reasoning</button> : null}</li>
         {TITLES.map((t, i) => {
           const n = i + 1, open = n === stage, built = n <= stage || !auto;
           const bar = bars[n];
@@ -227,11 +276,11 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
             </li>
           );
         })}
-      </ol>
+      </ol>}
 
       <div className={s.hero}>
         {address && spatial !== false ? (
-          <SpatialDemo inputs={inputs} design={d} response={res} address={address} layer={layer} view={heatmap ? undefined : view} bare leadId={leadId ?? undefined}
+          <SpatialDemo inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatmap ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools}>
             {overlays}
           </SpatialDemo>
@@ -245,7 +294,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
       </div>
 
       <div className={s.say}>{refine}</div>
-      {prev && JSON.stringify(prev.design) !== JSON.stringify(res.design) && <span className={s.srOnly} aria-live="polite">The design changed; the chain re-ran.</span>}
+      {prev && JSON.stringify(prev.design) !== JSON.stringify(res.design) && <span className={s.srOnly} aria-live="polite">Draft updated.</span>}
     </div>
   );
 }

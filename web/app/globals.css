@@ -712,3 +712,10 @@ input, select, textarea { border-radius: 8px; }
 .b-head-photo { width: 132px; height: 88px; border-radius: 8px; flex: none; margin-left: auto; }
 @media (max-width: 640px) { .b-house { height: 96px; } .b-head-photo { width: 96px; height: 64px; } }
 @media (prefers-reduced-motion: reduce) { .h-photo { transition: none; } }
+/* The lead's state as one chip on the board card and the open card: Draft, Approved, Signed. */
+.b-st { border-radius: 999px; padding: 2px 9px; background: var(--sheet-2); color: var(--ink-2); font-weight: 600; font-size: 12px; }
+.b-st.draft, .b-st.done { background: #fff7e6; color: #8a5a00; }
+.b-st.approved { background: #e8ebfd; color: var(--accent); }
+.b-st.signed { background: #e3f5e9; color: #1b7a39; }
+.b-card.live .b-st { background: transparent; padding: 0; }
+.b-open-h p .b-chip { margin-left: 8px; vertical-align: 1px; }
