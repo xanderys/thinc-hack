@@ -240,12 +240,18 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const shade = layers?.checks?.find((c) => /shad/i.test(c.name));
   const ratio = d.battery_kwh && d.pv_kwp ? d.battery_kwh / d.pv_kwp : null;
   // Level two of each step card: one plain sentence why. Research (similar designs, sources, rules) lives behind Why.
+  const plain = (t?: string | null) => {
+    const f = t?.split(/(?<=\.)\s/)[0]?.trim();
+    return f && f.length <= 150 && !/installer|signed|similar|tolerance|source|rule of thumb/i.test(f) ? f : null;
+  };
+  const faces = bars[1] ? bars[1].segments.filter((g) => g.unit === "kWp").length : 0;
   const line2: Record<number, string | null> = {
-    1: bars[1]?.sentence ?? (layers?.ev ? "Sized for today's use plus the car." : "Sized for today's use."),
-    2: d.battery_kwh ? bars[2]?.sentence ?? null : "No battery in this design.",
-    3: d.wallbox_kw ? bars[3]?.sentence ?? null : inputs.has_ev ? "No wallbox in this design." : "No electric car, so no wallbox.",
+    1: a ? `About ${n0(a.pv_yield_kwh)} kWh a year${faces ? ` from ${faces} face${faces === 1 ? "" : "s"}` : ""}, for a home using ${n0((inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0))} kWh${layers?.ev ? " including the car" : ""}.` : null,
+    2: d.battery_kwh ? plain(bars[2]?.sentence) ?? "Carries the midday surplus into the evening." : "No battery in this design.",
+    3: d.wallbox_kw ? plain(bars[3]?.sentence) ?? `Charges the car at home, ${n0(layers?.ev?.annual_kwh ?? 0)} kWh a year.` : inputs.has_ev ? "No wallbox in this design." : "No electric car, so no wallbox.",
     4: d.heatpump_kw ? "Sized from the heating bill." : "Not asked for.",
   };
+
 
   const view = VIEWS[stage - 1];
   const kpis = [
@@ -445,13 +451,13 @@ function BarView({ bar, bare }: { bar: Bar; bare?: boolean }) {
         <>
           <div className={s.track}>{segs.map((g, i) => <span key={g.name} title={g.citation} style={{ flex: g.value / sum, background: SEG_COLOUR[g.name] ?? PALETTE[i % PALETTE.length] }} />)}</div>
           <ul className={s.legend}>
-            {segs.map((g, i) => <li key={g.name} title={g.citation}><i style={{ background: SEG_COLOUR[g.name] ?? PALETTE[i % PALETTE.length] }} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b><em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em></li>)}
-            {extra.map((g) => <li key={g.name} title={g.citation}><i className={s.noDot} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b><em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em></li>)}
+            {segs.map((g, i) => <li key={g.name} title={g.citation}><i style={{ background: SEG_COLOUR[g.name] ?? PALETTE[i % PALETTE.length] }} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
+            {extra.map((g) => <li key={g.name} title={g.citation}><i className={s.noDot} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
           </ul>
         </>
       ) : (
         <ul className={s.steps}>
-          {bar.segments.map((g) => <li key={g.name} title={g.citation}><span>{cap(g.name)}</span><b>{fmt(g.value, g.unit)}</b><em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em></li>)}
+          {bar.segments.map((g) => <li key={g.name} title={g.citation}><span>{cap(g.name)}</span><b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
         </ul>
       )}
       {!bare && <p className={s.barS}>{bar.sentence}</p>}
