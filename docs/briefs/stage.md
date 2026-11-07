@@ -62,8 +62,8 @@ Single column, moments stacked; design strip 2x2; proof tabs become one details 
 To be appended when the three research agents return; feeds copy, Q&A and the deck, not the build order.
 
 ## Canonical hero home (all surfaces use these exact inputs; live engine outputs on 7 Nov 15:50)
-Inputs: installer 2a8ba8e2, 5,000 kWh a year, FamilyOfFour, 4 inhabitants, 140 m2, built 1985, gas heating costing about 2,400 EUR a year, no EV, no wallbox, no solar, no storage, 37 ct/kWh. The hero lead email states all of these except the heating; the question asks for heating, the answer is gas.
+Inputs: installer 2a8ba8e2, 5,000 kWh a year, FamilyOfFour, 4 inhabitants, 140 m2, built 1985, gas heating costing about 2,400 EUR a year, no EV, no wallbox, no solar, no storage, 37 ct/kWh. The hero lead email states all of these, including gas heating and "no electric car yet", except the annual electricity use; the one question asks for annual use (engine options about 3,000, 5,000, 6,500 kWh), the answer is 5,000. The web passes `unknown` fields to /api/ask so stated facts are never asked.
 - Base design: 7.65 kWp, 6 kW inverter, 10 kWh battery, no heat pump, no wallbox. Capex 14,150 EUR, saves 1,330 a year, payback 10.6 years, autarky 75%.
 - After "The family buys an EV next year" (15,000 km): 10.35 kWp, 8 kW inverter, 10 kWh, 11 kW wallbox.
-- After "and replace the gas boiler with a heat pump": heat pump 10.5 kW added; all four present (used by the video x-ray).
+- After "and replace the gas boiler with a heat pump": heat pump 10.5 kW added; all four present (used by the video x-ray). With the heat pump: 29,630 EUR, saves 1,900 a year, payback 15.6 years (30% subsidy and a 10,000 EUR boiler replacement avoided, stated as assumptions).
 Reality section uses a real held-out project (pick from /api/inbox; first row is a PV and battery hit).
