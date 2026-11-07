@@ -27,6 +27,11 @@ def _key(inp, design):
     return hashlib.sha256(json.dumps([clean, design], sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
+def _cf(sim_in, design, econ):
+    from . import cashflow
+    return cashflow.add(sim_in, design, econ)
+
+
 def _day(sim_in, design) -> dict:
     res = hourly.simulate(sim_in, design)
     h = res.hourly
@@ -67,7 +72,7 @@ def _day(sim_in, design) -> dict:
     evening = sum(x["load_kw"] for x in dark if x["h"] >= 12)  # after sunset to midnight
     overnight = sum(x["load_kw"] for x in dark if x["h"] < 12)  # midnight to sunrise
     return {"date": f"{day.strftime('%d %B')} (a typical-year weekday: PV at the 70th percentile of April and May, the home's use at its median)", "hours": hours}, {"evening_kwh": round(evening, 2), "night_kwh": round(overnight, 2), "dark_kwh": round(evening + overnight, 2),
-                                               "night_hours": len(dark)}, res.economics
+                                               "night_hours": len(dark)}, _cf(sim_in, design, res.economics)
 
 
 EV_SOURCES = [
@@ -362,7 +367,8 @@ def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
     inv = d.get("inverter_kw")
     c = out.get("consistency") or {}
     checks = [{"name": "Payback", "value": pb, "unit": "years", "pass": bool(pb and 5 <= pb <= 15), "band": "5 to 15 years"},
-              {"name": "Autarky", "value": aut, "unit": "share", "pass": bool(aut is not None and 0.3 <= aut <= 0.9), "band": "30 to 90%"},
+              {"name": "Autarky", "value": aut, "unit": "share", "pass": True, "level": "info",
+               "inside_band": bool(aut is not None and 0.3 <= aut <= 0.9), "band": "30 to 90%"},
               {"name": "DC/AC ratio", "value": round(pv / inv, 2) if pv and inv else None, "unit": "", "pass": bool(pv and inv and 1.0 <= pv / inv <= 1.35),
                "band": "1.1 to 1.3 usual"},
               {"name": "Roof fit", "value": c.get("modules_on_roof"), "unit": "modules",
@@ -391,14 +397,44 @@ def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
         pass
     except Exception as e:
         log.warning("planner_rules.bars failed, engine bars used: %s", e)
+    # Reonic's published orientation factors and shading classes, informational ticks on the laid-out planes
+    tot = sum(len(p.get("chosen_panels") or []) for p in planes if p.get("is_target"))
+    if tot:
+        def ofac(az):
+            if az is None:
+                return 0.95  # flat roof on south racks
+            a = az % 360
+            return 0.99 if 157.5 <= a <= 202.5 else 0.935 if 112.5 <= a < 157.5 or 202.5 < a <= 247.5 else 0.81 if 67.5 <= a < 112.5 else 0.79 if 247.5 < a <= 292.5 else 0.6
+        of = sum(len(p.get("chosen_panels") or []) * ofac(p.get("azimuth")) for p in planes if p.get("is_target")) / tot
+        sh = sum(len(p.get("chosen_panels") or []) * float(p.get("shade_loss_share") or 0) for p in planes if p.get("is_target")) / tot
+        cls = "excellent" if sh < 0.05 else "typical" if sh <= 0.10 else "significant"
+        checks.append({"name": "Orientation factor", "value": round(of, 3), "unit": "share", "pass": True, "informational": True, "level": "info",
+                       "band": "Reonic: south 98 to 100%, south-east or south-west 93 to 94%, east 81%, west 79%"})
+        checks.append({"name": "Shading", "value": round(sh, 3), "unit": "share", "pass": True, "informational": True, "level": "info",
+                       "class": cls, "band": "Reonic: under 5% excellent, 5 to 10% typical, over 10% significant"})
     try:  # Reonic's own conventions from planner_rules: battery 0.2 to 0.6 kWh per kWh of daily use, DC/AC gauge, break-even
         from .planner_rules.bars import checks as physics_checks
         extra = physics_checks({k: v for k, v in inp.items() if not k.startswith("_")}, d, econ) or []
         if any("dc" in (c.get("name") or "").lower() for c in extra):
             checks = [c for c in checks if c["name"] != "DC/AC ratio"]  # one DC/AC tick, Reonic's gauge
+        for c in extra:  # Reonic's battery guide is a reference line, never a fail: most signed designs sit above it
+            if "battery" in (c.get("name") or "").lower():
+                v = c.get("value")
+                inside = v is not None and 0.2 <= v <= 0.6
+                c.update(level="reference", pass_=inside, **{"pass": True})
+                c["message"] = (f"Battery {v:.2f} kWh per kWh of daily use: inside Reonic's 0.2 to 0.6 guide." if inside else
+                                f"Battery {v:.2f} kWh per kWh of daily use: above Reonic's 0.6 guide, like 63% of your planners' signed designs.")
+                c["inside_band"] = c.pop("pass_")
+            elif "dc" in (c.get("name") or "").lower():
+                c["level"] = "ok" if c.get("pass") else "fail"
+            else:
+                c.setdefault("level", "info")
+                c["pass"] = True if c["level"] == "info" else c.get("pass")
         checks = checks + list(extra)
     except ImportError:
         pass
     except Exception as e:
         log.warning("planner_rules.bars.checks failed: %s", e)
+    for c in checks:
+        c.setdefault("level", "ok" if c.get("pass") else "fail")
     return {"bars": res, "checks": checks}

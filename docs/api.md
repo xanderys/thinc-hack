@@ -1,4 +1,4 @@
-# Engine API contract (v2.6)
+# Engine API contract (v2.7)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -178,6 +178,12 @@ State lives in the engine (in-memory plus JSON under `engine/.cache/leads/`). Th
 
 ## v2.6: working-shown bars
 - `POST /api/explain/layers` adds `bars: { key: "roof" | "heat_loss" | "day" | "charging"; title; total; unit; segments: { name; value; unit; source_tag: "lead" | "rina" | "address" | "default"; citation?: string }[]; sentence: string; sources: string[] }[]` in chain order and `checks: { name; value; unit; pass: boolean; band: string }[]` (payback, autarky band, DC/AC, roof fit). Additive read of existing fields; no grid or radiator check.
+
+## v2.7: comparison, cashflow, check bands
+- `rule_of_thumb_comparison: { reonic_kwp_per_mwh, planners_kwp_per_mwh, this_design_kwp_per_mwh }` lives at `components.pv.derivation.rule_of_thumb_comparison` and at `Eval.rule_of_thumb_comparison`.
+- `checks[]` entries carry `level: "ok" | "info" | "reference" | "fail"`, `pass`, and for banded checks `inside_band: boolean`.
+- `Economics.cashflow_cumulative_eur: number[]` (21 values from year 0) and `cashflow_yearly_eur: number[]`; `break_even_year`, `irr`.
+- Eval columns: `readout` (production), `band`, `calibrated`, `formula`, `blackbox`, `textbook` (generic), `reonic_rule` (Reonic's published rule of thumb), later `rules5`; labels in `recommenders_labels`.
 
 Natural-language refinement ("the family buys an EV next year") is handled in `web/` (`POST /api/interpret` → `{ changes: { field, from, to, note }[], inputs: HomeInputs }`) with the Claude API, then `web/` calls `/api/refine`. The engine has no LLM.
 

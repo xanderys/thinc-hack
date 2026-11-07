@@ -1,3 +1,4 @@
+import re
 import hashlib
 import json
 import logging
@@ -83,6 +84,46 @@ def startup():
     threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models(), roofs.warm_venue(), refresh_all_leads()),
                      daemon=True).start()
     # the scoreboard is the lab's sealed table (final_test.json); the live recompute stays available via warm_rules_eval()
+    threading.Thread(target=warm_reonic_eval, daemon=True).start()
+
+
+def warm_reonic_eval():
+    """Reonic's published rule of thumb on the lab's populations (lowest option, our bands); the old textbook is re-scored
+    beside it to show this scoring reproduces the lab's harness."""
+    try:
+        import numpy as np
+        import pandas as pd
+        from .planner_rules import test_ids
+        from . import rules as R
+        eng = STATE["engine"]
+        df, _ = data.load()
+        tid = set(test_ids())
+        th = df[df.project_id.isin(tid)]
+        pops = {"test half": th[(th.pv_kwp > 0) | th.has_solar]}
+        board = eng.test[(eng.test.pv_kwp > 0) | eng.test.has_solar]
+        pops["clean 126"] = board[board.project_id.isin(tid)]
+        blocks, check = {}, {}
+        for name, rows in pops.items():
+            res = {}
+            fns = [("reonic_rule", eng.reonic_rule), ("textbook", eng.baseline)]
+            try:
+                from .planner_rules import rules5  # noqa: F401
+                fns.append(("rules5", eng.predict_rules5))
+            except ImportError:
+                pass
+            for key, fn in fns:
+                D = pd.DataFrame([{k: (v or 0.0) for k, v in fn(model_mod.row_inputs(r)).items()} for r in rows.to_dict("records")])
+                w = {c: R.within(c, D[model_mod.TARGET[c]].values, rows[model_mod.TARGET[c]].values) for c in model_mod.COMPONENTS}
+                res[key] = {"design_match_share": round(float(np.logical_and.reduce(list(w.values())).mean()), 3),
+                            "pv_within": round(float(w["pv"].mean()), 3), "battery_within": round(float(w["battery"].mean()), 3),
+                            "wallbox_decision": round(float(w["wallbox"].mean()), 3), "n": len(rows)}
+            blocks[f"{name} | lowest option | ours"] = {k: v for k, v in res.items() if k != "textbook"}
+            check[name] = {"textbook_rescored": res["textbook"]["design_match_share"]}
+        STATE["reonic_eval"] = {"blocks": blocks, "check": check, "labels": {
+            "reonic_rule": "Reonic rule of thumb: 1 kWp and 1.25 kWh per 1,000 kWh annual use, no heat pump unless asked, 11 kW wallbox with an EV",
+            "textbook": "1.3 kWp per MWh plus 2.5 kWp with an EV (docs/domain.md), installer's median battery"}}
+    except Exception:
+        log.exception("reonic rule eval failed")
 
 
 def warm_rules_eval():
@@ -300,7 +341,7 @@ def health():
     e = STATE["engine"]
     try:
         from . import planner_rules
-        rv = {"calibrated": "rules-1-calibrated", "band": "rules-3-band", "readout": "rules-4-readout"}.get(model_mod.RECOMMENDER["mode"]) or getattr(planner_rules, "RULES_VERSION", None)
+        rv = {"calibrated": "rules-1-calibrated", "band": "rules-3-band", "readout": "rules-4-readout", "rules5": "rules-5"}.get(model_mod.RECOMMENDER["mode"]) or getattr(planner_rules, "RULES_VERSION", None)
     except Exception:
         rv = None
     try:
@@ -961,16 +1002,70 @@ def evaluation():
         ft = json.loads((Path(__file__).parent / "final_test.json").read_text())
         out["final_test"] = ft
         out.update(sealed_scoreboard(ft))
+        re_ = STATE.get("reonic_eval")
+        if re_:  # Reonic's published rule of thumb, scored by the engine on the same homes (it reproduces the lab's textbook row)
+            for blk, rows in re_["blocks"].items():
+                out["recommenders_detail"].setdefault(blk, {}).update(rows)
+            out["recommenders"].update(re_["blocks"]["test half | lowest option | ours"])
+            out["recommenders_labels"] = re_["labels"]
+            out["reonic_rule_check"] = re_["check"]
     except Exception as e:
         log.warning("final test table unavailable: %s", e)
     try:  # the lab's measurement rows: which definition of "right" moves the score (fit half, out-of-fold)
         out["measurement"] = json.loads((Path(__file__).parent / "measurement.json").read_text())
     except Exception:
         pass
+    try:
+        eng = STATE["engine"]
+        out["rule_of_thumb_comparison"] = {"reonic_kwp_per_mwh": 1.0,
+                                           "planners_kwp_per_mwh": {"all": eng.planners_kwp_per_mwh(None),
+                                                                    **{i: eng.planners_kwp_per_mwh(i) for i in data.INSTALLERS}},
+                                           "note": "Reonic's rule of thumb against the median the installers' planners fitted in signed designs."}
+    except Exception:
+        pass
+    try:  # the lab's second look at the test half (engine-lab 54cf480): rules-5 against rules-4; rules-4 stays in production
+        sl = second_look()
+        if sl:
+            out["second_look"] = sl
+            r5 = sl["blocks"].get("test half: lowest option, ours", {}).get("rules-5")
+            if r5 and "recommenders" in out:
+                out["recommenders"]["rules5"] = {"design_match_share": r5["all_four"], "pv_within": r5["pv"],
+                                                 "battery_within": r5["battery"], "wallbox_decision": r5["wallbox"], "n": r5["n"],
+                                                 "source": "second look"}
+    except Exception as e:
+        log.warning("second look unavailable: %s", e)
     out["exam_note"] = ("The exam homes carry no address, so every column is scored without roof, shade or envelope data; "
                         "live leads add them.")
 
     return out
+
+
+def second_look() -> dict | None:
+    """Parses the lab's FINAL v2 report (aggregates only) into blocks of engine rows; label "second look"."""
+    p = Path(__file__).resolve().parent.parent / "lab" / "reports" / "final_test_v2.md"
+    if not p.exists():
+        return None
+    blocks, cur, cols = {}, None, None
+    for line in p.read_text().splitlines():
+        if line.startswith("## "):
+            cur, cols = line[3:].strip(), None
+            blocks[cur] = {}
+        elif cur and line.startswith("|") and not line.startswith("|---"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if cols is None:
+                cols = [c.lower().replace(" ", "_") for c in cells]
+                continue
+            name = re.sub(r"\s*\([0-9a-f]{7}\)", "", cells[0])
+            row = {}
+            for k, v in zip(cols[1:], cells[1:]):
+                v = v.rstrip("%")
+                try:
+                    row[k] = round(float(v) / 100, 3) if k != "n" else int(v)
+                except ValueError:
+                    row[k] = v
+            blocks[cur][name] = row
+    return {"label": "second look", "source": "engine-lab 54cf480, lab/reports/final_test_v2.md",
+            "verdict": "rules-5 does not replace rules-4: nested CV worse, test gain p 0.60.", "blocks": blocks}
 
 
 ENGINE_KEY = {"rules-4": "readout", "rules-3-band": "band", "rules-1": "calibrated", "physics": "formula",
