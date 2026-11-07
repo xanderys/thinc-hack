@@ -1,5 +1,5 @@
 "use client";
-import type { AskQuestion, HomeInputs, InstallerId, ReadResponse } from "@/lib/api";
+import type { AskQuestion, HomeInputs, InstallerId, ReadResponse, RoofResult } from "@/lib/api";
 import { INSTALLER_NAME } from "@/lib/api";
 import { HEATING_WORD, n0, optionLabel, QUESTION } from "@/lib/stage";
 
@@ -8,6 +8,7 @@ type Props = {
   read: ReadResponse | null; busy: boolean; error: string | null; onRead: () => void; onEdit: () => void;
   inputs: HomeInputs; changed: Partial<HomeInputs>;
   setInstaller: (i: InstallerId) => void;
+  roof: RoofResult | null;
   question: AskQuestion | null; answer: unknown; onAnswer: (v: unknown) => void; askError: string | null;
 };
 
@@ -32,6 +33,11 @@ function Fact({ k, v, src, was }: { k: string; v: React.ReactNode; src: React.Re
   );
 }
 
+// "5, Katharinenstraße, Am Klosterfeld, Unterhaching, Landkreis München, Bayern, 82008, Deutschland" to the parts a planner checks.
+function shortAddress(s: string) {
+  return s.split(", ").filter((x) => !/^(Landkreis|Bayern|Deutschland|Germany|Regierungsbezirk)/.test(x)).join(", ");
+}
+
 export default function Lead(p: Props) {
   const { read, inputs: i } = p;
   const quote = (f: keyof HomeInputs) => read?.found.find((x) => x.field === f)?.quote;
@@ -39,7 +45,7 @@ export default function Lead(p: Props) {
     const q = quote(f);
     if (q) return `"${q}"`;
     if (f === p.question?.field && p.answer !== undefined) return "You answered";
-    return "Not in the lead";
+    return f === "annual_demand_kwh" ? "Assumed: not in the lead" : "Not in the lead";
   };
   const evWas = "has_ev" in p.changed && read && read.inputs.has_ev !== p.changed.has_ev ? (read.inputs.has_ev ? "yes" : "no") : undefined;
   const more = [
@@ -66,6 +72,7 @@ export default function Lead(p: Props) {
 
       {read && (
         <div className="s-facts s-in">
+          {read.inputs.address && <Fact k="Address" v={read.inputs.address} src={p.roof == null ? `"${quote("address") ?? read.inputs.address}"` : p.roof.source === "none" ? `Not found: ${p.roof.notes[0] ?? "no match"}` : `Matched: ${shortAddress(p.roof.matched_address)}`} />}
           <Fact k="Annual use" v={<span className={p.answer !== undefined && !quote("annual_demand_kwh") ? "num asked" : "num"}>{quote("annual_demand_kwh") || p.answer !== undefined || p.question == null ? `${n0(i.annual_demand_kwh)} kWh` : "Not known yet"}</span>} src={src("annual_demand_kwh")} />
           <Fact k="Heating" v={HEATING_WORD[i.heating_type]} src={src("heating_type")} />
           <Fact k="Electric car" v={i.has_ev ? <>Yes{i.ev_annual_km ? <>, <span className="num">{n0(i.ev_annual_km)} km</span> a year</> : null}</> : "No"} src={evWas ? "Changed in a sentence" : src("has_ev")} was={evWas} />
