@@ -57,7 +57,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
     const ctl = new AbortController();
     const facts = buildFacts(lead.facts, { ...lead.draft, design, economics: e })
       .map((f) => Object.values(INSTALLER_NAME).reduce((s, n) => s.split(n).join(brand), f));
-    fetch("/api/write", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ facts, mode: "homeowner" }), signal: ctl.signal })
+    fetch("/api/write", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ facts, mode: "homeowner", lead_id: lead.lead_id }), signal: ctl.signal })
       .then(async (r) => (r.ok ? ((await r.json()) as WriteResponse) : "failed" as const))
       .catch((err) => ((err as Error).name === "AbortError" ? null : ("failed" as const)))
       .then((w) => { if (w) { writes.set(hash, w); setWrite(w); } });
@@ -87,7 +87,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
       <section className="pp-house" aria-label="Your home">
         {street && spatial !== false && (
           <div className="pp-spatial">
-            <SpatialDemo inputs={lead.facts} design={design} address={address} response={lead.draft} layer={layer} onLayerChange={setLayer} onAvailable={setSpatial} />
+            <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={design} address={address} response={lead.draft} layer={layer} onLayerChange={setLayer} onAvailable={setSpatial} />
           </div>
         )}
         {(!street || spatial === false) && <div className="pp-drawing"><House design={design} /></div>}

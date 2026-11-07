@@ -20,7 +20,7 @@ const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-GB");
 const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
 const pc = (x: number) => `${Math.round(x * 100)} %`;
-const eur = (x: number) => `€${n0(x)}`;
+const eur = (x: number) => `${x < 0 ? "-" : ""}€${n0(Math.abs(x))}`;
 
 const TITLES = ["Site", "Load", "Future", "Solar", "Storage", "Extras", "Sanity", "Offer"];
 const VIEWS: StageView[] = ["site", "load", "future", "solar", "storage", "extras", "sanity", "offer"];
@@ -342,7 +342,9 @@ function Offer({ res }: { res: DesignResponse }) {
   const discharged = (a as { battery_discharged_kwh?: number }).battery_discharged_kwh ?? 0;
   const direct = Math.max(0, a.pv_yield_kwh - charged - a.fed_in_kwh);
   const flows = { direct, charged, fed: a.fed_in_kwh, discharged, imp: a.grid_import_kwh };
-  const cash = (e as unknown as { cashflow_cumulative_eur?: number[] }).cashflow_cumulative_eur;
+  // Engine v2.7: cumulative series, or the yearly one summed here.
+  const ce = e as unknown as { cashflow_cumulative_eur?: number[]; cashflow_yearly_eur?: number[] };
+  const cash = ce.cashflow_cumulative_eur?.length ? ce.cashflow_cumulative_eur : ce.cashflow_yearly_eur?.reduce<number[]>((o, x) => [...o, (o.at(-1) ?? 0) + x], []);
   return (
     <div className={s.offer}>
       <div className={s.two}>
@@ -394,6 +396,8 @@ function Cash({ v }: { v: number[] }) {
     <svg className={s.cash} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Cumulative cash flow over 20 years">
       <line x1="0" x2={W} y1={zero} y2={zero} stroke="#d4d4d8" />
       {v.map((x, i) => <rect key={i} x={i * bw + 1} width={bw - 2} y={x >= 0 ? zero - (x / max) * (H / 2 - 4) : zero} height={(Math.abs(x) / max) * (H / 2 - 4)} fill={x >= 0 ? "#071b71" : "#ffc043"} rx="1.5" />)}
+      <text x="2" y={H - 2} fontSize="9" fill="#71717b">{eur(Math.min(...v))}</text>
+      <text x={W - 2} y="10" fontSize="9" fill="#71717b" textAnchor="end">{eur(v[v.length - 1])} after {v.length - (v.length > 20 ? 1 : 0)} years</text>
     </svg>
   );
 }
