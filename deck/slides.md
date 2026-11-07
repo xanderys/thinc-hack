@@ -34,9 +34,11 @@ footer: Marquee
 
 ## Which leads deserve a visit.
 
-<div class="data"><b>Visit</b>   [UNCONFIRMED: one-sentence reason from the live board]   offer about [UNCONFIRMED: EUR] (estimate)<br><b>Call first</b>   [UNCONFIRMED: reason]   offer about [UNCONFIRMED: EUR] (estimate)<br><b>Decline</b>   [UNCONFIRMED: reason]<br>installer B: <b>[UNCONFIRMED: 34, source]</b> offers a month, so [UNCONFIRMED: N] planner afternoons a month (illustrative)</div>
+<div class="data">The installer can see which leads deserve a visit before they spend a planner’s afternoon on one. And the planner arrives already knowing the likely answer, so the scan confirms the design instead of starting it.<br>installer B makes <b>34</b> offers a month: every Decline and Call first is a planner afternoon not spent on a site visit<br>illustrative: [UNCONFIRMED: Decline plus Call first count from the board, times hours a visit costs] planner hours a month</div>
 
-<p class="brief">Estimates until the site visit</p>
+[UNCONFIRMED: screenshot of the board grouped Visit, Call first, Decline, from THINC HACK MASTER about 01:30 Munich]
+
+<p class="brief">Estimates until the site visit. Installer B: 342 offers in about 10 months.</p>
 
 ---
 
