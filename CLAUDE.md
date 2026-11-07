@@ -2,6 +2,9 @@
 
 From a few facts about a home, propose PV, battery and heat pump the way an experienced planner would, let the planner refine it, and prove it against real expert designs. Judges: Reonic (technical depth, user fit, business impact, demo) then a VC jury (creativity, realisability, usability, pitch).
 
+## North star (Xander, 7 Nov 2026)
+Marquee exists to speed up the whole end-to-end pipeline for installers who use Reonic: from enquiry to design to offer to signed deal to installation. Faster, more efficient, more turnover for the installer. Test every piece of work against it: does this make a planner or salesperson faster, help them win more deals, or get more systems installed? If not, cut it or park it. Every screen, number, slide and line of the pitch shows time saved, deals won or turnover gained. (We have no time or price data in the pack: show the steps the agent removes and the decisions it makes consistent, never invented hours or euros.)
+
 ## Expected outcome (the goal, in Reonic's words)
 "We expect a working slice with an end-to-end demo story, not a production system. Reach the minimum first, then aim higher."
 
