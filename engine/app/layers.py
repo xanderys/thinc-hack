@@ -377,8 +377,15 @@ def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
         clean = {k: v for k, v in inp.items() if not k.startswith("_")}
         # roof and day stay the engine's (they read the one laid-out run the 3D model and the economics use); charging is
         # PHYSICS's, which has no layout or day of its own to disagree with
-        theirs = {b["key"]: b for b in physics_bars(clean, d, roof=inp.get("roof"), provenance=prov) or []
-                  if b.get("key") in ("charging",)}
+        from . import layout as L
+        lo = L.layout(inp, d.get("pv_kwp"))
+        if lo:  # the laid-out planes, so faces, kWp and kWh a year are this design's run
+            clean["pv_planes"] = lo["pv_planes"]
+        date = ((out.get("day") or {}).get("date") or "").split(" (")[0]  # the Day layer's date, e.g. "22 April"
+        theirs = {b["key"]: b for b in physics_bars(clean, d, roof=inp.get("roof"), provenance=prov, day_date=date or None) or []
+                  if b.get("key") in ("roof", "day", "charging")}
+        if "roof" in theirs and pv_reason and pv_reason not in theirs["roof"].get("sentence", ""):
+            theirs["roof"] = {**theirs["roof"], "sentence": f"{theirs['roof']['sentence']} {pv_reason}".strip()}  # keep the tier cap
         res = [theirs.get(b["key"], b) for b in res]
     except ImportError:
         pass
