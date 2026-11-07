@@ -76,18 +76,26 @@ export interface EvalComponent {
   size_mae: number | null; baseline_size_mae: number | null; unit: string;
   within_tolerance_share: number | null; tolerance: string;
   baseline_within_tolerance_share?: number | null; // engine extra
+  ceiling_within_tolerance_share?: number; textbook_within_tolerance_share?: number; floor_slope_within_tolerance_share?: number; // v1.1
 }
 
 export interface Eval {
   split: { train: number; test: number; method: string };
   components: Record<ComponentKey, EvalComponent>;
-  overall: { design_match_share: number; baseline_design_match_share: number; definition: string };
+  overall: { design_match_share: number; baseline_design_match_share: number; definition: string;
+             ceiling_design_match_share?: number; textbook_design_match_share?: number; floor_slope_design_match_share?: number };
+  ceiling?: { method: string; pv_agreement_share: number; battery_agreement_share: number };
   per_installer: Record<InstallerId, { test: number; design_match_share: number; baseline_design_match_share?: number }>;
   deviations: { project_id: string; component: string; ours: number | null; expert: number | null; note: string }[];
 }
 
+// Contract v1.1: an override value of "include" asks the engine to include and size the component.
+export type OverrideValue = number | null | "include";
+export type Overrides = Partial<Record<keyof Design, OverrideValue>>;
+
 export interface InterpretChange { field: keyof HomeInputs; from: unknown; to: unknown; note: string; }
-export interface InterpretResponse { changes: InterpretChange[]; inputs: HomeInputs; }
+export interface InterpretOverride { field: keyof Design; from: OverrideValue | undefined; to: OverrideValue; note: string; }
+export interface InterpretResponse { changes: InterpretChange[]; inputs: HomeInputs; overrides: InterpretOverride[]; }
 
 export const COMPONENT_DESIGN_FIELD: Record<ComponentKey, keyof Design> = {
   pv: "pv_kwp", battery: "battery_kwh", heatpump: "heatpump_kw", wallbox: "wallbox_kw",

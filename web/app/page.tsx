@@ -4,7 +4,7 @@ import HomeForm from "@/components/HomeForm";
 import DesignSheet from "@/components/DesignSheet";
 import type { Design, DesignResponse, HomeInputs, InterpretChange, InterpretResponse, RefineResponse } from "@/lib/api";
 import { call, fmt, COMPONENT_NAME } from "@/lib/client";
-import type { DiffItem } from "@/lib/api";
+import type { DiffItem, InterpretOverride, OverrideValue, Overrides } from "@/lib/api";
 
 const DESIGN_KEY: Record<keyof Design, string> = { pv_kwp: "pv", inverter_kw: "inverter", battery_kwh: "battery", heatpump_kw: "heatpump", wallbox_kw: "wallbox" };
 const COMPONENT_FIELD: Record<string, keyof Design> = { pv: "pv_kwp", inverter: "inverter_kw", battery: "battery_kwh", heatpump: "heatpump_kw", wallbox: "wallbox_kw" };
@@ -26,11 +26,12 @@ function describe(a: HomeInputs, b: HomeInputs) {
   if (keys.length === 0) return "Recomputed.";
   return keys.slice(0, 3).map((k) => `${FIELD_LABEL[k] ?? k} ${show(a[k])} to ${show(b[k])}`).join(", ") + ".";
 }
+const showOv = (x: OverrideValue) => x === "include" ? "include" : x == null ? "none" : `fixed at ${x.toLocaleString("en-GB")}`;
 const show = (x: unknown) => x == null ? "none" : typeof x === "boolean" ? (x ? "yes" : "no") : typeof x === "number" ? x.toLocaleString("en-GB") : String(x);
 
 export default function Planner() {
   const [inputs, setInputs] = useState<HomeInputs>(START);
-  const [overrides, setOverrides] = useState<Partial<Design>>({});
+  const [overrides, setOverrides] = useState<Overrides>({});
   const [res, setRes] = useState<DesignResponse | RefineResponse | null>(null);
   const [prev, setPrev] = useState<Design | null>(null);
   const [moved, setMoved] = useState<DiffItem[]>([]);
@@ -44,6 +45,7 @@ export default function Planner() {
 
   const [sentence, setSentence] = useState("");
   const [chips, setChips] = useState<InterpretChange[]>([]);
+  const [ovChips, setOvChips] = useState<InterpretOverride[]>([]);
   const [llm, setLlm] = useState<boolean | null>(null);
   const [llmBusy, setLlmBusy] = useState(false);
   const [llmError, setLlmError] = useState<string | null>(null);
@@ -87,8 +89,9 @@ export default function Planner() {
     return () => { clearTimeout(t); ctl.abort(); };
   }, [inputs, overrides, retry]);
 
-  const setOverride = useCallback((field: keyof Design, value: number | null | undefined) => {
+  const setOverride = useCallback((field: keyof Design, value: OverrideValue | undefined) => {
     cause.current = "Set by the planner.";
+    setOvChips((c) => c.filter((x) => x.field !== field));
     setOverrides((o) => {
       const n = { ...o };
       if (value === undefined) delete n[field]; else n[field] = value;
@@ -98,14 +101,23 @@ export default function Planner() {
 
   async function interpret() {
     setLlmBusy(true); setLlmError(null);
-    const r = await call<InterpretResponse>("/api/interpret", { sentence, inputs });
+    const r = await call<InterpretResponse>("/api/interpret", { sentence, inputs, design: res?.design ?? {}, overrides });
     setLlmBusy(false);
     if (!r.ok) { setLlmError(r.error); return; }
-    if (r.data.changes.length === 0) { setLlmError("Nothing in that sentence changes the home."); return; }
+    const ovs = r.data.overrides ?? [];
+    if (r.data.changes.length === 0 && ovs.length === 0) { setLlmError("Nothing in that sentence changes the home."); return; }
     cause.current = `"${sentence.trim()}"`;
     setChips((c) => [...c.filter((x) => !r.data.changes.some((y) => y.field === x.field)), ...r.data.changes]);
+    setOvChips((c) => [...c.filter((x) => !ovs.some((y) => y.field === x.field)), ...ovs]);
+    if (ovs.length) setOverrides((o) => { const n = { ...o }; for (const v of ovs) n[v.field] = v.to; return n; });
     setInputs(r.data.inputs);
     setSentence("");
+  }
+
+  function removeOvChip(ch: InterpretOverride) {
+    setOvChips((c) => c.filter((x) => x !== ch));
+    cause.current = "Planner choice removed.";
+    setOverrides((o) => { const n = { ...o }; if (ch.from === undefined) delete n[ch.field]; else n[ch.field] = ch.from; return n; });
   }
 
   function removeChip(ch: InterpretChange) {
@@ -164,12 +176,18 @@ export default function Planner() {
                 </form>
               )}
               {llmError && <div className="error" role="alert"><span><span className="src">Interpreter said</span>{llmError}</span></div>}
-              {chips.length > 0 && (
+              {(chips.length > 0 || ovChips.length > 0) && (
                 <div className="chips">
                   {chips.map((c) => (
                     <span className="chip" key={`${c.field}-${String(c.to)}`} title={c.note}>
                       <span>{FIELD_LABEL[c.field] ?? c.field}: <span className="num">{show(c.from)}</span> to <span className="num">{show(c.to)}</span></span>
                       <button aria-label={`Undo ${FIELD_LABEL[c.field] ?? c.field}`} onClick={() => removeChip(c)}>×</button>
+                    </span>
+                  ))}
+                  {ovChips.map((c) => (
+                    <span className="chip" key={`${c.field}-${String(c.to)}`} title={c.note}>
+                      <span>{COMPONENT_NAME[DESIGN_KEY[c.field]]}: <span className="num">{showOv(c.to)}</span></span>
+                      <button aria-label={`Undo ${COMPONENT_NAME[DESIGN_KEY[c.field]]}`} onClick={() => removeOvChip(c)}>×</button>
                     </span>
                   ))}
                 </div>
