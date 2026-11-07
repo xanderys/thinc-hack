@@ -279,21 +279,25 @@ class Engine:
 
     ASK_TOL = {"pv_kwp": 1.0, "battery_kwh": 2.0, "heatpump_kw": 2.0, "wallbox_kw": 2.0}
 
-    def ask(self, inp: dict) -> list:
-        """Value of information: which missing or default input would move the design most."""
+    def ask(self, inp: dict, unknown: list | None = None) -> list:
+        """Value of information: which missing or default input would move the design most.
+        unknown: fields the lead did not state; when given, only those are asked (a stated "no EV" is never asked)."""
         cands = []
-        if inp.get("heating_type", "Unknown") == "Unknown":
+        ask_ = (lambda f, default: f in unknown) if unknown is not None else (lambda f, default: default)
+        if ask_("heating_type", inp.get("heating_type", "Unknown") == "Unknown"):
             cands.append(("heating_type", inp.get("heating_type", "Unknown"),
                           [("Gas", "Gas", {"heating_type": "Gas"}), ("Heatpump", "Heat pump", {"heating_type": "Heatpump"})]))
-        if not inp.get("has_ev"):
+        if ask_("has_ev", not inp.get("has_ev")):
             cands.append(("has_ev", False, [(True, "Yes, about 12,000 km a year", {"has_ev": True, "ev_annual_km": 12000})]))
-        if not inp.get("annual_demand_kwh") or inp.get("annual_demand_kwh") == 4500:
+        if ask_("annual_demand_kwh", not inp.get("annual_demand_kwh") or inp.get("annual_demand_kwh") == 4500):
             cands.append(("annual_demand_kwh", inp.get("annual_demand_kwh"),
-                          [(3000, "3,000 kWh", {"annual_demand_kwh": 3000}), (6500, "6,500 kWh", {"annual_demand_kwh": 6500})]))
-        if inp.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable") and not inp.get("heating_demand_kwh"):
+                          [(3000, "about 3,000 kWh (two people)", {"annual_demand_kwh": 3000}),
+                           (5000, "about 5,000 kWh (family of four)", {"annual_demand_kwh": 5000}),
+                           (6500, "about 6,500 kWh (large household or home office)", {"annual_demand_kwh": 6500})]))
+        if ask_("heating_demand_kwh", inp.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable") and not inp.get("heating_demand_kwh")):
             cands.append(("heating_demand_kwh", None,
                           [(12000, "12,000 kWh", {"heating_demand_kwh": 12000}), (20000, "20,000 kWh", {"heating_demand_kwh": 20000})]))
-        if not inp.get("has_solar"):
+        if ask_("has_solar", not inp.get("has_solar")):
             cands.append(("has_solar", False, [(True, "Yes, about 6 kWp", {"has_solar": True, "existing_solar_kwp": 6.0})]))
         variants = [inp] + [{**inp, **ch} for _, _, opts in cands for _, _, ch in opts]
         designs = self.sizes_batch(variants)
