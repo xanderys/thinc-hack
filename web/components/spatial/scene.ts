@@ -231,7 +231,7 @@ export class SpatialScene {
   private fit(reset: boolean) {
     const a = this.persp.aspect, vfov = (this.persp.fov * Math.PI) / 180;
     const half = this.span / 2, need = Math.max(half / Math.tan(vfov / 2), half / (Math.tan(vfov / 2) * a));
-    const d = need * 1.6;
+    const d = Math.min(need * 1.6, this.fitCap * Math.max(1, 1.3 / a)); // a tall phone frame needs more room
     if (reset || !this.fitted) {
       const dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
       this.persp.position.copy(this.centre).addScaledVector(dir, d);
@@ -257,6 +257,14 @@ export class SpatialScene {
     return { tgt, pos: tgt.clone().addScaledVector(poseOffset(p), this.fitD * p.dist) };
   }
   private fitted = false;
+  // The photo mesh is only crisp up close: it caps the fitted distance (stage poses scale with it); null lifts it.
+  private fitCap = Infinity;
+  setFitCap(m: number | null) {
+    const cap = m ?? Infinity;
+    if (cap === this.fitCap) return;
+    this.fitCap = cap;
+    if (this.fitted) this.fit(false);
+  }
 
   // Moves the camera to a stage's pose on one smooth spring (0.6 s, bounce 0) from wherever it is now, keeping
   // its velocity if a new stage arrives mid-flight. A top-down pose ends in the 2D plan. Reduce Motion: a cut.
