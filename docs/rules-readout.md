@@ -70,3 +70,32 @@ The inputs carry about 18 to 20% of whole designs: the band table, fitted and sc
 - The wallbox decision is unpredictable for a quarter of homes.
 
 With an address, the engine adds the roof (LoD2 planes, max kWp) as a cap. The exam cannot test this, because it is roof-blind by necessity.
+
+## rules-5: Reonic's textbook first, the planners as corrections
+Module `engine/app/planner_rules/rules5.py` (`rules-5-textbook-corrected`; `rules5.textbook()` is Reonic alone). Every component starts from a rule Reonic publishes (blog and docs). A correction is the planners' ratio to that rule, or their standard array, per group of homes. It is fitted on the fit half and kept only if it raises 5-fold CV there by at least half a point. Minimum group 25 homes.
+
+| Rule | Reonic textbook | Your planners (fit half) |
+|---|---|---|
+| PV | 1.0 kWp per MWh of use, at 980 kWh per kWp; orientation factors; 85% of the roof; at most 30 kWp | A: standard 10.35 kWp array (179 of 488); 2.3 to 2.4 kWp per MWh at 2,500 to 4,499 kWh; 1.7 at 4,500 to 5,500; 10.35 kWp at 5,500 to 7,000; 1.4 at 7,000 to 9,000; 1.2 above. B: standard 11.9 kWp (82 of 163); 3.65 at 2,500 to 3,500; 2.6 at 3,500 to 4,500 |
+| Battery | 1.0 to 1.5 kWh per MWh; 0.2 to 0.6 kWh per kWh a day | kWh per kWp of the array, snapped to the installer's packages: A 0.8 before 2025, 1.075 from 2025; B 0.85. Reonic's other rule, storage about the array's kWp, is what the planners follow |
+| Heat pump | W per m2 by build class plus 0.5 kW per person | rules-1's decision (gas or oil, boiler 20 years or older); Reonic's size |
+| Wallbox | grid connection / 1.5: 35 A gives 11 kW | 11 kW with an EV. Without one, 24 to 25% got one at both installers and in both eras, so no prior flips the rule |
+| Inverter | DC/AC 1.1 to 1.3 | B's recorded ratio is 1.19; A records none |
+
+5-fold CV on the fit half (654 jobs):
+
+| | PV | Battery | All four |
+|---|---|---|---|
+| Reonic textbook alone | 11.5% | 32.7% | 5.4% |
+| Textbook plus corrections (rules-5) | 41.9% | 50.9% | 17.9% |
+| rules-4-readout (production) | 39.6% | 48.3% | 17.6% |
+
+The dimensions were chosen on the same folds, so the rules-5 figure is slightly optimistic. Gains under about 2.5 points are noise.
+
+Tested and dropped (no CV gain): EV, heating type, load profile, electricity price and household size, for both PV and battery; use band for the battery. The battery correction needs the offer date; without it, battery falls to 45.4%.
+
+Patterns found:
+- Both installers sell in whole 450 W modules (A 99.6%, B 94.5% of designs). B's 10.8 kWp is 24 modules; 10.8 kWp is the most common size at both.
+- There is no bunching below the 10 kWp feed-in tier (48 designs at 9 to 10 kWp, 115 at 10 to 11), and none above 30 kWp.
+- The batteries miss Reonic's daily band in a structured way. The ratio falls with use (1.26 kWh per kWh a day under 2,500 kWh, 0.37 above 9,000) because storage tracks the array, not the use.
+- Heat pumps: 5 in the fit half, 4 of them replacing gas, oil or another fossil system.

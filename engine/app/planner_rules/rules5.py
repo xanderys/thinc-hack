@@ -22,7 +22,7 @@ TABLE = Path(__file__).with_name("rules5.json")
 MODULE_KWP = 0.45
 EV_KWH_PER_KM = 0.18
 NAMES = {"2a8ba8e2": "Installer A", "23c108b7": "Installer B"}
-MIN_GROUP = 20
+MIN_GROUP = 25  # as rules-4's minimum leaf
 FIXED = True
 GAIN = 0.005  # a dimension must raise CV by half a point to be kept
 
@@ -34,6 +34,7 @@ SRC = {
     "fill": ("auto-fill covers 80 to 90% of a roof face", "https://docs.reonic.com/docs/en/offers-plan-pv-plan-modules"),
     "cap": ("residential planning up to about 30 kWp", "https://docs.reonic.com/docs/en/offers-plan-additional-optional-commercial-planning"),
     "bat": ("1.0 to 1.5 kWh of storage per 1,000 kWh of annual use", R + "eigenverbrauch-autarkiegrad-pv-berechnen/"),
+    "bat_kwp": ("storage about as large as the array's rated power (1 kWh per kWp)", R + "solaranlagen-speicher/"),
     "bat_day": ("storage between 0.2 and 0.6 kWh per kWh of daily use (Validation AI rule)", "https://reonic.com/en-gb/ai-validation/"),
     "inv": ("DC/AC ratio 1.1 to 1.3; south 1.1 to 1.15, east-west up to 1.3", R + "wechselrichter-auslegen-dc-ac-verhaeltnis/"),
     "hp": ("heat load in W per m2 by build class (120 to 150 unrenovated, 80 to 100 renovated, 50 to 70 after 1995, 40 after 2002, 30 new build), plus 0.5 kW per person for hot water, margin at most 10 to 15%", R + "waermepumpe-dimensionierung/"),
@@ -41,6 +42,7 @@ SRC = {
 }
 PV_KWP_PER_MWH = 1.0
 BAT_KWH_PER_MWH = 1.25   # middle of 1.0 to 1.5
+TB_BAT_MODE = "mwh"      # textbook battery: "mwh" (1.25 kWh per MWh) or "kwp" (1 kWh per kWp)
 DCAC = 1.15              # south, middle of 1.1 to 1.15
 FILL = 0.85              # middle of 80 to 90%
 CAP_KWP = 30.0
@@ -316,7 +318,7 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
     # battery
     btb = tb_bat(inp)
     bdims = cons.get("bat_dims") or ["installer"]
-    base_kind = cons.get("bat_base", "use") if corrections else "use"
+    base_kind = cons.get("bat_base", "use") if corrections else ("pv" if TB_BAT_MODE == "kwp" else "use")
     base_kind = "pv" if base_kind == "pv_pred" else base_kind
     bkey, (bratio, bk, bn) = _lookup(_tab(cons, "bat"), f, bdims) if corrections else (None, (1.0, None, None))
     if "battery_kwh" in ov and ov["battery_kwh"] != "include":
@@ -332,14 +334,15 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
         x = (btb if base_kind == "use" else pv) * bratio
         bat = snap(x, pk)
         unit = "kWh per MWh" if base_kind == "use" else "kWh per kWp"
-        line = f"Reonic textbook {BAT_KWH_PER_MWH:g} kWh per MWh ({btb:.1f} kWh)"
+        line = (f"Reonic textbook {BAT_KWH_PER_MWH:g} kWh per MWh ({btb:.1f} kWh)" if base_kind == "use"
+                else f"Reonic textbook: storage about the array's kWp, 1 kWh per kWp ({pv:g} kWh)")
         if bkey and bratio != 1.0:
             line += f"; your planners {(BAT_KWH_PER_MWH if base_kind == 'use' else 1) * bratio:.2g} {unit} ({group_label(bkey, bdims)}, {bk} of {bn} within tolerance)"
         daily = bat / (u / 365) if u else 0
         line += f"; this design {bat / (u / 1000):.2g} kWh per MWh" if u else ""
         s = (f"{bat:g} kWh: {line}." + (f" Nearest package on sale to {x:.1f} kWh." if pk else "")
              + (f" Reonic's check (0.2 to 0.6 kWh per kWh a day): {daily:.2f}{'' if 0.2 <= daily <= 0.6 else ', outside it, as most signed designs are'}." if u else ""))
-        _put(comps, expl, "battery", bat, s, {"axiom": SRC["bat"][0] + "; " + SRC["bat_day"][0],
+        _put(comps, expl, "battery", bat, s, {"axiom": (SRC["bat"][0] if base_kind == "use" else SRC["bat_kwp"][0]) + "; " + SRC["bat_day"][0],
                                               "equation": (f"{u:,.0f} kWh / 1,000 x {BAT_KWH_PER_MWH:g} = {btb:.1f} kWh" if base_kind == "use" else f"{pv:g} kWp")
                                               + f" x {bratio:g} = {x:.1f} kWh" + (f" -> package {bat:g} kWh" if pk else ""),
                                               "inputs": [{"name": "packages", "value": ", ".join(f"{p:g}" for p in pk), "unit": "kWh", "source": "catalogue" if cat.get("battery_kwh") else "sizes sold 3 or more times in the fit half"},
@@ -415,7 +418,7 @@ def rules_table(inst=None, constants=None, corrections=True):
                          "source": f"{group_label(key, dims)}: {k} of {n} signed designs within tolerance", "fitted_on": cons.get("_meta", {}).get("fitted_on")})
         out.append({"name": comp, "sentence": f"Reonic textbook: {SRC[srck][0]}. Your planners: the corrections below, kept only where they improve 5-fold CV.",
                     "textbook": {"value": rate, "unit": unit, "source": SRC[srck][0], "url": SRC[srck][1]}, "constants": rows})
-    for k in ("inv", "hp", "wb", "fill", "cap", "orient", "bat_day"):
+    for k in ("bat_kwp", "bat_day", "inv", "hp", "wb", "fill", "cap", "orient"):
         out.append({"name": k, "sentence": f"Reonic textbook: {SRC[k][0]}.", "textbook": {"source": SRC[k][0], "url": SRC[k][1]}, "constants": []})
     return out
 
