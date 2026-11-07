@@ -53,7 +53,7 @@ Each step is one sourced assumption or structural rule, never a number tuned to 
 | # | Commit | Change | Source | Fit half: PV / battery / all four |
 |---|---|---|---|---|
 | 2 | next | Objective: independence premium of 29 ct per kWh of household and EV use supplied by the home's own PV, counted in the 20-year value (not the money NPV); independence x2, payback and upfront x0 | [Kaps, Marinesi and Netessine, Operations Research 2024](https://doi.org/10.1287/opre.2024.1104): median non-market value among German storage adopters (mean 53 ct) | pending |
-| 1 | e0a7c78 | Battery price: BSW 2026 market average 315 EUR/kWh installed in place of the Verbraucherzentrale midpoint 500 | [BSW via reduco 2026](https://reduco.ai/blog/stromspeicher-kosten-vergleich-2026) | pending |
+| 1 | e0a7c78 | Battery price: BSW 2026 market average 315 EUR/kWh installed in place of the Verbraucherzentrale midpoint 500 | [BSW via reduco 2026](https://reduco.ai/blog/stromspeicher-kosten-vergleich-2026) | 30.3% / 39.1% / 9.5% (+0.8 / +8.7 / +1.1 points); median battery 9.2 kWh against 10; NPV at or above the expert's on 99%, payback shorter on 62%, autarky higher on 51% |
 | 0a | fc6dae2 | Structural: no heat pump while the year's heat is only a default; heat load precedence demand, bill, envelope (upper bound) | REONIC ENGINE bug report; envelope uses unrenovated IWU U-values | pending |
 | 0 | c1bf388 | First end-to-end rules-2 (knee of the frontier, sourced 2026 prices) | as in the parameter table | 29.5% / 30.4% / 8.4% (own run, 654 jobs; rules-1 41.0 / 49.2 / 17.7). 20-year NPV at or above the expert's on 98% of homes, payback shorter on 75%; median battery 5 kWh against the experts' 10 |
 
