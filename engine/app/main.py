@@ -148,6 +148,7 @@ class HomeInputs(BaseModel):
     roof_azimuth_deg: Optional[float] = None
     roof_tilt_deg: Optional[float] = None
     roof_orientation: Optional[str] = None
+    boiler_age_years: Optional[float] = None  # v2.0: rule 3 replaces a gas or oil boiler older than boiler_age (default 20)
     offer_date: Optional[str] = None
     preference: Optional[Literal["independence", "payback", "upfront"]] = None  # v1.7: reorders variants only
     address: Optional[str] = None   # v1.6: the engine looks the roof up
