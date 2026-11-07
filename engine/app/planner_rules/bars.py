@@ -128,6 +128,27 @@ def charging_bar(inputs, design, provenance):
             "sentence": s, "sources": [SOURCES["ev"], SOURCES["isi"], SOURCES["wb"]]}
 
 
+def checks(inputs: dict, design: dict, econ: dict | None = None) -> list[dict]:
+    """Reonic's own validation bands as ticks, in the v2.6 checks shape. Battery: "Storage capacity has to stay between
+    0.2 and 0.6 kWh per kWh of daily consumption" (Reonic docs), daily use including EV and heat pump when econ is given.
+    DC/AC: Reonic's 70 to 130% inverter gauge."""
+    out = []
+    bat, pv, inv = (float(design.get(k) or 0) for k in ("battery_kwh", "pv_kwp", "inverter_kw"))
+    use = ((econ or {}).get("annual") or {}).get("load_kwh") or float(inputs.get("annual_demand_kwh") or 0)
+    if bat and use:
+        r = bat / (use / 365)
+        out.append({"name": "battery per daily use", "value": round(r, 2), "unit": "kWh per kWh a day",
+                    "pass": 0.2 <= r <= 0.6, "band": "0.2 to 0.6 (Reonic)"})
+    if pv and inv:
+        r = pv / inv * 100
+        out.append({"name": "DC/AC ratio", "value": round(r), "unit": "%", "pass": 70 <= r <= 130, "band": "70 to 130% (Reonic)"})
+    if econ and econ.get("capex_eur"):
+        be = econ.get("break_even_year")
+        out.append({"name": "break-even", "value": be, "unit": "years", "pass": be is not None,
+                    "band": "within 20 years, undiscounted (Reonic)"})
+    return out
+
+
 def bars(inputs: dict, design: dict, roof: dict | None = None, provenance: dict | None = None,
          day_date: str | None = None) -> list[dict]:
     """Roof, day and charging bars in chain order (charging only with an EV). Pass the engine's laid-out
