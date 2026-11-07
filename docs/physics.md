@@ -28,6 +28,8 @@ Definitions follow HTW: self-consumption = (direct use + battery charging) / PV 
 | Upkeep | 1.5% of PV and battery capex a year | 1 to 2% (Fraunhofer ISE via [co2online](https://www.co2online.de/modernisieren-und-bauen/photovoltaik/kosten-und-finanzierung/), 2026) |
 | Heat pump saving | Old heating cost (given, or 12 ct per kWh heat) removed; heat pump electricity enters the simulated load | |
 | NPV | 20 years, 3% discount, 0.5% a year PV degradation ([Jordan and Kurtz 2013](https://doi.org/10.1002/pip.1182)), battery replacement as above | |
+| Break-even and IRR (Reonic's convention, shown beside our NPV and payback) | `break_even_year`: the first year cumulative savings exceed the investment, undiscounted, with price rise and degradation, battery replacement not counted, None beyond 20 years. `irr`: the rate at which the same 20-year flows repay the investment | Reonic product docs |
+| Sanity ticks (`planner_rules.bars.checks`) | Battery 0.2 to 0.6 kWh per kWh of daily use (Reonic: "Storage capacity has to stay between 0.2 and 0.6 kWh per kWh of daily consumption"); DC/AC 70 to 130%; break-even within 20 years | Reonic product docs |
 
 `annual_saving_eur` = bill before minus bill after minus upkeep. "Before" keeps existing PV and battery.
 
