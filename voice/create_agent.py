@@ -3,9 +3,12 @@ import json, os, pathlib, urllib.request, urllib.error
 
 HERE = pathlib.Path(__file__).parent
 API = "https://api.elevenlabs.io"
-VOICE_ID = "iP95p4xoKVk53GoZ742B"  # Chris: casual, down-to-earth, conversational
+VOICE_ID = "lcMyyd2HUfFzxdCaC4Ta"  # Lucy, Fresh & Casual (young British female, library voice added as "Rina (Lucy)")
 LLM = "claude-haiku-5-5"
-FIRST = "Hi, it's Sam from the solar team, with a few quick questions for your design. Which postcode is the house in?"
+FIRST = "Hi, it's Rina from Reonic, with a few quick questions for your design. Which postcode is the house in?"
+# No required dynamic variables, so the agent also runs on the ElevenLabs talk-to page. The widget overrides the first
+# message and sends the form answers as a contextual update (web/app/start/intake.ts formNote).
+OVERRIDES = {"conversation_config_override": {"agent": {"first_message": True}}}
 
 
 def key():
@@ -30,11 +33,9 @@ def call(method, path, body=None):
 def main():
     state_path = HERE / "agent.json"
     state = json.loads(state_path.read_text()) if state_path.exists() else {}
-    tool = {"tool_config": json.loads((HERE / "submit_intake.json").read_text())}
-    if state.get("tool_id"):
-        call("PATCH", f"/v1/convai/tools/{state['tool_id']}", tool)
-    else:
-        state["tool_id"] = call("POST", "/v1/convai/tools", tool)["id"]
+    # Facts are extracted after the call by ElevenLabs data collection (no client tool), so any page can end a call cleanly.
+    fields = json.loads((HERE / "intake_fields.json").read_text())
+    state.pop("tool_id", None)
 
     config = {
         "name": "Marquee intake",
@@ -46,7 +47,7 @@ def main():
                     "prompt": (HERE / "prompt.md").read_text(),
                     "llm": LLM,
                     "temperature": 0.6,
-                    "tool_ids": [state["tool_id"]],
+                    "tool_ids": [],
                     "built_in_tools": {"end_call": {"type": "system", "name": "end_call", "description": "",
                                                     "params": {"system_tool_type": "end_call"}}},
                 },
@@ -54,6 +55,7 @@ def main():
             "tts": {"voice_id": VOICE_ID, "model_id": "eleven_v4_turbo", "stability": 0.4, "similarity_boost": 0.8, "speed": 1.15},
             "conversation": {"max_duration_seconds": 420},
         },
+        "platform_settings": {"data_collection": fields, "overrides": OVERRIDES},
     }
     if state.get("agent_id"):
         call("PATCH", f"/v1/convai/agents/{state['agent_id']}", config)
