@@ -24,6 +24,15 @@ const locationOk = (s: string) => /\b\d{5}\b/.test(s);
 const first = (s: string) => s.trim().split(/\s+/)[0] ?? "";
 // Lead to offer today, from the installer B figure the coordinator gave (docs to confirm).
 const TODAY_MEDIAN_DAYS = 8;
+// "now with a wallbox", "now 13.05 kWp of solar": the biggest news first.
+function whatsNew(a: Lead["draft"]["design"], b: Lead["draft"]["design"]): string {
+  const add: [keyof typeof a, string][] = [["wallbox_kw", "a wallbox"], ["heatpump_kw", "a heat pump"], ["battery_kwh", "a battery"]];
+  for (const [f, w] of add) if (a[f] == null && b[f] != null) return `now with ${w}`;
+  for (const [f, w] of add) if (a[f] != null && b[f] == null) return `now without ${w}`;
+  if (a.pv_kwp !== b.pv_kwp && b.pv_kwp != null) return `now ${b.pv_kwp.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWp of solar`;
+  if (a.battery_kwh !== b.battery_kwh && b.battery_kwh != null) return `now a ${b.battery_kwh.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWh battery`;
+  return "with the latest details";
+}
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 function Page({ agentId, installerId }: Props) {
@@ -76,23 +85,32 @@ function Page({ agentId, installerId }: Props) {
     const t = setInterval(() => setTickNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [startedAt, doneAt]);
+  // Keeps polling after the first design: a planner's change shows up as a second notification.
+  const [update, setUpdate] = useState<string | null>(null);
+  const seen = useRef(0);
+  const leadSeen = useRef<Lead | null>(null);
+  const updatedOnce = useRef(false);
   useEffect(() => {
-    if (!leadId || doneAt != null) return;
+    if (!leadId) return;
     const t = setInterval(async () => {
       const r = await fetch(`/api/leads/${leadId}`, { cache: "no-store" }).catch(() => null);
       if (!r?.ok) return;
       const l: Lead = await r.json();
-      if (l.status === "done") { setLead(l); setDoneAt(Date.now()); }
+      if (l.status !== "done") return;
+      const prev = leadSeen.current;
+      leadSeen.current = l; setLead(l);
+      if (!prev) { seen.current = l.history.length; setDoneAt(Date.now()); return; }
+      if (l.history.length > seen.current) { seen.current = l.history.length; updatedOnce.current = true; setUpdate(whatsNew(prev.draft.design, l.draft.design)); setSummary(false); }
     }, 3000);
     return () => clearInterval(t);
-  }, [leadId, doneAt]);
+  }, [leadId]);
 
   const submit = () => {
     if (!a.name.trim()) { setMiss("name"); nameRef.current?.focus(); return; }
     if (!locationOk(a.location)) { setMiss("location"); placeRef.current?.focus(); return; }
     setMiss(null); setError(null);
     unlock();   // the submit tap allows every sound that follows
-    setStartedAt(Date.now()); setDoneAt(null); setLead(null); setLeadId(null); setSummary(false);
+    setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false);
     fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form" }) })
       .then(async (r) => { const b = await r.json().catch(() => ({})); if (r.ok && b.lead_id) setLeadId(b.lead_id); })
@@ -161,7 +179,7 @@ function Page({ agentId, installerId }: Props) {
     return (
       <div className="h-page">{head}
         <section className="h-card h-in h-sum" key="sum">
-          <h1>Your first design, {first(a.name)}</h1>
+          <h1>{(lead.history.length > seen.current || updatedOnce.current) ? `Your updated design, ${first(a.name)}` : `Your first design, ${first(a.name)}`}</h1>
           <dl className="h-nums">
             {e.annual && <div><dt>Solar a year</dt><dd>{n0(e.annual.pv_yield_kwh)} kWh</dd></div>}
             <div><dt>Self-sufficiency</dt><dd>{pct(e.autarky_share)}%</dd></div>
@@ -178,9 +196,9 @@ function Page({ agentId, installerId }: Props) {
   }
 
   const banner = notify && (
-    <button type="button" className="ios-banner ios-note" onClick={() => setSummary(true)}>
+    <button type="button" key={update ?? "first"} className="ios-banner ios-note" onClick={() => { setSummary(true); setUpdate(null); }}>
       <span className="ios-app" aria-hidden>{brand.charAt(0)}</span>
-      <span className="ios-note-t"><small><b>{brand}</b><span>now</span></small>Your first design is ready</span>
+      <span className="ios-note-t"><small><b>{brand}</b><span>now</span></small>{update ? `Your design was updated, ${update}` : "Your first design is ready"}</span>
     </button>
   );
 

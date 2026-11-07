@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Listen from "./Listen";
 import { Fix } from "@/components/DesignSheet";
 import type { Design, DesignResponse, HomeInputs, InterpretChange, InterpretOverride, OverrideValue, Overrides } from "@/lib/api";
 import { COMPONENT_DESIGN_FIELD } from "@/lib/api";
@@ -19,7 +20,7 @@ const STEP: Record<string, number> = { pv: 0.5, battery: 2.5, heatpump: 1, wallb
 
 type Props = {
   res: DesignResponse; llm: boolean | null;
-  busy: boolean; error: string | null; onSay: (s: string) => Promise<boolean>;
+  busy: boolean; error: string | null; onSay: (s: string, quiet?: boolean) => Promise<boolean>;
   chips: InterpretChange[]; ovChips: InterpretOverride[]; onUnchip: (c: InterpretChange | InterpretOverride) => void;
   moved: Moved | null; canUndo: boolean; onUndo: () => void;
   approvedAt: string | null; onApprove: () => void;
@@ -41,6 +42,7 @@ export default function Refine(p: Props) {
         <h3 className="s-h3">Change it in a sentence</h3>
         {p.llm === false && <p className="s-quiet">Sentences are off: no ANTHROPIC_API_KEY in web/.env.local. Change by hand still works.</p>}
         {form("s-say desk")}
+        {p.llm !== false && <Listen busy={p.busy} onSentence={async (t) => { setS(t); return p.onSay(t, true); }} />}
         {p.error && <div className="error" role="alert"><span><span className="src">Interpreter said</span>{p.error}</span></div>}
         {(p.chips.length > 0 || p.ovChips.length > 0) && (
           <div className="s-chips">
