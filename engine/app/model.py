@@ -354,7 +354,8 @@ class Engine:
             cands.append(("heating_type", inp.get("heating_type", "Unknown"),
                           [("Gas", "Gas", {"heating_type": "Gas"}), ("Heatpump", "Heat pump", {"heating_type": "Heatpump"})]))
         if ask_("has_ev", not inp.get("has_ev")):
-            cands.append(("has_ev", False, [(True, "Yes, about 12,000 km a year", {"has_ev": True, "ev_annual_km": 12000})]))
+            cands.append(("has_ev", inp.get("has_ev", False), [(True, "Yes, about 12,000 km a year", {"has_ev": True, "ev_annual_km": 12000}),
+                                                               (False, "No", {"has_ev": False, "ev_annual_km": None})]))
         if ask_("annual_demand_kwh", not inp.get("annual_demand_kwh") or inp.get("annual_demand_kwh") == 4500):
             cands.append(("annual_demand_kwh", inp.get("annual_demand_kwh"),
                           [(3000, "about 3,000 kWh (two people)", {"annual_demand_kwh": 3000}),
@@ -364,7 +365,8 @@ class Engine:
             cands.append(("heating_demand_kwh", None,
                           [(12000, "12,000 kWh", {"heating_demand_kwh": 12000}), (20000, "20,000 kWh", {"heating_demand_kwh": 20000})]))
         if ask_("has_solar", not inp.get("has_solar")):
-            cands.append(("has_solar", False, [(True, "Yes, about 6 kWp", {"has_solar": True, "existing_solar_kwp": 6.0})]))
+            cands.append(("has_solar", inp.get("has_solar", False), [(True, "Yes, about 6 kWp", {"has_solar": True, "existing_solar_kwp": 6.0}),
+                                                                     (False, "No", {"has_solar": False, "existing_solar_kwp": None})]))
         variants = [inp] + [{**inp, **ch} for _, _, opts in cands for _, _, ch in opts]
         designs = self.sizes_batch(variants)
         base, rest = designs[0], designs[1:]
@@ -383,7 +385,7 @@ class Engine:
             if spread > 0:
                 qs.append({"field": field_, "current": cur, "options": options, "spread": round(spread, 2)})
         given = inp.get("_given")
-        no_use = given is not None and "annual_demand_kwh" not in given
+        no_use = (unknown is not None and "annual_demand_kwh" in unknown) or (given is not None and "annual_demand_kwh" not in given)
         # annual use is the prerequisite: when the lead gives none, it is asked first whatever the spread
         return sorted(qs, key=lambda q: (not (no_use and q["field"] == "annual_demand_kwh"), -q["spread"]))[:3]
 
