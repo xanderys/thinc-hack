@@ -15,17 +15,17 @@ type Props = {
 };
 
 // A yes/no question always offers both answers, even when the engine lists only the one that changes the design.
-function askOptions(q: AskQuestion) {
+export function askOptions(q: AskQuestion) {
   const o = q.options.map((x) => ({ value: x.value as unknown, label: x.label }));
   if (typeof q.current === "boolean" && !o.some((x) => x.value === q.current)) o.push({ value: q.current, label: q.current ? "Yes" : "No" });
   return o;
 }
 
 export type Pref = "expert" | "independence" | "payback" | "upfront";
-const PREFS: [Pref, string][] = [["independence", "Most independence"], ["payback", "Best payback"], ["upfront", "Lowest upfront cost"], ["expert", "As planners design it"]];
+export const PREFS: [Pref, string][] = [["independence", "Most independence"], ["payback", "Best payback"], ["upfront", "Lowest upfront cost"], ["expert", "As planners design it"]];
 
 // The lead with every quoted span underlined.
-function Marked({ text, quotes }: { text: string; quotes: string[] }) {
+export function Marked({ text, quotes }: { text: string; quotes: string[] }) {
   const low = text.toLowerCase(), ranges: [number, number][] = [];
   for (const q of quotes) { const i = low.indexOf(q.toLowerCase()); if (i >= 0) ranges.push([i, i + q.length]); }
   ranges.sort((a, b) => a[0] - b[0]);

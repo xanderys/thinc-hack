@@ -15,8 +15,8 @@ const FIELD: Partial<Record<keyof HomeInputs, string>> = {
 };
 const show = (x: unknown) => x == null ? "none" : typeof x === "boolean" ? (x ? "yes" : "no") : typeof x === "number" ? n0(x) : String(x);
 const ov = (x: OverrideValue | undefined) => x === undefined ? "auto" : x === "include" ? "include" : x == null ? "none" : n2(x);
-const UNIT: Record<keyof Design, string> = { pv_kwp: "kWp", inverter_kw: "kW", battery_kwh: "kWh", heatpump_kw: "kW", wallbox_kw: "kW" };
-const STEP: Record<string, number> = { pv: 0.5, battery: 2.5, heatpump: 1, wallbox: 11 };
+export const UNIT: Record<keyof Design, string> = { pv_kwp: "kWp", inverter_kw: "kW", battery_kwh: "kWh", heatpump_kw: "kW", wallbox_kw: "kW" };
+export const STEP: Record<string, number> = { pv: 0.5, battery: 2.5, heatpump: 1, wallbox: 11 };
 
 type Props = {
   res: DesignResponse; llm: boolean | null;
@@ -25,6 +25,7 @@ type Props = {
   moved: Moved | null; canUndo: boolean; onUndo: () => void;
   approvedAt: string | null; onApprove: () => void;
   overrides: Overrides; setOverride: (f: keyof Design, v: OverrideValue | undefined) => void;
+  bare?: boolean;   // in the open card: locks, Undo and Approve live in the top bar
 };
 
 export default function Refine(p: Props) {
@@ -37,11 +38,11 @@ export default function Refine(p: Props) {
     </form>
   );
   return (
-    <section className="s-refine" aria-label="Change it in a sentence">
+    <section className={p.bare ? "s-refine bare" : "s-refine"} aria-label="Change it in a sentence">
       <div>
         <h3 className="s-h3">Change it in a sentence</h3>
         {p.llm === false && <p className="s-quiet">Sentences are off: no ANTHROPIC_API_KEY in web/.env.local. Change by hand still works.</p>}
-        {form("s-say desk")}
+        {form(p.bare ? "s-say" : "s-say desk")}
         {p.llm !== false && <Listen busy={p.busy} onSentence={async (t) => { setS(t); return p.onSay(t, true); }} />}
         {p.error && <div className="error" role="alert"><span><span className="src">Interpreter said</span>{p.error}</span></div>}
         {(p.chips.length > 0 || p.ovChips.length > 0) && (
@@ -61,21 +62,21 @@ export default function Refine(p: Props) {
           </div>
         )}
         {p.moved && p.moved.lines.length === 0 && <p className="s-quiet">{p.moved.cause} Nothing in the design moved.</p>}
-        <details className="s-hand">
+        {!p.bare && <details className="s-hand">
           <summary>Change by hand</summary>
           {KEYS.map((k) => {
             const f = COMPONENT_DESIGN_FIELD[k];
             return <div className="s-handrow" key={k}><span className="n">{NAME[k]}</span><Fix field={f} current={p.res.design[f]} unit={UNIT[f]} step={STEP[k]} overrides={p.overrides} setOverride={p.setOverride} /></div>;
           })}
-        </details>
+        </details>}
       </div>
-      <div className="s-decide">
+      {!p.bare && <div className="s-decide">
         <button className="btn ghost" onClick={p.onUndo} disabled={!p.canUndo}>Undo</button>
         {p.approvedAt
           ? <span className="s-approved s-mark">Approved {p.approvedAt}<a href="/check">See what really happened</a></span>
           : <button className="btn" onClick={p.onApprove}>Approve</button>}
-      </div>
-      {form("s-say phonebar")}
+      </div>}
+      {!p.bare && form("s-say phonebar")}
     </section>
   );
 }
