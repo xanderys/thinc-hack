@@ -3,7 +3,6 @@
 Aggregates only. Scripts live in `analysis/` (gitignored). Installer A = `2a8ba8e2`, installer B = `23c108b7`.
 
 ## 0. What the data is
-
 | | A | B |
 |---|---|---|
 | Projects (all signed: `first_signed_at` 100% filled) | 1,277 | 342 |
@@ -31,9 +30,9 @@ Projects without a PV option are add-on orders: in A, 143 battery-extension-only
 | 9,001 to 12,000 | 60 | 13.3 (10.7 to 15.9) | 12.6 | 13.5 |
 | over 12,000 | 36 | 14.2 (11.6 to 18.2) | 14.2 | 14.4 |
 
-- The rule planners follow is a floor plus a slope, not a ratio: median fit **kWp = 6.5 + 0.58 x MWh** (A: 6.0 + 0.60, B: 8.55 + 0.45). Nobody gets less than about 6 kWp unless the roof forbids it.
+- The rule planners follow is a floor plus a slope, not a ratio: median fit **kWp = 6.5 + 0.58 x MWh** (A: 6.0 + 0.60, B: 8.55 + 0.45). Only 5% get less than 4.5 kWp.
 - Planners install a median **2.0 kWp per MWh** (p25 1.5, p75 2.7). The textbook 1.3 kWp per MWh under-sizes 82% of real designs.
-- Demand is a weak predictor: Spearman 0.36 with kWp. At 4,500 kWh the p10 to p90 range is 4.5 to 14 kWp. The roof decides, and the roof is not in the inputs.
+- Demand is a weak predictor: Spearman 0.36 with kWp; installer x demand band explains 15% of PV variance (R2). At 4,500 kWh the p10 to p90 range is 4.5 to 14 kWp. The roof decides, and the roof is not in the inputs (roof type itself barely moves the median: 9.0 kWp on tile, concrete and flat roofs; 10.8 on east/west flat).
 - EV: A 10.35 vs 9.0 kWp (n = 39 EV). B no difference (n = 21). Existing heat pump: A 10.35 vs 9.0, B 11.55 vs 10.8, despite lower recorded household demand (4,000 vs 4,500), so planners add PV for heat-pump load that the demand field omits.
 - Module counts, not kWp, are the decision unit: top counts 18, 20, 16, 24, 22, 14 modules. B packages are exact multiples of 450 W (14, 24, 30 modules = 6.3, 10.8, 13.5 kWp).
 
@@ -165,13 +164,14 @@ Held-out results:
 | Installer median | 36.3% | 2.91 | 44.3% | 73.7% | 14.6% |
 | Installer x demand-band lookup | 38.3% | 2.74 | 45.7% | 74.8% | 15.5% |
 | Gradient boosting, battery snapped to catalogue | 38.9% | 2.68 | 50.7% | 73.6% | 17.9% |
-| Ceiling: median of homes with identical inputs (in-sample, groups of 5+) | 43.3% | | | | |
+| Ceiling: median of training homes with identical inputs (CV, groups of 5+, covers 71%) | 38.6% | | | | |
+| Same ceiling in-sample | 43.3% | | | | |
 
-Base rates: battery 95%, wallbox 26%, heat pump 0.9%. Heat-pump accuracy is 99% for every model and says nothing; report its recall on the 14 fossil cases instead.
+Base rates: battery 95%, wallbox 26%, heat pump 0.9%. Heat-pump accuracy is 99% for every model and says nothing; report recall instead: the rule "heat pump if fossil heating" has recall 92% and precision 48% (n = 12 in the evaluation set). "Battery if PV above 4 kWp" scores 94.4%, below "always battery" (95.0%).
 
-The inputs cap PV accuracy near 43%: identical homes get designs that differ by more than the tolerance. With looser bands the fitted floor-plus-slope rule reaches 51% within 2 kWp and 70% within 3 kWp.
+The inputs cap PV accuracy near 39 to 43%: identical homes get designs that differ by more than the tolerance, so the boosted model is already at the ceiling. Projects at the 4,500 kWh default score lower (A 35% vs 39%, B 38% vs 51% with a band lookup). With looser bands the fitted floor-plus-slope rule reaches 51% within 2 kWp and 70% within 3 kWp.
 
-**Headline for the slide:** PV within tolerance on held-out projects, ours against the textbook rule and the ceiling: "39% vs 17%, where 43% is the most these inputs allow". Compute: for each held-out project, hit = |ours - expert| <= max(1, 0.15 x expert); headline = mean of hits; ceiling = same with the median of training homes with identical installer, demand, EV and heating type. Show PV MAE alongside (2.7 vs 4.1 kWp, 35% lower).
+**Headline for the slide:** PV within tolerance on held-out projects, ours against the textbook rule and the ceiling: "39% vs 17% for the textbook rule; identical homes only agree 39 to 43% of the time". Compute: for each held-out project, hit = |ours - expert| <= max(1, 0.15 x expert); headline = mean of hits; ceiling = same with the median of training homes with identical installer, demand, EV and heating type. Show PV MAE alongside (2.7 vs 4.1 kWp, 35% lower).
 
 ## Top 10 facts for the pitch
 
@@ -184,7 +184,7 @@ The inputs cap PV accuracy near 43%: identical homes get designs that differ by 
 7. Heat pumps go only to fossil-heated homes: 58% of them at A, 0 of 171 heat-pump homes; kW = heat MWh / 2.3.
 8. 91% of wallboxes go to homes flagged without an EV: the EV flag is missing, not the demand.
 9. A switched battery line in 2025 Q1 (7/14 kWh to LFP 5/10/15): the model must know the catalogue date.
-10. Identical inputs, different roofs: the inputs cap PV accuracy at about 43% within 1 kWp or 15%; we reach 39%, the textbook 17%.
+10. Demand explains 15% of PV variance; identical homes agree on PV within 1 kWp or 15% only 39 to 43% of the time. We reach 39%, the textbook 17%.
 
 ## Feature list for the model (ranked by evidence)
 
