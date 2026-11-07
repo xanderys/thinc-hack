@@ -225,12 +225,20 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       const order = [...ev].sort((a, b) => (b.key === pref ? 1 : 0) - (a.key === pref ? 1 : 0));
       // After a sentence or a hand change the design on screen may match none of the offers: list it first as Current.
       const cur: Variant[] = order.some((v) => same(v.design, res.design)) ? [] : [{ name: "Current", tag: "Current", design: res.design, e: res.economics, note: "", current: true, overrides: null }];
-      return [...cur, ...order.map((v, n) => {
+      // An offer identical to an earlier row (Best value is often the planners' design) folds into that row as a tag.
+      const rows: Variant[] = [...cur, ...order.map((v, n) => {
         const [name, how] = v.label.split(" (");
         return { name, tag: n === 0 ? "Preferred" : v.key === "expert" ? (how ? how.replace(/\)$/, "").replace(/^./, (c) => c.toUpperCase()).replace(" here ", " ") : "As planners design it") : "",
           design: v.design, e: v.economics, note: v.key === "expert" ? "" : v.note, current: same(v.design, res.design),
           overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } };
       })];
+      const out: Variant[] = [];
+      rows.forEach((v) => {
+        const twin = out.find((w) => same(w.design, v.design));
+        if (twin) twin.also = [...(twin.also ?? []), v.name];
+        else out.push({ ...v });
+      });
+      return out;
     }
     const fixed = Object.keys(overrides).length > 0;
     const out: Variant[] = [{ name: variantName(res.design), tag: fixed ? "Chosen" : "", design: res.design, e: res.economics, overrides: null, current: true }];

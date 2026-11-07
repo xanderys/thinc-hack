@@ -10,7 +10,7 @@ import Why from "./Why";
 import { INSTALLER_NAME } from "@/lib/api";
 import { designLine, evidence, KEYS, n0, n2, NAME, named, pct, size } from "@/lib/stage";
 
-export type Variant = { name: string; tag: string; design: Design; e: Economics | null; overrides: Overrides | null; current: boolean; note?: string };
+export type Variant = { name: string; tag: string; design: Design; e: Economics | null; overrides: Overrides | null; current: boolean; note?: string; also?: string[] };
 
 type Props = {
   res: DesignResponse; prev: DesignResponse | null; inputs: HomeInputs;
