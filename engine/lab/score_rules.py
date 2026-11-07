@@ -8,7 +8,7 @@ formula-physics: planner_rules at --physics-ref, no calibrate call, constants=No
 formula-calibrated: planner_rules at --calibrated-ref (rules-1), calibrate(fit half) then recommend(inputs, constants=...).
 Each ref is checked out as a throwaway worktree under /private/tmp/claude-501 and imported in its own subprocess
 (lab/_rules_worker.py; the module name app.planner_rules clashes), designs cached in engine/.cache/lab_rules/<sha>[-calibrated].json.
-Scored on the test half (new-system), the 258 board and board and test half. Black box: Engine.fit() as live, on the test half only
+Default population is the fit half (new-system); --population test --final scores the test half, the 258 board and board and test half. Black box: Engine.fit() as live, on the test half only
 on homes it did not train on. Textbook: Engine.baseline. Deviation analysis: hourly simulation of both designs where formula and
 expert differ (inverter_kw of our design is not passed, as in the first scoreboard). Prints aggregates only.
 """
@@ -126,39 +126,67 @@ def differs(te, pred) -> np.ndarray:
     return d
 
 
-def sim_pair(r: dict, ours: dict):
-    """(payback, autarky) for our design and the expert's, hourly simulation, same inputs."""
-    inp = roof_to_sim({k: v for k, v in row_inputs(r).items() if not k.startswith("_")})
-    from app import hourly
-    res = []
-    for d in ({"pv_kwp": ours["pv_kwp"] or None, "battery_kwh": ours["battery_kwh"] or None,
-               "heatpump_kw": ours["heatpump_kw"] or None, "wallbox_kw": ours["wallbox_kw"] or None,
-               "inverter_kw": ours.get("inverter_kw")}, row_design(r)):
-        e = hourly.simulate(inp, d).economics
-        res.append((e["payback_years"], e["autarky_share"]))
-    return res
-
-
-def deviation(te: pd.DataFrame, pred: pd.DataFrame, max_sim: int, sims: dict) -> dict:
-    idx = np.where(differs(te, pred))[0][:max_sim]
-    t = {"differs": int(differs(te, pred).sum()), "simulated": 0, "failed": 0,
-         "payback_ours": 0, "payback_expert": 0, "payback_tie": 0, "autarky_ours": 0, "autarky_expert": 0, "autarky_tie": 0}
-    rows = te.to_dict("records")
-    for i in idx:
-        check_load("deviation simulation")
+def sim_cache(wts: Worktrees, ref: str, frames: dict, preds: dict, names: tuple, max_sim: int) -> dict:
+    """Run expert and formula designs through simulate() of `ref` (its own subprocess), cached by sha. -> {pid: {...}}"""
+    import pickle
+    import subprocess
+    import tempfile
+    sha = git("rev-parse", ref)
+    out = CACHE / f"{sha}-dev.json"
+    have = json.load(open(out)) if out.exists() else {}
+    need = {}
+    for key, frame in frames.items():
+        rows = frame.to_dict("records")
+        for ni, name in enumerate(names):
+            for i in np.where(differs(frame, preds[(key, name)]))[0][:max_sim]:
+                r = rows[i]
+                pid = str(r["project_id"])
+                it = need.setdefault(pid, {"pid": pid, "inp": row_inputs(r),
+                                           "sim_inp": roof_to_sim({k: v for k, v in row_inputs(r).items() if not k.startswith("_")}),
+                                           "expert": row_design(r), "phys": False, "cal": None})
+                if ni == 0:
+                    it["phys"] = True
+                else:
+                    it["cal"] = {k: (preds[(key, name)].iloc[i][k] or None) for k in TARGET.values()}
+    todo = [it for it in need.values() if "expert" not in have.get(it["pid"], {}) or (it["phys"] and "physics" not in have.get(it["pid"], {}))
+            or (it["cal"] is not None and "calibrated" not in have.get(it["pid"], {}))]
+    if todo:
+        print(f"deviation simulation at {sha[:7]}: {len(todo)} homes", flush=True)
+        with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False, dir=CACHE) as f:
+            pickle.dump({"engine": str(wts.engine(sha)), "items": todo, "out": str(out)}, f)
         try:
-            ours = pred.iloc[i].to_dict()
-            k = (rows[i]["project_id"], tuple(sorted(ours.items())))
-            if k not in sims:
-                sims[k] = sim_pair(rows[i], ours)
-            (po, ao), (pe, ae) = sims[k]
-        except Exception:
+            subprocess.run([sys.executable, str(Path(__file__).with_name("_rules_dev_worker.py")), f.name], check=True)
+        finally:
+            os.unlink(f.name)
+    return json.load(open(out))
+
+
+def deviation(te: pd.DataFrame, pred: pd.DataFrame, line: str, sims: dict, max_sim: int) -> dict:
+    """line is "physics" or "calibrated": the key of the simulated result for that line. Results are [payback, autarky, npv, battery_kwh]."""
+    dif = differs(te, pred)
+    idx = np.where(dif)[0][:max_sim]
+    t = {"differs": int(dif.sum()), "simulated": 0, "failed": 0, "payback_ours": 0, "payback_expert": 0, "payback_tie": 0,
+         "autarky_ours": 0, "autarky_expert": 0, "autarky_tie": 0, "npv_ours": 0, "npv_expert": 0, "npv_tie": 0}
+    pids = te.project_id.astype(str).values
+    big = lambda p: p if p is not None else 1e9  # no payback at all is worse than any payback
+    med = {k: [] for k in ("npv_delta", "pb_o", "pb_e", "au_o", "au_e", "bat_o", "bat_e")}
+    for i in idx:
+        row = sims.get(pids[i], {})
+        ours, exp = row.get(line), row.get("expert")
+        if not isinstance(ours, list) or not isinstance(exp, list):
             t["failed"] += 1
             continue
+        (po, ao, no, bo), (pe, ae, ne, be) = ours, exp
         t["simulated"] += 1
-        big = lambda p: p if p is not None else 1e9  # no payback at all is worse than any payback
         t["payback_ours" if big(po) < big(pe) else "payback_expert" if big(pe) < big(po) else "payback_tie"] += 1
         t["autarky_ours" if ao > ae + 1e-9 else "autarky_expert" if ae > ao + 1e-9 else "autarky_tie"] += 1
+        if no is not None and ne is not None:
+            t["npv_ours" if no > ne + 5 else "npv_expert" if ne > no + 5 else "npv_tie"] += 1
+            med["npv_delta"].append(no - ne)
+        for k, v in (("pb_o", po), ("pb_e", pe), ("au_o", ao), ("au_e", ae), ("bat_o", bo), ("bat_e", be)):
+            if v is not None:
+                med[k].append(v)
+    t.update({k: (float(np.median(v)) if v else None) for k, v in med.items()})
     return t
 
 
@@ -177,8 +205,15 @@ def main():
     ap.add_argument("--stub", action="store_true", help="wrap the textbook rule as the formula; harness check only")
     ap.add_argument("--max-sim", type=int, default=100000, help="cap on hourly simulations per population")
     ap.add_argument("--no-sim", action="store_true")
+    ap.add_argument("--quick", action="store_true", help="skip the deviation simulation (alias of --no-sim) and reuse the cached black box and textbook lines")
     ap.add_argument("--label", default="", help="text for the report title, e.g. SMOKE TEST")
+    ap.add_argument("--population", choices=("fit", "test"), default="fit",
+                    help="fit (default): new-system jobs of the fit half. test: the locked test half, board and overlap; needs --final")
+    ap.add_argument("--final", action="store_true", help="required for --population test; set only once PHYSICS declares the rules final")
     a = ap.parse_args()
+    if a.population == "test" and not a.final:
+        raise SystemExit("refused: --population test needs --final (the test half is the exam, scored once PHYSICS declares final)")
+    a.no_sim = a.no_sim or a.quick
     check_load("start")
     t0 = time.time()
     df = data.load()[0]
@@ -192,26 +227,29 @@ def main():
     board = board.assign(project_id=board.project_id.astype(str))
     inter = board[board.project_id.isin(set(test_df.project_id))].reset_index(drop=True)
     union = pd.concat([test_df, board[~board.project_id.isin(set(test_df.project_id))]], ignore_index=True)
-    items = [(r["project_id"], row_inputs(r)) for r in union.to_dict("records")]
+    fit_new = NEW_SYSTEM(fit_df)
+    scored = fit_new if a.population == "fit" else union
+    items = [(r["project_id"], row_inputs(r)) for r in scored.to_dict("records")]
     if a.limit:
         items = items[:a.limit]
 
     stub = a.stub
     eng = None
     wts = Worktrees()
-    try:
-        if not stub:
-            phys = rules_designs(wts, a.physics_ref, False, items, None)
-            if not a.limit:
-                cal = rules_designs(wts, a.calibrated_ref, True, items, fit_df)
-            else:
-                print("limit run: calibrated line skipped")
-                cal = None
-    finally:
-        wts.close()
+    import atexit
+    atexit.register(wts.close)                     # worktrees stay until the deviation simulation is done
+    if not stub:
+        phys = rules_designs(wts, a.physics_ref, False, items, None)
+        if not a.limit:
+            cal = rules_designs(wts, a.calibrated_ref, True, items, fit_df)
+        else:
+            print("limit run: calibrated line skipped")
+            cal = None
     if a.limit:
         print(timing_header() + "\n" + timing_line(f"physics {git('rev-parse', '--short', a.physics_ref)} ({len(items)} homes)", phys, [p for p, _ in items]))
         return
+    static = CACHE / "static_lines.json"           # black box and textbook do not depend on the physics ref
+    static_have = json.load(open(static)) if static.exists() and a.population == "fit" and not stub else {}
     check_load("black box fit")
     eng = Engine(df, {}).fit()                     # as live
     if stub:
@@ -227,36 +265,61 @@ def main():
     for k, v in consts.items():
         if k != "_meta":
             print(" ", k, v)
-    pops = (("test half", test_df, "test half (new-system)"), ("258 board", board, "258 board"), ("board and test half", inter, "board and test half"))
+    fit_unseen = fit_new[~fit_new.project_id.isin(set(eng.train.project_id.astype(str)))].reset_index(drop=True)
+    if a.population == "fit":
+        pops = (("fit half", fit_new, "fit half (new-system)"),)
+    else:
+        pops = (("test half", test_df, "test half (new-system)"), ("258 board", board, "258 board"), ("board and test half", inter, "board and test half"))
     lines, preds = [], {}
     for key, frame, plabel in pops:
+        fitp = a.population == "fit"
         for name, c in ((PHYS, phys), (CAL, cal)):
             preds[(key, name)] = frame_from(c, frame)
-            lines.append((name, plabel, key, 0 if name == PHYS else 1, score(frame, preds[(key, name)])))
-        bbf = unseen if key == "test half" else frame
-        lines.append(("black box (chain)", "test half, homes the chain did not train on" if key == "test half" else plabel, key, 2,
-                      score(bbf, predict_frame(eng, bbf))))
+            lines.append((name + (", in-sample, fitted on this half" if fitp and name == CAL else ""), plabel, key, 0 if name == PHYS else 1,
+                          score(frame, preds[(key, name)])))
+        if fitp:
+            if "lines" not in static_have:
+                static_have["lines"] = {"bb_in": score(frame, predict_frame(eng, frame)), "bb_out": score(fit_unseen, predict_frame(eng, fit_unseen)),
+                                        "tb": score(frame, textbook_frame(eng, frame))}
+                json.dump(static_have, open(static, "w"))
+            lines.append(("black box (chain), in-sample, not comparable", plabel, key, 2, static_have["lines"]["bb_in"]))
+            lines.append(("black box (chain), homes it did not train on", f"{len(fit_unseen)} of the fit half", key, 2, static_have["lines"]["bb_out"]))
+            lines.append(("textbook", plabel, key, 3, static_have["lines"]["tb"]))
+            continue
+        else:
+            bbf = unseen if key == "test half" else frame
+            lines.append(("black box (chain)", "test half, homes the chain did not train on" if key == "test half" else plabel, key, 2,
+                          score(bbf, predict_frame(eng, bbf))))
         lines.append(("textbook", plabel, key, 3, score(frame, textbook_frame(eng, frame))))
     lines = [(l, p, s_) for l, p, k, o, s_ in sorted(lines, key=lambda x: ([q[0] for q in pops].index(x[2]), x[3]))]
 
     title = a.label or ("STUB RUN, harness check, not a result" if stub else "")
-    md = [f"# Rules scoreboard{f' ({title})' if title else ''}", ""]
+    md = [f"# Rules scoreboard, {a.population} half{f' ({title})' if title else ''}", ""]
+    if a.population == "fit":
+        md += ["> Fit half only. The test half is not scored until PHYSICS declares final. Calibrated is fitted on this half, so its row is in-sample.", ""]
     if stub:
         md += ["> The formula lines below are the textbook rule wrapped. These numbers say nothing about the planner rules.", ""]
     md += [f"Split: fit {len(fit_ids)}, test {len(test_ids)} (seed 42 per installer, lab/split); new-system scope on the test half: {len(test_df)}; "
            f"board: {len(board)}; both: {len(inter)}. Tolerances as the engine scoreboard (PV max(1 kWp, 15%), battery 2 kWh, wallbox and heat pump on the decision).", "",
            table(lines), ""]
     if not a.no_sim:
-        sims = {}
+        frames = {k: f for k, f, _ in pops}
+        sims = sim_cache(wts, a.physics_ref, frames, preds, (PHYS, CAL), a.max_sim)
         md += ["## Deviation analysis (hourly simulation, formula vs expert)", "",
-               "Homes where PV, battery or wallbox is outside tolerance. Payback: lower is better, no payback is worst. Autarky: higher is better.", "",
-               "| Line | Population | Differ | Simulated | Payback ours | Payback expert | Payback tie | Autarky ours | Autarky expert | Autarky tie |",
-               "|---|---|---|---|---|---|---|---|---|---|"]
+               "Homes where PV, battery or wallbox is outside tolerance. Both designs run through simulate() at the physics ref (formula-physics with its sim_inputs plane fill). Payback: lower is better, no payback is worst. Autarky: higher is better.", "",
+               "NPV is the 20-year value from simulate(); a gap under EUR 5 counts as a tie. Medians are over the simulated homes.", "",
+               "| Line | Population | Differ | Simulated | Payback ours | Payback expert | Payback tie | Autarky ours | Autarky expert | Autarky tie | NPV ours | NPV expert | NPV tie |",
+               "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+        medrows = []
         for key, frame, _ in pops:
             for name in (PHYS, CAL):
-                d = deviation(frame, preds[(key, name)], a.max_sim, sims)
+                d = deviation(frame, preds[(key, name)], "physics" if name == PHYS else "calibrated", sims, a.max_sim)
                 md.append(f"| {name} | {key} | {d['differs']} | {d['simulated']} | {d['payback_ours']} | {d['payback_expert']} | {d['payback_tie']} | "
-                          f"{d['autarky_ours']} | {d['autarky_expert']} | {d['autarky_tie']} |")
+                          f"{d['autarky_ours']} | {d['autarky_expert']} | {d['autarky_tie']} | {d['npv_ours']} | {d['npv_expert']} | {d['npv_tie']} |")
+                f1 = lambda v, f="{:.1f}": "n/a" if v is None else f.format(v)
+                medrows.append(f"| {name} | {f1(d['npv_delta'], '{:+,.0f}')} | {f1(d['pb_o'])} vs {f1(d['pb_e'])} | {f1(d['au_o'], '{:.0%}')} vs {f1(d['au_e'], '{:.0%}')} | "
+                               f"{f1(d['bat_o'])} vs {f1(d['bat_e'])} | {d['failed']} |")
+        md += ["", "Medians, ours vs expert:", "", "| Line | NPV gain, EUR | Payback, years | Autarky | Battery, kWh | Sim failures |", "|---|---|---|---|---|---|", *medrows]
         md.append("")
     md += ["## Runtime per design (ms, formula only)", "", timing_header(), timing_line(PHYS, phys, [p for p, _ in items]),
            timing_line(CAL, cal, [p for p, _ in items]), ""]
@@ -265,11 +328,12 @@ def main():
         if k != "_meta":
             md.append(f"- {k}: {v}")
     md.append("")
-    md.append(f"Black box on the test half is scored only on {len(unseen)} homes it did not train on; the rest are in its train split.")
+    md.append(f"Black box on the test half is scored only on {len(unseen)} homes it did not train on; the rest are in its train split." if a.population == "test"
+              else f"Black box on the fit half: {len(fit_unseen)} of {len(fit_new)} homes were outside its train split (out-of-sample); the all-homes row is in-sample.")
     out = "\n".join(md)
     print(out)
     REPORTS.mkdir(exist_ok=True)
-    (REPORTS / ("rules_scoreboard_stub.md" if stub else "rules_scoreboard_smoke.md" if a.label else "rules_scoreboard.md")).write_text(out + "\n")
+    (REPORTS / ("rules_scoreboard_stub.md" if stub else "rules_scoreboard_smoke.md" if a.label else "rules_scoreboard.md" if a.population == "test" else f"rules_scoreboard_fit_{psha}.md")).write_text(out + "\n")
     print(f"\n({time.time() - t0:.0f} s)")
 
 
