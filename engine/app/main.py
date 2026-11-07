@@ -80,7 +80,8 @@ def startup():
     leads.load_all()  # before anything can create or step a lead
     leads.expire_stale()
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
-    threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models(), refresh_all_leads()), daemon=True).start()
+    threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models(), roofs.warm_venue(), refresh_all_leads()),
+                     daemon=True).start()
     # the scoreboard is the lab's sealed table (final_test.json); the live recompute stays available via warm_rules_eval()
 
 
@@ -438,7 +439,7 @@ def project(project_id: str):
 @app.get("/api/roof")
 def roof(address: str = "", postcode: str = ""):
     if address.strip():
-        return roofs.lookup(address)
+        return roofs.lookup_or_pending(address)  # pending: true while a new 2 km tile downloads; poll again
     if postcode.strip():
         return roofs.postcode_lookup(postcode)
     return err(422, "address or postcode is missing.")
