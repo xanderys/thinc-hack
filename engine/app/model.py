@@ -7,12 +7,13 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 from sklearn.model_selection import cross_val_predict, train_test_split
 
-from . import physics
+from . import rules
 from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES, date_t
 
 SEED = 42
 K = 15
-MODEL_VERSION = "chain-hgb-knn-3"
+MODEL_VERSION = "chain-hgb-knn-4"
+NO_PV_RULE = "pv"  # "pv": propose PV when a battery would otherwise have none; "battery_none": drop the battery
 T_NOW = {"t": 2026.3}  # latest offer date in train; used when a request carries no offer_date
 COMPONENTS = ["pv", "battery", "heatpump", "wallbox"]
 UNITS = {"pv": "kWp", "battery": "kWh", "heatpump": "kW", "wallbox": "kW"}
@@ -98,6 +99,8 @@ class Engine:
         tr = self.train
         T_NOW["t"] = max(date_t(x) for x in tr.offer_date)
         X = pd.DataFrame([base_features(r, r["installer_id"]) for r in tr.to_dict("records")])
+        # offer date picks the battery catalogue only; as a model feature it lowered the scoreboard (README)
+        X = X.drop(columns=["t"])
         self.cols = list(X.columns)
 
         for inst in INSTALLERS:
@@ -191,13 +194,26 @@ class Engine:
         X1 = X.assign(pv=pv)
         p_b = float(self.models["bat_dec"].predict_proba(X1)[0, 1])
         bat, src = choose("battery_kwh", p_b, lambda: snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"])))
+        # a battery needs PV to charge: without PV, new or recorded, propose PV or drop the battery
+        nopv_note = None
+        if bat and not pv and not inp.get("has_solar") and src == "model":
+            if NO_PV_RULE == "pv" and "pv_kwp" not in ov:
+                pv = snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"])
+                comps["pv"] = self._detail("pv", pv, p_pv, nb, inp, "model")
+                comps["pv"]["reason"] = f"A battery needs PV to charge and none is recorded, so PV is proposed; {comps['pv']['reason']}"
+                X1 = X.assign(pv=pv)
+                bat = snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"]))
+            else:
+                bat, nopv_note = 0.0, "No PV, new or recorded, so no battery: it could not charge from solar."
         comps["battery"] = self._detail("battery", bat, p_b, nb, inp, src, pv=pv)
+        if nopv_note:
+            comps["battery"]["reason"] = nopv_note
         X2 = X1.assign(battery=bat)
         # heat pump: never proposed where one exists; a planner "include" there is a replacement job
         p_h = float(self.models["hp_dec"].predict_proba(X2)[0, 1]) if self.models.get("hp_dec") else 0.0
         if inp.get("heating_type") == "Heatpump" and "heatpump_kw" not in ov:
             p_h = 0.0
-        hp, src = choose("heatpump_kw", p_h, lambda: snap_up(physics.heatpump_kw(inp), cat["heatpump"]))
+        hp, src = choose("heatpump_kw", p_h, lambda: snap_up(rules.heatpump_kw(inp), cat["heatpump"]))
         if hp and inp.get("heating_type") == "Heatpump":
             inp = {**inp, "_hp_replacement": True}
         comps["heatpump"] = self._detail("heatpump", hp, p_h, nb, inp, src)
@@ -207,11 +223,11 @@ class Engine:
                          lambda: 22.0 if float(self.models["wb_size"].predict_proba(X2)[0, 1]) >= 0.5 else 11.0)
         comps["wallbox"] = self._detail("wallbox", wb, p_w, nb, inp, src)
 
-        inv = ov["inverter_kw"] if isinstance(ov.get("inverter_kw"), (int, float)) else physics.inverter_kw(pv)
+        inv = ov["inverter_kw"] if isinstance(ov.get("inverter_kw"), (int, float)) else rules.inverter_kw(pv)
         design = {"pv_kwp": pv or None, "inverter_kw": inv if pv else None, "battery_kwh": bat or None,
                   "heatpump_kw": hp or None, "wallbox_kw": wb or None}
-        econ = physics.economics(inp, design)
-        plaus = physics.plausibility(inp, design, econ)
+        econ = rules.economics(inp, design)
+        plaus = rules.plausibility(inp, design, econ)
         return {"design": design, "explanation": self._explain(inp, design, comps, nb, econ),
                 "components": comps, "plausibility": plaus, "economics": econ, "model_version": MODEL_VERSION}
 
@@ -222,7 +238,7 @@ class Engine:
         s = nb[TARGET[comp]].values
         agree = float(((s > 0) == inc).mean())
         if inc:
-            tol = physics.tolerance(comp, size)
+            tol = rules.tolerance(comp, size)
             close = float((np.abs(s[s > 0] - size) <= tol).mean()) if (s > 0).any() else 0.0
             conf = 0.5 * agree + 0.5 * close
         else:
@@ -245,7 +261,7 @@ class Engine:
             return f"Set by the planner; {k} of {n} similar homes had {NAMES[comp]}."
         if src == "include" and comp == "heatpump":
             what = "Replaces the existing heat pump" if inp.get("_hp_replacement") else "Included by the planner"
-            return f"{what}; {fmt(size, unit)} from the heat load ({physics.heat_load_note(inp)})."
+            return f"{what}; {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
         if src == "include" and comp != "pv" and comp != "battery":
             return f"Included by the planner at {fmt(size, unit)}, the size this installer fits most for homes like this."
         if comp == "pv":
@@ -263,7 +279,7 @@ class Engine:
                 if inp.get("heating_type") == "Heatpump":
                     return "The home already heats with a heat pump."
                 return f"{k} of {n} similar homes got a heat pump from this installer."
-            return f"{fmt(size, unit)} from the estimated heat load ({physics.heat_load_note(inp)})."
+            return f"{fmt(size, unit)} from the estimated heat load ({rules.heat_load_note(inp)})."
         if comp == "wallbox":
             ev = "has an EV" if inp.get("has_ev") else "has no EV recorded"
             if not inc:
@@ -289,7 +305,7 @@ class Engine:
     def validate(self, inp: dict, design: dict) -> list:
         inst = inp["installer_id"]
         nb = self.neighbours(inp, inst)
-        rules = physics.hard_rules(inp, design)
+        rules = rules.hard_rules(inp, design)
         flags = []
         for comp, key in TARGET.items():
             st = self.nb_stats(nb, comp)
@@ -353,7 +369,7 @@ class Engine:
             bc = {}
             for c in COMPONENTS:
                 k = TARGET[c]
-                w = physics.within(c, bdf[k].values, te[k].values)
+                w = rules.within(c, bdf[k].values, te[k].values)
                 mm &= w
                 inc = te[k].values > 0
                 bc[c] = {"within_tolerance_share": round(float(w.mean()), 3),
@@ -366,8 +382,8 @@ class Engine:
         for c in COMPONENTS:
             k = TARGET[c]
             e, o, b = te[k].values, ours[k].values, base[k].values
-            wo = physics.within(c, o, e)
-            wb_ = physics.within(c, b, e)
+            wo = rules.within(c, o, e)
+            wb_ = rules.within(c, b, e)
             match_o &= wo
             match_b &= wb_
             inc = e > 0
@@ -379,7 +395,7 @@ class Engine:
                 "unit": UNITS[c],
                 "within_tolerance_share": round(float(wo.mean()), 3),
                 "baseline_within_tolerance_share": round(float(wb_.mean()), 3),
-                "tolerance": physics.TOL_LABEL[c],
+                "tolerance": rules.TOL_LABEL[c],
             }
             both = inc & (o > 0)
             comps[c]["size_mae_when_both_include"] = round(float(np.abs(o[both] - e[both]).mean()), 2) if both.any() else None
@@ -399,8 +415,7 @@ class Engine:
                 e, o = te[k].iloc[i], ours[k].iloc[i]
                 dev.append({"project_id": te.project_id.iloc[i], "component": c, "ours": float(o) or None,
                             "expert": float(e) or None, "_err": float(err[i]),
-                            "note": f"Expert {fmt(e or None, UNITS[c])}, ours {fmt(o or None, UNITS[c])}; demand {te.annual_demand_kwh.iloc[i]:,.0f} kWh"
-                                    + (", EV" if te.has_ev.iloc[i] else "") + "."})
+                            "note": self._deviation_note(c, rows[i], float(o), float(e))})
         dev = sorted(dev, key=lambda x: -x.pop("_err"))[:20]
         for c in COMPONENTS:
             comps[c]["textbook_within_tolerance_share"] = baselines["textbook"]["components"][c]["within_tolerance_share"]
@@ -423,6 +438,33 @@ class Engine:
             "deviations": dev,
         }
 
+    def _deviation_note(self, comp, r, ours, expert) -> str:
+        """Neighbour evidence plus the missing input that explains the gap."""
+        unit = UNITS[comp]
+        inp = row_inputs(r)
+        nb = self.neighbours(inp, r["installer_id"])
+        s = nb[TARGET[comp]].values
+        near = int((np.abs(s - expert) <= rules.tolerance(comp, expert or 1)).sum()) if expert else int((s == 0).sum())
+        ev = (f"{near} of {len(s)} similar homes got about {fmt(expert, unit)}" if expert else f"{near} of {len(s)} similar homes got none")
+        ev += f", median {fmt(float(np.median(s[s > 0])), unit)}" if (s > 0).any() else ""
+        why = []
+        if comp == "pv":
+            if expert and not ours:
+                why.append("no PV signal in the inputs (battery and PV jobs look the same)")
+            else:
+                why.append("inputs lack roof area and orientation")
+        if comp == "battery":
+            pv = r["pv_kwp"]
+            if expert and pv and expert / pv > 1.6:
+                why.append(f"expert fitted {expert / pv:.1f} kWh per kWp, well above the usual 1")
+            elif not expert:
+                why.append("inputs carry no budget signal for skipping the battery")
+            else:
+                why.append("battery follows the PV size, which the inputs only weakly predict")
+        if r["annual_demand_kwh"] == 4500:
+            why.append("demand is the 4,500 kWh default")
+        return f"Expert {fmt(expert or None, unit)}, ours {fmt(ours or None, unit)}. {ev}; {', '.join(why)}."
+
     def ceiling(self) -> dict:
         """How often near-identical homes got designs within tolerance of each other: the median design of training
         homes with the same installer, demand, EV flag and heating type, scored against each test home."""
@@ -432,7 +474,7 @@ class Engine:
         med = g[cols].median()[g.size() >= 5].add_suffix("_peer")
         te = self.test.join(med, on=key)
         t = te[te.pv_kwp_peer.notna()]
-        hits = {c: physics.within(c, t[TARGET[c] + "_peer"].values, t[TARGET[c]].values) for c in COMPONENTS}
+        hits = {c: rules.within(c, t[TARGET[c] + "_peer"].values, t[TARGET[c]].values) for c in COMPONENTS}
         allc = np.logical_and.reduce(list(hits.values()))
         return {"pv_agreement_share": round(float(hits["pv"].mean()), 3),
                 "battery_agreement_share": round(float(hits["battery"].mean()), 3),
