@@ -49,12 +49,12 @@ conversation.startSession({
   agentId: "agent_4201m6v70wckem7sd6nq4mkt40s4",
   connectionType: "webrtc",
   userId: `${customer_name}|${address_or_postcode}`,               // lets /start/leads show the live call by name
-  dynamicVariables: { customer_name, address_or_postcode, installer_id, house_type, people, monthly_bill_eur,
+  dynamicVariables: { customer_name, address_or_postcode, installer_name, installer_id, house_type, people, monthly_bill_eur,
                       kwh_estimate, heating, ev, interests, floor_area_m2, multi_unit },   // all strings; omit unknowns
-  overrides: { agent: { firstMessage: `Hi ${customer_name}, it's Rina from Reonic. Just to check, are you living at ${address_or_postcode}?` } },
+  overrides: { agent: { firstMessage: `Hi ${customer_name}, it's Rina from ${installer_name}. Just to check, are you living at ${address_or_postcode}?` } },
 });
 // in onConnect:
-conversation.sendContextualUpdate(`Enquiry (never ask these again): name ${customer_name}; address ${address_or_postcode}; ` +
+conversation.sendContextualUpdate(`Enquiry (never ask these again): installer ${installer_name}; name ${customer_name}; address ${address_or_postcode}; ` +
   `house type ${house_type}; people ${people}; bill about ${monthly_bill_eur} EUR a month, about ${kwh_estimate} kWh a year; ` +
   `heating ${heating}; electric car ${ev}; interested in ${interests}; living space ${floor_area_m2} m2; multi-unit building ${multi_unit}. ` +
   `You have already asked whether they live at the address.`);   // leave out parts that are unknown
@@ -69,4 +69,4 @@ Polled every 3 s; the ElevenLabs list is cached for 2 s and names per call are c
 { conversation_id: string; status: "in_progress" | "done" | "failed"; started_at: number | null /* unix s */;
   call_secs: number | null; customer_name: string | null; address_or_postcode: string | null; title: string | null }[]
 ```
-`in_progress` covers the live call and the few seconds of post-call analysis; `done` means `/start/lead/<id>` returns the facts and design. While live, name and address come from `userId`; after the call, from the dynamic variables.
+Finished calls under 45 s or without a customer name are left out. `in_progress` covers the live call and the few seconds of post-call analysis; `done` means `/start/lead/<id>` returns the facts and design. While live, name and address come from `userId`; after the call, from the dynamic variables.
