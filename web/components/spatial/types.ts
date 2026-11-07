@@ -12,7 +12,7 @@ export interface RoofPlane {
   fits_panels?: number; chosen_panels: PanelRect[];
   // Shade fields, when the engine sends them.
   shade?: number | null; shade_loss_share?: number | null; yield_shaded_kwh_per_kwp?: number | null;
-  skip_reason?: string | null; skip?: string | null;
+  skip_reason?: string | null; skip?: string | null; shade_reason?: string | null;
 }
 
 export interface RoofModel {
@@ -20,21 +20,36 @@ export interface RoofModel {
   model_url?: string; glb_url?: string; planes: RoofPlane[];
   neighbours?: number; triangles?: number; height_m?: number; footprint_m2?: number;
   envelope?: Envelope | null;
+  plan?: Plan | null;
   sun_source?: string; layout?: { requested_kwp: number | null; panels: number; kwp: number; kwh_per_year: number; short_by_panels: number };
 }
+
+// Floor plan block (footprint, equipment, clearances, cable run). Points are local metres, x east, y north.
+export type P2 = [number, number] | [number, number, number] | { x: number; y: number; z?: number };
+export interface PlanItem { kind?: string; label?: string; note?: string; at?: P2; position?: P2; x?: number; y?: number; clearance_m?: number | null; radius_m?: number | null }
+export interface Plan {
+  outline: P2[]; edges?: { from?: P2; to?: P2; length_m: number; a?: P2; b?: P2 }[]; edge_lengths_m?: number[];
+  floor_area_m2?: number | null; storeys?: number | null; orientation?: string | number | null;
+  equipment?: PlanItem[]; markers?: PlanItem[]; clearances?: { at?: P2; center?: P2; centre?: P2; r_m?: number; radius_m?: number; label?: string }[];
+  cable_run?: P2[] | { points?: P2[]; path?: P2[]; length_m?: number; label?: string } | null;
+  rooms?: unknown; note?: string | null; notes?: string[] | string | null; sources?: unknown;
+}
+export const p2 = (p: P2 | undefined | null): [number, number] | null =>
+  !p ? null : Array.isArray(p) ? [p[0], p[1]] : typeof p.x === "number" ? [p.x, p.y] : null;
 
 // Winter heat loss per face (DIN EN 12831 design point), when the engine sends it.
 export interface EnvelopeFace { kind: string; azimuth: number | null; area_m2: number; u_value: number; source?: string; loss_w: number }
 export interface Envelope {
   faces: EnvelopeFace[]; ventilation_w: number; design_heat_load_kw: number; annual_heat_demand_kwh?: number;
-  design_outdoor_c?: number; heatpump_kw?: number | null; sources?: (string | { key?: string; citation: string; url?: string })[];
+  design_outdoor_c?: number; heatpump_kw?: number | null; thermal_bridges_w?: number; build_year?: number;
+  design?: { inside_c?: number; outside_c?: number; air_changes_per_h?: number; volume_m3?: number }; sources?: (string | { key?: string; citation: string; url?: string })[];
 }
 
 export interface DayHour { h: number; pv_kw: number; load_kw: number; battery_kw: number; grid_kw: number; soc_kwh: number }
 
 export interface FrontierPoint {
   kwp: number; kwh: number; capex_eur: number; npv_20y_eur: number; autarky_share: number;
-  payback_years: number | null; chosen: boolean; label?: string;
+  payback_years: number | null; chosen: boolean; label?: string; on_frontier?: boolean;
 }
 
 export interface Layers {
@@ -47,6 +62,10 @@ export interface Layers {
   sources: { key: string; citation: string; url?: string }[];
   economics?: { capex_eur: number; annual_saving_eur: number; payback_years: number | null; self_consumption_share: number; autarky_share: number; annual?: { pv_yield_kwh: number; npv_20y_eur: number | null; [k: string]: unknown } };
 }
+
+// The engine labels points with keys ("knee", "payback") or with words; show words.
+const LABEL: Record<string, string> = { knee: "Recommended", payback: "Best payback", independence: "Most independence", upfront: "Lowest upfront cost", value: "Best 20-year value", npv: "Best 20-year value", expert: "As planners design it" };
+export const labelOf = (p: FrontierPoint) => (p.label ? LABEL[p.label] ?? p.label : p.chosen ? "Recommended" : "");
 
 export const planesOf = (x: RoofModel | RoofPlane[] | undefined | null): RoofPlane[] => (!x ? [] : Array.isArray(x) ? x : x.planes ?? []);
 

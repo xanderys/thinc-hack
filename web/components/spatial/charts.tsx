@@ -2,6 +2,7 @@
 // Small SVG charts for the battery and value layers. Numbers come from POST /api/explain/layers.
 import { useEffect, useState } from "react";
 import type { DayHour, FrontierPoint, Layers } from "./types";
+import { labelOf } from "./types";
 import s from "./spatial.module.css";
 
 const n1 = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
@@ -68,6 +69,7 @@ export function BatteryChart({ layers, battery, reduce }: { layers: Layers; batt
 }
 
 function pareto(points: FrontierPoint[]) {
+  if (points.some((p) => p.on_frontier)) return points.filter((p) => p.on_frontier).sort((a, b) => a.capex_eur - b.capex_eur);
   const sorted = [...points].sort((a, b) => a.capex_eur - b.capex_eur);
   const out: FrontierPoint[] = []; let best = -Infinity;
   for (const p of sorted) if (p.npv_20y_eur > best) { out.push(p); best = p.npv_20y_eur; }
@@ -76,13 +78,17 @@ function pareto(points: FrontierPoint[]) {
 
 export function FrontierChart({ frontier }: { frontier: FrontierPoint[] }) {
   if (!frontier.length) return null;
-  const W = 300, H = 190, pad = { l: 40, r: 10, t: 12, b: 28 };
-  const xs = frontier.map((p) => p.capex_eur), ys = frontier.map((p) => p.npv_20y_eur);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(0, ...ys), y1 = Math.max(...ys);
+  const W = 360, H = 230, pad = { l: 40, r: 12, t: 16, b: 28 };
+  const front = pareto(frontier);
+  const xs = frontier.map((p) => p.capex_eur), fy = front.map((p) => p.npv_20y_eur);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y1 = Math.max(...fy);
+  // Dominated sizes far below the frontier would squash it; the axis starts a little under the frontier's lowest point.
+  const y0 = Math.min(0, Math.min(...fy) - (y1 - Math.min(...fy)) * 0.6);
+  const shown = frontier.filter((p) => p.npv_20y_eur >= y0);
   const X = (v: number) => pad.l + ((v - x0) / Math.max(1, x1 - x0)) * (W - pad.l - pad.r);
   const Y = (v: number) => H - pad.b - ((v - y0) / Math.max(1, y1 - y0)) * (H - pad.b - pad.t);
-  const line = pareto(frontier).map((p, i) => `${i ? "L" : "M"}${X(p.capex_eur).toFixed(1)},${Y(p.npv_20y_eur).toFixed(1)}`).join(" ");
-  const labelled = frontier.filter((p) => p.label || p.chosen);
+  const line = front.map((p, i) => `${i ? "L" : "M"}${X(p.capex_eur).toFixed(1)},${Y(p.npv_20y_eur).toFixed(1)}`).join(" ");
+  const labelled = frontier.filter((p) => p.label || p.chosen).sort((a, b) => a.capex_eur - b.capex_eur);
   const yTicks = [y0, (y0 + y1) / 2, y1].map((v) => Math.round(v / 1000) * 1000);
   return (
     <svg className={s.chart} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Upfront cost against 20-year value for every size the engine swept">
@@ -91,15 +97,17 @@ export function FrontierChart({ frontier }: { frontier: FrontierPoint[] }) {
       <text x={pad.l} y={H - 6} className={s.cTick}>{eur(x0)} EUR</text>
       <text x={W - pad.r} y={H - 6} className={s.cTick} textAnchor="end">{eur(x1)} EUR upfront</text>
       <text x={pad.l + 2} y={pad.t - 2} className={s.cTick}>20-year value, EUR</text>
-      {frontier.map((p, i) => <circle key={i} cx={X(p.capex_eur)} cy={Y(p.npv_20y_eur)} r={2.2} className={s.cDot} />)}
+      {shown.map((p, i) => <circle key={i} cx={X(p.capex_eur)} cy={Y(p.npv_20y_eur)} r={2.2} className={s.cDot} />)}
       <path d={line} className={s.cLine} />
       {labelled.map((p, i) => {
-        const cx = X(p.capex_eur), cy = Y(p.npv_20y_eur), right = cx < W * 0.6;
-        const dy = p.chosen ? -10 : i % 2 ? 14 : -8;
+        const cx = X(p.capex_eur), cy = Y(p.npv_20y_eur), right = cx < W * 0.55;
+        // The chosen point is labelled above, the others below in steps so labels do not collide.
+        const dy = p.chosen ? -9 : 16 + (i % 2) * 13;
         return (
           <g key={`l${i}`}>
             <circle cx={cx} cy={cy} r={p.chosen ? 5 : 4} className={p.chosen ? s.cChosen : s.cAlt} />
-            <text x={cx + (right ? 8 : -8)} y={cy + dy} className={p.chosen ? s.cLabelStrong : s.cLabel} textAnchor={right ? "start" : "end"}>{p.label ?? "This design"}</text>
+            {!p.chosen && <line x1={cx} y1={cy + 4} x2={cx} y2={cy + dy - 9} className={s.cGrid} />}
+            <text x={cx + (right ? 4 : -4)} y={cy + dy} className={p.chosen ? s.cLabelStrong : s.cLabel} textAnchor={right ? "start" : "end"}>{labelOf(p)}</text>
           </g>
         );
       })}
