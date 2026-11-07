@@ -299,7 +299,7 @@ def health():
     e = STATE["engine"]
     try:
         from . import planner_rules
-        rv = "rules-1-calibrated" if model_mod.RECOMMENDER["mode"] == "calibrated" else getattr(planner_rules, "RULES_VERSION", None)
+        rv = {"calibrated": "rules-1-calibrated", "band": "rules-3-band"}.get(model_mod.RECOMMENDER["mode"]) or getattr(planner_rules, "RULES_VERSION", None)
     except Exception:
         rv = None
     try:

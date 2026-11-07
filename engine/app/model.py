@@ -227,7 +227,7 @@ class Engine:
     def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain."""
         mode = RECOMMENDER["mode"]
-        if mode in ("rules", "calibrated"):
+        if mode in ("rules", "calibrated", "band"):
             out = self.predict_rules(inp, overrides, full, extras, engine=mode)
         else:
             out = self.predict_ml(inp, overrides, full, extras)
@@ -249,7 +249,7 @@ class Engine:
         ov = overrides or {}
         t = base_features(inp, inst)["t"]
         rec_in = self.rules_inputs(inp)
-        fn = planner_rules.calibrated.recommend if engine == "calibrated" else planner_rules.recommend
+        fn = {"calibrated": planner_rules.calibrated.recommend, "band": planner_rules.rules3.recommend}.get(engine, planner_rules.recommend)
         r = rules_cached(fn, rec_in, self.rules_catalogue(inst, t), ov)
         design = {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
         nb = self.neighbours(inp, inst)
@@ -276,7 +276,7 @@ class Engine:
         if full and extras and design.get("pv_kwp"):
             try:
                 out["variants"] = (self.variants_physics(inp, design, econ, rec_in, self.rules_catalogue(inst, t))
-                                   if engine == "calibrated" else self.variants(phys_inp, design, econ))
+                                   if engine in ("calibrated", "band") else self.variants(phys_inp, design, econ))
             except Exception as e:
                 log.warning("variants failed: %s", e)
         return out
@@ -317,6 +317,12 @@ class Engine:
             if m:
                 rec_in["roof_model"] = m
         return rec_in
+
+    def predict_band(self, inp: dict) -> dict:
+        from .planner_rules import rules3
+        t = base_features(inp, inp["installer_id"])["t"]
+        r = rules3.recommend(self.rules_inputs(inp), self.rules_catalogue(inp["installer_id"], t), None)
+        return {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
 
     def predict_calibrated(self, inp: dict) -> dict:
         """rules-1 (fitted constants), the fast comparison column; also ranks /api/ask questions in rules mode."""
@@ -431,7 +437,7 @@ class Engine:
             return []
         if GREYBOX["mode"]:  # lab only: the grey-box path goes through predict()
             return [self.predict(i, full=False)["design"] for i in inps]
-        if RECOMMENDER["mode"] in ("rules", "calibrated"):  # questions are ranked on the calibrated rules (under 1 ms a home)
+        if RECOMMENDER["mode"] in ("rules", "calibrated", "band"):  # questions are ranked on the calibrated rules (under 1 ms a home)
             return [self.predict_calibrated(i) for i in inps]
         F = [base_features(i, i["installer_id"]) for i in inps]
         X = pd.DataFrame(F)[self.cols]
@@ -1113,11 +1119,12 @@ class Engine:
         for name, rows_df in sets.items():
             rows = rows_df.to_dict("records")
             e = rows_df
-            preds = {"formula": [], "calibrated": [], "blackbox": [], "textbook": []}
+            preds = {"formula": [], "calibrated": [], "band": [], "blackbox": [], "textbook": []}
             for r in rows:
                 inp = row_inputs(r)
                 preds["formula"].append(self.predict_rules(inp, full=False)["design"])
                 preds["calibrated"].append(self.predict_calibrated(inp))
+                preds["band"].append(self.predict_band(inp))
                 preds["blackbox"].append(self.predict_ml(inp, full=False)["design"])
                 preds["textbook"].append(self.baseline(inp))
             block = {}
