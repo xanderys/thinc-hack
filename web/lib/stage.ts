@@ -27,20 +27,26 @@ export function buildFacts(i: HomeInputs, r: DesignResponse): string[] {
   f.push(`Design style of ${INSTALLER_NAME[i.installer_id]}.`);
   const part = (k: ComponentKey, u: string) => { const v = size(d, k); return v == null ? `no ${NAME[k].toLowerCase()}` : `${NAME[k].toLowerCase()} ${n2(v)} ${u}`; };
   f.push(`Proposal: ${part("pv", "kWp")}${d.inverter_kw ? ` with a ${n2(d.inverter_kw)} kW inverter` : ""}, ${part("battery", "kWh")}, ${part("heatpump", "kW")}, ${part("wallbox", "kW")}.`);
-  for (const k of KEYS) f.push(`${NAME[k]}: ${r.components[k].reason}`);
-  for (const p of r.plausibility) f.push(p.message);
+  for (const k of KEYS) {
+    const c = r.components[k], took = Math.round(c.neighbours.share_included * c.neighbours.n);
+    const who = k === "heatpump" && i.heating_type !== "Unknown" ? `${HEATING_WORD[i.heating_type].toLowerCase()} homes` : "homes";
+    f.push(c.decision === "none" && took === 0 ? `${NAME[k]}: not offered; similar ${who} here did not get one.` : `${NAME[k]}: ${c.reason}`);
+  }
+  f.push(`Sizing: the way ${INSTALLER_NAME[i.installer_id]} sizes family homes like this one.`);
+  // Ratios such as kWp per 1,000 kWh read as jargon; the roof line and real warnings stay.
+  for (const p of r.plausibility) if (p.level === "warn" || !/per 1,000 kWh|per kWp/.test(p.message)) f.push(p.message);
   const a = e.annual;
   f.push(`Estimates: ${a ? `solar yield ${n0(a.pv_yield_kwh)} kWh a year, ` : ""}autarky ${pct(e.autarky_share)}%, investment ${n0(e.capex_eur)} EUR, saving ${n0(e.annual_saving_eur)} EUR a year${e.payback_years != null ? `, payback ${n2(e.payback_years)} years` : ""}.`);
   return f;
 }
 
-// Exactly one thing for a human to check: first warning, else the least certain included component, else the optimum note.
+// One thing for a human to check: a real warning, else an included component under 0.5 confidence, else nothing.
 export function pickFlag(r: DesignResponse): string | null {
   const warn = r.plausibility.find((p) => p.level === "warn");
   if (warn) return warn.message;
   const inc = KEYS.filter((k) => r.components[k].decision === "include").sort((a, b) => r.components[a].confidence - r.components[b].confidence);
-  if (inc[0] && r.components[inc[0]].confidence < 0.7) return `the ${NAME[inc[0]].toLowerCase()} size. ${evidence(r, inc[0], null)}`;
-  return r.optimum?.note ?? null;
+  if (inc[0] && r.components[inc[0]].confidence < 0.5) return `the ${NAME[inc[0]].toLowerCase()} size. ${evidence(r, inc[0], null)}`;
+  return null;
 }
 
 export function evidence(r: DesignResponse, k: ComponentKey, installer: HomeInputs["installer_id"] | null): string {

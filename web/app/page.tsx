@@ -164,8 +164,8 @@ export default function Stage() {
       });
     }
     const fixed = Object.keys(overrides).length > 0;
-    const out: Variant[] = [{ name: variantName(res.design), tag: fixed ? "Chosen" : "Recommended", design: res.design, e: res.economics, overrides: null, current: true }];
-    if (fixed && drafted && !same(drafted.design, res.design)) out.push({ name: variantName(drafted.design, res.design), tag: "Recommended", design: drafted.design, e: drafted.economics, overrides: {}, current: false });
+    const out: Variant[] = [{ name: variantName(res.design), tag: fixed ? "Chosen" : "", design: res.design, e: res.economics, overrides: null, current: true }];
+    if (fixed && drafted && !same(drafted.design, res.design)) out.push({ name: variantName(drafted.design, res.design), tag: "Agent's draft", design: drafted.design, e: drafted.economics, overrides: {}, current: false });
     const o = res.optimum;
     if (o && !same(o.design, res.design)) out.push({ name: variantName(o.design, res.design), tag: "Earns most", design: o.design, e: o.economics, overrides: { ...overrides, pv_kwp: o.design.pv_kwp, battery_kwh: o.design.battery_kwh }, current: false });
     if (res.design.battery_kwh != null) out.push({ name: "PV only", tag: "Cheapest", design: pvOnly?.design ?? { ...res.design, battery_kwh: null }, e: pvOnly?.economics ?? null, overrides: { ...overrides, battery_kwh: null }, current: false });
@@ -242,7 +242,7 @@ export default function Stage() {
       <div className="s-stage">
         <Lead lead={lead} setLead={setLead} read={read} busy={readBusy} error={readErr} onRead={doRead} onEdit={() => setRead(null)}
           inputs={inputs} changed={changed} setInstaller={setInstaller} roof={roof}
-          question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} pref={pref} setPref={setPref} />
+          question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} pref={pref} setPref={setPref} asking={!!read && question === undefined} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
           {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} />}

@@ -11,7 +11,7 @@ type Props = {
   setInstaller: (i: InstallerId) => void;
   roof: RoofResult | null;
   question: AskQuestion | null; answer: unknown; onAnswer: (v: unknown) => void; askError: string | null;
-  pref: Pref; setPref: (p: Pref) => void;
+  pref: Pref; setPref: (p: Pref) => void; asking: boolean;
 };
 
 export type Pref = "expert" | "independence" | "payback" | "upfront";
@@ -32,7 +32,7 @@ function Fact({ k, v, src, was }: { k: string; v: React.ReactNode; src: React.Re
   return (
     <div className="s-fact">
       <span className="fk">{k}</span>
-      <span className="fv">{v}{was != null && <span className="chg">was {was}</span>}</span>
+      <span className="fv">{v}{was != null && <span className="chg"> (was {was})</span>}</span>
       <span className="fq">{src}</span>
     </div>
   );
@@ -55,7 +55,7 @@ export default function Lead(p: Props) {
     if (q && f === "annual_demand_kwh" && q === quote("monthly_bill_eur")) return `From "${q}" at ${price} ct`;
     if (q) return `"${q}"`;
     if (f === p.question?.field && p.answer !== undefined) return fromBill && f === "annual_demand_kwh" ? `About ${n0(fromBill.kwh)} kWh from ${n0(fromBill.eur)} EUR a month at ${price} ct` : "You answered";
-    return f === "annual_demand_kwh" ? "Assumed: not in the lead" : "Not in the lead";
+    return f === "annual_demand_kwh" && !p.asking && p.question?.field !== f ? "Assumed: not in the lead" : "Not in the lead";
   };
   const evWas = "has_ev" in p.changed && read && read.inputs.has_ev !== p.changed.has_ev ? (read.inputs.has_ev ? "yes" : "no") : undefined;
   const addr = read?.inputs.address ? (p.roof && p.roof.source !== "none" ? `${read.inputs.address} (matched)` : read.inputs.address) : null;
@@ -83,7 +83,7 @@ export default function Lead(p: Props) {
       {read && (
         <div className="s-facts s-in">
           <h3 className="s-fh">Consumption</h3>
-          <Fact k="Annual use" v={<span className={p.answer !== undefined && !quote("annual_demand_kwh") ? "num asked" : "num"}>{quote("annual_demand_kwh") || p.answer !== undefined || p.question == null ? `${n0(i.annual_demand_kwh)} kWh` : "Not known yet"}</span>} src={src("annual_demand_kwh")} />
+          <Fact k="Annual use" v={<span className={p.answer !== undefined && !quote("annual_demand_kwh") ? "num asked" : "num"}>{quote("annual_demand_kwh") || p.answer !== undefined || (!p.asking && p.question?.field !== "annual_demand_kwh") ? `${n0(i.annual_demand_kwh)} kWh` : "Not known yet"}</span>} src={src("annual_demand_kwh")} />
           <Fact k="Heating" v={<>{HEATING_WORD[i.heating_type]}{i.heating_cost_per_year_eur ? <>, <span className="num">{n0(i.heating_cost_per_year_eur)} EUR</span> a year</> : null}</>} src={src("heating_type")} />
           {i.electricity_price_ct_kwh != null && <Fact k="Price" v={<><span className="num">{i.electricity_price_ct_kwh} ct</span> per kWh</>} src={src("electricity_price_ct_kwh")} />}
           <h3 className="s-fh">Demand</h3>
