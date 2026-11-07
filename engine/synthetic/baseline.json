@@ -1,0 +1,24 @@
+{
+ "generated_at": "2026-11-07T14:24:31Z",
+ "n": 10000,
+ "plausible_share": 0.9935,
+ "monotonicity_violations": 3135,
+ "pass_share": {
+  "Raising demand never lowers PV": 0.9137,
+  "Adding an EV never removes a wallbox": 1.0,
+  "Adding an EV never lowers PV": 0.9983,
+  "A heat pump never lowers PV": 0.9987,
+  "A higher tariff never shrinks the battery": 0.7374,
+  "Adding an EV changes the wallbox or PV": 1.0,
+  "No battery without PV": 1.0,
+  "A 5% demand change moves PV at most one catalogue step": 0.796,
+  "No implausible flag": 0.9935,
+  "Physics checks pass": 0.959,
+  "DC/AC within 0.8 to 1.3": 1.0,
+  "Battery within HTW cap": 0.4264,
+  "Proposal NPV within 10% or EUR 1,000 of the optimum": 0.7152,
+  "Proposal never scores above the optimum": 1.0,
+  "Energy balance closes": 1.0,
+  "Adversarial inputs get an error or a flag": 0.511
+ }
+}
