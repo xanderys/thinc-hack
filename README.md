@@ -83,3 +83,5 @@ The first engine start trains (about 35 s); later starts load a cache. Roof look
 Slides are in `deck/` and the demo video in `video/`.
 
 Reonic's project data was used only for this hackathon and is not in this repository.
+
+Two lists of opaque project id hashes used for the train and test split appeared briefly in the repository history; they carry no project attributes.
