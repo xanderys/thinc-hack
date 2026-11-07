@@ -20,13 +20,14 @@ Definitions follow HTW: self-consumption = (direct use + battery charging) / PV 
 
 | Item | Value | Source |
 |---|---|---|
-| Grid price | `electricity_price_ct_kwh`, default 32 ct (contract default; domain.md has 37), rising 2% a year | `docs/api.md`, `docs/domain.md` |
+| Grid price | `electricity_price_ct_kwh`, default 37 ct, rising 2% a year | [BDEW Strompreisanalyse Aug 2026](https://www.bdew.de/service/daten-und-grafiken/bdew-strompreisanalyse/); ECB 2% target |
 | Feed-in | 7.70 ct up to 10 kWp, 6.66 ct on the 10 to 40 kWp part, fixed 20 years | EEG from 1 Aug 2026, `docs/domain.md` |
 | Negative prices | No feed-in pay in the 573 sunniest hours of the year (Solarspitzengesetz) | 573 negative hours in 2025 ([SMARD](https://www.smard.de/page/en/topic-article/5892/219038)) |
-| Capex | PV EUR 1,350 per kWp at 5 kWp to 1,000 at 20; battery EUR 450 per kWh; heat pump EUR 36,400 before subsidy; wallbox EUR 1,200 | `docs/domain.md` (shared with `engine/app/physics.py`) |
+| Capex | PV EUR 2,333 plus 883 per kWp (1,350 per kWp at 5 kWp, 1,000 at 20); battery EUR 315 per kWh (BSW 2026, second-hand via reduco); heat pump EUR 33,500 less 30% BEG on up to 28,000, less EUR 10,000 boiler avoided; wallbox EUR 1,200 | [reduco 2026 size table](https://reduco.ai/blog/solar/solaranlage-kosten-nach-groesse-kwp); Verbraucherzentrale via [42watt](https://42watt.de/magazin/stromspeicher-kosten); [reduco heat pump](https://reduco.ai/blog/waermepumpe-kosten-foerderung); `docs/domain.md` |
+| Battery life | Replaced after 15 years or 6,000 cycles, whichever first, at today's price; residual value at year 20 | [42watt](https://42watt.de/magazin/lebensdauer-stromspeicher) |
 | Upkeep | 1.5% of PV and battery capex a year | 1 to 2% (Fraunhofer ISE via [co2online](https://www.co2online.de/modernisieren-und-bauen/photovoltaik/kosten-und-finanzierung/), 2026) |
 | Heat pump saving | Old heating cost (given, or 12 ct per kWh heat) removed; heat pump electricity enters the simulated load | |
-| NPV | 20 years, 3% discount, 0.5% a year PV degradation, no battery replacement, no subsidy | |
+| NPV | 20 years, 3% discount, 0.5% a year PV degradation ([Jordan and Kurtz 2013](https://doi.org/10.1002/pip.1182)), battery replacement as above | |
 
 `annual_saving_eur` = bill before minus bill after minus upkeep. "Before" keeps existing PV and battery.
 

@@ -60,6 +60,39 @@ def _day(sim_in, design) -> dict:
 
 
 def explain(eng, inp: dict, design: dict | None) -> dict:
+    """rules-2 frontier(), day() and sources() when planner_rules has them; the engine's own grid otherwise."""
+    try:
+        from .planner_rules import physics as P, frontier as f2, day as d2
+    except Exception:
+        return explain_grid(eng, inp, design)
+    k = _key(inp, design or {}) + "-r2"
+    if k in _CACHE:
+        return _CACHE[k]
+    resp = eng.predict(dict(inp), full=False) if design is None else None
+    design = (resp["design"] if resp else design)
+    design = {kk: design.get(kk) for kk in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
+    t = __import__("app.model", fromlist=["base_features"]).base_features(inp, inp["installer_id"])["t"]
+    rec_in = eng.rules_inputs(inp)
+    cat = eng.rules_catalogue(inp["installer_id"], t)
+    fr = f2(rec_in, None, cat, None)
+    dy = d2(rec_in, design)
+    planes = None
+    if inp.get("address") and roofs.model_available():
+        try:
+            m = roofs._roof().model(inp["address"], kwp=design.get("pv_kwp"))
+            planes = {**json.loads(open(m["planes_json_path"]).read()), "glb_url": roofs.model_url(inp["address"])}
+        except Exception as ex:
+            planes = {"error": str(ex)}
+    obj = (resp or {}).get("objective") or {"name": (resp or {}).get("model_version") or "rules-2-physics",
+                                            "sentence": "The design is the calibrated planner rules; the frontier is the home's own physics.",
+                                            "sources": []}
+    out = {"planes": planes, "day": {"date": dy.get("date"), "hours": dy.get("hours")}, "night": dy.get("night"),
+           "frontier": fr, "chosen": design, "objective": obj, "sources": P.sources()}
+    _CACHE[k] = out
+    return out
+
+
+def explain_grid(eng, inp: dict, design: dict | None) -> dict:
     if design is None:
         design = eng.predict(dict(inp), full=False)["design"]
     design = {k: design.get(k) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}

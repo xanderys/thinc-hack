@@ -93,7 +93,16 @@ def warm_rules_eval():
         return
     try:
         t = time.time()
+        h = hashlib.sha256(cache_key().encode())
+        for f in sorted((Path(__file__).parent / "planner_rules").glob("*.py")) + [Path(__file__).parent / "planner_rules" / "constants.json"]:
+            h.update(f.read_bytes() if f.exists() else b"")
+        p = CACHE / f"rules_eval-{h.hexdigest()[:12]}.json"
+        if p.exists():
+            STATE["rules_eval"] = json.loads(p.read_text())
+            return
         STATE["rules_eval"] = STATE["engine"].recommenders_eval()
+        CACHE.mkdir(exist_ok=True)
+        p.write_text(json.dumps(STATE["rules_eval"], default=float))
         log.warning("recommenders eval ready in %.1fs", time.time() - t)
     except Exception as e:
         log.exception("recommenders eval failed")
@@ -231,7 +240,7 @@ def check_inputs(inp: dict):
         except Exception as e:
             log.warning("roof lookup failed: %s", e)
     if inp.get("address") and inp.get("roof") and not inp.get("envelope"):
-        env = roofs.envelope_cached(inp["address"])
+        env = roofs.envelope_cached(inp["address"], inp.get("house_built_year"))
         if env and env.get("design_heat_load_kw"):
             inp["envelope"] = env  # heat load from the house's own walls and roof (REONIC MODEL); rules read it too
     r = inp.get("roof") or {}
@@ -290,10 +299,15 @@ def health():
     e = STATE["engine"]
     try:
         from . import planner_rules
-        rv = getattr(planner_rules, "RULES_VERSION", None)
+        rv = {"calibrated": "rules-1-calibrated", "band": "rules-3-band", "readout": "rules-4-readout"}.get(model_mod.RECOMMENDER["mode"]) or getattr(planner_rules, "RULES_VERSION", None)
     except Exception:
         rv = None
+    try:
+        spatial = roofs.spatial_inputs()
+    except Exception:
+        spatial = []
     return {"ok": e is not None, "model_version": MODEL_VERSION, "recommender": model_mod.RECOMMENDER["mode"], "rules_version": rv,
+            "spatial_inputs": spatial,
             "trained_on": {"projects": len(e.train) if e else 0, "installers": len(e.catalogue) if e else 0},
             "data_loaded": e is not None, **({"error": STATE["error"]} if STATE["error"] else {})}
 
@@ -446,14 +460,16 @@ def roof_photo(address: str = ""):
 
 
 @app.get("/api/roof/model")
-def roof_model(address: str = ""):
+def roof_model(address: str = "", build_year: Optional[int] = None):
     """v2.1: the planes of the actual house (LoD2, per-plane sun yield, panel layout) and a URL to its 3D model."""
     if not address.strip():
         return err(422, "address is missing.")
     try:
-        info = roofs.model_info(address)
+        info = roofs.model_info(address, build_year)
     except RuntimeError as e:
         return err(503, str(e))
+    except Exception as e:
+        return err(404, str(e))
     planes = {}
     p = info.get("planes_json_path")
     if p and Path(p).exists():
@@ -463,11 +479,11 @@ def roof_model(address: str = ""):
 
 
 @app.get("/api/roof/model/file")
-def roof_model_file(address: str = ""):
+def roof_model_file(address: str = "", build_year: Optional[int] = None):
     if not address.strip():
         return err(422, "address is missing.")
     try:
-        info = roofs.model_info(address)
+        info = roofs.model_info(address, build_year)
     except RuntimeError as e:
         return err(503, str(e))
     g = info.get("glb_path")
@@ -772,6 +788,12 @@ def evaluation():
     engine()
     out = dict(STATE["eval"])
     out["synthetic"] = synthetic_report()  # v1.4: null until the suite has written a report
+    try:  # the lab's measurement rows: which definition of "right" moves the score (fit half, out-of-fold)
+        out["measurement"] = json.loads((Path(__file__).parent / "measurement.json").read_text())
+    except Exception:
+        pass
+    out["exam_note"] = ("The exam homes carry no address, so every column is scored without roof, shade or envelope data; "
+                        "live leads add them.")
     re_ = STATE.get("rules_eval") or {}
     if "error" not in re_ and re_:
         out.update(re_)

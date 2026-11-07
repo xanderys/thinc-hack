@@ -226,9 +226,12 @@ class Engine:
     # ---------- prediction ----------
     def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain."""
-        if RECOMMENDER["mode"] == "rules":
-            return self.predict_rules(inp, overrides, full, extras)
-        return self.predict_ml(inp, overrides, full, extras)
+        mode = RECOMMENDER["mode"]
+        if mode in ("rules", "calibrated", "band", "readout"):
+            out = self.predict_rules(inp, overrides, full, extras, engine=mode)
+        else:
+            out = self.predict_ml(inp, overrides, full, extras)
+        return with_heat_bound(inp, out)
 
     def rules_catalogue(self, inst: str, t: float) -> dict:
         cat = self.catalogue[inst]
@@ -236,7 +239,8 @@ class Engine:
                 "heatpump_kw": [float(x) for x in cat["heatpump"]], "inverter_kw": [float(x) for x in rules.INVERTER_SIZES],
                 "wallbox_kw": self.wallbox_default(inst)}
 
-    def predict_rules(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
+    def predict_rules(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True,
+                      engine: str = "rules") -> dict:
         """v2.0: design from app/planner_rules (REONIC PHYSICS), wrapped with the same evidence, physics and variants."""
         from . import planner_rules
         inst = inp["installer_id"]
@@ -244,7 +248,10 @@ class Engine:
             raise ValueError(f"Unknown installer_id {inst}")
         ov = overrides or {}
         t = base_features(inp, inst)["t"]
-        r = planner_rules.recommend(roof_to_sim({k: v for k, v in inp.items() if k != "_estimated"}), self.rules_catalogue(inst, t), ov)
+        rec_in = self.rules_inputs(inp)
+        fn = {"calibrated": planner_rules.calibrated.recommend, "band": planner_rules.rules3.recommend,
+              "readout": planner_rules.rules4.recommend}.get(engine, planner_rules.recommend)
+        r = rules_cached(fn, rec_in, self.rules_catalogue(inst, t), ov)
         design = {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
         nb = self.neighbours(inp, inst)
         comps = {}
@@ -257,17 +264,85 @@ class Engine:
             if rc.get("derivation"):
                 d["derivation"] = rc["derivation"]
             comps[c] = d
-        econ, plaus, opt = self._physics(inp, design, inst, t, full, extras)
-        out = {"design": design, "explanation": list(r.get("explanation") or [])[:5], "components": comps, "plausibility": plaus,
-               "economics": econ, "model_version": getattr(planner_rules, "RULES_VERSION", "rules"), "rules": r.get("rules", [])}
+        phys_inp = {**inp, **(r.get("sim_inputs") or {})}  # the planes and yields rules-2 swept, so economics match its pick
+        econ, plaus, opt = self._physics(phys_inp, design, inst, t, full, extras)
+        out = {"design": design, "explanation": list(r.get("explanation") or [])[:6], "components": comps, "plausibility": plaus,
+               "economics": econ,
+               "model_version": {"calibrated": "rules-1-calibrated"}.get(engine) or r.get("version") or planner_rules.RULES_VERSION,
+               "rules": r.get("rules", [])}
+        if engine == "calibrated":  # the Rules block reads as rules-4's rule list; the sizes and derivations stay rules-1's
+            try:
+                out["rules_applied"] = out["rules"]
+                out["rules"] = planner_rules.rules4.rules_table(inst)
+            except Exception as e:
+                log.warning("rules-4 wording unavailable: %s", e)
+        if r.get("objective"):
+            out["objective"] = r["objective"]
         if opt:
             out["optimum"] = opt
         if full and extras and design.get("pv_kwp"):
             try:
-                out["variants"] = self.variants(inp, design, econ)
+                out["variants"] = (self.variants_physics(inp, design, econ, rec_in, self.rules_catalogue(inst, t))
+                                   if engine in ("calibrated", "band", "readout") else self.variants(phys_inp, design, econ))
             except Exception as e:
                 log.warning("variants failed: %s", e)
         return out
+
+    VARIANT_FROM_FRONTIER = (("value", "knee", "Best value"), ("payback", "payback", "Best payback"),
+                             ("independence", "independence", "Most independence"), ("upfront", "upfront", "Lowest upfront cost"))
+
+    def variants_physics(self, inp, design, econ, rec_in, cat) -> list:
+        """Calibrated design first, then rules-2-physics's own frontier points (knee, payback, independence, upfront), each
+        simulated on rules-2's planes so the numbers match its sweep. Preference only reorders."""
+        from . import planner_rules
+        r2 = rules_cached(planner_rules.recommend, rec_in, cat, None)
+        fr = rules_cached(_frontier, rec_in, cat, None)
+        sim_in = {**roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")}), **(r2.get("sim_inputs") or {})}
+        keep = {k: r2["design"].get(k) for k in ("heatpump_kw", "wallbox_kw")}
+        out = [{"key": "expert", "label": self.VARIANT_LABEL["expert"], "design": design, "economics": econ,
+                "note": "The design planners at this installer fit to homes like this one."}]
+        for key, lab, label in self.VARIANT_FROM_FRONTIER:
+            row = next((x for x in fr if x.get("label") == lab), None)
+            if not row:
+                continue
+            d = {"pv_kwp": row["kwp"] or None, "inverter_kw": rules.inverter_kw(row["kwp"]) if row["kwp"] else None,
+                 "battery_kwh": row["kwh"] or None, **keep}
+            e = hourly.simulate(sim_in, d).economics
+            out.append({"key": key, "label": label, "design": d, "economics": e, "note": variant_note(d, e, design, econ)})
+        pref = inp.get("preference")
+        if pref in ("independence", "payback", "upfront"):
+            out.sort(key=lambda v: v["key"] != pref)
+        return out
+
+    def rules_inputs(self, inp: dict) -> dict:
+        """What the rules read: the inputs, the roof as the simulation sees it, and the built house model when cached."""
+        rec_in = roof_to_sim({k: v for k, v in inp.items() if k != "_estimated"})
+        if "floor area" in (inp.get("_estimated") or []):  # an address estimate is not something the lead said
+            rec_in.pop("house_size_sqm", None)
+        if inp.get("address") and inp.get("roof"):
+            m = __import__("app.roofs", fromlist=["model_json_cached"]).model_json_cached(inp["address"], inp.get("house_built_year"))
+            if m:
+                rec_in["roof_model"] = m
+        return rec_in
+
+    def predict_band(self, inp: dict) -> dict:
+        from .planner_rules import rules3
+        t = base_features(inp, inp["installer_id"])["t"]
+        r = rules3.recommend(self.rules_inputs(inp), self.rules_catalogue(inp["installer_id"], t), None)
+        return {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
+
+    def predict_readout(self, inp: dict) -> dict:
+        from .planner_rules import rules4
+        t = base_features(inp, inp["installer_id"])["t"]
+        r = rules4.recommend(self.rules_inputs(inp), self.rules_catalogue(inp["installer_id"], t), None)
+        return {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
+
+    def predict_calibrated(self, inp: dict) -> dict:
+        """rules-1 (fitted constants), the fast comparison column; also ranks /api/ask questions in rules mode."""
+        from .planner_rules import calibrated
+        t = base_features(inp, inp["installer_id"])["t"]
+        r = calibrated.recommend(self.rules_inputs(inp), self.rules_catalogue(inp["installer_id"], t), None)
+        return {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
 
     def predict_ml(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """full=False skips the hourly simulation and optimum (used by the scoreboard, which only needs sizes)."""
@@ -375,8 +450,8 @@ class Engine:
             return []
         if GREYBOX["mode"]:  # lab only: the grey-box path goes through predict()
             return [self.predict(i, full=False)["design"] for i in inps]
-        if RECOMMENDER["mode"] == "rules":
-            return [self.predict_rules(i, full=False)["design"] for i in inps]
+        if RECOMMENDER["mode"] in ("rules", "calibrated", "band", "readout"):  # questions ranked on the calibrated rules (under 1 ms a home)
+            return [self.predict_calibrated(i) for i in inps]
         F = [base_features(i, i["installer_id"]) for i in inps]
         X = pd.DataFrame(F)[self.cols]
         n = len(inps)
@@ -642,7 +717,7 @@ class Engine:
             heat = inp.get("heating_demand_kwh") or (inp["heating_cost_per_year_eur"] / 0.12 if inp.get("heating_cost_per_year_eur") else None)
             axiom = "A heat pump runs about 2,300 full-load hours a year, so heat demand over 2,300 hours gives its size."
             env = inp.get("envelope") or {}
-            if not inp.get("heating_demand_kwh") and env.get("design_heat_load_kw"):
+            if not inp.get("heating_demand_kwh") and not inp.get("heating_cost_per_year_eur") and env.get("design_heat_load_kw"):
                 ax = round(float(env["design_heat_load_kw"]), 1)
                 ins = [{"name": "design heat load", "value": ax, "unit": "kW", "source": "envelope (LoD2, IWU)"}]
                 eq = f"design heat load {ax:g} kW from the walls, roof and windows of this house"
@@ -1057,10 +1132,13 @@ class Engine:
         for name, rows_df in sets.items():
             rows = rows_df.to_dict("records")
             e = rows_df
-            preds = {"formula": [], "blackbox": [], "textbook": []}
+            preds = {"formula": [], "calibrated": [], "band": [], "readout": [], "blackbox": [], "textbook": []}
             for r in rows:
                 inp = row_inputs(r)
                 preds["formula"].append(self.predict_rules(inp, full=False)["design"])
+                preds["calibrated"].append(self.predict_calibrated(inp))
+                preds["band"].append(self.predict_band(inp))
+                preds["readout"].append(self.predict_readout(inp))
                 preds["blackbox"].append(self.predict_ml(inp, full=False)["design"])
                 preds["textbook"].append(self.baseline(inp))
             block = {}
@@ -1159,6 +1237,42 @@ def variant_note(d, e, d0, e0) -> str:
         if abs(dp) >= 0.1:
             parts.append(f"pays back {abs(dp):.1f} years {'later' if dp > 0 else 'sooner'}")
     return f"{_kit(d)}: " + (", ".join(parts) if parts else "about the same as the planners' design") + "."
+
+
+_RULES_MEMO: dict = {}
+
+
+def _frontier(inputs, catalogue, overrides):
+    from .planner_rules import frontier
+    return frontier(inputs, None, catalogue, overrides)
+
+
+def rules_cached(fn, inputs, catalogue, overrides):
+    """recommend() takes 0.5 to 0.8 s (a sweep of the home's own physics): memoised per inputs, catalogue and overrides."""
+    import hashlib
+    import json as _j
+    k = hashlib.sha256(_j.dumps([getattr(fn, "__module__", ""), getattr(fn, "__qualname__", repr(fn)),
+                                 {kk: v for kk, v in inputs.items() if kk != "roof_model"},
+                                 (inputs.get("roof_model") or {}).get("origin_utm32"), catalogue, overrides],
+                                sort_keys=True, default=str).encode()).hexdigest()
+    if k not in _RULES_MEMO:
+        if len(_RULES_MEMO) > 512:
+            _RULES_MEMO.clear()
+        _RULES_MEMO[k] = fn(inputs, catalogue, overrides)
+    return _RULES_MEMO[k]
+
+
+def with_heat_bound(inp: dict, out: dict) -> dict:
+    """The envelope's design heat load is an upper bound (unrenovated IWU U-values on the whole LoD2 volume): when a
+    heat figure from the lead or the bill exists, the heat pump is sized from that and the envelope is carried as a bound."""
+    env = (inp.get("envelope") or {}).get("design_heat_load_kw")
+    if env and (inp.get("heating_demand_kwh") or inp.get("heating_cost_per_year_eur")):
+        hp = out["components"]["heatpump"]
+        hp["heat_load_upper_bound_kw"] = round(float(env), 1)
+        yr = inp.get("house_built_year")
+        hp["heat_load_upper_bound_note"] = (f"up to {env:.0f} kW if the {int(yr)} fabric is unrenovated" if yr
+                                            else f"up to {env:.0f} kW if the fabric is unrenovated")
+    return out
 
 
 def physics_component(msg: str) -> str:

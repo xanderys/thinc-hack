@@ -21,6 +21,8 @@ cd engine && uv sync && REONIC_DATA_DIR="/path/to/Project Data" uv run uvicorn a
 
 ## Two recommenders (v2.0)
 
+The Reonic export has no address, roof, orientation, shade or building fabric, so any model trained on it is blind to what decides the panel size; for live leads the engine reads those from open spatial data (Bavarian LoD2 roof planes, the DOP20 orthophoto, and shade and envelope heat loss as REONIC MODEL adds them; `/health.spatial_inputs` lists what is wired). The exam homes carry no address, so every column is scored without roof, shade or envelope data; live leads add them.
+
 `RECOMMENDER=rules|ml` (in `~/.config/marquee/engine.env` on the mini, read by `run.sh`; default `ml`) picks what designs, refines, asks and runs the call. `rules` is the transparent formula in `app/planner_rules/` (REONIC PHYSICS; full detail in `docs/rules.md`): five plain rules on the hourly physics, four fitted constants per installer. `ml` is the learned chain below, kept as the black box to compare against. Either way the same neighbour evidence, hourly economics, plausibility, optimum and variants wrap the design, and `/health` says which one is live.
 
 The formula is a reading of what planners do, measured against 1,619 real designs: it reproduces their habits where the data shows a habit, and the physics says where those habits cost the homeowner.
