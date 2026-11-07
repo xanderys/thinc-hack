@@ -1,4 +1,4 @@
-# Engine API contract (v1.3)
+# Engine API contract (v1.3.1)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -53,7 +53,8 @@ interface Economics {
   self_consumption_share: number; autarky_share: number;
   assumptions: string[];
   method?: "hourly-simulation" | "annual-lookup";   // v1.2
-  annual?: { pv_yield_kwh: number; load_kwh: number; self_consumed_kwh: number; fed_in_kwh: number; grid_import_kwh: number; feed_in_income_eur: number; bill_before_eur: number; bill_after_eur: number; npv_20y_eur: number | null };
+  annual?: { pv_yield_kwh: number; load_kwh: number; self_consumed_kwh: number; fed_in_kwh: number; grid_import_kwh: number; feed_in_income_eur: number; bill_before_eur: number; bill_after_eur: number; npv_20y_eur: number | null;
+             battery_charged_kwh?: number; battery_discharged_kwh?: number; ev_charge_kwh?: number; ev_from_pv_kwh?: number; home_from_pv_kwh?: number };  // v1.3.1 flow fields
 }
 
 interface Optimum {                        // v1.2, from the hourly physics simulation
