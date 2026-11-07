@@ -19,6 +19,9 @@ WALLBOX_KW = 11.0
 INVERTER_SIZES = [3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30]
 HP_SIZES = [5.5, 7.5, 10.5, 12.5]
 FOSSIL = ("Gas", "Oil", "OtherNonRenewable")
+WTP_EUR_KWH = 0.29  # Kaps, Marinesi, Netessine 2024: median non-market value of not buying a kWh from the grid
+PREMIUM_SCALE = {None: 1.0, "independence": 2.0, "payback": 0.0, "upfront": 0.0}
+
 
 # name: (value, unit, citation, url)
 PARAMS = {
@@ -39,6 +42,7 @@ PARAMS = {
     "degradation": (S.DEGRADATION * 100, "% a year", "median PV degradation 0.5% a year (Jordan and Kurtz, NREL, Prog. Photovolt. 2013)", "https://doi.org/10.1002/pip.1182"),
     "discount": (S.DISCOUNT * 100, "% a year", "a homeowner's opportunity cost, about the 10-year Bund yield in 2026 plus margin", "https://www.bundesbank.de/en/statistics/money-and-capital-markets/interest-rates-and-yields"),
     "knee": ("value per euro >= 1", "", "marginal analysis: add a step while its discounted 20-year value exceeds its cost, which is a marginal return above the discount rate (Brealey, Myers and Allen, Principles of Corporate Finance, NPV rule); the knee of the cost-to-value frontier (Satopaa et al., Kneedle, ICDCS 2011)", "https://doi.org/10.1109/ICDCSW.2011.20"),
+    "independence_premium": (WTP_EUR_KWH * 100, "ct per kWh not bought from the grid", "per kWh of household and EV use the home supplies itself instead of buying it: median non-market value of avoided grid purchases among German home-storage households, revealed by adoption (Kaps, Marinesi and Netessine, Residential Battery Storage: Reshaping the Way We Do Electricity, Operations Research 2024; mean 53 ct); counted in the 20-year value, not in the money NPV; x2 for independence, 0 for payback and upfront", "https://doi.org/10.1287/opre.2024.1104"),
     "dcac": (f"{DCAC_LO} to {DCAC_HI}", "", "DC/AC sizing range for German roofs (HTW Berlin; SMA Sunny Design guidance)", None),
     "heat_pump_cost": (f"{S.HP_GROSS_EUR:,} less {S.HP_SUBSIDY:.0%} of up to {S.HP_ELIGIBLE_CAP:,}", "EUR", "air-water in an existing home 27,000 to 40,000 EUR (reduco 2026), midpoint; BEG base subsidy 30% (KfW 458)", "https://reduco.ai/blog/waermepumpe-kosten-foerderung"),
     "boiler_avoided": (S.BOILER_AVOIDED_EUR, "EUR", "a new gas boiler the home would otherwise buy, 8,000 to 12,000 EUR (docs/domain.md 3)", None),
@@ -51,12 +55,12 @@ PARAMS = {
 }
 
 RULES = [
-    {"name": "pv", "sentence": "Fill the roof's best planes first, module by module, and stop at the last step whose 20-year value is at least its cost; never past the roof.", "params": ["yield", "module_kwp", "m2_per_kwp", "pv_cost", "price", "price_rise", "feed_in", "negative_hours", "degradation", "upkeep", "discount", "knee"]},
-    {"name": "battery", "sentence": "Take the largest battery package whose last step still returns at least its cost over 20 years, counting losses and a replacement at end of life; above HTW's 1.5 kWh per 1,000 kWh is flagged.", "params": ["battery_cost", "battery_life", "battery_physics", "htw_cap", "load", "knee"]},
+    {"name": "pv", "sentence": "Fill the roof's best planes first, module by module, and stop at the last step whose 20-year value is at least its cost; never past the roof.", "params": ["yield", "module_kwp", "m2_per_kwp", "pv_cost", "price", "price_rise", "feed_in", "negative_hours", "degradation", "upkeep", "discount", "independence_premium", "knee"]},
+    {"name": "battery", "sentence": "Take the largest battery package whose last step still returns at least its cost over 20 years, counting losses and a replacement at end of life; above HTW's 1.5 kWh per 1,000 kWh is flagged.", "params": ["battery_cost", "battery_life", "battery_physics", "htw_cap", "load", "independence_premium", "knee"]},
     {"name": "heatpump", "sentence": "Offer a heat pump where the home burns gas or oil, the year's heat is known and the 20-year value with it beats keeping the boiler; size it at the lead's heat demand or heating bill over 2,000 full-load hours, else at the envelope's heat load, which is an upper bound.", "params": ["heat_pump_cost", "boiler_avoided", "heat_cost", "cop", "full_load_hours", "heat_demand"]},
     {"name": "wallbox", "sentence": "An 11 kW wallbox when there is an electric car and no wallbox.", "params": ["wallbox", "ev"]},
     {"name": "inverter", "sentence": "The inverter that puts the DC/AC ratio between 1.1 and 1.3, nearest 1.2.", "params": ["dcac"]},
-    {"name": "objective", "sentence": "The design is the knee of this home's cost-to-value frontier; a stated preference moves along it: independence to the largest system that still breaks even, payback to the shortest payback, upfront to the most value per euro.", "params": ["knee", "discount"]},
+    {"name": "objective", "sentence": "The design is the knee of this home's cost-to-value frontier, where the 20-year value is the money saved plus an independence premium of 29 ct for each kWh not bought from the grid; a stated preference moves along it: independence doubles the premium, payback takes the shortest payback and upfront the most money per euro, both without the premium.", "params": ["knee", "independence_premium", "discount"]},
 ]
 
 
@@ -167,7 +171,18 @@ def _pv_steps(top, n_max=40):
     return [round(k * MODULE_KWP, 2) for k in ks]
 
 
-def sweep(inp, pl, cat, hp_kw, wb_kw, pvs=None, bats=None, inv_fixed=None):
+def _self_supplied(f):
+    cov = f["direct"] + f["discharge"]
+    share = np.divide(cov, f["load"], out=np.zeros(len(cov)), where=f["load"] > 0)
+    return float((share * (f["house"] + f["ev"])).sum())
+
+
+def _annuity():
+    t = np.arange(1, S.YEARS + 1)
+    return float(((1 - S.DEGRADATION) ** (t - 1) / (1 + S.DISCOUNT) ** t).sum())
+
+
+def sweep(inp, pl, cat, hp_kw, wb_kw, pvs=None, bats=None, inv_fixed=None, scale=1.0):
     """Every (PV, battery) on this home with the heat pump and wallbox decisions fixed. Rows carry the economics."""
     base = {"heatpump_kw": hp_kw or None, "wallbox_kw": wb_kw or None}
     before = S._flows(inp, S.before_design(base), "Munich")
@@ -182,12 +197,17 @@ def sweep(inp, pl, cat, hp_kw, wb_kw, pvs=None, bats=None, inv_fixed=None):
             d = {**base, "pv_kwp": pv or None, "battery_kwh": b or None,
                  "inverter_kw": inv_fixed if (inv_fixed and pv) else inverter(pv, (cat or {}).get("inverter_kw"))}
             if not (pv or b or hp_kw or wb_kw):
-                rows.append({"design": d, "capex": 0.0, "npv": 0.0, "value": 0.0, "autarky": 0.0, "payback": None, "econ": None})
+                rows.append({"design": d, "capex": 0.0, "npv": 0.0, "value": 0.0, "prem": 0.0, "grid_cut_kwh": 0.0, "autarky": 0.0, "payback": None, "econ": None})
                 continue
             after = S._flows(i2, d, "Munich")
             e = S.economics(i2, d, after, before, "Munich")
             npv = e["annual"]["npv_20y_eur"] or 0.0
-            rows.append({"design": d, "capex": e["capex_eur"], "npv": npv, "value": npv + e["capex_eur"],
+            # household and EV kWh now supplied by PV (direct or via the battery): the electricity Kaps et al. valued;
+            # the heat pump's own supply is neither rewarded nor charged
+            cut = _self_supplied(after) - _self_supplied(before)
+            prem = WTP_EUR_KWH * max(cut, 0.0) * _annuity()
+            rows.append({"design": d, "capex": e["capex_eur"], "npv": npv, "value": npv + e["capex_eur"] + scale * prem,
+                         "prem": prem, "grid_cut_kwh": cut,
                          "autarky": e["autarky_share"], "payback": e["payback_years"], "econ": e})
     return rows
 
@@ -224,8 +244,7 @@ def knee(h):
 def choose(h, pref):
     k = knee(h)
     if pref == "independence":
-        ok = [i for i in range(len(h)) if h[i]["npv"] >= 0]
-        return (max(ok) if ok else k), "independence: the largest system on the frontier that still breaks even"
+        return k, "independence: the knee with the independence premium doubled"
     if pref == "payback":
         ok = [i for i in range(len(h)) if h[i]["payback"]]
         return (min(ok, key=lambda i: h[i]["payback"]) if ok else k), "payback: the shortest payback on the frontier"
@@ -300,10 +319,10 @@ def _solve(inp, cat, overrides, roof):
     pref = inp.get("preference")
     best = None
     for hp in hps:
-        rows = sweep(inp, pl, cat, hp, wb, pvs, bats, inv_fixed)
+        rows = sweep(inp, pl, cat, hp, wb, pvs, bats, inv_fixed, PREMIUM_SCALE.get(pref, 1.0))
         h = hull(rows)
         i, why = choose(h, pref)
-        cand = (h[i]["npv"], hp, rows, h, i, why)
+        cand = (h[i]["value"] - h[i]["capex"], hp, rows, h, i, why)
         if best is None or cand[0] > best[0] + 1e-6:
             best = cand
     return pl, wb, hp_size, hps, best
@@ -370,12 +389,12 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
     else:
         eq = f"{pv:g} kWp = {pv / MODULE_KWP:.0f} modules ({plane_txt})"
         if r_in is not None:
-            eq += f"; step to {pv:g} kWp returns {r_in:.2f} EUR per EUR"
+            eq += f"; step to {pv:g} kWp returns {r_in:.2f} EUR of 20-year value (money plus {WTP_EUR_KWH * 100:.0f} ct independence premium per kWh not bought) per EUR"
         if r_out is not None:
             eq += f", next step to {hi:g} kWp {r_out:.2f}"
         elif pv >= top - 1e-6:
             eq += f"; the roof holds {top:g} kWp"
-        s_pv = f"{pv:g} kWp on the best planes: the last step returns {r_in:.2f} EUR per EUR over 20 years" if r_in is not None else f"{pv:g} kWp on the best planes"
+        s_pv = f"{pv:g} kWp on the best planes: the last step returns {r_in:.2f} EUR of 20-year value per EUR" if r_in is not None else f"{pv:g} kWp on the best planes"
         s_pv += f", the next would return {r_out:.2f}." if r_out is not None else (", and the roof is full." if pv >= top - 1e-6 else ".")
         der_pv = {"axiom": RULES[0]["sentence"], "equation": eq,
                   "inputs": [{"name": "annual use", "value": round(e["annual"]["load_kwh"]), "unit": "kWh", "source": "inputs, BDEW H25, EV and heat pump profiles"},
@@ -383,7 +402,7 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
                   + [{"name": f"plane {p.get('id') or j + 1}", "value": f"{k:g} kWp, {p['yield_kwh_kwp']:,} kWh/kWp, {p['azimuth']:.0f} deg, {p['tilt']:.0f} deg", "unit": "", "source": p["source"]}
                      for j, (p, k) in enumerate(used)]
                   + [
-                             _p("pv_cost"), _p("price", f"{(inp.get('electricity_price_ct_kwh') or S.PRICE_CT):g} ct used"), _p("feed_in"), _p("negative_hours"), _p("discount"), _p("knee")],
+                             _p("pv_cost"), _p("price", f"{(inp.get('electricity_price_ct_kwh') or S.PRICE_CT):g} ct used"), _p("feed_in"), _p("negative_hours"), _p("discount"), _p("independence_premium", f"x{PREMIUM_SCALE.get(inp.get('preference'), 1.0):g}"), _p("knee")],
                   "axiom_result": pv, "adjustment": {"label": why, "value": pv, "n_similar": None} if why else None, "final": pv}
     comps["pv"] = {"decision": "include" if pv else "none", "size": pv or None, "reason": s_pv, "derivation": der_pv}
     expl.append(s_pv)
@@ -422,7 +441,7 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
                  "inputs": [{"name": "evening and night use", "value": nt and nt["evening_kwh"], "unit": "kWh", "source": "the representative spring weekday, hourly simulation"},
                             {"name": "HTW cap", "value": round(htw, 1), "unit": "kWh usable", "source": PARAMS["htw_cap"][2]},
                             {"name": "packages", "value": ", ".join(f"{x:g}" for x in sorted(set(b_vals)) if x), "unit": "kWh", "source": "installer catalogue"},
-                            _p("battery_cost"), _p("battery_life"), _p("battery_physics"), _p("knee")],
+                            _p("battery_cost"), _p("battery_life"), _p("battery_physics"), _p("independence_premium", f"x{PREMIUM_SCALE.get(inp.get('preference'), 1.0):g}"), _p("knee")],
                  "axiom_result": bat,
                  "adjustment": {"label": f"above HTW's {htw:.1f} kWh usable: flagged", "value": bat, "n_similar": None} if warn else None,
                  "final": bat}
@@ -438,12 +457,12 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
         s_h = "The home already heats with a heat pump." if inp.get("heating_type") == "Heatpump" else s_h
         der_h = None
     else:
-        alt = sweep(inp, pl, cat, 0.0 if hp else hp_sz, wb, [pv], [bat], d.get("inverter_kw"))
-        other = alt[0]["npv"] if alt else None  # the same PV and battery with the other heat pump decision
+        alt = sweep(inp, pl, cat, 0.0 if hp else hp_sz, wb, [pv], [bat], d.get("inverter_kw"), PREMIUM_SCALE.get(inp.get("preference"), 1.0))
+        other = alt[0]["value"] - alt[0]["capex"] if alt else None  # the same PV and battery with the other heat pump decision
         eq = (f"envelope heat load {hp_raw:.1f} kW (LoD2 faces x IWU U-values), next size {hp_sz:g} kW" if heat_src.startswith("envelope")
               else f"{heat:,.0f} kWh heat / {FULL_LOAD_H:,} h = {hp_raw:.1f} kW, next size {hp_sz:g} kW")
         if other is not None:
-            eq += f"; 20-year NPV with {npv if hp else other:,.0f} EUR, without {other if hp else npv:,.0f} EUR"
+            eq += f"; 20-year value (money plus independence premium) with {npv if hp else other:,.0f} EUR, without {other if hp else npv:,.0f} EUR"
         if hp:
             size_txt = f"the envelope's {hp_raw:.1f} kW heat load" if heat_src.startswith("envelope") else f"{heat:,.0f} kWh of heat over {FULL_LOAD_H:,} full-load hours"
             gain = npv - (other or 0)
@@ -499,14 +518,15 @@ def frontier(inputs: dict, roof: dict | None = None, catalogue: dict | None = No
     pl, wb, _, _, (npv, hp, rows, h, i, why) = _solve(inp, catalogue or {}, overrides, roof)
     hid = {id(r) for r in h}
     labels = {}
-    for pref in ("independence", "payback", "upfront"):
+    for pref in ("payback", "upfront"):
         j, _ = choose(h, pref)
         labels.setdefault(id(h[j]), pref)
     labels.setdefault(id(h[knee(h)]), "knee")
     out = []
     for r in rows:
         out.append({"kwp": r["design"]["pv_kwp"] or 0.0, "kwh": r["design"]["battery_kwh"] or 0.0, "capex_eur": r["capex"],
-                    "npv_20y_eur": r["npv"], "autarky_share": r["autarky"], "payback_years": r["payback"],
+                    "npv_20y_eur": r["npv"], "independence_eur": round(r["value"] - r["capex"] - r["npv"], -1),
+                    "value_20y_eur": round(r["value"] - r["capex"], -1), "autarky_share": r["autarky"], "payback_years": r["payback"],
                     "on_frontier": id(r) in hid, "chosen": r is h[i], **({"label": labels[id(r)]} if id(r) in labels else {})})
     return out
 
