@@ -8,12 +8,14 @@ import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
 import { INSTALLER_NAME } from "@/lib/api";
 import type { Layers, Bar, Check, RoofModel } from "@/components/spatial/types";
 import { findRot, rotLine } from "@/lib/rot";
+import { isMultiUnit } from "@/lib/building";
+import { setShadeOn, useShading } from "@/lib/shading";
 import { POSES, type StageView } from "@/components/spatial/camera";
 import type { Variant } from "@/components/stage/Plan";
 import House from "@/components/stage/House";
 import Why from "@/components/stage/Why";
 import s from "./chain.module.css";
-import { OfferValue, SiteVisitNote, useCardQualification } from "@/components/qualify/Verdict";
+import { SiteVisitNote, useCardQualification } from "@/components/qualify/Verdict";
 import ShadingPanel from "@/components/spatial/ShadingScrubber";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
@@ -141,6 +143,16 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
 
   const model: RoofModel | null = layers ? (Array.isArray(layers.planes) ? null : layers.planes) : null;
   const hasEnv = !!model?.envelope?.faces?.length, hasPlan = !!model?.plan?.outline?.length;
+  // A flat in an apartment block: the roof and the envelope are the building's, not the household's.
+  const building = model ? isMultiUnit(model, inputs) : null, multi = !!building?.multi;
+  useEffect(() => {
+    if (!building) return;
+    dispatchEvent(new CustomEvent("marquee:building", { detail: { leadId: leadId ?? null, multi: building.multi, reason: building.reason } }));
+  }, [building?.multi, building?.reason, leadId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Per-panel shading lives on Panels only: it turns on there and fades out when the planner moves on.
+  const shading = useShading(address, res.design.pv_kwp);
+  const onPanels = FIVE && stage === 1;
+  useEffect(() => { if (FIVE && !onPanels) setShadeOn(false); }, [onPanels]);
   // The planner's pick on the model (3D or Photo over the plan) holds until the stage changes.
   const [pick, setPick] = useState<{ stage: number; layer: number } | null>(null);
   const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : (FIVE ? [3, 5, 5, hasEnv ? 7 : 1, hasPlan ? 8 : 3] : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, hasPlan ? 8 : 3, hasPlan ? 8 : 3])[stage - 1];
@@ -156,16 +168,16 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
   const rule = (k: string) => res.rules?.find((r) => r.name === k);
   const ruleText = (k: string) => { const r = rule(k); return r?.rule?.text ?? null; };
   const head5: string[] = [
-    `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}`,
+    `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}${multi ? ", shared roof" : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh` : "None",
     d.wallbox_kw ? `${n1(d.wallbox_kw)} kW` : inputs.has_ev ? "None" : "None, no EV",
-    d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : "None, not asked",
+    multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : "None, not asked",
     `${eur(e.capex_eur)}${breakEven ? `, break-even in ${breakEven} years` : ""}`,
   ];
   const head8: string[] = [
-    bars[1] ? `${n2(bars[1].total)} kWp on ${bars[1].segments.filter((g) => g.unit === "kWp").length} faces` : address && spatial !== false ? "Roof being measured" : address ? "No 3D model here, roof assumed standard face" : "No street given, roof assumed standard face",
+    bars[1] ? (() => { const f = bars[1].segments.filter((g) => g.unit === "kWp").length; return `${n2(bars[1].total)} kWp on ${f} face${f === 1 ? "" : "s"}${multi ? ", shared roof" : ""}`; })() : address && spatial !== false ? "Roof being measured" : address ? "No 3D model here, roof assumed standard face" : "No street given, roof assumed standard face",
     `${n0(inputs.annual_demand_kwh ?? 0)} kWh a year${layers?.ev ? ` plus ${n0(layers.ev.annual_kwh)} kWh for the car` : ""}`,
-    `${inputs.has_ev ? `Electric car${inputs.ev_annual_km ? `, ${n0(inputs.ev_annual_km)} km a year` : ""}` : "No electric car planned"}${model?.envelope ? `; heat load up to ${n1(model.envelope.design_heat_load_kw)} kW` : ""}`,
+    `${inputs.has_ev ? `Electric car${inputs.ev_annual_km ? `, ${n0(inputs.ev_annual_km)} km a year` : ""}` : "No electric car planned"}${multi ? "; heat load not estimated for flats" : model?.envelope ? `; heat load up to ${n1(model.envelope.design_heat_load_kw)} kW` : ""}`,
     `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh battery` : "No battery",
     [d.wallbox_kw ? `${n1(d.wallbox_kw)} kW wallbox` : "No wallbox", d.heatpump_kw ? `${n1(d.heatpump_kw)} kW heat pump` : "no heat pump"].join(", "),
@@ -222,8 +234,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
       <div className={s.sim}>
         <p className={s.simH}><Bolt /> Simulation</p>
         <dl className={s.kpis}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}</dd></div>)}</dl>
-        <OfferValue q={q} />
-        {address && spatial !== false && <ShadingPanel address={address} kwp={d.pv_kwp} solarStage={stage === 4} />}
+        {address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div>}
       </div>
       {stage === N && variants.length > 0 && (
         <div className={s.variants}>
@@ -280,11 +291,13 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
             <li key={t} className={`${s.item} ${open ? s.open : ""} ${built ? "" : s.pending}`} style={FIVE ? stepStyle(i) : undefined}>
               <button type="button" className={s.ih} onClick={() => go(n)} aria-expanded={open}>
                 <span className={s.num}>{n}</span>
-                <span className={s.it}>{t}{moved.has(n) && <span className={s.moved}>Moved</span>}</span>
+                <span className={s.it}>{t}{moved.has(n) && <span className={s.moved}>Moved</span>}{multi && FIVE && (n <= 2 || n === N) && <span className={s.flatTag}>Single-family figure</span>}</span>
                 <span className={s.ihead}>{head[i]}</span>
               </button>
               {FIVE && open && n === N && layers?.checks && <CheckRow checks={layers.checks} />}
-              {built && bar && !(FIVE && n === 3 && !d.wallbox_kw && !layers?.ev) && (open ? <BarView bar={bar} /> : <BarStrip bar={bar} />)}
+              {FIVE && open && n === 1 && multi && <p className={s.shared}>Shared roof, apartment building: single-family design does not apply<span>{building!.reason}</span></p>}
+              {FIVE && open && n === 4 && multi && <p className={s.shared}>The walls and roof here are the whole apartment building&apos;s, so no heat load or heat pump size for one flat.</p>}
+              {built && bar && !(FIVE && n === 3 && !d.wallbox_kw && !layers?.ev) && !(FIVE && n === 4 && multi) && (open ? <BarView bar={FIVE && n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} /> : <BarStrip bar={bar} />)}
               {FIVE && open && n === 1 && (
                 <>
                   <BarView bar={useBar} />
@@ -345,10 +358,10 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
         })}
       </ol>}
 
-      <div className={s.hero}>
+      <div className={`${s.hero} ${onPanels && shading ? s.heroTall : ""}`}>
         {address && spatial !== false ? (
           <SpatialDemo inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatmap ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
-            onAvailable={setSpatial} onLayers={onLayers} tools={tools}>
+            onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && !shading && !heatmap}>
             {overlays}
           </SpatialDemo>
         ) : (
@@ -360,6 +373,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
         )}
       </div>
 
+      {FIVE && onPanels && address && spatial !== false && <div className={s.shadeUnder}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}
       <div className={s.say}>{refine}</div>
       {prev && JSON.stringify(prev.design) !== JSON.stringify(res.design) && <span className={s.srOnly} aria-live="polite">Draft updated.</span>}
     </div>

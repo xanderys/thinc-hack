@@ -719,3 +719,7 @@ input, select, textarea { border-radius: 8px; }
 .b-st.signed { background: #e3f5e9; color: #1b7a39; }
 .b-card.live .b-st { background: transparent; padding: 0; }
 .b-open-h p .b-chip { margin-left: 8px; vertical-align: 1px; }
+.b-open-h p.b-shared { margin-top: 6px; display: inline-block; font-size: 13px; font-weight: 600; color: #8a5a00; background: #fff4dc; border: 1px solid #f2d79a; border-radius: 8px; padding: 3px 10px; }
+.b-open-h .b-offer { font-size: 13.5px; color: var(--ink-2); }
+.b-open-h p.b-small { margin: 2px 0 0; font-size: 11.5px; color: var(--ink-3); }
+.b-open-h .b-verdict { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }

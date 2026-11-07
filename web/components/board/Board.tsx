@@ -194,6 +194,14 @@ export default function Board({ openId: initial }: { openId?: string }) {
     setApproved(a);
   }, []);
 
+  // The open card's chain reports when the building is an apartment block (lib/building.ts).
+  const [shared, setShared] = useState<{ id: string | null; reason: string } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => { const d = (e as CustomEvent<{ leadId: string | null; multi: boolean; reason: string }>).detail; setShared(d.multi ? { id: d.leadId, reason: d.reason } : null); };
+    addEventListener("marquee:building", on); return () => removeEventListener("marquee:building", on);
+  }, []);
+  useEffect(() => { setShared(null); }, [openId]);
+
   const openCard = cards.find((c) => c.id === openId);
 
   if (openId) return (
@@ -208,10 +216,12 @@ export default function Board({ openId: initial }: { openId?: string }) {
             const st = calling ? "in_call" : openCard && (DECIDED.has(openCard.status) || openCard.status === "approved") ? openCard.status : openCard && approved[openCard.id] ? "approved" : openCard?.status ?? "draft";
             return <span className={`b-st b-chip ${st}`}>{STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${hm(openCard.decision?.decided_at)}` : ""}</span>;
           })()}</p>
-          {openCard && <p className={qs.head}><VerdictLine q={openCard.q} /></p>}
+          {openCard && <p className={qs.head}>{openCard.q ? <span className="b-verdict"><VerdictChip verdict={openCard.q.verdict} /><span className="b-offer">{[cap(openCard.q.sentence.split(": ").slice(1).join(": ").replace(/\.$/, "")), ...(openCard.q.expected_offer_eur != null ? [`expected offer €${Math.round(openCard.q.expected_offer_eur).toLocaleString("en-GB")}, estimate`] : [])].join(" · ")}</span></span> : <VerdictLine q={null} />}</p>}
+          {openCard?.q && <p className="b-small">Every number is an estimate until the site visit.</p>}
           {openCard?.q && !calling && liveLead?.lead_id === openId && liveLead.history.length > 0 && (
             <p className={qs.rina}>Rina, after the call: {liveLead.history.length} {liveLead.history.length === 1 ? "answer" : "answers"}. {openCard.q.sentence} Expected offer {offerEur(openCard.q.expected_offer_eur)}.</p>
           )}
+          {shared && <p className="b-shared" title={shared.reason}>Shared roof, apartment building: single-family design does not apply</p>}
         </div>
         <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
       </div>

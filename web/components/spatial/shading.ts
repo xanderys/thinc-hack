@@ -12,8 +12,8 @@ const MIN_PX = 44;    // a module narrower than this on screen gets no %
 const PCT_CSS = "position:absolute;left:0;top:0;padding:0;border:0;background:none;box-shadow:none;font:600 10px/1 var(--font-mono),monospace;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.55);white-space:nowrap;";
 const EDGE_CSS = "position:absolute;left:0;top:0;padding:1px 4px;border:0;border-radius:4px;background:rgba(255,255,255,.88);box-shadow:none;font:500 10.5px/1.2 var(--font-mono),monospace;color:#0A0C14;white-space:nowrap;";
 
-type Mod = { key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; centre: THREE.Vector3; a: THREE.Vector3; b: THREE.Vector3; el: HTMLDivElement };
-type Edge = { at: THREE.Vector3; el: HTMLDivElement };
+type Mod = { key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; centre: THREE.Vector3; a: THREE.Vector3; b: THREE.Vector3; el: HTMLDivElement; has?: boolean };
+type Edge = { at: THREE.Vector3; el: HTMLDivElement; len: number; w?: number; h?: number };
 
 export class ShadeLayer {
   private overlay: HTMLElement | null = null;
@@ -28,6 +28,11 @@ export class ShadeLayer {
   private down = { x: 0, y: 0, t: 0 };
   private camera: THREE.Camera | null = null;
   private ray = new THREE.Raycaster();
+  // Tint strength 0..1: a critically damped spring (no bounce) towards on/off; a plain crossfade under Reduce Motion.
+  private k = 0;
+  private kv = 0;
+  private last = 0;
+  reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
   mount(overlay: HTMLElement, dom: HTMLElement) {
     this.overlay = overlay; this.dom = dom;
@@ -73,8 +78,10 @@ export class ShadeLayer {
   private apply() {
     const by = new Map((this.data?.modules ?? []).map((m) => [`${m.plane_id}:${m.index}`, m]));
     this.mods.forEach((m) => {
+      if (!this.on && this.data) return;   // turning off: keep the last colours while the tint fades out in frame()
       const s = by.get(m.key), v = s && this.on ? shareAt(s, this.at) : null;
-      m.mesh.visible = v != null;
+      m.has = v != null;
+      m.mesh.visible = v != null && this.k > 0.002;
       if (v != null) {
         const [r, g, b] = shadeRgb(v);
         m.mat.color.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
@@ -102,13 +109,22 @@ export class ShadeLayer {
         el.textContent = `${len.toFixed(1)} m`;
         el.style.cssText = EDGE_CSS + "visibility:hidden;";
         this.overlay!.appendChild(el);
-        this.edges.push({ at: mid.setY(mid.y + 0.15), el });
+        this.edges.push({ at: mid.setY(mid.y + 0.15), el, len });
       });
     });
   }
 
   frame(camera: THREE.Camera, mode: "3d" | "2d", project: (v: THREE.Vector3) => { x: number; y: number; ok: boolean }, width: number) {
     this.camera = camera;
+    const now = performance.now(), dt = Math.min(0.05, this.last ? (now - this.last) / 1000 : 0); this.last = now;
+    const goal = this.on ? 1 : 0;
+    if (this.k !== goal) {
+      if (this.reduce) this.k = goal > this.k ? Math.min(goal, this.k + dt / 0.2) : Math.max(goal, this.k - dt / 0.2);
+      else { const w = (2 * Math.PI) / 0.35; this.kv += (-2 * w * this.kv - w * w * (this.k - goal)) * dt; this.k += this.kv * dt; }
+      if (Math.abs(this.k - goal) < 0.002 && Math.abs(this.kv) < 0.01) { this.k = goal; this.kv = 0; }
+      this.k = Math.min(1, Math.max(0, this.k));
+      this.mods.forEach((m) => { m.mat.opacity = 0.9 * this.k; m.mesh.visible = !!m.has && this.k > 0.002; });
+    }
     const narrow = width < NARROW;
     this.mods.forEach((m) => {
       const show = this.on && m.mesh.visible && (narrow ? this.picked === m.key : true);
@@ -120,11 +136,17 @@ export class ShadeLayer {
       m.el.style.visibility = p.ok && big ? "visible" : "hidden";
       m.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)`;
     });
-    this.edges.forEach((e) => {
+    // Edge lengths never stack: longest first, a tag that would touch one already shown stays hidden.
+    const shown: { x0: number; x1: number; y0: number; y1: number }[] = [];
+    [...this.edges].sort((a, b) => b.len - a.len).forEach((e) => {
       const show = this.on && mode === "3d";
       if (!show) { if (e.el.style.visibility !== "hidden") e.el.style.visibility = "hidden"; return; }
       const p = project(e.at);
-      e.el.style.visibility = p.ok ? "visible" : "hidden";
+      if (!e.w) { e.w = e.el.offsetWidth || 36; e.h = e.el.offsetHeight || 14; }
+      const r = { x0: p.x - e.w / 2, x1: p.x + e.w / 2, y0: p.y - e.h! / 2, y1: p.y + e.h! / 2 };
+      const free = p.ok && !shown.some((q) => r.x0 < q.x1 + 8 && q.x0 < r.x1 + 8 && r.y0 < q.y1 + 8 && q.y0 < r.y1 + 8);
+      if (free) shown.push(r);
+      e.el.style.visibility = free ? "visible" : "hidden";
       e.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)`;
     });
   }

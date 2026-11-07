@@ -43,8 +43,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ path: strin
       if (!tilesKey()) return NextResponse.json({ mode: "off", error: "No Google Maps key on the server" });
       const [anchor] = await Promise.all([anchorFor(address), getRoot()]);
       if (!anchor) return NextResponse.json({ mode: "off", error: "No house model at this address" });
-      warmAddress(address).catch(() => {});
-      return NextResponse.json({ mode: "google", root: "/api/tiles/v1/3dtiles/root.json", anchor });
+      // warm: this address's tiles were already walked into the server cache before this call (the card may open on Photo).
+      const run = warmAddress(address); run.catch(() => {});
+      const warmNow = await Promise.race([run.then(() => true, () => false), new Promise<boolean>((r) => setTimeout(() => r(false), 30))]);
+      return NextResponse.json({ mode: "google", root: "/api/tiles/v1/3dtiles/root.json", anchor, warm: warmNow });
     }
     if (path[0] === "warm") {
       if (!tilesKey()) return NextResponse.json({ error: "No Google Maps key on the server" }, { status: 503 });

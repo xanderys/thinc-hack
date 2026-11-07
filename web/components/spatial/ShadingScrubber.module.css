@@ -26,3 +26,16 @@
   .scale { display: none; }
   .float { top: auto; bottom: 8px; left: 8px; right: 8px; width: auto; }
 }
+/* Phone strip under the model. */
+.strip { display: grid; gap: 4px; background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 6px 8px; }
+.stripHead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.stripHead .head { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }
+.stripHead .chip { padding: 4px 10px; min-height: 32px; }
+.srcBtn { all: unset; cursor: pointer; font-size: 11.5px; color: var(--accent); padding: 6px 2px; }
+.stripRow { display: grid; grid-template-columns: auto minmax(70px, 1fr); align-items: center; gap: 6px; }
+.monthsC { display: flex; gap: 1px; }
+.monthsC button { all: unset; box-sizing: border-box; cursor: pointer; min-width: 17px; height: 30px; display: grid; place-items: center; font-size: 11px; font-weight: 600; border-radius: 5px; color: var(--ink-2); }
+.monthsC button:first-child { padding: 0 5px; font-weight: 500; }
+.monthsC button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.stripRow input { width: 100%; margin: 0; accent-color: var(--accent); touch-action: none; }
+.whenC { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
