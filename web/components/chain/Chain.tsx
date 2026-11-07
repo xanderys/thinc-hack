@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
 import { INSTALLER_NAME } from "@/lib/api";
 import type { Layers, Bar, Check, RoofModel } from "@/components/spatial/types";
+import LayersMenu from "@/components/spatial/LayersMenu";
 import { findRot, rotLine } from "@/lib/rot";
 import { isMultiUnit } from "@/lib/building";
 import { setShadeOn, useShading } from "@/lib/shading";
@@ -220,7 +221,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
       <span className={s.sep} />
       <button type="button" className={s.tb} onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
       <span className={s.sep} />
-      <button type="button" className={s.tb} aria-pressed={heatmap} onClick={() => setHeatmap((x) => !x)} title="Sun heatmap" aria-label="Sun heatmap"><Ico><path d="M10 2l8 4-8 4-8-4zM2 10l8 4 8-4M2 14l8 4 8-4" /></Ico></button>
+      <LayersMenu className={s.tb} up heatmap={{ on: heatmap, set: setHeatmap }} />
       <div className={s.seg} role="group" aria-label="View">
         <button type="button" aria-pressed={v === "2d"} onClick={() => setView("2d")}>2D</button>
         <button type="button" aria-pressed={v === "3d" && !photo?.on} onClick={() => setView("3d")}>3D</button>

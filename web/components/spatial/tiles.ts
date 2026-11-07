@@ -272,6 +272,7 @@ export class PhotoLayer {
     clearTimeout(this.timer); clearTimeout(this.early);
     for (const x of [glbOf(this.inner), this.inner.placeholder]) if (x) { this.hidden.push({ o: x, v: x.visible }); x.visible = false; }
     this.holder.visible = true;
+    this.white.attach(glbOf(this.inner)); // real look: our ground and slabs around the mesh house
     this.o.onReady();
   }
 
