@@ -1,3 +1,5 @@
+North star: speed up the installer's whole pipeline, enquiry to design to offer to signed deal to installation. Every change must save planner or sales time, win more deals or raise turnover; otherwise cut it.
+
 # Reonic planner (thinc! hack MUC, 7 to 8 Nov 2026)
 
 From a few facts about a home, propose PV, battery and heat pump the way an experienced planner would, let the planner refine it, and prove it against real expert designs. Judges: Reonic (technical depth, user fit, business impact, demo) then a VC jury (creativity, realisability, usability, pitch).

@@ -1,3 +1,5 @@
+North star: speed up the installer's whole pipeline, enquiry to design to offer to signed deal to installation. Every change must save planner or sales time, win more deals or raise turnover; otherwise cut it.
+
 # PLAN (team Marquee, Reonic case)
 
 ## Pitch
