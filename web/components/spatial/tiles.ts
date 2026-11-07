@@ -119,6 +119,7 @@ export class PhotoLayer {
 
   constructor(sc: SpatialScene, private o: Opts) {
     this.inner = sc as unknown as Inner;
+    this.inner.renderer.domElement.addEventListener("webglcontextlost", this.lost);
     const { anchor } = o;
     const tiles = new TilesRenderer(new URL(o.root, window.location.href).href);
     this.tiles = tiles;
@@ -146,12 +147,12 @@ export class PhotoLayer {
     // White context outside the house footprint (mask read from meshFrame), full detail only near the house.
     const house = this.inner.box.isEmpty() ? new THREE.Vector3() : this.inner.box.getCenter(new THREE.Vector3());
     this.white.setNeighbours(this.inner.ctxLines?.userData.edges ?? [], [house.x, house.z]);
-    tiles.addEventListener("load-model", ({ scene }: { scene: THREE.Object3D }) => this.white.apply(scene));
+    tiles.addEventListener("load-model", ({ scene }: { scene: THREE.Object3D }) => { try { this.white.apply(scene); } catch (e) { this.fail(e); } });
     this.lodOff = applyTileLod(tiles, house, { phone: o.phone });
     this.holder.visible = false;
     this.inner.scene.add(this.holder);
 
-    tiles.addEventListener("tiles-load-end", () => { void this.align(); });
+    tiles.addEventListener("tiles-load-end", () => { this.safeAlign(); });
     tiles.addEventListener("load-error", ({ error, tile }: { error: Error; tile: unknown }) => {
       if (!this.ready && !tile) this.fail(error?.message || "The photo tiles did not load.");
     });
@@ -166,7 +167,7 @@ export class PhotoLayer {
 
     this.timer = setTimeout(() => { if (!this.ready) this.fail("The photo mesh took too long."); }, READY_MS);
     // Do not wait for every detail tile: fit with what is in at 3.5 s, and again as the rest lands.
-    this.early = setTimeout(() => { if (!this.ready) void this.align(); }, 3500);
+    this.early = setTimeout(() => { if (!this.ready) this.safeAlign(); }, 3500);
     if (typeof window !== "undefined") (window as unknown as { __mesh?: PhotoLayer }).__mesh = this;
     this.loop();
   }
@@ -276,14 +277,24 @@ export class PhotoLayer {
     this.o.onReady();
   }
 
-  private fail(why: string) {
-    if (this.dead) return;
-    this.o.onFail(why);
+  // Any failure in the mesh path ends the mesh only: the hook disposes this layer and the LoD2 model returns.
+  private fail(why: unknown) {
+    if (this.dead || this.failed) return;
+    this.failed = true;
+    cancelAnimationFrame(this.raf);
+    this.o.onFail(why instanceof Error ? why.message : String(why));
   }
+  private failed = false;
+  private safeAlign() { this.align().catch((e) => this.fail(e)); }
+  private lost = (e: Event) => { e.preventDefault(); this.fail("the GPU dropped the WebGL context"); };
 
   private loop = () => {
-    if (this.dead) return;
+    if (this.dead || this.failed) return;
     this.raf = requestAnimationFrame(this.loop);
+    try { this.frame(); } catch (e) { this.fail(e); }
+  };
+
+  private frame() {
     const { camera, renderer } = this.inner;
     if (camera !== this.cam) {
       if (this.cam) this.tiles.deleteCamera(this.cam);
@@ -309,9 +320,9 @@ export class PhotoLayer {
     this.inner.panels.children.forEach((g) => g.children.forEach((ch) => { ch.position.y = 0; }));
     this.inner.scene.remove(this.holder);
     if (meshFrame.holder === this.holder) Object.assign(meshFrame, { anchor: null, fit: null, holder: null, offset: [0, 0, 0], version: meshFrame.version + 1 });
-    this.lodOff();
-    this.white.dispose();
-    this.tiles.dispose();
-    this.draco.dispose();
+    this.inner.renderer.domElement.removeEventListener("webglcontextlost", this.lost);
+    for (const f of [() => this.lodOff(), () => this.white.dispose(), () => this.tiles.dispose(), () => this.draco.dispose()]) {
+      try { f(); } catch (e) { console.warn(`Mesh view teardown: ${(e as Error)?.message ?? e}`); }
+    }
   }
 }

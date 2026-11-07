@@ -147,7 +147,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
   const vo = useViewOpts();
   const credit = vo.google && vo.ground === "google" && vo.credit ? ` · Ground: ${vo.credit}` : "";
-  const photo = usePhoto(address, ready ? scene.current : null, view === "3d" && L !== 8);
+  const photo = usePhoto((model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32, ready ? scene.current : null, view === "3d" && L !== 8, { creditBottom: bare ? 22 : 104 });
 
   // Panels change with the design: re-place them (animated only when the panels layer is showing).
   const panelKey = panelList.length + ":" + JSON.stringify(Object.values(counts));
