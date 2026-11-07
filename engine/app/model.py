@@ -1,6 +1,7 @@
 """Chained sizing model: PV, then battery given PV, then heat pump, then wallbox. Statistics plus physics, no LLM."""
 import math
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
@@ -193,7 +194,8 @@ class Engine:
 
         # PV
         p_pv = float(self.models["pv_dec"].predict_proba(X)[0, 1])
-        pv, src = choose("pv_kwp", p_pv, lambda: snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"]))
+        pv_fn = lambda: self.roof_cap(inp, snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"]), cat["pv"])
+        pv, src = choose("pv_kwp", p_pv, pv_fn)
         comps["pv"] = self._detail("pv", pv, p_pv, nb, inp, src)
         # battery
         X1 = X.assign(pv=pv)
@@ -203,13 +205,20 @@ class Engine:
         nopv_note = None
         if bat and not pv and not inp.get("has_solar") and src == "model":
             if NO_PV_RULE == "pv" and "pv_kwp" not in ov:
-                pv = snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"])
+                pv = pv_fn()
                 comps["pv"] = self._detail("pv", pv, p_pv, nb, inp, "model")
                 comps["pv"]["reason"] = f"A battery needs PV to charge and none is recorded, so PV is proposed; {comps['pv']['reason']}"
                 X1 = X.assign(pv=pv)
                 bat = snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"]))
             else:
                 bat, nopv_note = 0.0, "No PV, new or recorded, so no battery: it could not charge from solar."
+        if pv and inp.get("roof") and inp["roof"].get("max_kwp"):
+            r = inp["roof"]
+            if self._capped.get(id(inp)):
+                comps["pv"]["reason"] += f" Capped by the roof: {r['max_panels']} modules fit, {r['max_kwp']:g} kWp at most."
+            else:
+                comps["pv"]["reason"] += f" The roof fits {r['max_panels']} modules, up to {r['max_kwp']:g} kWp."
+        self._capped.pop(id(inp), None)
         comps["battery"] = self._detail("battery", bat, p_b, nb, inp, src, pv=pv)
         if nopv_note:
             comps["battery"]["reason"] = nopv_note
@@ -248,7 +257,9 @@ class Engine:
         insts = [i["installer_id"] for i in inps]
         p_pv = self.models["pv_dec"].predict_proba(X)[:, 1]
         pv_raw = self.models["pv_size"].predict(X)
-        pv_alt = np.array([snap(float(pv_raw[k]), self.catalogue[insts[k]]["pv"]) for k in range(n)])
+        pv_alt = np.array([self.roof_cap(inps[k], snap(float(pv_raw[k]), self.catalogue[insts[k]]["pv"]), self.catalogue[insts[k]]["pv"]) for k in range(n)])
+        for i in inps:
+            self._capped.pop(id(i), None)
         pv = np.where(p_pv >= 0.5, pv_alt, 0.0)
         X1 = X.assign(pv=pv)
         p_b = self.models["bat_dec"].predict_proba(X1)[:, 1]
@@ -276,6 +287,18 @@ class Engine:
             out.append({"pv_kwp": float(pv[k]) or None, "inverter_kw": rules.inverter_kw(pv[k]) if pv[k] else None,
                         "battery_kwh": float(bats[k]) or None, "heatpump_kw": hp or None, "wallbox_kw": wb or None})
         return out
+
+    _capped: ClassVar[dict] = {}  # inputs whose PV the roof capped, for the reason line
+
+    def roof_cap(self, inp, pv, cat) -> float:
+        """PV no larger than the roof holds (usable m2 / 5.5): the largest catalogue size that fits."""
+        r = inp.get("roof") or {}
+        m = r.get("max_kwp")
+        if not m or pv <= m:
+            return pv
+        fits = cat[cat <= m + 1e-9]
+        self._capped[id(inp)] = True
+        return float(fits.max()) if len(fits) else round(int(m / 0.45) * 0.45, 2)
 
     def wallbox_default(self, inst) -> float:
         """The installer's wallbox size if it sells one size at least 60% of the time, else 11 kW (registration only;
@@ -381,7 +404,7 @@ class Engine:
         lookup["method"] = "annual-lookup"
         if not full:
             return lookup, [], None
-        clean = {k: v for k, v in inp.items() if not k.startswith("_")}
+        clean = roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")})
         try:
             sim = hourly.simulate(clean, design)
             econ = sim.economics
@@ -690,6 +713,22 @@ class Engine:
                 "method": "Agreement between near-identical training homes: each test home against the median design of 5 or more "
                           "training homes with identical installer, demand, EV flag and heating type, same tolerance bands as the scoreboard. "
                           "Covers the test homes that have such a group."}
+
+
+def roof_to_sim(inp: dict) -> dict:
+    """Pass a measured roof's orientation and area to the hourly simulation unless the planner gave them."""
+    r = inp.get("roof") or {}
+    segs = [x for x in r.get("segments") or [] if x.get("azimuth") is not None]
+    if not segs or inp.get("roof_azimuth_deg") is not None or inp.get("roof_orientation"):
+        return inp
+    from .roofs import facing
+    big = max(segs, key=lambda x: x["area_m2"])
+    out = {**inp, "roof_tilt_deg": inp.get("roof_tilt_deg") or big["pitch"], "roof_area_sqm": inp.get("roof_area_sqm") or r.get("usable_area_m2")}
+    if facing(segs) == "east-west":
+        out["roof_orientation"] = "east-west"
+    else:
+        out["roof_azimuth_deg"] = big["azimuth"]
+    return out
 
 
 def physics_component(msg: str) -> str:
