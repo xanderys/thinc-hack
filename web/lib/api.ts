@@ -32,6 +32,8 @@ export interface RoofResult {
   segments: { azimuth: number; pitch: number; area_m2: number }[];
   max_panels: number | null; max_kwp: number | null;
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
+  floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";   // v1.6.1, upper bound
+  build_year_class?: string | null; build_year_estimate?: number | null; heating_class?: string | null; zensus_confidence?: string; // heating_class is the system type, never the fuel
 }
 
 export interface Derivation {   // v1.5
