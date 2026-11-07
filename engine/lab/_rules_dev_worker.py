@@ -48,6 +48,9 @@ for n, it in enumerate(todo, 1):
         row["physics"] = attempt(p)
     if it["cal"] is not None and "calibrated" not in row:
         row["calibrated"] = attempt(lambda: sim(it["sim_inp"], it["cal"]))
+    for name, dsg in (it.get("extra") or {}).items():
+        if name not in row:
+            row[name] = attempt(lambda: sim(it["sim_inp"], dsg))
     if n % 10 == 0 or n == len(todo):
         el = time.time() - t0
         print(f"  {n}/{len(todo)} simulated, {el:.0f} s, about {el / n * (len(todo) - n):.0f} s left", flush=True)
