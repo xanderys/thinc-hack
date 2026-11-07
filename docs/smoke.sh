@@ -39,4 +39,17 @@ r=$(curl -s "$E/api/inbox?limit=20")
 echo "$r" | python3 -c 'import sys,json;d=json.load(sys.stdin);d=d if isinstance(d,list) else d.get("rows",d.get("items",[]));assert len(d)==20' 2>/dev/null \
   && step "engine GET /api/inbox 20 rows" ok || step "engine GET /api/inbox 20 rows" bad "$(echo "$r" | head -c 200)"
 
+# Web LLM routes (hero lead read from web/lib/demo.ts)
+LEAD=$(python3 -c 'import re,json;print(json.dumps(re.search(r"HERO_LEAD = `(.*?)`",open("web/lib/demo.ts").read(),re.S).group(1)))')
+r=$(curl -s -m 60 -X POST "$B/api/read" -H "$J" -d "{\"lead\":$LEAD}")
+echo "$r" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["found"] and all(f["quote"] for f in d["found"])' 2>/dev/null \
+  && step "POST /api/read found[] with quotes" ok || step "POST /api/read found[] with quotes" bad "$(echo "$r" | head -c 200)"
+r=$(curl -s -m 60 -X POST "$B/api/write" -H "$J" -d '{"facts":["PV 7.65 kWp","Battery 10 kWh","Payback 10.6 years"],"mode":"planner"}')
+echo "$r" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["grounded"] is True' 2>/dev/null \
+  && step "POST /api/write grounded" ok || step "POST /api/write grounded" bad "$(echo "$r" | head -c 200)"
+for p in /classic /classic/check; do
+  c=$(curl -s -o /dev/null -w '%{http_code}' "$B$p")
+  [ "$c" = 200 ] && step "GET $p" ok || step "GET $p" bad "HTTP $c"
+done
+
 exit $fail
