@@ -269,6 +269,12 @@ class Engine:
                "economics": econ,
                "model_version": "rules-1-calibrated" if engine == "calibrated" else (r.get("version") or planner_rules.RULES_VERSION),
                "rules": r.get("rules", [])}
+        if engine == "calibrated":  # the Rules block reads as rules-4's rule list; the sizes and derivations stay rules-1's
+            try:
+                out["rules_applied"] = out["rules"]
+                out["rules"] = planner_rules.rules4.rules_table(inst)
+            except Exception as e:
+                log.warning("rules-4 wording unavailable: %s", e)
         if r.get("objective"):
             out["objective"] = r["objective"]
         if opt:
@@ -322,6 +328,12 @@ class Engine:
         from .planner_rules import rules3
         t = base_features(inp, inp["installer_id"])["t"]
         r = rules3.recommend(self.rules_inputs(inp), self.rules_catalogue(inp["installer_id"], t), None)
+        return {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
+
+    def predict_readout(self, inp: dict) -> dict:
+        from .planner_rules import rules4
+        t = base_features(inp, inp["installer_id"])["t"]
+        r = rules4.recommend(self.rules_inputs(inp), self.rules_catalogue(inp["installer_id"], t), None)
         return {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
 
     def predict_calibrated(self, inp: dict) -> dict:
@@ -1119,12 +1131,13 @@ class Engine:
         for name, rows_df in sets.items():
             rows = rows_df.to_dict("records")
             e = rows_df
-            preds = {"formula": [], "calibrated": [], "band": [], "blackbox": [], "textbook": []}
+            preds = {"formula": [], "calibrated": [], "band": [], "readout": [], "blackbox": [], "textbook": []}
             for r in rows:
                 inp = row_inputs(r)
                 preds["formula"].append(self.predict_rules(inp, full=False)["design"])
                 preds["calibrated"].append(self.predict_calibrated(inp))
                 preds["band"].append(self.predict_band(inp))
+                preds["readout"].append(self.predict_readout(inp))
                 preds["blackbox"].append(self.predict_ml(inp, full=False)["design"])
                 preds["textbook"].append(self.baseline(inp))
             block = {}
