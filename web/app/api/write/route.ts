@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { numbersIn, structured } from "@/lib/llm";
+import { CACHED_WRITE } from "@/lib/demo";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,10 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(facts) || facts.length === 0) return NextResponse.json({ error: "No facts to write from." }, { status: 400 });
 
   const r = await structured<{ text: string; lines: Record<(typeof KEYS)[number], string> }>(SYSTEM[mode] ?? SYSTEM.planner, facts.map((f) => `- ${f}`).join("\n"), schema);
-  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  if (!r.ok) {
+    const hit = mode === "planner" ? CACHED_WRITE[facts.join("\n")] : undefined;
+    return hit ? NextResponse.json({ ...hit, cached: true }) : NextResponse.json({ error: r.error }, { status: r.status });
+  }
 
   // Grounding: every number in the prose must appear in the facts.
   const allowed = new Set(facts.flatMap(numbersIn));
