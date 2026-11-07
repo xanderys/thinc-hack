@@ -1,17 +1,16 @@
-"""Rules scoreboard: formula (planner_rules) vs black box (learned chain) vs textbook, plus the deviation analysis.
+"""Rules scoreboard: four lines side by side (formula-physics, formula-calibrated, black box, textbook) plus the deviation analysis.
 
-    cd engine && uv run python -m lab.score_rules --stub      # harness check with the textbook rule wrapped; NOT a result
-    cd engine && uv run python -m lab.score_rules             # real run once app/planner_rules exists
+    cd engine && uv run python -m lab.score_rules --physics-ref <ref> --calibrated-ref 1329cd2
+    cd engine && uv run python -m lab.score_rules --physics-ref <ref> --limit 20     # timing check only, no report
+    cd engine && uv run python -m lab.score_rules --stub                             # harness check, textbook wrapped; NOT a result
 
-Formula: calibrate(fit_rows) on the fit half only (lab/split), recommend(inputs[, constants]) scored on the test half
-and on the 258-home new-system held-out board (the engine's own locked 20% test split, new-system jobs).
-Black box: Engine.fit() as live (80/20 stratified, seed 42). On the test half it is scored only on homes it did not
-train on (the rest are in its train set); on the board it is fully held out. Textbook: Engine.baseline.
-Deviation analysis: hourly simulation of both designs where formula and expert differ. Prints aggregates only.
-
-planner_rules contract assumed (REONIC PHYSICS): `calibrate(fit_df) -> constants` and `recommend(inputs, constants=None)
--> {pv_kwp, battery_kwh, heatpump_kw, wallbox_kw[, inverter_kw]}`; if recommend takes no constants argument, calibrate is
-expected to set module state itself. Adjust `load_rules` if the real signatures differ.
+formula-physics: planner_rules at --physics-ref, no calibrate call, constants=None.
+formula-calibrated: planner_rules at --calibrated-ref (rules-1), calibrate(fit half) then recommend(inputs, constants=...).
+Each ref is checked out as a throwaway worktree under /private/tmp/claude-501 and imported in its own subprocess
+(lab/_rules_worker.py; the module name app.planner_rules clashes), designs cached in engine/.cache/lab_rules/<sha>[-calibrated].json.
+Scored on the test half (new-system), the 258 board and board and test half. Black box: Engine.fit() as live, on the test half only
+on homes it did not train on. Textbook: Engine.baseline. Deviation analysis: hourly simulation of both designs where formula and
+expert differ (inverter_kw of our design is not passed, as in the first scoreboard). Prints aggregates only.
 """
 import os
 
@@ -19,7 +18,8 @@ for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
     os.environ[_v] = "1"
 
 import argparse
-import inspect
+import json
+import sys
 import time
 from pathlib import Path
 
@@ -36,39 +36,72 @@ SCORED = ["pv", "battery", "wallbox", "heatpump"]  # heat pump last, never a hea
 NEW_SYSTEM = lambda d: d[(d.pv_kwp > 0) | d.has_solar].reset_index(drop=True)
 
 
-def load_rules(stub_eng=None):
-    """-> (calibrate, recommend, is_stub). Real rules import lazily; a missing module fails with a clear message."""
-    if stub_eng is not None:
-        def calibrate(fit_df):
-            return {}
-
-        def recommend(inp, constants=None):
-            return stub_eng.baseline(inp)
-        return calibrate, recommend, True
-    try:
-        import app
-        extra = os.environ.get("PLANNER_RULES_ENGINE")  # engine/ dir of a checkout holding app/planner_rules (not committed here)
-        if extra:
-            app.__path__.append(str(Path(extra) / "app"))
-        from app.planner_rules import recommend as _rec  # type: ignore
-        from app.planner_rules.calibrate import calibrate  # type: ignore
-    except ImportError as e:
-        raise SystemExit(f"app.planner_rules is not available ({e}). Set PLANNER_RULES_ENGINE to an engine/ dir that has it "
-                         f"(origin/physics), or run with --stub to check the harness.")
-
-    def recommend(inp, constants=None):
-        return _rec(inp, constants=constants)["design"]
-    return calibrate, recommend, False
+REPO = Path(__file__).resolve().parents[2]
+CACHE = Path(__file__).resolve().parents[1] / ".cache" / "lab_rules"
+WT_ROOT = Path("/private/tmp/claude-501")
+KEYS = ("pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw", "inverter_kw")
 
 
-def formula_frame(recommend, constants, te: pd.DataFrame) -> pd.DataFrame:
-    takes = len(inspect.signature(recommend).parameters) > 1
-    rows = []
-    for r in te.to_dict("records"):
-        inp = row_inputs(r)
-        d = recommend(inp, constants) if takes else recommend(inp)
-        rows.append({k: (d.get(k) or 0.0) for k in TARGET.values()})
+def git(*args) -> str:
+    import subprocess
+    return subprocess.run(["git", "-C", str(REPO), *args], check=True, capture_output=True, text=True).stdout.strip()
+
+
+class Worktrees:
+    """Throwaway detached worktrees under /private/tmp/claude-501, one per distinct sha, removed on exit."""
+
+    def __init__(self):
+        self.made = {}
+
+    def engine(self, sha: str) -> Path:
+        if sha not in self.made:
+            path = WT_ROOT / f"lab_rules_{sha[:12]}"
+            if path.exists():
+                git("worktree", "remove", "--force", str(path))
+            git("worktree", "add", "--detach", str(path), sha)
+            self.made[sha] = path
+        return self.made[sha] / "engine"
+
+    def close(self):
+        for path in self.made.values():
+            try:
+                git("worktree", "remove", "--force", str(path))
+            except Exception as e:  # noqa: BLE001
+                print(f"could not remove worktree {path}: {e}")
+
+
+def rules_designs(wts: Worktrees, ref: str, calibrated: bool, items, fit_df) -> dict:
+    """Designs for items [(project_id, inputs)] from planner_rules at `ref`, run in its own subprocess; cached by sha.
+    -> {"designs": {pid: design}, "seconds": {pid: s}, "constants": dict | None, "calibrate_seconds": float | None}"""
+    import pickle
+    import subprocess
+    import tempfile
+    sha = git("rev-parse", ref)
+    CACHE.mkdir(parents=True, exist_ok=True)
+    out = CACHE / (f"{sha}-calibrated.json" if calibrated else f"{sha}.json")
+    have = json.load(open(out))["designs"] if out.exists() else {}
+    if any(p not in have for p, _ in items) or (calibrated and not out.exists()):
+        req = {"engine": str(wts.engine(sha)), "items": items, "fit_df": fit_df if calibrated else None, "constants": None, "out": str(out)}
+        with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False, dir=CACHE) as f:
+            pickle.dump(req, f)
+        print(f"{'calibrated' if calibrated else 'uncalibrated'} planner_rules at {sha[:7]}: {sum(p not in have for p, _ in items)} designs to compute", flush=True)
+        try:
+            subprocess.run([sys.executable, str(Path(__file__).with_name("_rules_worker.py")), f.name], check=True)
+        finally:
+            os.unlink(f.name)
+    return json.load(open(out))
+
+
+def frame_from(cache: dict, te: pd.DataFrame) -> pd.DataFrame:
+    rows = [{k: (cache["designs"][str(p)].get(k) or 0.0) for k in TARGET.values()} for p in te.project_id.astype(str)]
     return pd.DataFrame(rows, index=te.index)
+
+
+def timing_line(label: str, cache: dict, pids) -> str:
+    s = np.array([cache["seconds"][str(p)] for p in pids if str(p) in cache["seconds"]]) * 1000
+    cal = cache.get("calibrate_seconds")
+    return (f"| {label} | {len(s)} | {np.median(s):.0f} | {s.mean():.0f} | {np.percentile(s, 95):.0f} | {s.max():.0f} | "
+            f"{(f'{cal:.0f} s' if cal else 'none')} |") if len(s) else f"| {label} | 0 | | | | | |"
 
 
 def textbook_frame(eng: Engine, te: pd.DataFrame) -> pd.DataFrame:
@@ -106,7 +139,7 @@ def sim_pair(r: dict, ours: dict):
     return res
 
 
-def deviation(te: pd.DataFrame, pred: pd.DataFrame, max_sim: int) -> dict:
+def deviation(te: pd.DataFrame, pred: pd.DataFrame, max_sim: int, sims: dict) -> dict:
     idx = np.where(differs(te, pred))[0][:max_sim]
     t = {"differs": int(differs(te, pred).sum()), "simulated": 0, "failed": 0,
          "payback_ours": 0, "payback_expert": 0, "payback_tie": 0, "autarky_ours": 0, "autarky_expert": 0, "autarky_tie": 0}
@@ -114,7 +147,11 @@ def deviation(te: pd.DataFrame, pred: pd.DataFrame, max_sim: int) -> dict:
     for i in idx:
         check_load("deviation simulation")
         try:
-            (po, ao), (pe, ae) = sim_pair(rows[i], pred.iloc[i].to_dict())
+            ours = pred.iloc[i].to_dict()
+            k = (rows[i]["project_id"], tuple(sorted(ours.items())))
+            if k not in sims:
+                sims[k] = sim_pair(rows[i], ours)
+            (po, ao), (pe, ae) = sims[k]
         except Exception:
             t["failed"] += 1
             continue
@@ -134,9 +171,13 @@ def table(lines: list) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stub", action="store_true", help="wrap the textbook rule as recommend(); harness check only")
+    ap.add_argument("--physics-ref", default="origin/physics", help="git ref of the first-principles planner_rules (no calibration)")
+    ap.add_argument("--calibrated-ref", default="1329cd2", help="git ref of the calibrated planner_rules (rules-1)")
+    ap.add_argument("--limit", type=int, help="design only the first N homes (timing check), print timing, write no report")
+    ap.add_argument("--stub", action="store_true", help="wrap the textbook rule as the formula; harness check only")
     ap.add_argument("--max-sim", type=int, default=100000, help="cap on hourly simulations per population")
     ap.add_argument("--no-sim", action="store_true")
+    ap.add_argument("--label", default="", help="text for the report title, e.g. SMOKE TEST")
     a = ap.parse_args()
     check_load("start")
     t0 = time.time()
@@ -149,50 +190,77 @@ def main():
     fit_df = pop[pop.project_id.isin(set(fit_ids))].reset_index(drop=True)
     test_df = NEW_SYSTEM(pop[pop.project_id.isin(set(test_ids))].reset_index(drop=True))
     board = board.assign(project_id=board.project_id.astype(str))
+    inter = board[board.project_id.isin(set(test_df.project_id))].reset_index(drop=True)
+    union = pd.concat([test_df, board[~board.project_id.isin(set(test_df.project_id))]], ignore_index=True)
+    items = [(r["project_id"], row_inputs(r)) for r in union.to_dict("records")]
+    if a.limit:
+        items = items[:a.limit]
 
+    stub = a.stub
+    eng = None
+    wts = Worktrees()
+    try:
+        if not stub:
+            phys = rules_designs(wts, a.physics_ref, False, items, None)
+            if not a.limit:
+                cal = rules_designs(wts, a.calibrated_ref, True, items, fit_df)
+            else:
+                print("limit run: calibrated line skipped")
+                cal = None
+    finally:
+        wts.close()
+    if a.limit:
+        print(timing_header() + "\n" + timing_line(f"physics {git('rev-parse', '--short', a.physics_ref)} ({len(items)} homes)", phys, [p for p, _ in items]))
+        return
     check_load("black box fit")
     eng = Engine(df, {}).fit()                     # as live
-    calibrate, recommend, stub = load_rules(eng if a.stub else None)
-    consts = calibrate(fit_df)                     # fit half only
+    if stub:
+        phys = cal = {"designs": {p: eng.baseline(i) for p, i in items}, "seconds": {}, "constants": {}, "calibrate_seconds": None}
+    consts = cal.get("constants") or {}
+    psha, csha = git("rev-parse", "--short", a.physics_ref), git("rev-parse", "--short", a.calibrated_ref)
+    PHYS, CAL = f"formula-physics ({psha}, no calibration)", f"formula-calibrated ({csha}, fit half)"
+    if stub:
+        PHYS, CAL = "formula-physics STUB", "formula-calibrated STUB"
 
     unseen = test_df[~test_df.project_id.isin(set(eng.train.project_id.astype(str)))].reset_index(drop=True)
-    inter = board[board.project_id.isin(set(test_df.project_id))].reset_index(drop=True)
-    print("fitted constants:")
+    print("fitted constants (calibrated line):")
     for k, v in consts.items():
         if k != "_meta":
             print(" ", k, v)
+    pops = (("test half", test_df, "test half (new-system)"), ("258 board", board, "258 board"), ("board and test half", inter, "board and test half"))
     lines, preds = [], {}
-    for label, frame in (("test half", test_df), ("258 board", board)):
-        preds[(label, "formula")] = formula_frame(recommend, consts, frame)
-        preds[(label, "textbook")] = textbook_frame(eng, frame)
-        lines.append(("formula (rules)" + (" STUB" if stub else ""), f"{label} (new-system)", score(frame, preds[(label, "formula")])))
-    bb_test = predict_frame(eng, unseen)
-    lines.append(("black box (chain)", "test half, homes the chain did not train on", score(unseen, bb_test)))
-    lines.append(("black box (chain)", "258 board", score(board, predict_frame(eng, board))))
-    for label, frame in (("test half", test_df), ("258 board", board)):
-        lines.append(("textbook", f"{label} (new-system)", score(frame, preds[(label, "textbook")])))
-    lines.append(("formula (rules)", "board and test half", score(inter, formula_frame(recommend, consts, inter))))
-    lines.append(("black box (chain)", "board and test half", score(inter, predict_frame(eng, inter))))
-    lines.append(("textbook", "board and test half", score(inter, textbook_frame(eng, inter))))
-    order = {"formula": 0, "black": 1, "textbook": 2}
-    lines.sort(key=lambda x: (x[1].startswith("258") + 2 * x[1].startswith("board"), order[x[0].split()[0]]))
+    for key, frame, plabel in pops:
+        for name, c in ((PHYS, phys), (CAL, cal)):
+            preds[(key, name)] = frame_from(c, frame)
+            lines.append((name, plabel, key, 0 if name == PHYS else 1, score(frame, preds[(key, name)])))
+        bbf = unseen if key == "test half" else frame
+        lines.append(("black box (chain)", "test half, homes the chain did not train on" if key == "test half" else plabel, key, 2,
+                      score(bbf, predict_frame(eng, bbf))))
+        lines.append(("textbook", plabel, key, 3, score(frame, textbook_frame(eng, frame))))
+    lines = [(l, p, s_) for l, p, k, o, s_ in sorted(lines, key=lambda x: ([q[0] for q in pops].index(x[2]), x[3]))]
 
-    md = [f"# Rules scoreboard{' (STUB RUN, harness check, not a result)' if stub else ''}", ""]
+    title = a.label or ("STUB RUN, harness check, not a result" if stub else "")
+    md = [f"# Rules scoreboard{f' ({title})' if title else ''}", ""]
     if stub:
-        md += ["> The formula line below is the textbook rule wrapped as recommend(). These numbers say nothing about the planner rules.", ""]
+        md += ["> The formula lines below are the textbook rule wrapped. These numbers say nothing about the planner rules.", ""]
     md += [f"Split: fit {len(fit_ids)}, test {len(test_ids)} (seed 42 per installer, lab/split); new-system scope on the test half: {len(test_df)}; "
-           f"board: {len(board)}. Tolerances as the engine scoreboard (PV max(1 kWp, 15%), battery 2 kWh, wallbox and heat pump on the decision).", "",
+           f"board: {len(board)}; both: {len(inter)}. Tolerances as the engine scoreboard (PV max(1 kWp, 15%), battery 2 kWh, wallbox and heat pump on the decision).", "",
            table(lines), ""]
     if not a.no_sim:
+        sims = {}
         md += ["## Deviation analysis (hourly simulation, formula vs expert)", "",
                "Homes where PV, battery or wallbox is outside tolerance. Payback: lower is better, no payback is worst. Autarky: higher is better.", "",
-               "| Population | Differ | Simulated | Payback ours | Payback expert | Payback tie | Autarky ours | Autarky expert | Autarky tie |", "|---|---|---|---|---|---|---|---|---|"]
-        for label, frame in (("test half", test_df), ("258 board", board)):
-            d = deviation(frame, preds[(label, "formula")], a.max_sim)
-            md.append(f"| {label} | {d['differs']} | {d['simulated']} | {d['payback_ours']} | {d['payback_expert']} | {d['payback_tie']} | "
-                      f"{d['autarky_ours']} | {d['autarky_expert']} | {d['autarky_tie']} |")
+               "| Line | Population | Differ | Simulated | Payback ours | Payback expert | Payback tie | Autarky ours | Autarky expert | Autarky tie |",
+               "|---|---|---|---|---|---|---|---|---|---|"]
+        for key, frame, _ in pops:
+            for name in (PHYS, CAL):
+                d = deviation(frame, preds[(key, name)], a.max_sim, sims)
+                md.append(f"| {name} | {key} | {d['differs']} | {d['simulated']} | {d['payback_ours']} | {d['payback_expert']} | {d['payback_tie']} | "
+                          f"{d['autarky_ours']} | {d['autarky_expert']} | {d['autarky_tie']} |")
         md.append("")
-    md += ["", "Fitted constants (fit half only):", ""]
+    md += ["## Runtime per design (ms, formula only)", "", timing_header(), timing_line(PHYS, phys, [p for p, _ in items]),
+           timing_line(CAL, cal, [p for p, _ in items]), ""]
+    md += ["", "Fitted constants (calibrated line, fit half only):", ""]
     for k, v in consts.items():
         if k != "_meta":
             md.append(f"- {k}: {v}")
@@ -201,8 +269,12 @@ def main():
     out = "\n".join(md)
     print(out)
     REPORTS.mkdir(exist_ok=True)
-    (REPORTS / ("rules_scoreboard_stub.md" if stub else "rules_scoreboard.md")).write_text(out + "\n")
+    (REPORTS / ("rules_scoreboard_stub.md" if stub else "rules_scoreboard_smoke.md" if a.label else "rules_scoreboard.md")).write_text(out + "\n")
     print(f"\n({time.time() - t0:.0f} s)")
+
+
+def timing_header() -> str:
+    return "| Line | Designs | Median ms | Mean ms | p95 ms | Max ms | Calibrate |\n|---|---|---|---|---|---|---|"
 
 
 if __name__ == "__main__":
