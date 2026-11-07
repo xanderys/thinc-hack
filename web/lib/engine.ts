@@ -1,0 +1,44 @@
+import "server-only";
+import { mockDesign, mockEval, mockHealth, mockProject, mockProjects, mockRefine, mockValidate } from "./mock";
+
+export const ENGINE_URL = process.env.ENGINE_URL || "http://localhost:8000";
+export const isMock = ENGINE_URL === "mock";
+
+type Out = { status: number; body: unknown };
+
+function mock(method: string, path: string, search: URLSearchParams, body: any): Out {
+  const ok = (b: unknown): Out => ({ status: 200, body: b });
+  if (path === "/health") return ok(mockHealth());
+  if (path === "/api/design" && method === "POST") return ok(mockDesign(body.inputs));
+  if (path === "/api/refine" && method === "POST") return ok(mockRefine(body.inputs, body.overrides));
+  if (path === "/api/validate" && method === "POST") return ok(mockValidate(body.inputs, body.design));
+  if (path === "/api/projects") return ok(mockProjects(Number(search.get("limit") ?? 50)));
+  if (path.startsWith("/api/projects/")) {
+    const p = mockProject(decodeURIComponent(path.slice("/api/projects/".length)));
+    return p ? ok(p) : { status: 404, body: { error: "Project not found" } };
+  }
+  if (path === "/api/eval") return ok(mockEval());
+  return { status: 404, body: { error: `Mock has no route ${method} ${path}` } };
+}
+
+export async function callEngine(method: string, path: string, search: URLSearchParams, body?: unknown): Promise<Out> {
+  if (isMock) return mock(method, path, search, body);
+  const qs = search.toString();
+  try {
+    const res = await fetch(`${ENGINE_URL}${path}${qs ? `?${qs}` : ""}`, {
+      method,
+      headers: body ? { "content-type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+      signal: AbortSignal.timeout(20000),
+    });
+    const text = await res.text();
+    let parsed: unknown;
+    const fallback = `Engine answered ${res.status}${res.statusText ? ` ${res.statusText}` : ""}${res.status === 502 ? ", it may be restarting (about 35 s)" : ""}.`;
+    try { parsed = JSON.parse(text); } catch { parsed = { error: text.trim() || fallback }; }
+    if (!res.ok && !(parsed && typeof parsed === "object" && (parsed as { error?: unknown }).error)) parsed = { error: text.trim() || fallback };
+    return { status: res.status, body: parsed };
+  } catch (e) {
+    return { status: 502, body: { error: `Engine unreachable at ${ENGINE_URL}: ${(e as Error).message}` } };
+  }
+}
