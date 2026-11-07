@@ -166,3 +166,29 @@
 .decide :global(.t-pref) { display: grid; grid-template-columns: 1fr 1fr; width: 100%; margin: 0; }
 .decide :global(.t-pref button) { min-height: 40px; font-size: 13px; padding: 6px 10px; }
 .decide :global(.t-go) { margin-left: auto; display: flex; gap: 8px; }
+/* Draft first: after the first open the chain waits as a strip under the model. */
+.root.isCollapsed { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; }
+.isCollapsed .hero { grid-column: 1; grid-row: 1; }
+.isCollapsed .say { grid-column: 1; grid-row: 3; }
+.collapsed { grid-column: 1; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.scrub { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; }
+.scrub button { display: inline-flex; align-items: center; gap: 6px; flex: none; min-height: 36px; padding: 0 10px 0 4px; border: 1px solid var(--rule); background: #fff; border-radius: 999px; font: inherit; font-size: 13px; color: var(--ink-2); cursor: pointer; transition: background-color 200ms, border-color 200ms; }
+.scrub button .num { width: 26px; height: 26px; font-size: 12px; }
+.scrub button[aria-pressed="true"] { border-color: var(--accent); color: var(--ink); }
+.scrub button.hot { background: #fff7e6; border-color: #ffc043; color: var(--ink); }
+.stampRow { display: flex; align-items: center; gap: 12px; list-style: none; }
+.rail > .stampRow { justify-content: space-between; padding: 2px 4px 4px; }
+.draft { font-size: 12.5px; color: var(--ink-3); }
+.showR { border: 0; background: none; font: inherit; font-size: 13px; color: var(--accent); cursor: pointer; padding: 8px 0; min-height: 36px; }
+.collapsed .decide { margin: 0 0 0 auto; }
+.collapsed .decide :global(.t-pref) { width: auto; grid-template-columns: repeat(4, auto); }
+@media (max-width: 760px) {
+  .collapsed { flex-direction: column; align-items: stretch; gap: 8px; }
+  .scrub { margin: 0 -16px; padding: 0 16px; }
+  .collapsed .decide { margin: 0; }
+  .collapsed .decide :global(.t-pref) { width: 100%; grid-template-columns: 1fr 1fr; }
+  .collapsed .varList { margin: 0; }
+}
+.collapsed { min-width: 0; width: 100%; }
+.collapsed > * { min-width: 0; max-width: 100%; }
+@media (max-width: 760px) { .collapsed .scrub { max-width: calc(100% + 32px); } }
