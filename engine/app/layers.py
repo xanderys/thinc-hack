@@ -35,13 +35,18 @@ def _day(sim_in, design) -> dict:
     days = local.normalize()
     pv = np.asarray(h["pv"])
     window = (local.month >= 4) & (local.month <= 5)
-    totals = {}
+    load = np.asarray(h["load"])
+    totals, uses = {}, {}
     for i in np.where(window)[0]:
-        totals.setdefault(days[i], 0.0)
-        totals[days[i]] += pv[i]
-    cand = [(d, v) for d, v in totals.items() if d.weekday() < 5]
-    target = float(np.percentile([v for _, v in cand], 70)) if cand else 0.0
-    day = min(cand, key=lambda dv: abs(dv[1] - target))[0] if cand else days[0]
+        totals[days[i]] = totals.get(days[i], 0.0) + pv[i]
+        uses[days[i]] = uses.get(days[i], 0.0) + load[i]
+    cand = [d for d in totals if d.weekday() < 5]
+    if cand:  # typical on both counts: PV near the 70th percentile, the home's use near its median for those weeks
+        t_pv = float(np.percentile([totals[d] for d in cand], 70))
+        t_use = float(np.median([uses[d] for d in cand]))
+        day = min(cand, key=lambda d: abs(totals[d] - t_pv) / t_pv + abs(uses[d] - t_use) / t_use)
+    else:
+        day = days[0]
     idx = np.where(days == day)[0][:24]
     e = float(np.sqrt(hourly.sim.BAT_RTE))
     cap = (design.get("battery_kwh") or 0) * hourly.sim.BAT_USABLE
@@ -59,7 +64,7 @@ def _day(sim_in, design) -> dict:
                       "soc_kwh": round(float(soc_all[i]), 3)})
     dark = [x for x in hours if x["pv_kw"] < 0.01]
     evening = sum(x["load_kw"] for x in dark)  # what the home uses while the panels are dark that day
-    return {"date": f"{day.strftime('%d %B')} (a typical-year weekday, PV at the 70th percentile of April and May)", "hours": hours}, {"evening_kwh": round(evening, 2), "night_hours": len(dark)}, res.economics
+    return {"date": f"{day.strftime('%d %B')} (a typical-year weekday: PV at the 70th percentile of April and May, the home's use at its median)", "hours": hours}, {"evening_kwh": round(evening, 2), "night_hours": len(dark)}, res.economics
 
 
 def explain(eng, inp: dict, design: dict | None) -> dict:
