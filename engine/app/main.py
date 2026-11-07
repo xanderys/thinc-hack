@@ -1,5 +1,8 @@
+import hashlib
 import logging
+import pickle
 import time
+from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import FastAPI, Request
@@ -22,14 +25,39 @@ STATE: dict = {"engine": None, "eval": None, "error": None}
 def startup():
     try:
         t = time.time()
+        key = cache_key()
+        path = CACHE / f"engine-{key}.pkl"
+        if path.exists():
+            STATE["engine"], STATE["eval"] = pickle.loads(path.read_bytes())
+            log.warning("loaded cached model %s in %.1fs", key, time.time() - t)
+            return
         df, stats = data.load()
         eng = Engine(df, stats).fit()
         STATE["engine"] = eng
         STATE["eval"] = eng.evaluate()
+        CACHE.mkdir(exist_ok=True)
+        for old in CACHE.glob("engine-*.pkl"):
+            old.unlink()
+        path.write_bytes(pickle.dumps((eng, STATE["eval"])))
         log.warning("trained in %.1fs on %d projects", time.time() - t, len(eng.train))
     except Exception as e:  # keep serving /health with the reason
         STATE["error"] = str(e)
         log.exception("startup failed")
+
+
+CACHE = Path(__file__).resolve().parent.parent / ".cache"  # gitignored; holds project rows
+
+
+def cache_key() -> str:
+    """Changes when the data files or the engine code change."""
+    h = hashlib.sha256()
+    root = data.data_dir()
+    for f in sorted(root.glob("*/*.csv")):
+        st = f.stat()
+        h.update(f"{f.relative_to(root)}:{st.st_size}:{st.st_mtime_ns}".encode())
+    for f in sorted(Path(__file__).parent.glob("*.py")):
+        h.update(f.read_bytes())
+    return h.hexdigest()[:12]
 
 
 class HomeInputs(BaseModel):
@@ -82,9 +110,55 @@ def err(status, msg):
 async def bad_request(_: Request, exc: RequestValidationError):
     parts = []
     for e in exc.errors():
-        loc = ".".join(str(x) for x in e.get("loc", []) if x != "body")
-        parts.append(f"{loc}: {e.get('msg')}")
-    return err(422, "; ".join(parts) or "Invalid request")
+        loc = [str(x) for x in e.get("loc", []) if x not in ("body", "query", "path")]
+        name = loc[-1] if loc else "request"
+        t = e.get("type", "")
+        if t == "missing":
+            parts.append(f"{name} is missing.")
+        elif t in ("literal_error", "enum"):
+            parts.append(f"{name} must be one of {e.get('ctx', {}).get('expected', 'the allowed values')}.")
+        elif t.startswith(("float", "int")):
+            parts.append(f"{name} must be a number.")
+        elif t.startswith("bool"):
+            parts.append(f"{name} must be true or false.")
+        elif t == "json_invalid":
+            parts.append("The request body is not valid JSON.")
+        else:
+            parts.append(f"{name}: {e.get('msg')}.")
+    return err(422, " ".join(parts) or "Invalid request.")
+
+
+RANGES = {"annual_demand_kwh": (300, 100_000, "kWh a year"), "num_inhabitants": (1, 20, "people"),
+          "house_size_sqm": (20, 1_000, "m2"), "house_built_year": (1800, 2027, ""), "ev_annual_km": (0, 100_000, "km a year"),
+          "heating_cost_per_year_eur": (0, 20_000, "EUR a year"), "heating_demand_kwh": (0, 100_000, "kWh a year"),
+          "electricity_price_ct_kwh": (5, 100, "ct/kWh"), "existing_solar_kwp": (0, 100, "kWp"), "existing_storage_kwh": (0, 100, "kWh")}
+DESIGN_RANGES = {"pv_kwp": (0, 100), "inverter_kw": (0, 100), "battery_kwh": (0, 100), "heatpump_kw": (0, 50), "wallbox_kw": (0, 50)}
+
+
+def check_inputs(inp: dict):
+    bad = []
+    for k, (lo, hi, unit) in RANGES.items():
+        v = inp.get(k)
+        if v is not None and not (lo <= v <= hi):
+            bad.append(f"{k} is {v:g}; it must be between {lo:,} and {hi:,}{' ' + unit if unit else ''}.")
+    if bad:
+        raise InputError(" ".join(bad))
+
+
+def check_design(d: dict, what="design"):
+    bad = [f"{what}.{k} is {d[k]:g}; it must be between {lo} and {hi}." for k, (lo, hi) in DESIGN_RANGES.items()
+           if d.get(k) is not None and not (lo <= d[k] <= hi)]
+    if bad:
+        raise InputError(" ".join(bad))
+
+
+class InputError(ValueError):
+    pass
+
+
+@app.exception_handler(InputError)
+async def input_error(_: Request, exc: InputError):
+    return err(422, str(exc))
 
 
 @app.exception_handler(Exception)
@@ -109,7 +183,9 @@ def health():
 
 @app.post("/api/design")
 def design(req: DesignReq):
-    return engine().predict(req.inputs.model_dump())
+    inp = req.inputs.model_dump()
+    check_inputs(inp)
+    return engine().predict(inp)
 
 
 FIELDS = {"pv_kwp": "pv", "battery_kwh": "battery", "heatpump_kw": "heatpump", "wallbox_kw": "wallbox", "inverter_kw": "inverter"}
@@ -119,10 +195,15 @@ FIELDS = {"pv_kwp": "pv", "battery_kwh": "battery", "heatpump_kw": "heatpump", "
 def refine(req: RefineReq):
     eng = engine()
     inp = req.inputs.model_dump()
-    ov = {k: v for k, v in (req.overrides or {}).items() if k in FIELDS}
+    check_inputs(inp)
     bad = [k for k in (req.overrides or {}) if k not in FIELDS]
     if bad:
-        return err(422, f"Unknown override field: {', '.join(bad)}")
+        return err(422, f"Unknown override field: {', '.join(bad)}. Allowed: {', '.join(FIELDS)}.")
+    ov = {k: v for k, v in (req.overrides or {}).items() if k in FIELDS}
+    nonnum = [k for k, v in ov.items() if v is not None and not isinstance(v, (int, float))]
+    if nonnum:
+        return err(422, f"Override {', '.join(nonnum)} must be a number or null.")
+    check_design(ov, "overrides")
     before = eng.predict(inp)
     after = eng.predict(inp, ov)
     diff = []
@@ -141,7 +222,10 @@ def refine(req: RefineReq):
 
 @app.post("/api/validate")
 def validate(req: ValidateReq):
-    return {"flags": engine().validate(req.inputs.model_dump(), req.design.model_dump())}
+    inp, d = req.inputs.model_dump(), req.design.model_dump()
+    check_inputs(inp)
+    check_design(d)
+    return {"flags": engine().validate(inp, d)}
 
 
 @app.get("/api/projects")
@@ -150,8 +234,56 @@ def projects(split: Literal["test", "train"] = "test", limit: int = 50, installe
     df = eng.test if split == "test" else eng.train
     if installer_id:
         df = df[df.installer_id == installer_id]
-    return [{"project_id": r["project_id"], "installer_id": r["installer_id"], "inputs": row_inputs(r), "expert": row_design(r)}
-            for r in df.head(max(1, min(limit, 1000))).to_dict("records")]
+    rows = demo_order(df.to_dict("records"))[: max(1, min(limit, 1000))]
+    return [{"project_id": r["project_id"], "installer_id": r["installer_id"], "label": label(r), "inputs": row_inputs(r),
+             "expert": row_design(r)} for r in rows]
+
+
+def label(r: dict) -> str:
+    home = [f"{r['annual_demand_kwh']:,.0f} kWh"]
+    if r["has_ev"]:
+        home.append("EV")
+    if r["heating_type"] != "Unknown":
+        home.append(f"{r['heating_type'].lower()} heating" if r["heating_type"] != "Heatpump" else "has heat pump")
+    if r["has_solar"]:
+        home.append("existing PV")
+    d = row_design(r)
+    kit = []
+    if d["pv_kwp"]:
+        kit.append(f"{d['pv_kwp']:.1f} kWp")
+    kit.append(f"{d['battery_kwh']:g} kWh battery" if d["battery_kwh"] else "no battery")
+    if d["heatpump_kw"]:
+        kit.append(f"{d['heatpump_kw']:g} kW heat pump")
+    if d["wallbox_kw"]:
+        kit.append(f"{d['wallbox_kw']:g} kW wallbox")
+    return f"{', '.join(home)}; expert: {', '.join(kit)}"
+
+
+def demo_order(rows: list) -> list:
+    """Varied first: round-robin over installer x kind of job, then the rest in split order."""
+    def kind(r):
+        if r["heatpump_kw"] > 0:
+            return "heatpump"
+        if r["has_ev"]:
+            return "ev"
+        if r["pv_kwp"] == 0:
+            return "no_pv"
+        if r["wallbox_kw"] > 0:
+            return "wallbox"
+        return "battery" if r["battery_kwh"] > 0 else "pv_only"
+    order = ["battery", "heatpump", "ev", "pv_only", "wallbox", "no_pv"]
+    buckets = {}
+    odd = [r for r in rows if 0 < r["pv_kwp"] < 2]
+    rows = [r for r in rows if not 0 < r["pv_kwp"] < 2]
+    for r in rows:
+        buckets.setdefault((kind(r), r["installer_id"]), []).append(r)
+    keys = [(k, i) for k in order for i in data.INSTALLERS if (k, i) in buckets]
+    out = []
+    while any(buckets[k] for k in keys):
+        for k in keys:
+            if buckets[k]:
+                out.append(buckets[k].pop(0))
+    return out + odd
 
 
 @app.get("/api/projects/{project_id}")

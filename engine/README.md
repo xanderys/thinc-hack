@@ -8,7 +8,7 @@ Statistics plus physics, no LLM. Proposes PV, battery, heat pump and wallbox in 
 cd engine && uv sync && REONIC_DATA_DIR="/path/to/Project Data" uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Trains at startup (about 35 s on the mini). Contract: `docs/api.md`. Extra fields beyond the contract: `/api/eval` adds `baseline_within_tolerance_share`, `size_mae_when_both_include`, `within_2kwp_share` (PV) and per-installer `baseline_design_match_share`; `/api/projects/{id}` adds `split`.
+`./run.sh` keeps it up on port 8000 and restarts it in 2 s if it exits. The first start trains (about 35 s); later starts load the model from `engine/.cache/` (gitignored, keyed on data files and engine code) in about 4 s. Contract: `docs/api.md`. Extra fields beyond the contract: `/api/eval` adds `baseline_within_tolerance_share`, `size_mae_when_both_include`, `within_2kwp_share` (PV) and per-installer `baseline_design_match_share`; `/api/projects/{id}` adds `split`; `/api/projects` items add a one-line `label` and come in a varied order (both installers; battery, heat pump, EV, PV only, wallbox, no PV).
 
 ## Data
 
@@ -36,9 +36,18 @@ PV kWp, first signal that exists per project:
 | DC install count x 450 Wp | 931 | 0 |
 | Substructure count x 450 Wp | 3 | 143 |
 | Power optimiser count x 450 Wp | 18 | 0 |
-| None (battery or wallbox-only job, PV = none) | 302 | 18 |
+| "Roof Mounting A-B kWp" fee, midpoint | 0 | 8 |
+| None (battery or wallbox-only job, PV = none) | 302 | 10 |
 
 At 2a8ba8e2 the "DC Install ..." and "Substructure ..." rows are priced per module: their quantities agree on 99.9% of projects, and optimiser counts agree where present. 450 Wp is assumed for those modules (2026 TOPCon standard; the one module row at that installer says 475 W, so PV may read about 5% low there).
+
+## Jobs without PV
+
+- 2a8ba8e2 has 302 jobs with no PV in the first option, but only 13 have `has_solar` true. Of the 289 others: 179 battery only, 54 wallbox only, 25 battery plus wallbox, 5 heat pump, 26 nothing sized (fees only).
+- 160 of the 204 battery jobs there contain "Battery ... Extension" rows (median 5 kWh), which extend an existing battery, yet none has `has_storage` true. So `has_solar` and `has_storage` look unreliable for retrofits: question for the Reonic experts.
+- Demand looks like the PV jobs (median 4,500 kWh both); almost none have an EV (0.7%) or a known heating type.
+- The share without PV climbs over time at 2a8ba8e2: 12 to 27% per quarter from 2024 Q2 to 2026 Q1, then 88% in 2026 Q2 (42 projects so far).
+- 23c108b7 has 18: 15 battery only, 2 battery plus wallbox, 1 nothing. Eight carry a "Roof Mounting 8.8-15kWp" style fee, so PV is now read from that range's midpoint for them, leaving 10 without PV.
 
 ## Model
 
@@ -59,23 +68,23 @@ Baseline: 1 kWp per 1,000 kWh snapped to catalogue, battery by installer majorit
 
 | Component | Ours | Baseline |
 |---|---|---|
-| PV decision accuracy | 86.6% | 80.9% |
-| PV within ±1 kWp or 15% | 39.5% | 8.6% |
-| PV within ±2 kWp | 50.6% | 13.4% |
-| PV MAE (expert has PV) | 3.4 kWp | 5.19 kWp |
+| PV decision accuracy | 86.6% | 81.2% |
+| PV within ±1 kWp or 15% | 40.8% | 8.6% |
+| PV within ±2 kWp | 51.3% | 13.4% |
+| PV MAE (expert has PV) | 3.43 kWp | 5.19 kWp |
 | Battery decision accuracy | 92.7% | 92.4% |
-| Battery within ±2 kWh | 52.9% | 40.4% |
-| Battery MAE | 2.47 kWh | 2.73 kWh |
-| Heat pump decision accuracy | 98.7% | 98.4% |
+| Battery within ±2 kWh | 53.5% | 40.4% |
+| Battery MAE | 2.39 kWh | 2.73 kWh |
+| Heat pump decision accuracy | 98.4% | 98.4% |
 | Wallbox decision accuracy | 76.1% | 76.1% |
-| All four within tolerance | 20.4% | 2.5% |
+| All four within tolerance | 21.3% | 2.5% |
 
-Per installer, all four within tolerance: 2a8ba8e2 21.1% (baseline 2.0%), 23c108b7 17.9% (baseline 4.5%).
+Per installer, all four within tolerance: 2a8ba8e2 22.7% (baseline 2.0%), 23c108b7 16.4% (baseline 4.5%).
 
 ## Known limits
 
 - PV size has hit the ceiling of the inputs. In 5-fold CV on train, GBM, kNN medians (k 15 and 30), kWp-per-MWh models and a blend are all within 0.1 kWp MAE (about 2.5 kWp on PV jobs). Many homes carry the 4,500 kWh default demand and nothing else; roof, orientation and budget are not in the data.
-- PV MAE 3.4 includes homes where we said none and the expert fitted PV. Where both include PV the MAE is 2.7 kWp.
+- PV MAE 3.4 includes homes where we said none and the expert fitted PV. Where both include PV the MAE is 2.71 kWp.
 - Wallbox: 297 of 319 wallboxes at 2a8ba8e2 went to homes with no EV recorded. A learned classifier scored 75.2% on test against 76.1% for the EV rule, so the engine uses the rule. The data does not say who will buy a car.
-- Heat pump: 13 sold in the whole pack. The decision is near-always none; size is physics, not learned.
+- Heat pump: 13 sold in the whole pack, 5 in test. The model ties the always-none baseline; size is physics, not learned.
 - Economics are rough and labelled: ratio model for autarky (no battery about 30% at PV equal to demand; 10 kWp with 10 kWh on 4,500 kWh about 66%), cost per kWp and per kWh from 2026 German averages. Every assumption is returned in `economics.assumptions`.

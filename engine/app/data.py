@@ -54,7 +54,14 @@ def _pv(rows: pd.DataFrame):
     m2 = rows[(rows.component_type == "ModuleFrameConstruction") & (rows.quantity_units == "SquareMeter")]
     if len(m2) and m2.quantity.max() > 1:
         return float(m2.quantity.max() * MODULE_WP_DEFAULT / 1000), "frame quantity"
+    for n in name[name.str.startswith("Roof Mounting")]:
+        m = RANGE.search(n)
+        if m:
+            return (float(m.group(1)) + float(m.group(2))) / 2, "roof mounting fee range"
     return None, "none"
+
+
+RANGE = re.compile(r"(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)\s*kWp")
 
 
 def _design(rows: pd.DataFrame) -> dict:
