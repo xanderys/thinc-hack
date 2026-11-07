@@ -812,6 +812,8 @@ class Engine:
         try:
             sim = hourly.simulate(clean, design)
             econ = sim.economics
+            from . import cashflow
+            cashflow.add(clean, design, econ)
             phys = hourly.validate_physics(clean, design, sim=sim)
             rep, why = hourly.replay_2025(clean, design)  # additive: the typical-year economics above stay as they are
             if rep:
@@ -856,7 +858,8 @@ class Engine:
         for pv in sorted({float(x) for x in cand} | ({float(design["pv_kwp"])} if design.get("pv_kwp") else set())):
             for bat in bats:
                 d = {"pv_kwp": pv, "inverter_kw": rules.inverter_kw(pv), "battery_kwh": bat or None, **keep}
-                runs.append((d, hourly.simulate(clean, d).economics))
+                from . import cashflow
+                runs.append((d, cashflow.add(clean, d, hourly.simulate(clean, d).economics)))
         if not runs:
             return []
         best_aut = max(e["autarky_share"] for _, e in runs)
