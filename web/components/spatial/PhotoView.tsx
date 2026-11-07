@@ -62,6 +62,13 @@ export function usePhoto(address: string, scene: SpatialScene | null, active: bo
     return () => { dead = true; layer.current?.dispose(); layer.current = null; setShown(false); setText(""); };
   }, [live, scene, status]);
 
+  // Watchdog from the tap: whatever stalls (layer pinned, chunk, tiles), no photo within 6 s hides the toggle.
+  useEffect(() => {
+    if (!on || shown) return;
+    const t = setTimeout(() => { console.warn("Photo view off: no photo within 6 s of the tap"); setFailed(true); setOn(false); }, 6000);
+    return () => clearTimeout(t);
+  }, [on, shown]);
+
   const overlay = live ? (
     <>
       {!shown && <p style={wait}>Loading the photo</p>}

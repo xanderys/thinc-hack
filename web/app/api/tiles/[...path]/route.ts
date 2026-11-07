@@ -28,8 +28,12 @@ function anchorFor(address: string) {
 
 const warmAddress = (address: string) => anchorFor(address).then((a) => (a ? warm(address, a) : null));
 
-// Warm the hero address the first time this route loads in a server process.
-if (tilesKey() && process.env.NEXT_PHASE !== "phase-production-build") warmAddress(HERO).catch(() => {});
+// The first request to this route in a server process (the card's status call on mount) fetches Google's root
+// at once, so the cold start happens before anyone taps Photo; then the hero house's tiles are warmed.
+if (tilesKey() && process.env.NEXT_PHASE !== "phase-production-build") {
+  getRoot().catch(() => {});
+  warmAddress(HERO).catch(() => {});
+}
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
