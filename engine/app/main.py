@@ -649,17 +649,25 @@ def _public(inp: dict) -> dict:
 
 
 def _full_draft_later(lead_id: str, inp: dict):
-    """Optimum and variants for the planner's view, after the step has answered."""
+    """The draft was made with /api/design's pipeline. When the roof was not cached yet (a call never waits on it), the roof
+    is fetched here and the lead redrafted with it, so the lead matches /api/design for the same facts."""
+    if inp.get("roof") or not (inp.get("address") or inp.get("postcode")):
+        lead = leads.LEADS.get(lead_id)
+        if lead:
+            lead["draft_stamp"] = engine_stamp()
+            leads.save(lead)
+        return
+
     def run():
         try:
-            d = engine().predict(dict(inp))
+            full = _facts({k: v for k, v in inp.items() if k != "roof"}, block=True)
+            d = engine().predict(dict(full))
             lead = leads.LEADS.get(lead_id)
-            if lead and lead["draft"]["design"] == d["design"]:
-                lead["draft"] = d
-                lead["draft_stamp"] = engine_stamp()
+            if lead and lead.get("inputs") is inp:  # no newer step has replaced the inputs meanwhile
+                lead.update(inputs=full, draft=d, draft_stamp=engine_stamp())
                 leads.save(lead)
         except Exception:
-            log.exception("full draft failed")
+            log.exception("roof redraft failed")
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -684,7 +692,7 @@ def _rate_ok(ip: str, per_min: int = 20) -> bool:
 def _new_lead(eng, raw: dict, name: str, place: str, source: str, block: bool, lead_id: Optional[str] = None) -> dict:
     inp = _facts(raw, block=block)
     unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
-    draft = eng.predict(dict(inp), extras=False)
+    draft = eng.predict(dict(inp))  # the one pipeline: exactly what /api/design returns for these inputs
     nq, spread = _question(eng, inp, unknown)
     t = leads.now()
     lead = {"lead_id": lead_id or leads.new_id(), "status": "draft" if source == "form" else "in_call", "source": source,
@@ -761,7 +769,7 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     raw.pop("roof", None) if ("address" in ans or "postcode" in ans or not raw.get("roof")) else None
     inp = _facts(raw, block=False)
     before = lead["draft"]["design"]
-    draft = eng.predict(dict(inp), extras=False)
+    draft = eng.predict(dict(inp))  # the one pipeline: exactly what /api/design returns for these inputs
     unknown = [c for c in lead["unknown"] if c not in ans]
     nq, spread = _question(eng, inp, unknown)
     changed = []
