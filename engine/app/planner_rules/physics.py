@@ -53,7 +53,7 @@ PARAMS = {
 RULES = [
     {"name": "pv", "sentence": "Fill the roof's best planes first, module by module, and stop at the last step whose 20-year value is at least its cost; never past the roof.", "params": ["yield", "module_kwp", "m2_per_kwp", "pv_cost", "price", "price_rise", "feed_in", "negative_hours", "degradation", "upkeep", "discount", "knee"]},
     {"name": "battery", "sentence": "Take the largest battery package whose last step still returns at least its cost over 20 years, counting losses and a replacement at end of life; above HTW's 1.5 kWh per 1,000 kWh is flagged.", "params": ["battery_cost", "battery_life", "battery_physics", "htw_cap", "load", "knee"]},
-    {"name": "heatpump", "sentence": "Offer a heat pump where the home burns gas or oil and the 20-year value with it beats keeping the boiler; size it at the envelope's heat load, else the year's heat over 2,000 full-load hours.", "params": ["heat_pump_cost", "boiler_avoided", "heat_cost", "cop", "full_load_hours", "heat_demand"]},
+    {"name": "heatpump", "sentence": "Offer a heat pump where the home burns gas or oil, the year's heat is known and the 20-year value with it beats keeping the boiler; size it at the lead's heat demand or heating bill over 2,000 full-load hours, else at the envelope's heat load, which is an upper bound.", "params": ["heat_pump_cost", "boiler_avoided", "heat_cost", "cop", "full_load_hours", "heat_demand"]},
     {"name": "wallbox", "sentence": "An 11 kW wallbox when there is an electric car and no wallbox.", "params": ["wallbox", "ev"]},
     {"name": "inverter", "sentence": "The inverter that puts the DC/AC ratio between 1.1 and 1.3, nearest 1.2.", "params": ["dcac"]},
     {"name": "objective", "sentence": "The design is the knee of this home's cost-to-value frontier; a stated preference moves along it: independence to the largest system that still breaks even, payback to the shortest payback, upfront to the most value per euro.", "params": ["knee", "discount"]},
@@ -243,16 +243,28 @@ def _fix(ov, key):
     return True, ov[key]
 
 
+def heat_known(inp):
+    """The year's heat comes from the lead (demand, bill or floor area), not only from defaults."""
+    return bool(inp.get("heating_demand_kwh") or inp.get("heating_cost_per_year_eur") or inp.get("house_size_sqm"))
+
+
+def _envelope_kw(inp):
+    return (inp.get("envelope") or (inp.get("roof_model") or {}).get("envelope") or {}).get("design_heat_load_kw")
+
+
 def _hp_size(inp, cat):
-    """(size kW, annual heat kWh, source, raw kW). The envelope heat load (kW) comes first when no heat demand is given."""
+    """(size kW, annual heat kWh, source, raw kW, upper bound kW or None). Precedence: the lead's heat demand, else
+    its heating bill, else the envelope (an upper bound: unrenovated IWU U-values on the whole LoD2 volume)."""
     heat, src = S.heat_demand_kwh(inp, {})
-    env = (inp.get("envelope") or (inp.get("roof_model") or {}).get("envelope") or {}).get("design_heat_load_kw")
-    if env and not inp.get("heating_demand_kwh"):
-        raw, src = float(env), "envelope: LoD2 faces x IWU U-values, DIN EN 12831 simplified"
-    else:
+    env = _envelope_kw(inp)
+    upper = None
+    if inp.get("heating_demand_kwh") or inp.get("heating_cost_per_year_eur") or not env:
         raw = heat / FULL_LOAD_H
+        upper = float(env) if env else None
+    else:
+        raw, src = float(env), "envelope: LoD2 faces x IWU U-values, DIN EN 12831 simplified"
     sizes = sorted((cat or {}).get("heatpump_kw") or HP_SIZES)
-    return float(next((s for s in sizes if s >= raw - 1e-9), sizes[-1])), heat, src, raw
+    return float(next((s for s in sizes if s >= raw - 1e-9), sizes[-1])), heat, src, raw, upper
 
 
 def _solve(inp, cat, overrides, roof):
@@ -282,7 +294,7 @@ def _solve(inp, cat, overrides, roof):
     if fx:
         hps = [hp_size[0] if v == "include" else float(v or 0)]
     else:
-        hps = [0.0, hp_size[0]] if inp.get("heating_type") in FOSSIL else [0.0]
+        hps = [0.0, hp_size[0]] if inp.get("heating_type") in FOSSIL and heat_known(inp) else [0.0]
     fx, v = _fix(ov, "inverter_kw")
     inv_fixed = float(v) if fx and v not in (None, "include") else None
     pref = inp.get("preference")
@@ -330,7 +342,7 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
     """Same signature and shape as rules-1; constants is accepted and ignored (nothing is fitted)."""
     inp = dict(inputs)
     cat = catalogue or {}
-    pl, wb, (hp_sz, heat, heat_src, hp_raw), hps, (npv, hp, rows, h, i, why) = _solve(inp, cat, overrides, roof)
+    pl, wb, (hp_sz, heat, heat_src, hp_raw, hp_upper), hps, (npv, hp, rows, h, i, why) = _solve(inp, cat, overrides, roof)
     ch = h[i]
     d = dict(ch["design"])
     pv, bat = d["pv_kwp"] or 0.0, d["battery_kwh"] or 0.0
@@ -421,7 +433,8 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
     if _fix(ov, "heatpump_kw")[0] and ov.get("heatpump_kw") != "include":
         s_h, der_h = (f"Set by the planner: {hp:g} kW." if hp else "Set by the planner: no heat pump."), None
     elif len(hps) == 1 and not hp:
-        s_h = "No heat pump: the home does not burn gas or oil." if inp.get("heating_type") not in FOSSIL else "No heat pump."
+        s_h = ("No heat pump: the home does not burn gas or oil." if inp.get("heating_type") not in FOSSIL
+               else "No heat pump yet: the year's heat is unknown; ask for the heating bill.")
         s_h = "The home already heats with a heat pump." if inp.get("heating_type") == "Heatpump" else s_h
         der_h = None
     else:
@@ -441,7 +454,10 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
                  "inputs": ([{"name": "design heat load", "value": round(hp_raw, 1), "unit": "kW", "source": "envelope: LoD2 faces x IWU U-values, DIN EN 12831 simplified"}] if heat_src.startswith("envelope") else [])
                            + [{"name": "heat a year", "value": round(heat), "unit": "kWh", "source": S.heat_demand_kwh(inp, {})[1]},
                             _p("full_load_hours"), _p("cop"), _p("heat_pump_cost"), _p("boiler_avoided"), _p("heat_cost")],
-                 "axiom_result": round(hp_raw, 1), "adjustment": None, "final": hp or None}
+                 "axiom_result": round(hp_raw, 1),
+                 "adjustment": ({"label": f"up to {hp_upper:.0f} kW if the {int(inp['house_built_year']) if inp.get('house_built_year') else ''} fabric is unrenovated (envelope upper bound)".replace("the  fabric", "the fabric"),
+                                 "value": round(hp_upper, 1), "n_similar": None} if hp_upper else None),
+                 "heat_load_upper_bound_kw": round(hp_upper, 1) if hp_upper else None, "final": hp or None}
     comps["heatpump"] = {"decision": "include" if hp else "none", "size": hp or None, "reason": s_h, "derivation": der_h}
     expl.append(s_h)
 
