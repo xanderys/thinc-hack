@@ -28,7 +28,7 @@ from app.model import COMPONENTS, GREYBOX, TARGET, Engine, opt_base, row_inputs
 from lab.cv import FOLDS, SEED, check_load, fmt, metrics, predict_frame, split, test_score
 
 CACHE = Path(__file__).resolve().parent.parent / ".cache" / "greybox" / "grids.pkl"
-MODES = [(None, "argmax"), ("ratio", "argmax"), ("ratio", "cheap"), ("residual", "argmax"), ("feature", "argmax")]
+MODES = [(None, "argmax"), ("ratio", "argmax"), ("ratio", "cheap"), ("residual", "argmax"), ("feature", "argmax"), ("batfeat", "argmax")]
 
 
 def grids(df, tr, te):

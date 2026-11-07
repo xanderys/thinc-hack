@@ -67,6 +67,19 @@ Rebased onto `origin/engine` 8cc5749 (chain-hgb-knn-7-mono) first. CV baseline o
 
 Next candidate from this: the optimum battery for the chosen PV as a battery-stage feature only (PV stage untouched), which should keep the +3.5 battery points without moving PV.
 
+## Iteration 4: optimum battery as a battery-stage feature only
+
+| | |
+|---|---|
+| Hypothesis | The iteration 3 gain came from the battery stage, so give only the battery include classifier and size regressor the optimum battery kWh for the stage PV (`GREYBOX["mode"] = "batfeat"`); PV stage and heat pump / wallbox inputs exactly as live. |
+| CV new-system (1,029): all four / PV within / PV MAE / battery | Baseline 16.9% / 40.8% / 2.51 / 46.1%. batfeat 17.2% / 40.8% / 2.51 / 46.2%. |
+| CV all (1,256) | Baseline 13.9% / 33.4% / 2.51 / 40.2%. batfeat 14.1% / 33.4% / 2.51 / 40.4%. |
+| PV identical | Yes: PV within and MAE equal the baseline on both boards, per installer too. |
+| Physics | Battery without PV: 0. `validate_physics` on the same 50-design sample: 0 flagged (live model 0). |
+| Test | Not scored: all four rises 0.3 and 0.2 points and battery 0.1 and 0.2, below the 0.5 gate on both boards. |
+| Verdict | Rejected. The optimum battery given the PV adds almost nothing alone; the iteration 3 battery gain (+3.5 on test, +2.7 on CV) needed the optimum PV and battery as features of the PV stage, which is also what moved PV. Mode kept off by default. |
+| Kept | `batfeat` mode in `app/model.py` (off), `lab/greybox.py --modes None:argmax,batfeat:argmax`. |
+
 ## Queue
 1. Done in iteration 2 (kept lowest option).
 2. Done in iteration 3 (not merged). Grey-box (approved by Xander via THINC HACK MASTER): base = physics optimum (`app.hourly.optimum`, installer catalogue), gradient boosting learns the expert's deviation per component, chained as today. Merge candidate only if it beats the current board.

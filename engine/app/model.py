@@ -29,7 +29,7 @@ NAMES = {"pv": "PV", "battery": "a battery", "heatpump": "a heat pump", "wallbox
 
 # Grey-box (lab iteration 3): base = physics optimum (20-year NPV over the installer's catalogue, no expert label, PV capped
 # at the roof when known). mode "ratio": the size regressors learn expert / optimum; "residual": expert minus optimum;
-# "feature": the optimum is a feature. Decisions keep the classifiers. base "argmax" best NPV, "cheap" cheapest in the tie band.
+# "feature": the optimum is a feature; "batfeat" (iteration 4): only the optimum battery for the stage PV, as a feature of the battery stage. Decisions keep the classifiers. base "argmax" best NPV, "cheap" cheapest in the tie band.
 # grid: an Engine whose catalogue the optimum uses (lab/greybox.py sets the full-train one in CV so cached grids stay valid).
 GREYBOX = {"mode": None, "base": "argmax", "grid": None}
 _GRID = {}  # memo: (installer, inputs, catalogue) -> (pv sizes, battery sizes, NPV matrix)
@@ -178,7 +178,7 @@ class Engine:
         b_bat = None
         if gb:
             ob = np.array([opt_base(g, p)[1] for g, p in zip(grids, pv_oof)])
-            if gb == "feature":
+            if gb in ("feature", "batfeat"):
                 X1 = X1.assign(opt_bat_pv=ob)
             else:
                 b_bat = np.array([gb_floor(v, self.grid_cat(i)["battery"]) for v, i in zip(ob, tr.installer_id)])
@@ -186,7 +186,7 @@ class Engine:
         m = y["battery"] > 0
         self.models["bat_size"] = reg(mono_bat).fit(X1[m], gb_fwd(y["battery"], b_bat)[m])
         bat_oof = np.where(cross_val_predict(clf(mono_bat), X1, y["battery"] > 0, cv=5), gb_inv(cross_val_predict(reg(mono_bat), X1, gb_fwd(y["battery"], b_bat), cv=5), b_bat), 0.0)
-        X2 = X1.assign(battery=bat_oof)
+        X2 = (X1.drop(columns="opt_bat_pv") if gb == "batfeat" else X1).assign(battery=bat_oof)
         # heat pump: too few sold to learn a size; decision from data, size from physics
         self.hp_positive = int((y["heatpump"] > 0).sum())
         self.models["hp_dec"] = clf().fit(X2, y["heatpump"] > 0) if self.hp_positive >= 5 else None
@@ -241,7 +241,7 @@ class Engine:
 
         def bat_frame(pv):
             X1 = X.assign(pv=pv)
-            return X1.assign(opt_bat_pv=opt_base(g, pv)[1]) if gb == "feature" else X1
+            return X1.assign(opt_bat_pv=opt_base(g, pv)[1]) if gb in ("feature", "batfeat") else X1
 
         def bat_fn(X1, pv):
             b = gb_floor(opt_base(g, pv)[1], gc["battery"]) if gb in ("ratio", "residual") else None
@@ -285,7 +285,7 @@ class Engine:
         comps["battery"] = self._detail("battery", bat, p_b, nb, inp, src, pv=pv)
         if nopv_note:
             comps["battery"]["reason"] = nopv_note
-        X2 = X1.assign(battery=bat)
+        X2 = (X1.drop(columns="opt_bat_pv") if gb == "batfeat" else X1).assign(battery=bat)
         # heat pump: never proposed where one exists; a planner "include" there is a replacement job
         p_h = float(self.models["hp_dec"].predict_proba(X2)[0, 1]) if self.models.get("hp_dec") else 0.0
         if inp.get("heating_type") == "Heatpump" and "heatpump_kw" not in ov:
