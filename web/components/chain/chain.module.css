@@ -263,3 +263,5 @@
 @media (max-width: 760px) {
   .varList .vtabs { margin: 0 -12px; padding: 0 12px; }
 }
+/* Phone cells are too narrow for "old → new": the figure crossfades in place, so the card never grows. */
+@media (max-width: 760px) { .figWas, .figTo { display: none; } }
