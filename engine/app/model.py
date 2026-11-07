@@ -276,7 +276,10 @@ class Engine:
                 out["rules"] = planner_rules.rules4.rules_table(inst)
             except Exception as e:
                 log.warning("rules-4 wording unavailable: %s", e)
-        if r.get("objective"):
+        if engine in ("calibrated", "band", "readout"):
+            from . import layout as L
+            out["objective"] = L.OBJECTIVE  # the variants' yardstick; the design itself is the rule list
+        elif r.get("objective"):
             out["objective"] = r["objective"]
         if opt:
             out["optimum"] = opt
@@ -291,26 +294,27 @@ class Engine:
     VARIANT_FROM_FRONTIER = (("value", "knee", "Best value"), ("payback", "payback", "Best payback"),
                              ("independence", "independence", "Most independence"), ("upfront", "upfront", "Lowest upfront cost"))
 
+    VARIANT_LABEL_V = {"value": "Best value", "payback": "Best payback", "independence": "Most independence",
+                       "upfront": "Lowest upfront cost"}
+
     def variants_physics(self, inp, design, econ, rec_in, cat) -> list:
-        """Calibrated design first, then rules-2-physics's own frontier points (knee, payback, independence, upfront), each
-        simulated on rules-2's planes so the numbers match its sweep. Preference only reorders."""
-        from . import planner_rules
-        r2 = rules_cached(planner_rules.recommend, rec_in, cat, None)
-        fr = rules_cached(_frontier, rec_in, cat, None)
-        sim_in = {**roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")}), **(r2.get("sim_inputs") or {})}
-        keep = {k: r2["design"].get(k) for k in ("heatpump_kw", "wallbox_kw")}
+        """The design first, then the best 20-year value, best payback, most independence and lowest upfront cost among every
+        PV size and package, each laid out on this roof and simulated on its own planes (one pipeline). Preference reorders."""
+        from . import layout as L
+        rows = L.value_frontier(self, inp, design)
         out = [{"key": "expert", "label": self.VARIANT_LABEL["expert"], "design": design, "economics": econ,
                 "note": "The design planners at this installer fit to homes like this one."}]
-        for key, lab, label in self.VARIANT_FROM_FRONTIER:
-            row = next((x for x in fr if x.get("label") == lab), None)
-            if not row:
+        for key in ("value", "payback", "independence", "upfront"):
+            r = next((x for x in rows if key in (x.get("labels") or [])), None)
+            if r is None:
                 continue
-            d = {"pv_kwp": row["kwp"] or None, "inverter_kw": rules.inverter_kw(row["kwp"]) if row["kwp"] else None,
-                 "battery_kwh": row["kwh"] or None, **keep}
-            from . import layout as L
-            e = hourly.simulate(L.sim_inputs({k: v for k, v in sim_in.items() if k != "pv_planes"} | {"address": inp.get("address"),
-                                "house_built_year": inp.get("house_built_year")}, d) if inp.get("address") else sim_in, d).economics
-            out.append({"key": key, "label": label, "design": d, "economics": e, "note": variant_note(d, e, design, econ)})
+            same = r["chosen"]
+            note = ({"value": "The planners' design is already the best 20-year value on this roof.",
+                     "payback": "The planners' design already pays back soonest.",
+                     "independence": "The planners' design already gives the most independence.",
+                     "upfront": "The planners' design is already the cheapest with PV."}[key] if same
+                    else variant_note(r["_design"], r["_econ"], design, econ))
+            out.append({"key": key, "label": self.VARIANT_LABEL_V[key], "design": r["_design"], "economics": r["_econ"], "note": note})
         pref = inp.get("preference")
         if pref in ("independence", "payback", "upfront"):
             out.sort(key=lambda v: v["key"] != pref)

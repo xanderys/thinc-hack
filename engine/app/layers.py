@@ -101,9 +101,8 @@ def explain(eng, inp: dict, design: dict | None) -> dict:
     if lo:
         planes = {**lo["planes"], "glb_url": roofs.model_url(inp["address"])}
     t = __import__("app.model", fromlist=["base_features"]).base_features(inp, inp["installer_id"])["t"]
-    fr = f2(eng.rules_inputs(inp), None, eng.rules_catalogue(inp["installer_id"], t), None)
-    obj = resp.get("objective") or {"name": resp.get("model_version"),
-                                    "sentence": "The design is the readable rule list; the frontier is the home's own physics.", "sources": []}
+    fr = L.public_rows(L.value_frontier(eng, inp, design))  # the same simulated set the variants are picked from
+    obj = resp.get("objective") or L.OBJECTIVE
     out = {"planes": planes, "day": day, "night": night, "frontier": fr, "chosen": design, "objective": obj, "sources": P.sources(),
            "economics": econ,
            "consistency": {"modules_on_roof": lo["modules"] if lo else None, "modules_in_design": L.modules_for(design.get("pv_kwp")),

@@ -69,3 +69,70 @@ def sim_inputs(inp: dict, design: dict) -> dict:
 def run_id(inp: dict, design: dict, pv_planes) -> str:
     clean = {k: v for k, v in inp.items() if not k.startswith("_") and k not in ("roof", "roof_model", "envelope")}
     return hashlib.sha256(json.dumps([clean, design, pv_planes], sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+
+_FRONTIER: dict = {}
+OBJECTIVE = {"name": "20-year value on this roof",
+             "sentence": ("Every PV size and battery package is laid out on this roof's own planes by shaded yield and run through the "
+                          "same hourly year; best value is the highest 20-year net present value, best payback the shortest payback, "
+                          "most independence the highest autarky."),
+             "sources": ["lod2", "bdom", "pvgis", "pvlib", "bdew", "eeg"]}
+
+
+def value_frontier(eng, inp: dict, design: dict) -> list:
+    """Every (PV, battery) rules-2 sweeps, each simulated on its own laid-out planes with the design's heat pump and
+    wallbox; labels value, payback, independence, upfront and chosen. Cached per inputs and design."""
+    from . import rules
+    from .model import _frontier, base_features, roof_to_sim
+    k = run_id(inp, design, None)
+    if k in _FRONTIER:
+        return _FRONTIER[k]
+    inst = inp["installer_id"]
+    t = base_features(inp, inst)["t"]
+    raw = _frontier(eng.rules_inputs(inp), eng.rules_catalogue(inst, t), None)
+    cands = {(r["kwp"], r["kwh"]) for r in raw if r["kwp"]} | {(design.get("pv_kwp") or 0.0, design.get("battery_kwh") or 0.0)}
+    base = roof_to_sim({kk: v for kk, v in inp.items() if not kk.startswith("_")})
+    keep = {kk: design.get(kk) for kk in ("heatpump_kw", "wallbox_kw")}
+    rows = []
+    for pv, b in sorted(cands):
+        if not pv:
+            continue
+        d = {"pv_kwp": pv, "inverter_kw": design.get("inverter_kw") if pv == design.get("pv_kwp") else rules.inverter_kw(pv),
+             "battery_kwh": b or None, **keep}
+        lo = layout(inp, pv)
+        sim_in = {**base, "pv_planes": lo["pv_planes"]} if lo else base
+        e = hourly.simulate(sim_in, d).economics
+        rows.append({"kwp": pv, "kwh": b or 0.0, "capex_eur": e["capex_eur"], "npv_20y_eur": e["annual"]["npv_20y_eur"],
+                     "autarky_share": e["autarky_share"], "payback_years": e["payback_years"],
+                     "modules": lo["modules"] if lo else modules_for(pv),
+                     "chosen": pv == (design.get("pv_kwp") or 0) and (b or 0) == (design.get("battery_kwh") or 0),
+                     "_design": d, "_econ": e})
+    if not rows:
+        return []
+    best = max(rows, key=lambda r: (r["npv_20y_eur"] or -1e9, -r["capex_eur"]))
+    mine = next((r for r in rows if r["chosen"]), None)
+    if mine is not None and (mine["npv_20y_eur"] or -1e9) >= (best["npv_20y_eur"] or -1e9):
+        best = mine  # a tie goes to the design: it is already the best value
+    top_aut = max(r["autarky_share"] for r in rows)
+    ind = min((r for r in rows if r["autarky_share"] >= top_aut - 0.005), key=lambda r: r["capex_eur"])
+    pay = min((r for r in rows if r["payback_years"]), key=lambda r: (r["payback_years"], r["capex_eur"]), default=None)
+    paying = [r for r in rows if (r["npv_20y_eur"] or 0) > 0] or rows  # cheapest that still pays for itself in 20 years
+    up = min(paying, key=lambda r: (r["capex_eur"], -r["autarky_share"]))
+    for key, r in (("value", best), ("payback", pay), ("independence", ind), ("upfront", up)):
+        if r is not None:
+            r.setdefault("labels", []).append(key)
+    # the hull in (capex, npv): points no cheaper option beats on value
+    for r in rows:
+        r["on_frontier"] = not any(o["capex_eur"] <= r["capex_eur"] and (o["npv_20y_eur"] or 0) > (r["npv_20y_eur"] or 0) and o is not r for o in rows)
+        r["label"] = "chosen" if r["chosen"] else (r.get("labels") or [None])[0]
+        if r["chosen"] and r.get("labels"):
+            r["also"] = r["labels"]  # the design is also the best value (or another pick)
+    rows.sort(key=lambda r: (r["capex_eur"], r["kwp"]))
+    if len(_FRONTIER) > 128:
+        _FRONTIER.clear()
+    _FRONTIER[k] = rows
+    return rows
+
+
+def public_rows(rows: list) -> list:
+    return [{kk: v for kk, v in r.items() if not kk.startswith("_")} for r in rows]
