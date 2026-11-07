@@ -180,7 +180,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     if (L === 4 && layers) sc.setDay(layers.day.hours, !reduce); else sc.setDay(null, false);
     if (L === 1) sc.setLabels(sc.planeLabels("roof"));
     else if (L === 2) sc.setLabels(sc.planeLabels("sun"));
-    else if (L === 3) sc.setLabels(sc.planeLabels("panels", counts));
+    else if (L === 3) { const all = Object.values(counts ?? {}).reduce((x, y) => x + y, 0); sc.setLabels(sc.planeLabels("panels", counts, all && design.pv_kwp ? design.pv_kwp / all : undefined)); }
     else if (L === 7) sc.setLabels(sc.setXray(envelope));
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps

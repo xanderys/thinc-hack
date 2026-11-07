@@ -655,7 +655,7 @@ export class SpatialScene {
   }
 
   // Only the faces that carry modules are labelled; any other face shows its label when tapped.
-  planeLabels(kind: "roof" | "sun" | "panels", counts?: Record<string, number>): Label[] {
+  planeLabels(kind: "roof" | "sun" | "panels", counts?: Record<string, number>, kwpPerModule?: number): Label[] {
     const own: Record<string, number> = {};
     this.panels.children.forEach((g) => { const id = g.userData?.plane; if (id) own[id] = (own[id] ?? 0) + 1; });
     const cnt = (id: string) => counts?.[id] ?? own[id] ?? 0;
@@ -666,7 +666,10 @@ export class SpatialScene {
         ? `<b>${face}</b>`
         : kind === "sun"
           ? sunHtml(p)
-          : k > 0 || !skipOf(p) ? `<b>${k}</b> modules` : `No modules<br/><span>${skipOf(p)}</span>`;
+          : k > 0
+            // Panels: each used face carries its own module count and yield, so the card does not have to.
+            ? `<b>${p.pitch < 3 ? "Flat roof" : `${facing(p.azimuth).replace(/^./, (x) => x.toUpperCase())} face`}</b><br/><span>${k} modules${kwpPerModule ? `, ${fmt0(k * kwpPerModule * (p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp))} kWh a year` : ""}</span>`
+            : !skipOf(p) ? `<b>0</b> modules` : `No modules<br/><span>${skipOf(p)}</span>`;
       return { key: `${kind}-${p.id}`, at, html, prio: k * 1000 + p.area_m2, ...(k > 0 ? {} : { tap: p.id }) };
     });
   }
