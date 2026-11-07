@@ -293,7 +293,12 @@ def health():
         rv = getattr(planner_rules, "RULES_VERSION", None)
     except Exception:
         rv = None
+    try:
+        spatial = roofs.spatial_inputs()
+    except Exception:
+        spatial = []
     return {"ok": e is not None, "model_version": MODEL_VERSION, "recommender": model_mod.RECOMMENDER["mode"], "rules_version": rv,
+            "spatial_inputs": spatial,
             "trained_on": {"projects": len(e.train) if e else 0, "installers": len(e.catalogue) if e else 0},
             "data_loaded": e is not None, **({"error": STATE["error"]} if STATE["error"] else {})}
 
@@ -772,6 +777,8 @@ def evaluation():
     engine()
     out = dict(STATE["eval"])
     out["synthetic"] = synthetic_report()  # v1.4: null until the suite has written a report
+    out["exam_note"] = ("The exam homes carry no address, so every column is scored without roof, shade or envelope data; "
+                        "live leads add them.")
     re_ = STATE.get("rules_eval") or {}
     if "error" not in re_ and re_:
         out.update(re_)

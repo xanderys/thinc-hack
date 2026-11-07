@@ -198,6 +198,27 @@ def envelope_cached(address: str):
         return None
 
 
+def spatial_inputs() -> list:
+    """What open spatial data is actually wired right now, read from the hero's built model."""
+    out = ["lod2 roof planes"]
+    if not model_available():
+        return out
+    key = hashlib.sha256(HERO_ADDRESS.strip().lower().encode()).hexdigest()[:16]
+    path = MODEL_CACHE / f"{key}.json"
+    try:
+        info = json.loads(path.read_text())
+        planes = json.loads(Path(info["planes_json_path"]).read_text())
+    except Exception:
+        return out
+    if info.get("textured") or planes.get("textured"):
+        out.append("dop20 orthophoto")
+    if any("shade" in p for p in planes.get("planes", [])) or "shade" in planes:
+        out.append("bdom shade")
+    if (planes.get("envelope") or {}).get("design_heat_load_kw"):
+        out.append("envelope heat loss")
+    return out
+
+
 def warm_models():
     if not model_available():
         return
