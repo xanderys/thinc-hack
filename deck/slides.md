@@ -20,7 +20,7 @@ footer: Marquee
 
 ---
 
-<p class="label">Tuesday, 8:40</p>
+<p class="label">Enquiry, Tuesday 8:40</p>
 
 ## Six new enquiries. Two site visits this afternoon.
 
@@ -32,18 +32,20 @@ footer: Marquee
 
 <!-- _class: ink -->
 
-<p class="label">Live</p>
+<p class="label">Design to offer: live</p>
 
 # “The family buys an EV next year.”
 
-<div class="data">roof <b>57 modules</b> fit, <b>116 m²</b> at 25° east-west, from Bavarian LoD2 data<br>offer <b>7.65 kWp</b>, <b>10 kWh</b>, payback <b>11.6 years</b><br>after the sentence <b>10.35 kWp</b>, <b>10 kWh</b>, <b>11 kW</b> wallbox, <b>10.5 years</b></div>
+<div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>7.2 kWp</b>, <b>7 kWh</b>, payback <b>10.8 years</b><br>after one sentence <b>9.45 kWp</b>, <b>10 kWh</b>, <b>11 kW</b> wallbox, <b>10.5 years</b><br>variants ready: lowest upfront <b>4,250 EUR</b>, best payback <b>8.8 years</b></div>
+
+[UNCONFIRMED: v2 hero numbers and variants line replace the confirmed v1 set]
 
 <p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
 
 
 ---
 
-<p class="label">Why one question</p>
+<p class="label">Enquiry: one question, not a call back</p>
 
 <div class="stat">15%</div>
 
@@ -59,9 +61,9 @@ footer: Marquee
 
 <!-- _class: ink -->
 
-<p class="label">What the data taught us</p>
+<p class="label">Design: consistent decisions</p>
 
-## Experts follow rules nobody wrote down.
+## Your best planner’s habits, on every offer.
 
 <div class="data">planners install <b>2.0 kWp per MWh</b>; the textbook under-sizes <b>82%</b><br><b>91%</b> of wallboxes went to homes with no EV on record</div>
 
@@ -71,11 +73,11 @@ footer: Marquee
 
 <p class="label">Checked on 258 held-out signed projects</p>
 
-<div class="stat">17.4%</div>
+<div class="stat">17.1%</div>
 
 ## Every component right, more often than near-identical homes agree.
 
-<div class="data">all four: ours <b>17.4%</b>, textbook <b>6.6%</b>, near-identical homes <b>16.1%</b><br>PV within 1 kWp or 15%: ours <b>36.8%</b>, textbook <b>17.8%</b>, near-identical homes <b>31.7%</b></div>
+<div class="data">all four: ours <b>17.1%</b>, textbook <b>6.6%</b>, near-identical homes <b>16.1%</b><br>PV within 1 kWp or 15%: ours <b>37.6%</b>, textbook <b>17.8%</b></div>
 
 <p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
 
@@ -85,7 +87,7 @@ footer: Marquee
 
 <!-- _class: ink -->
 
-<p class="label">Roadmap</p>
+<p class="label">Installation to next design: roadmap</p>
 
 ## The closed loop.
 
