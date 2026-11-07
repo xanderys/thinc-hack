@@ -1,3 +1,4 @@
+import re
 import hashlib
 import json
 import logging
@@ -1022,10 +1023,49 @@ def evaluation():
                                            "note": "Reonic's rule of thumb against the median the installers' planners fitted in signed designs."}
     except Exception:
         pass
+    try:  # the lab's second look at the test half (engine-lab 54cf480): rules-5 against rules-4; rules-4 stays in production
+        sl = second_look()
+        if sl:
+            out["second_look"] = sl
+            r5 = sl["blocks"].get("test half: lowest option, ours", {}).get("rules-5")
+            if r5 and "recommenders" in out:
+                out["recommenders"]["rules5"] = {"design_match_share": r5["all_four"], "pv_within": r5["pv"],
+                                                 "battery_within": r5["battery"], "wallbox_decision": r5["wallbox"], "n": r5["n"],
+                                                 "source": "second look"}
+    except Exception as e:
+        log.warning("second look unavailable: %s", e)
     out["exam_note"] = ("The exam homes carry no address, so every column is scored without roof, shade or envelope data; "
                         "live leads add them.")
 
     return out
+
+
+def second_look() -> dict | None:
+    """Parses the lab's FINAL v2 report (aggregates only) into blocks of engine rows; label "second look"."""
+    p = Path(__file__).resolve().parent.parent / "lab" / "reports" / "final_test_v2.md"
+    if not p.exists():
+        return None
+    blocks, cur, cols = {}, None, None
+    for line in p.read_text().splitlines():
+        if line.startswith("## "):
+            cur, cols = line[3:].strip(), None
+            blocks[cur] = {}
+        elif cur and line.startswith("|") and not line.startswith("|---"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if cols is None:
+                cols = [c.lower().replace(" ", "_") for c in cells]
+                continue
+            name = re.sub(r"\s*\([0-9a-f]{7}\)", "", cells[0])
+            row = {}
+            for k, v in zip(cols[1:], cells[1:]):
+                v = v.rstrip("%")
+                try:
+                    row[k] = round(float(v) / 100, 3) if k != "n" else int(v)
+                except ValueError:
+                    row[k] = v
+            blocks[cur][name] = row
+    return {"label": "second look", "source": "engine-lab 54cf480, lab/reports/final_test_v2.md",
+            "verdict": "rules-5 does not replace rules-4: nested CV worse, test gain p 0.60.", "blocks": blocks}
 
 
 ENGINE_KEY = {"rules-4": "readout", "rules-3-band": "band", "rules-1": "calibrated", "physics": "formula",

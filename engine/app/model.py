@@ -99,6 +99,31 @@ def fmt(x, unit):
     return f"{s} {unit}"
 
 
+R5_DESIGN = {"pv": ("pv_kwp", "kWp"), "battery": ("battery_kwh", "kWh"), "bat_kwp": ("battery_kwh", "kWh"),
+             "bat_day": ("battery_kwh", "kWh"), "inv": ("inverter_kw", "kW"), "hp": ("heatpump_kw", "kW"), "wb": ("wallbox_kw", "kW"),
+             "cap": ("pv_kwp", "kWp")}
+
+
+def rules5_rows(R5, inst, design, rec_in, catalogue, ov):
+    """rules-5's Rules block (textbook, planners per rule) plus this home's design per rule and the planner correction it fell in."""
+    rows = R5.rules_table(inst)
+    try:
+        fired = (R5.recommend(rec_in, catalogue, ov) or {}).get("rules_fired") or {}
+    except Exception:
+        fired = {}
+    for r in rows:
+        key, unit = R5_DESIGN.get(r.get("name"), (None, None))
+        if key:
+            r["design"] = {"value": design.get(key) or 0, "unit": unit}
+        if r.get("name") in fired:
+            f = fired[r["name"]]
+            r["fired"] = f
+            hit = next((c for c in r.get("constants") or [] if c.get("name") == f), None)
+            r["applied"] = (f"Your planners' figure for a home like this: {hit['value']:g} {hit['unit']}." if hit
+                            else "Reonic's textbook figure applies to this home." if f == "textbook" else None)
+    return rows
+
+
 @dataclass
 class Engine:
     df: pd.DataFrame
@@ -291,7 +316,7 @@ class Engine:
                 from .planner_rules import rules5 as R5
                 if hasattr(R5, "rules_table"):
                     out["rules_applied"] = out["rules"]
-                    out["rules"] = R5.rules_table(inst)
+                    out["rules"] = rules5_rows(R5, inst, out.get("design") or {}, rec_in, self.rules_catalogue(inst, t), ov)
             except ImportError:
                 pass
             except Exception as e:

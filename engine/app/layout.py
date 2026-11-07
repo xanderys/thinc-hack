@@ -101,7 +101,8 @@ def value_frontier(eng, inp: dict, design: dict) -> list:
              "battery_kwh": b or None, **keep}
         lo = layout(inp, pv)
         sim_in = {**base, "pv_planes": lo["pv_planes"]} if lo else base
-        e = hourly.simulate(sim_in, d).economics
+        from . import cashflow
+        e = cashflow.add(sim_in, d, hourly.simulate(sim_in, d).economics)
         rows.append({"kwp": pv, "kwh": b or 0.0, "capex_eur": e["capex_eur"], "npv_20y_eur": e["annual"]["npv_20y_eur"],
                      "autarky_share": e["autarky_share"], "payback_years": e["payback_years"],
                      "modules": lo["modules"] if lo else modules_for(pv),
