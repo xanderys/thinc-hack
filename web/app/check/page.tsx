@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import StepHead from "@/components/stage/StepHead";
 import { COMPONENT_DESIGN_FIELD, INSTALLER_NAME, type ComponentKey, type Design, type Eval, type HomeInputs, type InboxRow, type ProjectDetail, type ProjectSummary, type ValidateFlag, type ValidateResponse } from "@/lib/api";
 import { call } from "@/lib/client";
-import { REALITY_PROJECT } from "@/lib/demo";
+import { REALITY_MISS, REALITY_PROJECT } from "@/lib/demo";
 import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, named } from "@/lib/stage";
 
 type Approved = { inputs: HomeInputs; draft: Design | null; approved: Design; at: string };
@@ -88,7 +88,7 @@ function Validation() {
   );
 }
 
-function Reality({ ev, id }: { ev: Eval | null; id: string | null }) {
+function Reality({ ev, id, onOther }: { ev: Eval | null; id: string | null; onOther: () => void }) {
   const [p, setP] = useState<ProjectDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -121,6 +121,7 @@ function Reality({ ev, id }: { ev: Eval | null; id: string | null }) {
             const lead = m.o == null ? `Only ${took} of ${nb.n} similar homes from this installer added one, so the draft left it out.` : named(p.ours.components[m.k].reason);
             return <p className="c-why" key={m.k}><b>Missed the {NAME[m.k].toLowerCase()}.</b> {lead} The record does not say why this planner chose otherwise; that judgement stays with the planner.</p>;
           })}
+          <button className="s-link" onClick={onOther}>Another one</button>
         </div>
       </div>
     </section>
@@ -137,7 +138,7 @@ function miss(r: InboxRow) {
   return `${NAME[k]}: expert fitted ${e == null ? "none" : `${n2(e)} ${u}`}, draft ${d == null ? "none" : n2(d)}.`;
 }
 
-function Inbox({ ev, onFirst }: { ev: Eval | null; onFirst: (id: string) => void }) {
+function Inbox({ ev }: { ev: Eval | null }) {
   const [rows, setRows] = useState<InboxRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [shown, setShown] = useState(0);
@@ -145,7 +146,7 @@ function Inbox({ ev, onFirst }: { ev: Eval | null; onFirst: (id: string) => void
   useEffect(() => {
     (async () => {
       const r = await call<InboxRow[]>("/api/inbox?limit=20");
-      if (r.ok) { setRows(r.data); setErr(null); if (r.data[0]) onFirst(r.data[0].project_id); return; }
+      if (r.ok) { setRows(r.data); setErr(null); return; }
       if (!/404|not found/i.test(r.error)) { setErr(r.error); return; }
       // Before v1.3: build the rows from the held-out list and each project's detail.
       const l = await call<ProjectSummary[]>("/api/projects?split=test&limit=20");
@@ -175,7 +176,7 @@ function Inbox({ ev, onFirst }: { ev: Eval | null; onFirst: (id: string) => void
   const vis = sorted.slice(0, shown), pvHit = vis.filter((r) => r.within.pv).length;
   return (
     <section className="c-sec">
-      <h2>{rows ? `${ok} of ${rows.length} drafts need no change. The planner opens only the ${rows.length - ok} marked review.` : "The agent drafted 20 more."}</h2>
+      <h2>{rows ? `${ok} of ${rows.length} drafts match the senior planner's offer within tolerance. The other ${rows.length - ok} say why.` : "The agent drafted 20 more."}</h2>
       {ev && <p className="c-sub">{n0(ev.split.test)} held-out signed projects, replayed through the engine.</p>}
       {err && <Err src="Engine" msg={err} retry={() => setTick((t) => t + 1)} />}
       {!rows && !err && <p className="c-sub s-wait">Replaying</p>}
@@ -235,16 +236,14 @@ function Score({ ev }: { ev: Eval | null }) {
 
 export default function Check() {
   const [ev, setEv] = useState<Eval | null>(null);
-  const [real, setReal] = useState<string | null>(null);
+  const [real, setReal] = useState<string>(REALITY_PROJECT);
   useEffect(() => { call<Eval>("/api/eval").then((r) => { if (r.ok) setEv(r.data); }); }, []);
-  // The first inbox row is the engine's chosen hit; the fixed id covers an engine without /api/inbox.
-  useEffect(() => { const t = setTimeout(() => setReal((x) => x ?? REALITY_PROJECT), 6000); return () => clearTimeout(t); }, []);
   return (
     <div className="st">
       <StepHead title="Check" at={3} />
       <Validation />
-      <Reality ev={ev} id={real} />
-      <Inbox ev={ev} onFirst={(id) => setReal((x) => x ?? id)} />
+      <Reality ev={ev} id={real} onOther={() => setReal((x) => x === REALITY_PROJECT ? REALITY_MISS : REALITY_PROJECT)} />
+      <Inbox ev={ev} />
       <Score ev={ev} />
     </div>
   );
