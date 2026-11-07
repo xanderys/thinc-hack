@@ -525,6 +525,9 @@ def roof_model(address: str = "", build_year: Optional[int] = None, kwp: Optiona
     p = info.get("planes_json_path")
     if not planes and p and Path(p).exists():
         planes = json.loads(Path(p).read_text())
+    if isinstance(planes, dict) and planes.get("envelope"):
+        from . import envelope_view
+        envelope_view.enrich(planes["envelope"])
     return {**(planes if isinstance(planes, dict) else {"planes": planes}), "glb_url": roofs.model_url(address),
             "textured": info.get("textured"), "licence": info.get("licence"), "source": info.get("source")}
 
