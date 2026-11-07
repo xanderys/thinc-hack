@@ -56,6 +56,13 @@ class RoofResult:
     segments: list[Segment] = field(default_factory=list)
     max_panels: int | None = None
     confidence: str = "estimate"   # measured | footprint | estimate
+    storeys: int | None = None
+    floor_area_m2: float | None = None
+    floor_area_confidence: str | None = None   # "estimate" when derived from the footprint and height
+    build_year_class: str | None = None        # Zensus 2022 100 m cell, modal class e.g. "1979 to 1990"
+    build_year_estimate: int | None = None     # class midpoint
+    heating_class: str | None = None           # dominant heating type in the cell
+    zensus_confidence: str | None = None       # "estimated from address (Zensus 2022, 100 m cell)"
     notes: list[str] = field(default_factory=list)
 
     def dict(self) -> dict:
@@ -275,7 +282,7 @@ def _rings(el) -> list[list[tuple[float, float, float]]]:
 
 
 def _tile_index(e: int, n: int) -> list[dict]:
-    idx = CACHE / "lod2" / f"{e}_{n}.json"
+    idx = CACHE / "lod2" / f"{e}_{n}.v2.json"   # v2 adds height and storeys
     if idx.exists():
         return json.loads(idx.read_text())
     gml = CACHE / "lod2" / f"{e}_{n}.gml"
@@ -299,12 +306,37 @@ def _tile_index(e: int, n: int) -> list[dict]:
         for f in foot[1:]:
             fp = fp.union(f)
         segs = [_plane(r) for r in roofs if len(r) >= 3]
+        def _num(tag):
+            t = b.findtext(f"bldg:{tag}", namespaces=NS)
+            try:
+                return float(t) if t else None
+            except ValueError:
+                return None
         buildings.append({"id": b.get(f"{{{NS['gml']}}}id"), "footprint": mapping(fp),
+                          "height": _num("measuredHeight"), "storeys": _num("storeysAboveGround"),
                           "segments": [[round(a, 2), round(p, 1), round(z)] for a, p, z in segs if a > 0.5]})
         b.clear()
     idx.write_text(json.dumps(buildings))
     gml.unlink()  # the index is all we need; tiles run to 160 MB
     return buildings
+
+
+FLOOR_NET = 0.8   # walls and stairs
+STOREY_M = 3.0
+
+
+def _floor_area(res: RoofResult, footprint: float, height: float | None, storeys: float | None) -> None:
+    """Heated floor area estimate: footprint x storeys x 0.8, storeys 1 to 3 (single-family homes)."""
+    if storeys:
+        n, how = int(storeys), "storeys in LoD2"
+    elif height:
+        n, how = round(height / STOREY_M), f"measured height {height:.1f} m / {STOREY_M:g} m"
+    else:
+        return
+    res.storeys = max(1, min(3, n))
+    res.floor_area_m2 = round(footprint * res.storeys * FLOOR_NET, 1)
+    res.floor_area_confidence = "estimate"
+    res.notes.append(f"floor area estimated from address: footprint {footprint:.0f} m2 x {res.storeys} storeys ({how}) x {FLOOR_NET}")
 
 
 def from_lod2(lat: float, lon: float, hit: dict | None = None) -> RoofResult:
@@ -325,6 +357,7 @@ def from_lod2(lat: float, lon: float, hit: dict | None = None) -> RoofResult:
     segs = [Segment(z if p >= 5 else None, p, a) for a, p, z in b["segments"]]
     res = RoofResult("bayern_lod2", lat, lon, round(poly.area, 1),
                      round(sum(s.area_m2 for s in segs), 1), segments=segs, confidence="measured")
+    _floor_area(res, poly.area, b.get("height"), b.get("storeys"))
     res.notes.append(f"LoD2 building {b['id']} (tile {e}_{n}), {len(segs)} roof planes")
     if best_d > 0:
         res.notes.append(f"point not inside a building; nearest is {best_d:.0f} m away")
