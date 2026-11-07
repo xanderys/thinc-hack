@@ -11,3 +11,11 @@ File ownership: this agent owns a shader/material module (`web/components/spatia
 5. Fallback mode (no tiles) gets the same look: textured roof on a white massing model, white slabs, white ground.
 6. Check Google's Map Tiles terms on restyling photorealistic imagery before shipping and keep the attribution on screen; if the terms forbid recolouring the imagery, fall back to desaturating plus fading the context and say so.
 Verify hero and demo leads at 390 px.
+
+## Correction (Xander, Sat 7 Nov 2026 about 23:30 Munich): white is a view option, not the default
+Default stays the real-world look: satellite ground, neighbours flat (footprints or low slabs), the target house real (Google mesh where tiles cover it, Bavarian model otherwise). White context (house real, everything else flat white, coarse tiles) is a toggle on the layers menu ("White context"), and may serve as the low-lag mode on weak phones.
+
+Satellite ground resolution, sharper, in this order; report which land:
+1. Stop downsizing our own DOP20 texture: fetch tiles at native 20 cm, larger texture (2048 to 4096 per tile group), anisotropic filtering, no mipmap blur on the ground plane.
+2. Add Google 2D satellite tiles at max zoom (about 15 cm/px in Munich, often newer) as the ground texture option via the same Map Tiles key, attribution kept.
+3. Check whether Bavaria (LDBV) or the City of Munich publishes a 10 cm orthophoto as open data; if yes and the licence allows, use it for the hero area.
