@@ -40,7 +40,7 @@ export interface Derivation {   // v1.5
   axiom: string; equation: string;
   inputs: { name: string; value: number | string; unit: string; source: string }[];
   axiom_result: number | null;
-  adjustment: { label: string; value: number; n_similar: number } | null;
+  adjustment: { label: string; value: number; n_similar?: number | null } | null;
   final: number | null;
 }
 
@@ -97,8 +97,15 @@ export interface DesignResponse {
   economics: Economics;
   optimum?: Optimum;
   variants?: Variant[];   // v1.7
+  rules?: Rule[];         // v2.0
   model_version: string;
 }
+
+// v2.0: the named planner rules that produced a design.
+export interface RuleConstant { name: string; value: number | string; unit: string; source: string; fitted_on?: string | null; }
+export interface Rule { name: string; sentence: string; constants: RuleConstant[]; }
+export interface RecommenderScore { design_match_share: number; pv_within: number; battery_within: number; wallbox_decision: number; }
+export interface DeviationQuality { n_differ: number; ours_better_payback: number; expert_better_payback: number; ours_better_autarky: number; expert_better_autarky: number; method: string; }
 
 export interface DiffItem { component: string; from: number | null; to: number | null; why: string; }
 export type RefineResponse = DesignResponse & { diff: DiffItem[] };
@@ -128,6 +135,8 @@ export interface Eval {
   per_installer: Record<InstallerId, { test: number; design_match_share: number; baseline_design_match_share?: number }>;
   deviations: { project_id: string; component: string; ours: number | null; expert: number | null; note: string }[];
   synthetic?: Synthetic;
+  recommenders?: Partial<Record<"formula" | "blackbox" | "textbook", RecommenderScore>>;  // v2.0
+  deviation_quality?: DeviationQuality;                                                   // v2.0
 }
 
 export interface Synthetic {
