@@ -391,4 +391,14 @@ def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
         pass
     except Exception as e:
         log.warning("planner_rules.bars failed, engine bars used: %s", e)
+    try:  # Reonic's own conventions from planner_rules: battery 0.2 to 0.6 kWh per kWh of daily use, DC/AC gauge, break-even
+        from .planner_rules.bars import checks as physics_checks
+        extra = physics_checks({k: v for k, v in inp.items() if not k.startswith("_")}, d, econ) or []
+        if any("dc" in (c.get("name") or "").lower() for c in extra):
+            checks = [c for c in checks if c["name"] != "DC/AC ratio"]  # one DC/AC tick, Reonic's gauge
+        checks = checks + list(extra)
+    except ImportError:
+        pass
+    except Exception as e:
+        log.warning("planner_rules.bars.checks failed: %s", e)
     return {"bars": res, "checks": checks}
