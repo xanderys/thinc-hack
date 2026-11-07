@@ -9,6 +9,10 @@ Draft v2, against the north star (enquiry to signed install, faster). The engine
 "Tuesday, 8:40. A planner has six new enquiries and two site visits this afternoon. Frau Weber writes: family of four, detached house, want solar, maybe a battery, bill attached. Now the planner has to decide panel size, battery, heat pump and charger, and every one depends on the others. A senior planner does it from gut feel. Everyone else redoes it when the homeowner asks: what if we skip the battery?"
 [UNCONFIRMED: slide 2 wording]
 
+## slide 2b, Which leads deserve a visit, Zi Yuan
+"The installer can see which leads deserve a visit before they spend a planner's afternoon on one. And the planner arrives already knowing the likely answer, so the scan confirms the design instead of starting it."
+[UNCONFIRMED: speaker, and which beat gives up the 15 seconds this needs]
+
 ## 0:50 to 1:50, slide 3 (live), Xander
 Read figures off the screen; say none we have not seen live.
 

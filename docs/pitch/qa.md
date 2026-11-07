@@ -48,3 +48,6 @@ Partly. Rows where most similar homes agree are hits twice as often (56% against
 
 ## Why is "all four right" so low for every engine?
 [UNCONFIRMED: Xander to approve; final digits at 08:00] The inputs in the export carry about 18 to 20% of whole designs. Wallbox alone caps everyone at about 75%: a quarter of homes with no EV on record still got a wallbox, and nothing in the inputs predicts which. Our rules sit within noise of the black box, with every rule on screen.
+
+## Reonic already scores leads. What does yours add?
+Reonic scores each lead 0 to 100 on project readiness, property quality, customer profile, solar potential, customer sentiment and budget alignment (docs.reonic.com, lead scoring). Ours adds the designed system itself: its economics and how it fits this roof, estimated from the address before anyone visits. [UNCONFIRMED: Reonic's score already includes solar potential, so "roof fit they do not have" needs the product spec to say what ours measures that theirs does not]

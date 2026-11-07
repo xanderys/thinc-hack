@@ -30,6 +30,16 @@ footer: Marquee
 
 ---
 
+<p class="label">Enquiry to site visit</p>
+
+## Which leads deserve a visit.
+
+<div class="data"><b>Visit</b>   [UNCONFIRMED: one-sentence reason from the live board]   offer about [UNCONFIRMED: EUR] (estimate)<br><b>Call first</b>   [UNCONFIRMED: reason]   offer about [UNCONFIRMED: EUR] (estimate)<br><b>Decline</b>   [UNCONFIRMED: reason]<br>installer B: <b>[UNCONFIRMED: 34, source]</b> offers a month, so [UNCONFIRMED: N] planner afternoons a month (illustrative)</div>
+
+<p class="brief">Estimates until the site visit</p>
+
+---
+
 <!-- _class: ink -->
 
 <p class="label">Design to offer: live</p>
