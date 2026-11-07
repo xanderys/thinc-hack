@@ -10,11 +10,11 @@ const API = "https://api.elevenlabs.io/v1/convai/conversations";
 type Lead = {
   conversation_id: string; status: "in_progress" | "done" | "failed";
   started_at: number | null; call_secs: number | null;
-  customer_name: string | null; address_or_postcode: string | null; title: string | null;
+  customer_name: string | null; address_or_postcode: string | null; title: string | null; lead_id: string | null;
 };
 
 let cache: { at: number; body: Lead[] } | null = null;         // list, about 2 s
-const people = new Map<string, { name: string | null; address: string | null; final: boolean }>(); // per conversation
+const people = new Map<string, { name: string | null; address: string | null; lead: string | null; final: boolean }>(); // per conversation
 
 const clean = (v: unknown) => (typeof v === "string" && v.trim() && v !== "not given" ? v.trim() : null);
 
@@ -22,13 +22,14 @@ async function who(id: string, key: string, final: boolean) {
   const known = people.get(id);
   if (known && (known.final || !final)) return known;
   const r = await fetch(`${API}/${id}`, { headers: { "xi-api-key": key }, cache: "no-store" });
-  if (!r.ok) return { name: null, address: null, final: false };
+  if (!r.ok) return { name: null, address: null, lead: null, final: false };
   const c = await r.json();
   const vars = c.conversation_initiation_client_data?.dynamic_variables ?? {};
   const [uName, uAddr] = typeof c.user_id === "string" ? c.user_id.split("|") : [];
   const p = {
     name: clean(vars.customer_name) ?? clean(vars.first_name) ?? clean(uName),
     address: clean(vars.address_or_postcode) ?? clean(vars.address) ?? clean(uAddr),
+    lead: clean(vars.lead_id),
     final: c.status === "done" || c.status === "failed",
   };
   people.set(id, p);
@@ -50,7 +51,7 @@ export async function GET() {
     return {
       conversation_id: String(c.conversation_id), status,
       started_at: (c.start_time_unix_secs as number) ?? null, call_secs: (c.call_duration_secs as number) ?? null,
-      customer_name: p.name, address_or_postcode: p.address, title: (c.call_summary_title as string) ?? null,
+      customer_name: p.name, address_or_postcode: p.address, title: (c.call_summary_title as string) ?? null, lead_id: p.lead,
     };
   }));
   cache = { at: Date.now(), body: leads };

@@ -4,7 +4,7 @@ import type { InstallerId } from "@/lib/api";
 import type { IntakeFacts, Source } from "@/app/start/intake";
 
 export type CallLead = { conversation_id: string; facts: IntakeFacts; sources: Record<string, Source>; inputs: Record<string, unknown> };
-type Row = { conversation_id: string; started_at: number | null; call_secs: number | null; status: string; title: string | null; customer_name?: string | null; address_or_postcode?: string | null };
+type Row = { conversation_id: string; lead_id?: string | null; started_at: number | null; call_secs: number | null; status: string; title: string | null; customer_name?: string | null; address_or_postcode?: string | null };
 
 const when = (s: number | null) => s ? new Date(s * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 const live = (s: number | null, now: number) => { const t = s ? Math.max(0, Math.floor(now / 1000 - s)) : 0; return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
@@ -76,13 +76,16 @@ export default function Calls({ installer, onLead }: { installer: InstallerId; o
           {[...rows.filter((r) => r.status === "in_progress"), ...rows.filter((r) => r.status !== "in_progress")].slice(0, 6).map((r) => r.status === "in_progress" ? (
             <li key={`live-${r.conversation_id}`} className="s-live">
               <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>
-              <span className="s-live-t"><span className="dot" aria-hidden />Live call with {[r.customer_name ?? "a homeowner", r.address_or_postcode?.match(/\b\d{5}\b/)?.[0] ?? r.address_or_postcode].filter(Boolean).join(", ")}, <span className="num">{live(r.started_at, now)}</span></span>
+              {(() => { const t = <span className="s-live-t"><span className="dot" aria-hidden />Live call with {[r.customer_name ?? "a homeowner", r.address_or_postcode?.match(/\b\d{5}\b/)?.[0] ?? r.address_or_postcode].filter(Boolean).join(", ")}, <span className="num">{live(r.started_at, now)}</span></span>;
+                return r.lead_id ? <a className="s-live-a" href={`/leads/${r.lead_id}`}>{t}</a> : t; })()}
             </li>
           ) : (
             <li key={r.conversation_id} className="s-in">
-              <button type="button" disabled={!!opening} onClick={() => open(r.conversation_id)}>
+              {r.lead_id
+                ? <a href={`/leads/${r.lead_id}`}><span>{r.title ?? "Call"}</span><span className="num">{[when(r.started_at), mins(r.call_secs)].filter(Boolean).join(", ")}</span></a>
+                : <button type="button" disabled={!!opening} onClick={() => open(r.conversation_id)}>
                 <span>{r.title ?? "Call"}</span><span className="num">{[when(r.started_at), mins(r.call_secs)].filter(Boolean).join(", ")}</span>
-              </button>
+              </button>}
             </li>
           ))}
         </ul>
