@@ -54,3 +54,12 @@ Reonic scores each lead 0 to 100 on project readiness, property quality, custome
 
 ## Would the verdict turn away real customers?
 We replayed it on the 258 held-out signed sales: 82% Visit, 17% Call first, 1% Decline. Every one of those homes was sold, so each Decline is a mistake: 2 of 258, both homes where our design proposes no PV (planners sold one 2.7 kWp, the other already had solar). No design paid back in over 20 years (median 10.8, highest 16.8). Call first fires almost only where yearly use was never recorded, the 4,500 kWh default, on 46 of 258. The limit is that the pack holds signed sales only, so it shows the rule is not trigger-happy and cannot show that it catches bad leads; the roof and address checks could not be replayed, as the pack has no addresses. (engine/lab/qualification_backtest.md) [UNCONFIRMED: wording]
+
+## Are heat pumps oversized today?
+Fraunhofer ISE's "WP-QS im Bestand" (Nov 2025) measured 77 heat pumps in existing homes and found most oversized; real load is about 80 to 85% of the DIN norm load (Hochschule Ansbach 2023). Source: https://www.cleanthinking.de/?p=1074907. [UNCONFIRMED: the chosen line says Marquee sizes "from the home's measured use", but production sizes the heat pump from the building model's heat loss at -16 C (engine/app/layers.py); say what the engine does, the planner confirms on site]
+
+## Does any homeowner funnel show a design before asking for contact details?
+Across Enpal, 1KOMMA5° and Zolar we found none: Enpal asks 8 questions, none about electricity use, then hands over to a sales call. The assistant gives the homeowner a first design within three minutes, before anyone asks for a phone number. [UNCONFIRMED: check the live intake asks for no phone number before the design; "Rina" replaced by "the assistant"]
+
+## How is this different from PV*SOL, Autarc, Aurora or OpenSolar?
+Autarc and PV*SOL simulate whatever the planner configures; Aurora and OpenSolar size to a target the user types. Marquee makes the choice, says why, and is scored against signed expert designs on homes it never saw. [UNCONFIRMED: "1,619 signed designs" replaced, since the score is on the held-out homes, not all 1,619; and "we found no product that proposes the full design" conflicts with Reonic's own AI chat, which since 22 Jun 2026 sizes PV, storage and heat pump (docs/research/icp-reonic.md), so it stays off unless Xander keeps it knowingly]
