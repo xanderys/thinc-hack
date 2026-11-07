@@ -1,0 +1,52 @@
+{
+ "_meta": {
+  "fitted_on": "fit half (seed 42 per installer, same ids as engine/lab/split), 654 new-system jobs",
+  "oversize_ratio": {
+   "unit": "",
+   "source": "fitted with pv_base_kwp: most PV designs within tolerance on the fit half"
+  },
+  "pv_base_kwp": {
+   "unit": "kWp",
+   "source": "fitted with oversize_ratio: the array this installer fits before sizing to use, most PV designs within tolerance on the fit half"
+  },
+  "battery_per_kwp": {
+   "unit": "kWh/kWp",
+   "source": "fitted: most battery sizes within tolerance on the fit half, given rule 1's PV"
+  },
+  "battery_packages": {
+   "unit": "kWh",
+   "source": "fitted: battery sizes this installer sold at least 3 times in the fit half"
+  }
+ },
+ "2a8ba8e2": {
+  "oversize_ratio": 0.95,
+  "pv_base_kwp": 4.95,
+  "battery_per_kwp": 0.8,
+  "battery_packages": [
+   4.6,
+   5.0,
+   7.0,
+   9.2,
+   10.0,
+   14.0,
+   15.0,
+   20.0,
+   21.0
+  ]
+ },
+ "23c108b7": {
+  "oversize_ratio": 0.0,
+  "pv_base_kwp": 11.7,
+  "battery_per_kwp": 0.85,
+  "battery_packages": [
+   5.0,
+   6.0,
+   9.0,
+   9.84,
+   10.0,
+   12.0,
+   15.0,
+   18.0
+  ]
+ }
+}
