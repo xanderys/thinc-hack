@@ -784,6 +784,12 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     eng = engine()
+    ctx = leads.REQUEST.get()
+    if ctx is not None:  # the pinned-lead log shows which path sent the step (sentence box, Listening or the voice call)
+        ctx["step_body"] = {"facts_so_far": req.facts_so_far, "answers": req.answers, "note": req.note}
+        ctx["path_guess"] = ("call (ev word or customer facts)" if isinstance(req.facts_so_far, dict) and
+                             ({"ev", "customer_name", "address", "heating_age", "monthly_bill_eur"} & set(req.facts_so_far))
+                             else "sentence (HomeInputs fields)" if req.facts_so_far or req.answers else None)
     dropped: list = []  # the call never fails on one bad value: it is skipped and named here
     if req.facts_so_far is not None:
         ans, meta = leads.map_intake(req.facts_so_far, dropped)
