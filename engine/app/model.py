@@ -464,9 +464,9 @@ class Engine:
                 if inp.get("has_wallbox"):
                     return "The home already has a wallbox."
                 return f"No EV recorded, so no wallbox; {n - k} of {n} similar homes also went without."
-            if inp.get("has_ev") and k < n / 2:
-                return f"The home has an EV, so a wallbox at {fmt(size, unit)}; {k} of {n} similar homes got one."
-            return f"The home {ev}; {k} of {n} similar homes got a wallbox, most often {fmt(st['median_size'], unit)}."
+            if inp.get("has_ev"):
+                return f"The home has an EV, so a wallbox at {fmt(size, unit)}, the standard size (22 kW needs grid operator approval); {k} of {n} similar homes got one."
+            return f"The home {ev}; {k} of {n} similar homes got a wallbox."
 
     def _explain(self, inp, design, comps, nb, econ):
         d = inp.get("annual_demand_kwh") or 0
