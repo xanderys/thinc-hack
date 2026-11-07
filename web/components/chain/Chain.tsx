@@ -76,6 +76,17 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
     return () => clearTimeout(t);
   }, [auto, stage, reduce]);
 
+  // Without a 3D model the scene never mounts; the bars, checks and economics still come from the engine.
+  const flat = !address || spatial === false;
+  const flatKey = flat ? JSON.stringify([inputs, res.design]) : "";
+  useEffect(() => {
+    if (!flat) return;
+    const ac = new AbortController();
+    fetch("/api/explain/layers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ inputs: { ...inputs, ...(address ? { address } : {}) }, design: res.design, ...(leadId ? { lead_id: leadId } : {}) }), signal: ac.signal })
+      .then((r) => (r.ok ? r.json() : null)).then((l) => { if (l) onLayers(l as Layers); }).catch(() => {});
+    return () => ac.abort();
+  }, [flatKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // A new layers response after a change: mark the stages it moved and re-run the chain from the first one.
   function onLayers(l: Layers) {
     const was = lastLayers.current;
@@ -113,7 +124,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
   const rot = rotLine(findRot(res.components.pv?.derivation, layers, res));
 
   const head: string[] = [
-    bars[1] ? `${n2(bars[1].total)} kWp on ${bars[1].segments.filter((g) => g.unit === "kWp").length} faces` : address ? "Roof being measured" : "No street given, roof assumed standard face",
+    bars[1] ? `${n2(bars[1].total)} kWp on ${bars[1].segments.filter((g) => g.unit === "kWp").length} faces` : address && spatial !== false ? "Roof being measured" : address ? "No 3D model here, roof assumed standard face" : "No street given, roof assumed standard face",
     `${n0(inputs.annual_demand_kwh ?? 0)} kWh a year${layers?.ev ? ` plus ${n0(layers.ev.annual_kwh)} kWh for the car` : ""}`,
     `${inputs.has_ev ? `Electric car${inputs.ev_annual_km ? `, ${n0(inputs.ev_annual_km)} km a year` : ""}` : "No electric car planned"}${model?.envelope ? `; heat load up to ${n1(model.envelope.design_heat_load_kw)} kW` : ""}`,
     `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}`,
