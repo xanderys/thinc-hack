@@ -1,8 +1,8 @@
 "use client";
-// The Photo view: Google Photorealistic 3D Tiles under our layout, in the same scene.
-// usePhoto(address, scene, active) → { available, on, setOn, overlay }.
-// available is false (and the toggle hides) when the server has no key, the root tileset fails, the house has
-// no anchor, the device's WebGL is weak, or the tiles did not arrive within 6 s. The LoD2 model then stays.
+// The mesh view: in 3D, Google Photorealistic 3D Tiles replace the LoD2 house under our layout, in the same scene.
+// usePhoto(address, scene, active) → { available, on, setOn, overlay }. It is on by default whenever active (3D).
+// The LoD2 model stays, silently, when the server has no key, the root tileset fails, the house has no anchor,
+// the device's WebGL is weak, or the mesh is not up within 6 s.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SpatialScene } from "./scene";
 import type { Anchor, PhotoLayer } from "./tiles";
@@ -14,24 +14,20 @@ const credit: React.CSSProperties = {
   fontSize: 10, lineHeight: 1.3, color: "var(--ink-2)", background: "rgba(253, 253, 251, 0.85)", padding: "1px 6px",
   borderRadius: 6, pointerEvents: "none",
 };
-const wait: React.CSSProperties = {
-  position: "absolute", left: 12, bottom: 22, zIndex: 2, margin: 0, fontSize: 12, color: "var(--ink-3)",
-  fontFamily: "var(--font-mono), monospace", background: "rgba(253, 253, 251, 0.85)", padding: "1px 6px", pointerEvents: "none",
-};
 
 export function usePhoto(address: string, scene: SpatialScene | null, active: boolean): {
   available: boolean; on: boolean; setOn: (on: boolean) => void; overlay: ReactNode;
 } {
   const [status, setStatus] = useState<Status | null>(null);
   const [failed, setFailed] = useState(false);
-  const [on, setOn] = useState(false);
+  const [on, setOn] = useState(true);
   const [shown, setShown] = useState(false);
   const [text, setText] = useState("");
   const layer = useRef<PhotoLayer | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
-    setStatus(null); setFailed(false); setOn(false);
+    setStatus(null); setFailed(false); setOn(true);
     fetch(`/api/tiles/status?address=${encodeURIComponent(address)}`, { signal: ac.signal })
       .then((r) => r.json()).then((s: Status) => setStatus(s)).catch(() => {});
     return () => ac.abort();
@@ -62,19 +58,14 @@ export function usePhoto(address: string, scene: SpatialScene | null, active: bo
     return () => { dead = true; layer.current?.dispose(); layer.current = null; setShown(false); setText(""); };
   }, [live, scene, status]);
 
-  // Watchdog from the tap: whatever stalls (layer pinned, chunk, tiles), no photo within 6 s hides the toggle.
+  // Watchdog: whatever stalls (chunk, tiles, fit), no mesh within 6 s of entering 3D and the LoD2 model stays.
   useEffect(() => {
-    if (!on || shown) return;
-    const t = setTimeout(() => { console.warn("Photo view off: no photo within 6 s of the tap"); setFailed(true); setOn(false); }, 6000);
+    if (!live || shown) return;
+    const t = setTimeout(() => { console.warn("Mesh view off: no mesh within 6 s"); setFailed(true); }, 6000);
     return () => clearTimeout(t);
-  }, [on, shown]);
+  }, [live, shown]);
 
-  const overlay = live ? (
-    <>
-      {!shown && <p style={wait}>Loading the photo</p>}
-      {shown && <p style={credit}>{["Google", ...text.split("; ").filter((x) => x && x !== "Google")].join(" · ")}</p>}
-    </>
-  ) : null;
+  const overlay = live && shown ? <p style={credit}>{["Google", ...text.split("; ").filter((x) => x && x !== "Google")].join(" · ")}</p> : null;
 
   return { available, on: available && on, setOn, overlay };
 }

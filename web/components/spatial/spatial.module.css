@@ -120,5 +120,5 @@
 .licenceBare { position: absolute; left: 12px; bottom: 6px; z-index: 2; font-size: 10px; background: rgba(253, 253, 251, 0.8); padding: 1px 6px; border-radius: 6px; pointer-events: none; }
 .wrap:has(.bareView) { position: relative; }
 .bareView ~ .licenceBare { }
-.overlay :global(.sp-label) { border-radius: 8px; border-color: var(--rule); background: #fff; box-shadow: var(--shadow); padding: 4px 8px; }
+.overlay :global(.sp-label) { border-radius: 8px; border-color: var(--rule-strong); background: #fff; box-shadow: var(--shadow); padding: 4px 8px; }
 .massTag { position: absolute; left: 12px; bottom: 40px; z-index: 2; margin: 0; font-size: 11px; color: var(--ink-2); background: rgba(253, 253, 251, 0.88); border: 1px solid var(--rule); border-radius: 6px; padding: 1px 7px; pointer-events: none; }
