@@ -9,6 +9,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostin
 from sklearn.model_selection import cross_val_predict, train_test_split
 
 import logging
+import os
 
 from . import hourly, rules
 
@@ -34,6 +35,7 @@ NAMES = {"pv": "PV", "battery": "a battery", "heatpump": "a heat pump", "wallbox
 GREYBOX = {"mode": None, "base": "argmax", "grid": None}
 _GRID = {}  # memo: (installer, inputs, catalogue) -> (pv sizes, battery sizes, NPV matrix)
 
+RECOMMENDER = {"mode": os.environ.get("RECOMMENDER", "ml").strip().lower()}  # v2.0: "rules" | "ml"
 PRIORS: dict = {}  # field -> mean swing from engine/.cache/leads/steps.jsonl; tie-breaker in ask()
 MONO = True  # monotone in demand (PV) and price (battery); 4,500 kWh default imputed, missing price = 32 ct
 DEMAND_IMPUTE: dict = {}  # load profile -> median non-default demand in train
@@ -223,6 +225,51 @@ class Engine:
 
     # ---------- prediction ----------
     def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
+        """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain."""
+        if RECOMMENDER["mode"] == "rules":
+            return self.predict_rules(inp, overrides, full, extras)
+        return self.predict_ml(inp, overrides, full, extras)
+
+    def rules_catalogue(self, inst: str, t: float) -> dict:
+        cat = self.catalogue[inst]
+        return {"pv_kwp": [float(x) for x in cat["pv"]], "battery_kwh": [float(x) for x in self.battery_catalogue(inst, t)],
+                "heatpump_kw": [float(x) for x in cat["heatpump"]], "inverter_kw": [float(x) for x in rules.INVERTER_SIZES],
+                "wallbox_kw": self.wallbox_default(inst)}
+
+    def predict_rules(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
+        """v2.0: design from app/planner_rules (REONIC PHYSICS), wrapped with the same evidence, physics and variants."""
+        from . import planner_rules
+        inst = inp["installer_id"]
+        if inst not in self.catalogue:
+            raise ValueError(f"Unknown installer_id {inst}")
+        ov = overrides or {}
+        t = base_features(inp, inst)["t"]
+        r = planner_rules.recommend(roof_to_sim({k: v for k, v in inp.items() if k != "_estimated"}), self.rules_catalogue(inst, t), ov)
+        design = {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
+        nb = self.neighbours(inp, inst)
+        comps = {}
+        for c in COMPONENTS:
+            rc = r["components"][c]
+            size = design[TARGET[c]] or 0.0
+            src = "planner" if TARGET[c] in ov and ov[TARGET[c]] != "include" else ("include" if ov.get(TARGET[c]) == "include" else "model")
+            d = self._detail(c, size, 1.0 if size else 0.0, nb, inp, src)
+            d["reason"] = rc.get("reason") or d["reason"]
+            if rc.get("derivation"):
+                d["derivation"] = rc["derivation"]
+            comps[c] = d
+        econ, plaus, opt = self._physics(inp, design, inst, t, full, extras)
+        out = {"design": design, "explanation": list(r.get("explanation") or [])[:5], "components": comps, "plausibility": plaus,
+               "economics": econ, "model_version": getattr(planner_rules, "RULES_VERSION", "rules"), "rules": r.get("rules", [])}
+        if opt:
+            out["optimum"] = opt
+        if full and extras and design.get("pv_kwp"):
+            try:
+                out["variants"] = self.variants(inp, design, econ)
+            except Exception as e:
+                log.warning("variants failed: %s", e)
+        return out
+
+    def predict_ml(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """full=False skips the hourly simulation and optimum (used by the scoreboard, which only needs sizes)."""
         inst = inp["installer_id"]
         if inst not in self.catalogue:
@@ -328,6 +375,8 @@ class Engine:
             return []
         if GREYBOX["mode"]:  # lab only: the grey-box path goes through predict()
             return [self.predict(i, full=False)["design"] for i in inps]
+        if RECOMMENDER["mode"] == "rules":
+            return [self.predict_rules(i, full=False)["design"] for i in inps]
         F = [base_features(i, i["installer_id"]) for i in inps]
         X = pd.DataFrame(F)[self.cols]
         n = len(inps)
@@ -863,7 +912,7 @@ class Engine:
         ours, base, base2 = [], [], []
         for r in rows:
             inp = row_inputs(r)
-            d = self.predict(inp, full=False)["design"]
+            d = self.predict_ml(inp, full=False)["design"]  # the scoreboard's main block is the learned chain
             ours.append({k: (d[k] or 0.0) for k in TARGET.values()})
             base.append(self.baseline(inp))
             base2.append(self.baseline(inp, "floor_slope"))
@@ -987,6 +1036,63 @@ class Engine:
         if r["annual_demand_kwh"] == 4500:
             why.append("demand is the 4,500 kWh default")
         return f"Expert fitted {fmt(expert or None, unit)}, draft {fmt(ours or None, unit)}; {ev}; {', '.join(why)}."
+
+    def recommenders_eval(self) -> dict:
+        """v2.0: formula (planner_rules), black box (this chain) and textbook, same homes, same tolerances; plus where the
+        formula and the expert differ, which design the hourly simulation prefers on payback and autarky."""
+        from . import planner_rules
+        te = self.test
+        board = te[(te.pv_kwp > 0) | te.has_solar].reset_index(drop=True)
+        tid = set(getattr(planner_rules, "test_ids", lambda: set())() or [])
+        sets = {"board_258": board}
+        if tid:
+            sets["clean"] = board[board.project_id.isin(tid)].reset_index(drop=True)
+        out = {}
+        dq = None
+        for name, rows_df in sets.items():
+            rows = rows_df.to_dict("records")
+            e = rows_df
+            preds = {"formula": [], "blackbox": [], "textbook": []}
+            for r in rows:
+                inp = row_inputs(r)
+                preds["formula"].append(self.predict_rules(inp, full=False)["design"])
+                preds["blackbox"].append(self.predict_ml(inp, full=False)["design"])
+                preds["textbook"].append(self.baseline(inp))
+            block = {}
+            for k, ds in preds.items():
+                D = pd.DataFrame([{t: (d.get(t) or 0.0) for t in TARGET.values()} for d in ds])
+                w = {c: rules.within(c, D[TARGET[c]].values, e[TARGET[c]].values) for c in COMPONENTS}
+                block[k] = {"design_match_share": round(float(np.logical_and.reduce(list(w.values())).mean()), 3),
+                            "pv_within": round(float(w["pv"].mean()), 3), "battery_within": round(float(w["battery"].mean()), 3),
+                            "wallbox_decision": round(float(w["wallbox"].mean()), 3), "n": len(rows)}
+            out[name] = block
+            if name == ("clean" if "clean" in sets else "board_258"):
+                n = ob_p = eb_p = ob_a = eb_a = 0
+                for r, d in zip(rows, preds["formula"]):
+                    exp = row_design(r)
+                    if all(rules.within(c, [d.get(TARGET[c]) or 0.0], [r[TARGET[c]]])[0] for c in ("pv", "battery")):
+                        continue
+                    n += 1
+                    inp = roof_to_sim(row_inputs(r))
+                    eo = hourly.simulate(inp, {**d, "inverter_kw": d.get("inverter_kw") or rules.inverter_kw(d.get("pv_kwp") or 0)}).economics
+                    ee = hourly.simulate(inp, {**exp, "inverter_kw": exp.get("inverter_kw") or rules.inverter_kw(exp.get("pv_kwp") or 0)}).economics
+                    po, pe = eo.get("payback_years"), ee.get("payback_years")
+                    if po and pe and abs(po - pe) >= 0.1:
+                        ob_p += po < pe
+                        eb_p += pe < po
+                    if abs(eo["autarky_share"] - ee["autarky_share"]) >= 0.01:
+                        ob_a += eo["autarky_share"] > ee["autarky_share"]
+                        eb_a += ee["autarky_share"] > eo["autarky_share"]
+                dq = {"n_differ": n, "ours_better_payback": int(ob_p), "expert_better_payback": int(eb_p),
+                      "ours_better_autarky": int(ob_a), "expert_better_autarky": int(eb_a),
+                      "method": f"Homes where the formula's PV or battery is outside tolerance of the expert's ({name}); both designs run "
+                                "through the same hourly simulation; payback differences under 0.1 years and autarky under 1 point count as ties."}
+        primary = out.get("clean") or out["board_258"]
+        return {"recommenders": {k: {kk: v[kk] for kk in ("design_match_share", "pv_within", "battery_within", "wallbox_decision")} for k, v in primary.items()},
+                "recommenders_detail": {name: blk for name, blk in out.items()},
+                "recommenders_note": ("clean = homes in the 258-home held-out board that are also in the formula's test half, so neither the "
+                                      "black box nor the fitted constants saw them" if "clean" in out else "formula test half not given; board_258 only"),
+                "deviation_quality": dq}
 
     def ceiling(self, te) -> dict:
         """How often near-identical homes got designs within tolerance of each other: the median design of training

@@ -81,7 +81,7 @@ export default function LeadPage({ params }: { params: Promise<{ id: string }> }
         <a href="/" className="l-back">Planner</a>
         <h1>{lead ? `${lead.customer_name}, ${lead.address_or_postcode}` : "Lead"}</h1>
         {lead && <p className={`l-state ${lead.status}`}>{lead.status === "done" ? "First design ready" : lead.status === "in_call" ? <><span className="dot" aria-hidden />On the call with Rina</> : "Waiting for the call"}</p>}
-        {lead && lead.status !== "done" && lead.next_question && <p className="l-ask">Asking: {lead.next_question.question}</p>}
+        {lead && lead.status === "in_call" && lead.next_question && <p className="l-ask">Asking: {lead.next_question.question}</p>}
       </header>
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
       {!lead && !err && <p className="s-quiet s-wait">Loading the lead</p>}

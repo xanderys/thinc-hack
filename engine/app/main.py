@@ -75,6 +75,23 @@ def startup():
         log.exception("hourly warm-up failed")
     if STATE.get("inbox") is None:
         threading.Thread(target=warm_inbox, daemon=True).start()
+    threading.Thread(target=warm_rules_eval, daemon=True).start()
+
+
+def warm_rules_eval():
+    """v2.0 side-by-side scoreboard; computed at startup (planner_rules is outside the model cache key)."""
+    try:
+        from . import planner_rules  # noqa: F401
+    except Exception as e:
+        STATE["rules_eval"] = {"error": f"planner_rules not available: {e}"}
+        return
+    try:
+        t = time.time()
+        STATE["rules_eval"] = STATE["engine"].recommenders_eval()
+        log.warning("recommenders eval ready in %.1fs", time.time() - t)
+    except Exception as e:
+        log.exception("recommenders eval failed")
+        STATE["rules_eval"] = {"error": str(e)}
     threading.Thread(target=roofs.warm, daemon=True).start()
     leads.load_all()
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
@@ -263,7 +280,12 @@ def engine():
 @app.get("/health")
 def health():
     e = STATE["engine"]
-    return {"ok": e is not None, "model_version": MODEL_VERSION,
+    try:
+        from . import planner_rules
+        rv = getattr(planner_rules, "RULES_VERSION", None)
+    except Exception:
+        rv = None
+    return {"ok": e is not None, "model_version": MODEL_VERSION, "recommender": model_mod.RECOMMENDER["mode"], "rules_version": rv,
             "trained_on": {"projects": len(e.train) if e else 0, "installers": len(e.catalogue) if e else 0},
             "data_loaded": e is not None, **({"error": STATE["error"]} if STATE["error"] else {})}
 
@@ -648,6 +670,17 @@ def get_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     return _lead_out(lead)
 
 
+@app.delete("/api/leads/{lead_id}")
+def delete_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    leads.delete(lead["lead_id"])
+    return {"deleted": lead["lead_id"]}
+
+
 @app.get("/api/leads")
 def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
@@ -668,6 +701,11 @@ def evaluation():
     engine()
     out = dict(STATE["eval"])
     out["synthetic"] = synthetic_report()  # v1.4: null until the suite has written a report
+    re_ = STATE.get("rules_eval") or {}
+    if "error" not in re_ and re_:
+        out.update(re_)
+    elif re_:
+        out["recommenders_error"] = re_["error"]
     return out
 
 
