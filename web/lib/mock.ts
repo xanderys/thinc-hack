@@ -104,6 +104,12 @@ function respond(i: HomeInputs, d: Design, fixed: Partial<Design> = {}): DesignR
       ],
     },
     model_version: MOCK_VERSION,
+    optimum: d.pv_kwp == null ? undefined : {
+      design: { ...d, pv_kwp: d.pv_kwp + 2, battery_kwh: d.battery_kwh == null ? null : Math.max(5, d.battery_kwh - 2.5) },
+      economics: { capex_eur: capex + 1300, annual_saving_eur: saving + 240, payback_years: pb == null ? null : Math.round((pb - 0.8) * 10) / 10, self_consumption_share: sc, autarky_share: Math.min(0.9, aut + 0.04), assumptions: [], method: "hourly-simulation" },
+      delta_vs_proposal: { capex_eur: 1300, annual_saving_eur: 240, payback_years: pb == null ? null : -0.8, autarky_share: 0.04 },
+      note: "Mock: more PV and a smaller battery pay back sooner here.",
+    },
   };
 }
 
@@ -113,8 +119,12 @@ export function mockDesign(inputs: HomeInputs): DesignResponse {
 
 const LABEL: Record<keyof Design, string> = { pv_kwp: "pv", inverter_kw: "inverter", battery_kwh: "battery", heatpump_kw: "heatpump", wallbox_kw: "wallbox" };
 
-export function mockRefine(inputs: HomeInputs, overrides: Partial<Design> = {}): RefineResponse {
+const INCLUDE_DEFAULT: Design = { pv_kwp: 8, inverter_kw: 7, battery_kwh: 10, heatpump_kw: 9, wallbox_kw: 11 };
+
+export function mockRefine(inputs: HomeInputs, raw: Partial<Record<keyof Design, number | null | "include">> = {}): RefineResponse {
   const free = baseDesign(inputs);
+  const overrides: Partial<Design> = {};
+  for (const [k, v] of Object.entries(raw) as [keyof Design, number | null | "include"][]) overrides[k] = v === "include" ? free[k] ?? INCLUDE_DEFAULT[k] : v;
   const d: Design = { ...free, ...overrides };
   // Re-size the rest around fixed components.
   if ("pv_kwp" in overrides && !("battery_kwh" in overrides) && d.battery_kwh != null && d.pv_kwp != null) {
