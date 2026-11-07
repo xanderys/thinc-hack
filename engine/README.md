@@ -56,7 +56,7 @@ Chained, per `docs/briefs/engine.md`:
 1. PV: include or none (gradient boosting classifier), then kWp (gradient boosting, absolute error), snapped to sizes that installer sold at least twice in train.
 2. Battery: include or none, then kWh, both given predicted PV (out-of-fold PV during training), snapped to sizes that installer sold at least three times within 6 months of the offer date (A switched battery line in 2025 Q1). The offer date only picks the catalogue: as a model feature it lowered the scoreboard (all four 22.0% without it, 19.1% with it).
 3. Heat pump: classifier on 13 sold units, never proposed where one exists; size = heat demand / 2,300 full-load hours (installer median, `docs/data-insights.md`), or heating cost / 12 ct per kWh of heat, or area x W/m2 by build year, snapped up to the installer's sizes. A planner "include" on a heat-pump home is a replacement job.
-4. Wallbox: 11 or 22 kW if the home has an EV. See limits.
+4. Wallbox: if the home has an EV. Size is the installer's own if it sells one size at least 60% of the time, else 11 kW (registration only; 22 kW needs grid operator approval). 2a8ba8e2 sells 11 and 22 kW 49/51, 23c108b7 84% 11 kW, so both get 11 kW unless the planner fixes it. A learned 11-vs-22 choice flipped between 12,000 and 15,000 km a year, which is noise. See limits.
 5. A battery needs PV: when the model proposes a battery, no PV, and no PV is recorded, it proposes PV instead; when the planner fixes PV to none on such a home, the battery goes too. `/api/validate` flags a battery with no PV as implausible.
 
 A planner override (number or null) replaces a stage's output; "include" forces the component in and the engine sizes it; the later stages re-size around both. Overrides replace a stage's output and the later stages re-size around it. kNN (k = 15, same installer, scaled log demand, EV, heating, existing kit, load profile) gives `neighbours`, `alternatives` and confidence (share agreeing on the decision, averaged with share within tolerance of the size).
@@ -76,6 +76,19 @@ Latency through the Funnel: `/api/design` p50 194 ms, p95 280 ms; `/api/refine` 
 `GET /api/inbox` replays held-out new-system jobs: draft, mean confidence of the included components, the expert design, within-tolerance per component, and the deviation note on misses. The first row is a PV and battery hit at 2a8ba8e2; the rest rotate through installers and kinds of job. Built in the background at startup (up to 60 rows).
 
 Heat pump cost: EUR 36,400 less the 30% base subsidy, less EUR 10,000 for the boiler replacement it avoids when it replaces gas or oil (`rules.hp_net_capex`, used by both the hourly simulation and the fallback).
+
+## Roof (v1.6)
+
+`GET /api/roof?address=` calls `roof/roof.py` (Bavarian LoD2 first, Google Solar with a key, OpenStreetMap footprint last) and caches the result under `engine/.cache/roof`. A design request with `address` (or a prior `roof`) caps PV at `roof.max_kwp` = usable m2 / 5.5, the largest catalogue size that fits; the PV reason and plausibility cite the roof, and the hourly simulation takes the measured pitch and orientation. The hero tile (Unterhaching) is indexed at startup; the first lookup in any other 2 km tile takes 3 to 10 s.
+
+## Derivation (v1.5)
+
+Each component carries `derivation`: one physical axiom with this home's numbers, then the learned adjustment that closes the gap to the engine's value, so the axiom is never shown as the whole story.
+
+- PV: (household + EV) kWh / this roof's yield per kWp (hourly PVGIS year, measured orientation when known) gives the kWp that would cover a year of use; the adjustment is the ratio to the learned size (gradient boosting on this installer's history, snapped to a module count), with the similar homes' median ratio for reference.
+- Battery: daily household use x the share of the household load that falls in dark hours, from the same hourly year; the adjustment is the learned size given the PV, snapped to the installer's packages on sale at the offer date.
+- Heat pump: heat demand / 2,300 full-load hours (the installer's median); heat demand from the input, else heating cost / 12 ct per kWh of heat, else floor area x W/m2 by build year (not an IWU typology); rounded up to the installer's sizes. "None" says how many similar homes got one.
+- Wallbox: the installer's standard size when an EV is planned; no adjustment unless the planner sets one.
 
 ## Scoreboard
 

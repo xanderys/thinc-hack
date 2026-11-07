@@ -319,6 +319,11 @@ def simulate(inputs: dict, design: dict, location="Munich") -> SimResult:
     a.append(f"NPV over {YEARS} years at {DISCOUNT:.0%} discount, {DEGRADATION:.1%} a year PV degradation, no battery replacement.")
     a.append("PV EUR 1,350 per kWp at 5 kWp falling to EUR 1,000 at 20 kWp; battery EUR 450 per kWh.")
 
+    # PV used in each hour (direct or from the battery), shared across loads by their share of that hour
+    covered_h = after["direct"] + after["discharge"]
+    share = np.divide(covered_h, after["load"], out=np.zeros(8760), where=after["load"] > 0)
+    from_pv = {k: float((share * after[k]).sum()) for k in ("house", "ev", "hp")}
+
     econ = {
         "capex_eur": float(round(capex, -1)), "annual_saving_eur": float(round(saving, -1)),
         "payback_years": float(round(capex / saving, 1)) if saving > 0 and capex else None,
@@ -328,7 +333,11 @@ def simulate(inputs: dict, design: dict, location="Munich") -> SimResult:
             "pv_yield_kwh": round(float(pv_y)), "load_kwh": round(float(load)), "self_consumed_kwh": round(float(sc_kwh)),
             "fed_in_kwh": round(float(after["feed_in"].sum())), "grid_import_kwh": round(float(after["grid_import"].sum())),
             "feed_in_income_eur": round(float(income)), "bill_before_eur": round(float(bill_b)),
-            "bill_after_eur": round(float(bill_a)), "npv_20y_eur": round(npv, -1) if npv is not None else None,
+            "bill_after_eur": round(float(bill_a)),
+            "battery_charged_kwh": float(round(after["charge"].sum())), "battery_discharged_kwh": float(round(after["discharge"].sum())),
+            "ev_charge_kwh": float(round(after["ev"].sum())), "ev_from_pv_kwh": float(round(from_pv["ev"])),
+            "home_from_pv_kwh": float(round(from_pv["house"])),
+            "heatpump_kwh": float(round(after["hp"].sum())), "heatpump_from_pv_kwh": float(round(from_pv["hp"])), "npv_20y_eur": round(npv, -1) if npv is not None else None,
         },
     }
     return SimResult(econ, after)

@@ -1,4 +1,4 @@
-# Engine API contract (v1.3.1)
+# Engine API contract (v1.6)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -25,7 +25,19 @@ interface HomeInputs {
   electricity_price_ct_kwh?: number;    // default 32
   has_solar: boolean;  existing_solar_kwp?: number;
   has_storage: boolean; existing_storage_kwh?: number;
+  address?: string;                     // v1.6: street address; the engine looks the roof up itself (roof/ package)
+  roof?: RoofResult;                    // v1.6: or the web passes a prior lookup
 }
+
+interface RoofResult {                  // v1.6, from GET /api/roof?address=... (roof/roof.py lookup)
+  source: "lod2" | "google-solar" | "osm" | "none";
+  matched_address: string; lat: number | null; lon: number | null;
+  footprint_m2: number | null; roof_area_m2: number | null; usable_area_m2: number | null;
+  segments: { azimuth: number; pitch: number; area_m2: number }[];
+  max_panels: number | null; max_kwp: number | null;      // usable_area_m2 / 5.5
+  confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
+}
+// Engine behaviour with a roof: pv_kwp = min(model, max_kwp); plausibility gets one line ("the roof fits 57 modules, about 145 m2 at 25 degrees east-west, measured from Bavarian LoD2 data"); components.pv.derivation.inputs cites the roof source.
 
 interface Design {
   pv_kwp: number | null;
@@ -44,6 +56,16 @@ interface ComponentDetail {
   reason: string;                       // one sentence, grounded in data or physics
   alternatives: { size: number | null; label: string; share: number }[];
   neighbours: Neighbours;               // "homes like this one"
+  derivation?: Derivation;              // v1.5, "why this number"
+}
+
+interface Derivation {                    // one axiom per component; the learned adjustment closes the gap honestly
+  axiom: string;                          // one plain sentence, e.g. "A year of sun here should cover a year of use, then planners oversize."
+  equation: string;                       // with this home's numbers, e.g. "5,000 kWh / 1,050 kWh per kWp = 4.8 kWp"
+  inputs: { name: string; value: number | string; unit: string; source: "lead" | "answer" | "pvgis" | "iwu" | "installer history" | "catalogue" | "default" }[];
+  axiom_result: number | null;            // 4.8
+  adjustment: { label: string; value: number; n_similar: number } | null;  // "planners like yours oversize", x1.6, from 15 similar homes; null when the axiom alone gives the number
+  final: number | null;                   // equals design.<component>; null = none
 }
 
 interface Plausibility { level: "ok" | "warn"; message: string; }
@@ -77,6 +99,7 @@ interface DesignResponse {
 
 ## Endpoints
 
+- `GET /api/roof?address=...` → `RoofResult` (v1.6; LoD2 first, Google Solar when `GOOGLE_SOLAR_API_KEY` is set, OSM footprint last; unknown address returns `source: "none"` with the geocoder's words)
 - `GET /health` → `{ ok: true, model_version, trained_on: { projects, installers }, data_loaded: boolean }`
 - `POST /api/design` body `{ inputs: HomeInputs }` → `DesignResponse`
 - `POST /api/refine` body `{ inputs: HomeInputs, overrides?: Overrides }` → `DesignResponse & { diff: { component, from, to, why }[] }`. `Overrides = Partial<Record<keyof Design, number | null | "include">>`: a number fixes the size, `null` fixes none, `"include"` means include it and let the engine size it (v1.1). The engine re-sizes the rest around the overrides.
@@ -99,6 +122,7 @@ interface Eval {
   ceiling?: { method: string; pv_agreement_share: number; battery_agreement_share: number };  // planner self-agreement on near-identical inputs, v1.1
   per_installer: Record<InstallerId, { test: number; design_match_share: number }>;
   deviations: { project_id: string; component: string; ours: number | null; expert: number | null; note: string }[]; // top 20
+  synthetic?: { n: number; generated_at: string; plausible_share: number; monotonicity_violations: number; invariants: { name: string; pass_share: number; n_checked: number; worst: unknown[] }[] }; // v1.4, from engine/synthetic
 }
 ```
 

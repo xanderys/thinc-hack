@@ -1,0 +1,9 @@
+[project]
+name = "roof"
+version = "0.1.0"
+description = "Address to usable roof area, segments and panel count"
+requires-python = ">=3.12"
+dependencies = ["httpx", "pyproj", "shapely", "lxml", "fastapi", "uvicorn"]
+
+[tool.uv]
+package = false

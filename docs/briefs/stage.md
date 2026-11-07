@@ -61,9 +61,10 @@ Single column, moments stacked; design strip 2x2; proof tabs become one details 
 ## Domain context (research, pending: Reonic and installer ICP, sizing science, frontier products)
 To be appended when the three research agents return; feeds copy, Q&A and the deck, not the build order.
 
-## Canonical hero home (all surfaces use these exact inputs; live engine outputs on 7 Nov 15:50)
-Inputs: installer 2a8ba8e2, 5,000 kWh a year, FamilyOfFour, 4 inhabitants, 140 m2, built 1985, gas heating costing about 2,400 EUR a year, no EV, no wallbox, no solar, no storage, 37 ct/kWh. The hero lead email states all of these, including gas heating and "no electric car yet", except the annual electricity use; the one question asks for annual use (engine options about 3,000, 5,000, 6,500 kWh), the answer is 5,000. The web passes `unknown` fields to /api/ask so stated facts are never asked.
-- Base design: 7.65 kWp, 6 kW inverter, 10 kWh battery, no heat pump, no wallbox. Capex 14,150 EUR, saves 1,330 a year, payback 10.6 years, autarky 75%.
-- After "The family buys an EV next year" (/api/interpret sets has_ev true and ev_annual_km 12,000 by default): 9.45 kWp, 8 kW inverter, 10 kWh, 22 kW wallbox. Capex 16,830 EUR, saves 1,690 a year, payback 10.0 years, autarky 66%. Verified on the live engine 7 Nov 16:35.
-- After "and replace the gas boiler with a heat pump": heat pump 10.5 kW added; all four present (used by the video x-ray). With the heat pump: 29,630 EUR, saves 1,900 a year, payback 15.6 years (30% subsidy and a 10,000 EUR boiler replacement avoided, stated as assumptions).
-Reality section uses a real held-out project (pick from /api/inbox; first row is a PV and battery hit).
+## Canonical hero home (FINAL, verified on the live engine chain-hgb-knn-6+hourly, 7 Nov 17:55; all surfaces use these)
+Inputs: installer 2a8ba8e2, address "Katharinenstraße 5, 82008 Unterhaching", 5,000 kWh a year, FamilyOfFour, 4 inhabitants, 140 m2, built 1985, gas heating about 2,400 EUR a year, no EV yet, no wallbox, no solar, no storage, 37 ct/kWh. The lead email states all of these except the annual electricity use; the one question asks for it (engine options about 3,000, 5,000, 6,500 kWh), the answer is 5,000.
+- Roof line: "The roof fits 57 modules, about 116 m2 at 25 degrees facing east-west, measured from Bavarian LoD2 data." Not capping.
+- Base design: 7.65 kWp, 6 kW inverter, 10 kWh battery, no heat pump, no wallbox. Capex 14,150 EUR, saves 1,220 a year, payback 11.6 years, autarky 70%. PV derivation: 5,000 kWh / 907 kWh per kWp on this roof = 5.51 kWp, planners here oversize x1.39 from 15 similar homes, snapped to modules = 7.65.
+- After "The family buys an EV next year" (/api/interpret sets has_ev true, ev_annual_km 15,000): 10.35 kWp, 8 kW inverter, 10 kWh, 11 kW wallbox. Capex 17,530 EUR, saves 1,680 a year, payback 10.5 years, autarky 62%.
+- After "and replace the gas boiler with a heat pump" (override heatpump_kw "include"): heat pump 10.5 kW added; all four present (video x-ray). With the heat pump: about 29,630 EUR, 1,900 a year, 15.6 years (30% subsidy and a 10,000 EUR boiler replacement avoided, stated assumptions); re-read from the engine at record time.
+Reality section uses a real held-out project (first /api/inbox row is a PV and battery hit).
