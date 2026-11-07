@@ -188,3 +188,10 @@ State lives in the engine (in-memory plus JSON under `engine/.cache/leads/`). Th
 Natural-language refinement ("the family buys an EV next year") is handled in `web/` (`POST /api/interpret` → `{ changes: { field, from, to, note }[], inputs: HomeInputs }`) with the Claude API, then `web/` calls `/api/refine`. The engine has no LLM.
 
 Errors: non-2xx with `{ error: string }` in the source's own words.
+
+## v2.7 (engine 9acc4ca, additive): envelope elements for the heat pump step
+The envelope block on `/api/explain/layers` (`planes.envelope`) and `/api/roof/model` (`envelope`) gains:
+- `elements[]`: `{ element: "outer_wall" | "window" | "floor" | "ceiling" | "roof" | "ventilation" | "thermal_bridges" | "total", label, w, a_m2, u, dt_k, share, note? }`. Floor dT is the design difference times 0.5 (TABULA b_tr). `ceiling` is 0 W with a note (heated roof space, the roof is the boundary). `ventilation` carries `air_changes_per_h` and `volume_m3`. `total` carries `design_heat_load_kw`. The heat-loss bar and the x-ray tint both read `elements[].share`.
+- `faces[].window_share` and `faces[].window_share_source` on wall and window faces: window area over gross wall on that side. Currently 0.20 for every build-year class, as roof/model assumes.
+- `constants`: `{ bivalence_c: { value: -6, unit: "C", label, source }, hot_water_kw_per_person: { value: 0.5, unit: "kW per person", label, source } }`.
+- `estimated_from: "address"`.

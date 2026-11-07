@@ -7,7 +7,7 @@
 import type { HomeInputs } from "./api";
 
 export type BuildingShape = {
-  footprint_m2?: number | null; height_m?: number | null;
+  footprint_m2?: number | null; height_m?: number | null; storeys?: number | null; dwellings_class?: string | null;
   plan?: { floor_area_m2?: number | null; storeys?: number | null } | null;
   dwellings?: number | null; zensus_dwellings?: number | null; dwellings_per_building?: number | null;
 };
@@ -22,10 +22,11 @@ export function isMultiUnit(model: BuildingShape | null | undefined, inputs: Par
   const fp = model?.footprint_m2 ?? model?.plan?.floor_area_m2 ?? null;
   const h = model?.height_m ?? null;
   // The LoD2 height runs to the ridge; take a roof off before counting storeys.
-  const storeys = h != null ? Math.max(1, Math.round(Math.max(STOREY_M, h - ROOF_M) / STOREY_M)) : model?.plan?.storeys ?? null;
+  const storeys = h != null ? Math.max(1, Math.round(Math.max(STOREY_M, h - ROOF_M) / STOREY_M)) : model?.storeys ?? model?.plan?.storeys ?? null;
   const area = fp != null && storeys != null ? fp * storeys : null;
   const out = (multi: boolean, reason: string): MultiUnit => ({ multi, reason, footprint_m2: fp, storeys, building_m2: area, stated_m2: stated });
-  const dw = model?.dwellings_per_building ?? model?.zensus_dwellings ?? model?.dwellings ?? null;
+  const dwc = model?.dwellings_class?.match(/\d+/);   // Zensus 2022 class, e.g. "3 to 6 dwellings"
+  const dw = model?.dwellings_per_building ?? model?.zensus_dwellings ?? model?.dwellings ?? (dwc ? Number(dwc[0]) : null);
   if (dw != null && dw >= 3) return out(true, `Zensus counts ${n0(dw)} dwellings in this building`);
   if (dw != null && dw <= 2) return out(false, `Zensus counts ${n0(dw)} dwelling${dw === 1 ? "" : "s"} in this building`);
   if (fp != null && fp > 300) return out(true, `Footprint ${n0(fp)} m², over 300 m²`);

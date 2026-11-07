@@ -145,6 +145,9 @@ def explain(eng, inp: dict, design: dict | None) -> dict:
     planes = None
     if lo:
         planes = {**lo["planes"], "glb_url": roofs.model_url(inp["address"])}
+        if planes.get("envelope"):  # per-element split, window share per face and the step's named constants
+            from . import envelope_view
+            envelope_view.enrich(planes["envelope"])
     t = __import__("app.model", fromlist=["base_features"]).base_features(inp, inp["installer_id"])["t"]
     fr = L.public_rows(L.value_frontier(eng, inp, design))  # the same simulated set the variants are picked from
     obj = resp.get("objective") or L.OBJECTIVE

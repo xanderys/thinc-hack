@@ -38,6 +38,8 @@ from .model import MODEL_VERSION, Engine, row_design, row_inputs
 
 log = logging.getLogger("engine")
 app = FastAPI(title="Reonic planner engine")
+from . import shading_routes  # noqa: E402  GET /api/roof/shading (branch shading)
+app.include_router(shading_routes.router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 STATE: dict = {"engine": None, "eval": None, "error": None}
@@ -70,15 +72,18 @@ def startup():
         STATE["error"] = str(e)
         log.exception("startup failed")
         return
-    try:  # warm the hourly simulation (cold call about 1 s); failure falls back to the annual lookup per request
-        from . import hourly
-        hourly.simulate({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
-        hourly.replay_2025({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
-    except Exception:
-        log.exception("hourly warm-up failed")
+    def warm_hourly():  # cold call about 1 s; after /health is up, so the Funnel answers within seconds of a restart
+        try:
+            from . import hourly
+            hourly.simulate({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
+            hourly.replay_2025({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
+        except Exception:
+            log.exception("hourly warm-up failed")
+    threading.Thread(target=warm_hourly, daemon=True).start()
     if STATE.get("inbox") is None:
         threading.Thread(target=warm_inbox, daemon=True).start()
     leads.load_all()  # before anything can create or step a lead
+    snapshot_untouched()
     leads.expire_stale()
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
     threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models(), roofs.warm_venue(), refresh_all_leads()),
@@ -520,6 +525,9 @@ def roof_model(address: str = "", build_year: Optional[int] = None, kwp: Optiona
     p = info.get("planes_json_path")
     if not planes and p and Path(p).exists():
         planes = json.loads(Path(p).read_text())
+    if isinstance(planes, dict) and planes.get("envelope"):
+        from . import envelope_view
+        envelope_view.enrich(planes["envelope"])
     return {**(planes if isinstance(planes, dict) else {"planes": planes}), "glb_url": roofs.model_url(address),
             "textured": info.get("textured"), "licence": info.get("licence"), "source": info.get("source")}
 
@@ -647,17 +655,25 @@ def _public(inp: dict) -> dict:
 
 
 def _full_draft_later(lead_id: str, inp: dict):
-    """Optimum and variants for the planner's view, after the step has answered."""
+    """The draft was made with /api/design's pipeline. When the roof was not cached yet (a call never waits on it), the roof
+    is fetched here and the lead redrafted with it, so the lead matches /api/design for the same facts."""
+    if inp.get("roof") or not (inp.get("address") or inp.get("postcode")):
+        lead = leads.LEADS.get(lead_id)
+        if lead:
+            lead["draft_stamp"] = engine_stamp()
+            leads.save(lead)
+        return
+
     def run():
         try:
-            d = engine().predict(dict(inp))
+            full = _facts({k: v for k, v in inp.items() if k != "roof"}, block=True)
+            d = engine().predict(dict(full))
             lead = leads.LEADS.get(lead_id)
-            if lead and lead["draft"]["design"] == d["design"]:
-                lead["draft"] = d
-                lead["draft_stamp"] = engine_stamp()
+            if lead and lead.get("inputs") is inp:  # no newer step has replaced the inputs meanwhile
+                lead.update(inputs=full, draft=d, draft_stamp=engine_stamp())
                 leads.save(lead)
         except Exception:
-            log.exception("full draft failed")
+            log.exception("roof redraft failed")
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -679,16 +695,31 @@ def _rate_ok(ip: str, per_min: int = 20) -> bool:
     return True
 
 
+def _snapshot(lead: dict) -> dict:
+    """What a rehearsal resets to: the facts as the lead was created (roof and envelope are refetched on reset)."""
+    inp = {k: v for k, v in lead["inputs"].items() if k not in ("roof", "envelope")}
+    return {"inputs": json.loads(json.dumps(inp, default=float)), "status": lead["status"], "at": lead.get("created_at")}
+
+
+def snapshot_untouched():
+    """Leads made before snapshots existed get one only if no step has changed them yet."""
+    for lead in leads.LEADS.values():
+        if "initial" not in lead and not lead.get("history") and not lead.get("decision"):
+            lead["initial"] = _snapshot(lead)
+            leads.save(lead)
+
+
 def _new_lead(eng, raw: dict, name: str, place: str, source: str, block: bool, lead_id: Optional[str] = None) -> dict:
     inp = _facts(raw, block=block)
     unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
-    draft = eng.predict(dict(inp), extras=False)
+    draft = eng.predict(dict(inp))  # the one pipeline: exactly what /api/design returns for these inputs
     nq, spread = _question(eng, inp, unknown)
     t = leads.now()
     lead = {"lead_id": lead_id or leads.new_id(), "status": "draft" if source == "form" else "in_call", "source": source,
             "customer_name": name, "address_or_postcode": place, "inputs": inp, "unknown": unknown, "draft": draft,
             "history": [], "next_question": nq, "next_spread": spread, "questions_asked": 0, "created_at": t, "updated_at": t,
             "aliases": []}
+    lead["initial"] = _snapshot(lead)
     leads.LEADS[lead["lead_id"]] = lead
     leads.save(lead)
     _full_draft_later(lead["lead_id"], inp)
@@ -759,7 +790,7 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     raw.pop("roof", None) if ("address" in ans or "postcode" in ans or not raw.get("roof")) else None
     inp = _facts(raw, block=False)
     before = lead["draft"]["design"]
-    draft = eng.predict(dict(inp), extras=False)
+    draft = eng.predict(dict(inp))  # the one pipeline: exactly what /api/design returns for these inputs
     unknown = [c for c in lead["unknown"] if c not in ans]
     nq, spread = _question(eng, inp, unknown)
     changed = []
@@ -859,7 +890,7 @@ def _lead_out(lead: dict) -> dict:
             "approved_at": lead.get("approved_at"), "approved_variant": lead.get("approved_variant"),
             "proposal_hash": current_hash(lead), "decision": dec,
             "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
-            "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"],
+            "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"], "pinned": bool(lead.get("pinned")),
             "created_at": lead["created_at"], "updated_at": lead["updated_at"]}
 
 
@@ -875,14 +906,60 @@ def get_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
 
 
 @app.delete("/api/leads/{lead_id}")
-def delete_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
+def delete_lead(lead_id: str, force: bool = False, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
+    if lead.get("pinned") and not force:
+        return err(409, "This lead is pinned (the demo lead). Unpin it first, or pass force=true.")
     leads.delete(lead["lead_id"])
     return {"deleted": lead["lead_id"]}
+
+
+class PinReq(BaseModel):
+    pinned: bool = True
+
+
+@app.put("/api/leads/{lead_id}/pin")
+def pin_lead(lead_id: str, req: Optional[PinReq] = None, x_intake_secret: Optional[str] = Header(None)):
+    """A pinned lead (the demo lead) is never removed by a cleanup; DELETE refuses it without force=true."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    lead["pinned"] = req.pinned if req else True
+    leads.save(lead)
+    return {"lead_id": lead["lead_id"], "pinned": lead["pinned"]}
+
+
+@app.put("/api/leads/{lead_id}/reset")
+def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
+    """Rehearsal reset: facts back to the creation snapshot, redrafted with the one pipeline; steps, approval and any
+    decision (and its signature) are dropped. Pinned and aliases stay."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    snap = lead.get("initial")
+    if not snap:
+        return err(409, "This lead has no creation snapshot (it was changed before snapshots existed); delete and recreate it.")
+    eng = engine()
+    inp = _facts(dict(snap["inputs"]), block=True)
+    draft = eng.predict(dict(inp))
+    unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
+    nq, spread = _question(eng, inp, unknown)
+    for k in ("decision", "approved_at", "approved_variant", "approved_hash"):
+        lead.pop(k, None)
+    (SIG_DIR / f"{lead['lead_id']}.png").unlink(missing_ok=True)
+    lead.update(inputs=inp, draft=draft, unknown=unknown, next_question=nq, next_spread=spread, questions_asked=0, history=[],
+                status=snap.get("status") or "draft", updated_at=leads.now(), draft_stamp=engine_stamp())
+    leads.save(lead)
+    return {"lead_id": lead["lead_id"], "status": lead["status"], "design": draft["design"], "reset_to": snap.get("at"),
+            "pinned": bool(lead.get("pinned"))}
 
 
 @app.get("/api/leads")
@@ -900,7 +977,8 @@ def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
             dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(l)}
         out.append({"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
                     "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
-                    "approved_at": l.get("approved_at"), "decision": dec, "updated_at": l["updated_at"]})
+                    "approved_at": l.get("approved_at"), "decision": dec, "created_at": l.get("created_at"), "updated_at": l["updated_at"],
+                    "pinned": bool(l.get("pinned"))})
     return out
 
 
