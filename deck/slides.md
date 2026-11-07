@@ -36,9 +36,9 @@ footer: Marquee
 
 # “The family buys an EV next year.”
 
-<div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>7.2 kWp</b>, <b>7 kWh</b>, payback <b>10.8 years</b><br>after one sentence <b>9.45 kWp</b>, <b>10 kWh</b>, <b>11 kW</b> wallbox, <b>10.5 years</b><br>variants ready: lowest upfront <b>4,250 EUR</b>, best payback <b>8.8 years</b></div>
+<div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>10.35 kWp</b>, <b>10 kWh</b>, payback <b>11.7 years</b>, autarky <b>76%</b><br>after one sentence <b>13.05 kWp</b>, <b>15 kWh</b>, <b>11 kW</b> wallbox, <b>11.0 years</b></div>
 
-[UNCONFIRMED: hero numbers come from the learned model; new transparent-engine numbers due tonight]
+[UNCONFIRMED: v3 hero numbers from the rules engine; variants line dropped until re-checked]
 
 <p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
 
@@ -63,11 +63,11 @@ footer: Marquee
 
 <p class="label">Design: rules a planner can read</p>
 
-## Five rules, at most five printed constants.
+## The rules the experts follow, written down.
 
-<div class="data"><b>PV</b> cover the year at this roof’s yield, then the installer’s oversize<br><b>battery</b> one evening’s use, snapped to the installer’s packs<br><b>heat pump</b> only for an old gas or oil boiler, heat demand over 2,300 hours<br><b>wallbox</b> 11 kW when an EV is real or planned<br><b>inverter</b> nearest 0.85 times PV</div>
+<div class="data"><b>PV</b> a base of <b>4.95 kWp</b> plus <b>0.95 kWp</b> per 1,000 kWh, at this roof’s yield<br><b>battery</b> <b>0.8 kWh</b> per kWp, snapped to the package on sale<br><b>heat pump</b> only for an old gas or oil boiler<br><b>wallbox</b> 11 kW when an EV is real or planned</div>
 
-[UNCONFIRMED: rule wording and count until REONIC PHYSICS confirms them; source docs/briefs/pivot.md, docs/rules.md]
+[UNCONFIRMED: v3 rule lines from THINC HACK MASTER; heat pump and wallbox lines from docs/briefs/pivot.md]
 
 ---
 
@@ -79,11 +79,15 @@ footer: Marquee
 
 ---
 
-<p class="label">The exam: 1,619 real expert designs</p>
+<p class="label">The exam: 126 homes neither engine saw</p>
 
-## A transparent engine a planner can read, next to a black box trained on the same data.
+<div class="stat">23.8%</div>
 
-<div class="data">transparent engine <b>[UNCONFIRMED: score]</b><br>black box, learned <b>[UNCONFIRMED: score]</b><br>textbook <b>[UNCONFIRMED: score]</b>, near-identical homes <b>[UNCONFIRMED: score]</b></div>
+## A transparent engine a planner can read beats a black box trained on the same data.
+
+<div class="data">all four right: rules <b>23.8%</b>, black box <b>19.0%</b>, textbook <b>6.3%</b><br>PV within 1 kWp or 15%: <b>38.9%</b>, <b>34.9%</b>, <b>18.3%</b><br>where we differ from the expert: we pay back sooner on <b>52</b> of 92 homes, the expert on <b>38</b></div>
+
+[UNCONFIRMED: v3 scoreboard; about ±4 points on 126 homes; payback on our 2026 cost averages]
 
 <p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
 
