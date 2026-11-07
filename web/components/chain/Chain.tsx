@@ -28,6 +28,40 @@ const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
 const pc = (x: number) => `${Math.round(x * 100)} %`;
 const eur = (x: number) => `${x < 0 ? "-" : ""}€${n0(Math.abs(x))}`;
 
+// Variants as side-by-side tabs; an offer equal to another tab is folded into it as a small tag (Stage sets also).
+function VariantTabs({ variants, onVariant }: { variants: Variant[]; onVariant: (v: Variant) => void }) {
+  return (
+    <div className={s.vtabs} role="group" aria-label="Variants">
+      {variants.map((v) => {
+        const d = v.design, pick = !v.current && !!v.overrides;
+        return (
+          <button key={v.name} type="button" className={s.vtab} aria-pressed={v.current} aria-disabled={!v.current && !pick} onClick={() => { if (pick) onVariant(v); }}>
+            <span className={s.vtName}>{v.name}</span>
+            {v.also?.map((t) => <span key={t} className={s.vAlso}>{t}</span>)}
+            <span className={s.vtFig}>{n2(d.pv_kwp ?? 0)} kWp, {d.battery_kwh ? `${n2(d.battery_kwh)} kWh` : "no battery"}</span>
+            <span className={s.vtPrice}>{v.e ? eur(v.e.capex_eur) : ""}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+type Delta = { k: string; from: string; to: string; u: string };
+// Headline numbers that a refinement moved, before and after.
+function deltas(was: DesignResponse, now: DesignResponse): Delta[] {
+  const kw = (x: number | null | undefined) => (x ? n2(x) : "none");
+  const rows: Delta[] = [
+    { k: "Autarky", from: String(Math.round(was.economics.autarky_share * 100)), to: String(Math.round(now.economics.autarky_share * 100)), u: "%" },
+    { k: "PV", from: kw(was.design.pv_kwp), to: kw(now.design.pv_kwp), u: "kWp" },
+    { k: "Battery", from: kw(was.design.battery_kwh), to: kw(now.design.battery_kwh), u: "kWh" },
+    { k: "Heat pump", from: kw(was.design.heatpump_kw), to: kw(now.design.heatpump_kw), u: "kW" },
+    { k: "Wallbox", from: kw(was.design.wallbox_kw), to: kw(now.design.wallbox_kw), u: "kW" },
+    { k: "Investment", from: eur(was.economics.capex_eur), to: eur(now.economics.capex_eur), u: "" },
+  ];
+  return rows.filter((r) => r.from !== r.to);
+}
+
 // Four components and the offer, in Reonic's names and colours; the old eight-stage path stays behind NEXT_PUBLIC_CHAIN=8.
 const FIVE = process.env.NEXT_PUBLIC_CHAIN !== "8";
 const TITLES = FIVE ? ["Panels", "Battery storage", "Wallbox", "Heat pump", "Offer"] : ["Site", "Load", "Future", "Solar", "Storage", "Extras", "Sanity", "Offer"];
@@ -61,6 +95,18 @@ function useReduce() {
 
 export default function Chain({ res, prev, inputs, leadId, variants, onVariant, canUndo, onUndo, answered, refine, decide, redraft }: Props) {
   const reduce = useReduce();
+  // A refinement shows what moved, large over the model, for about 4 s; then the figures settle into the card.
+  const [delta, setDelta] = useState<{ rows: Delta[]; settle: boolean } | null>(null);
+  useEffect(() => {
+    if (!prev) { setDelta(null); return; }
+    const rows = deltas(prev, res);
+    if (!rows.length) return;
+    setDelta({ rows, settle: false });
+    const a = setTimeout(() => setDelta((x) => x && { ...x, settle: true }), 4000);
+    const b = setTimeout(() => setDelta(null), 4600);
+    return () => { clearTimeout(a); clearTimeout(b); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prev]);
   const q = useCardQualification(inputs, res, leadId);   // visit verdict: offer value, confidence, what to confirm on site
   // Draft first: the chain plays once, on the first open of a lead; after that the design is there at once and the
   // chain waits as a collapsed strip under the model.
@@ -238,17 +284,15 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
         <dl className={s.kpis}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}</dd></div>)}</dl>
         {address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div>}
       </div>
+      {delta && (
+        <div className={`${s.delta} ${delta.settle ? s.settle : ""}`} aria-live="polite">
+          {delta.rows.map((r) => <p key={r.k}><span className={s.dK}>{r.k}</span><span className={s.dWas}>{r.from}</span><span className={s.dTo} aria-label="to">→</span><b>{r.to}</b>{r.u && <span className={s.dU}>{r.u}</span>}</p>)}
+        </div>
+      )}
       {stage === N && variants.length > 0 && (
         <div className={s.variants}>
           <p className={s.varH}>Variants</p>
-          <p className={s.varC}>the residential version of Reonic&apos;s optimiser sliders</p>
-          {variants.map((v) => (
-            <div key={v.name} className={s.vrow}>
-              <div><b>{v.name}</b>{v.also?.length ? <span className={s.vAlso}>{v.also.join(", ")}{v.current ? ", selected" : ""}</span> : null}<Chips d={v.design} /></div>
-              <div className={s.vprice}>{v.e ? eur(v.e.capex_eur) : ""}</div>
-              {v.current ? <span className={s.vsel}>Selected</span> : <button type="button" className={s.vbtn} onClick={() => onVariant(v)} disabled={!v.overrides}>Select</button>}
-            </div>
-          ))}
+          <VariantTabs variants={variants} onVariant={onVariant} />
         </div>
       )}
     </>
@@ -271,13 +315,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
           </div>
           {stage === N && variants.length > 0 && (
             <div className={s.varList}>
-              {variants.map((v) => (
-                <div key={v.name} className={s.vrow}>
-                  <div><b>{v.name}</b>{v.also?.length ? <span className={s.vAlso}>{v.also.join(", ")}{v.current ? ", selected" : ""}</span> : null}<Chips d={v.design} /></div>
-                  <div className={s.vprice}>{v.e ? eur(v.e.capex_eur) : ""}</div>
-                  {v.current ? <span className={s.vsel}>Selected</span> : <button type="button" className={s.vbtn} onClick={() => onVariant(v)} disabled={!v.overrides}>Select</button>}
-                </div>
-              ))}
+              <VariantTabs variants={variants} onVariant={onVariant} />
             </div>
           )}
           {stage === N && <SiteVisitNote q={q} />}
@@ -334,14 +372,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
               {open && n === N && a && <Offer res={{ ...res, economics: e }} />}
               {open && n === N && variants.length > 0 && (
                 <div className={s.varList}>
-                  <p className={s.varC}>the residential version of Reonic&apos;s optimiser sliders</p>
-                  {variants.map((v) => (
-                    <div key={v.name} className={s.vrow}>
-                      <div><b>{v.name}</b>{v.also?.length ? <span className={s.vAlso}>{v.also.join(", ")}{v.current ? ", selected" : ""}</span> : null}<Chips d={v.design} /></div>
-                      <div className={s.vprice}>{v.e ? eur(v.e.capex_eur) : ""}</div>
-                      {v.current ? <span className={s.vsel}>Selected</span> : <button type="button" className={s.vbtn} onClick={() => onVariant(v)} disabled={!v.overrides}>Select</button>}
-                    </div>
-                  ))}
+                  <VariantTabs variants={variants} onVariant={onVariant} />
                 </div>
               )}
               {open && n === N && <SiteVisitNote q={q} />}
