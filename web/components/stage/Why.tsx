@@ -18,10 +18,13 @@ const fmt = (x: number) => n2(Math.round(x * 100) / 100);
 function terms(d: Derivation, answered: boolean): Term[] {
   const out: Term[] = [];
   let carry: string | null = null;
-  for (const seg of d.equation.split(";").map((s) => s.trim()).filter(Boolean)) {
-    const parts = seg.split(/\s+(\/|x|×|=)\s+/);
+  // "(5,000 + 3,000 EV) kWh" becomes "5,000 kWh + 3,000 kWh".
+  const eq = d.equation.replace(/\(([^)]*)\)\s*([A-Za-z]+)/g, (_, inner: string, u: string) =>
+    inner.split(/\s*\+\s*/).map((t) => t.replace(/^([\d,.]+).*$/, `$1 ${u}`)).join(" + "));
+  for (const seg of eq.split(";").map((s) => s.trim()).filter(Boolean)) {
+    const parts = seg.split(/\s+(\/|x|×|=|\+)\s+/);
     for (let i = 0; i < parts.length; i += 2) {
-      const op = i === 0 ? "" : parts[i - 1] === "/" ? "÷" : parts[i - 1] === "=" ? "=" : "×";
+      const o = parts[i - 1], op = i === 0 ? "" : o === "/" ? "÷" : o === "=" ? "=" : o === "+" ? "+" : "×";
       const m = parts[i].match(/^(EUR\s+)?(-?[\d,]*\.?\d+)(%?)\s*(.*)$/);
       if (!m) continue;
       const v = m[2] + m[3], u = (m[1] ? "EUR " : "") + m[4];
