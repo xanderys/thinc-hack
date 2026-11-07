@@ -1,4 +1,4 @@
-"""GET /model?address=...&kwp=... (planes JSON plus glb URL) and GET /model/file?address=... (the .glb).
+"""GET /model?address=...&kwp=...&build_year=... (planes JSON plus glb URL) and GET /model/file?address=... (the .glb).
 Run from roof/: uv run uvicorn model.app:app --port 8766
 """
 from __future__ import annotations
@@ -15,9 +15,9 @@ from model import model
 app = FastAPI(title="roof model")
 
 
-def _model(address: str, kwp: float | None) -> dict:
+def _model(address: str, kwp: float | None, build_year: int | None = None) -> dict:
     try:
-        return model(address, kwp)
+        return model(address, kwp, build_year)
     except R.NotFound as e:
         raise HTTPException(404, {"address": address, "reason": str(e)})
     except httpx.HTTPError as e:
@@ -25,8 +25,8 @@ def _model(address: str, kwp: float | None) -> dict:
 
 
 @app.get("/model")
-def get_model(address: str, kwp: float | None = None) -> dict:
-    r = _model(address, kwp)
+def get_model(address: str, kwp: float | None = None, build_year: int | None = None) -> dict:
+    r = _model(address, kwp, build_year)
     m = r["model"]
     m["glb_url"] = f"/model/file?address={quote(address)}"
     return m
