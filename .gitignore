@@ -14,3 +14,4 @@ HACKATHON-COMPETITION-BRIEF.md
 analysis/
 .gstack/
 voice/logs/
+engine/lab/split/*.txt
