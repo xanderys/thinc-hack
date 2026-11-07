@@ -28,7 +28,9 @@ def key():
 def step_tool():
     """intake_step: the engine picks the next question. Enabled when voice/.env has INTAKE_STEP_URL and INTAKE_SECRET."""
     fields = json.loads((HERE / "intake_fields.json").read_text())
-    facts = {k: {"type": v["type"], "description": v["description"]} for k, v in fields.items() if k not in ("summary", "notes")}
+    keep = ("address", "num_inhabitants", "home_office", "house_size_sqm", "monthly_bill_eur", "annual_demand_kwh", "heating_type",
+            "heating_age", "heating_cost_per_year_eur", "ev", "ev_annual_km", "has_solar", "has_storage", "has_wallbox", "preference")
+    facts = {k: {kk: fields[k][kk] for kk in ("type", "description", "enum") if kk in fields[k]} for k in keep}  # the engine contract, nothing else
     facts.update(postcode={"type": "string", "description": "Postcode."},
                  customer_name={"type": "string", "description": "Customer's name."},
                  installer_name={"type": "string", "description": "Installer's name, from the note."})

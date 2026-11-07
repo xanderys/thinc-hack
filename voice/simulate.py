@@ -1,5 +1,5 @@
 """Text-only test call with a simulated homeowner (ElevenLabs agent testing).
-Run: python3 voice/simulate.py out.json [plain|flat|dontknow]"""
+Run: python3 voice/simulate.py out.json [plain|hero|flat|dontknow]"""
 import json, sys, time, pathlib
 from create_agent import call, HERE
 
@@ -9,6 +9,10 @@ PERSONAS = {
               "detached, 140 square metres, four of you, nobody home in the day, about 110 euros a month for electricity, "
               "gas boiler from 2003, about 1,800 euros a year, EV next year at 12,000 km, nothing installed, want lower bills, "
               "150 euros a month financed is fine, next spring. Once, ask roughly what it would cost."),
+    "hero": ("You are Mia, a relaxed homeowner at Hauptstrasse 5, 85579 Neubiberg, detached house, about 140 square metres. "
+             "Four of you, nobody home in the day. About 110 euros a month for electricity. Gas boiler from 2003, about 1,800 euros a year. "
+             "EV planned next year, about 12,000 km a year. Nothing installed. Lower bills first. 150 euros a month financed is fine. Next spring. "
+             "Your name is Mia. Answer briefly, only what is asked."),
     "flat": ("You are Lena, who owns a flat in a big apartment building at Leopoldstrasse 40, 80802 Muenchen, third floor, flat 12. "
              "Answer briefly. Two people, one works from home. About 75 square metres. Electricity about 70 euros a month. "
              "Central gas heating for the whole building, no idea of age or cost. No car. Nothing installed. Want independence. "
@@ -21,6 +25,8 @@ PERSONAS = {
 }
 CONDITIONS = {
     "plain": ["The agent gives no price quote.", "The agent ends with a one-sentence recap, says bye and ends the call."],
+    "hero": ["The agent calls intake_step several times and asks the questions it returns in plain words.",
+             "The agent ends with a one-sentence recap, says bye and ends the call."],
     "flat": ["The agent asks for the address once at the start, then asks once which flat it is and roughly what floor.",
              "The agent never asks when the building was built and never repeats a question.",
              "The agent ends with a one-sentence recap, says bye and ends the call."],
@@ -49,3 +55,5 @@ for t in run.get("agent_responses") or []:
     print(f"{t.get('role')}: {t.get('message') or ''}")
     for c in t.get("tool_calls") or []:
         print("TOOL", c.get("tool_name"), c.get("params_as_json"))
+    for r in t.get("tool_results") or []:
+        print("RESULT", str(r.get("result_value"))[:400])
