@@ -43,7 +43,7 @@ export default function Refine(p: Props) {
         <h3 className="s-h3">Change it in a sentence</h3>
         {p.llm === false && <p className="s-quiet">Sentences are off: no ANTHROPIC_API_KEY in web/.env.local. Change by hand still works.</p>}
         {form(p.bare ? "s-say" : "s-say desk")}
-        {p.llm !== false && <Listen busy={p.busy} onSentence={async (t) => { setS(t); return p.onSay(t, true, "card listening"); }} />}
+        {p.llm !== false && <Listen busy={p.busy} onSentence={async (t) => { setS(t); return p.onSay(t, true, "sentence-apply-listening"); }} />}
         {p.error && <div className="error" role="alert"><span><span className="src">Interpreter said</span>{p.error}</span></div>}
         {(p.chips.length > 0 || p.ovChips.length > 0) && (
           <div className="s-chips">

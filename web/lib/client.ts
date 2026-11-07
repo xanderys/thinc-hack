@@ -1,4 +1,4 @@
-export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+export type Result<T> = { ok: true; data: T } | { ok: false; error: string; status?: number };
 
 export async function call<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<Result<T>> {
   try {
@@ -9,7 +9,7 @@ export async function call<T>(path: string, body?: unknown, signal?: AbortSignal
       signal,
     });
     const json = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` }));
-    if (!res.ok) return { ok: false, error: json?.error || `${res.status} ${res.statusText}`.trim() };
+    if (!res.ok) return { ok: false, error: json?.error || `${res.status} ${res.statusText}`.trim(), status: res.status };
     return { ok: true, data: json as T };
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;

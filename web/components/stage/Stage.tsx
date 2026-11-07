@@ -89,7 +89,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   const stale = (id: string) => window.dispatchEvent(new CustomEvent("marquee:lead-stale", { detail: id }));
   const onAnswer = (v: unknown) => {
     setAnswer(v);
-    if (question && v !== undefined) void writeLead("card question answer", { [question.field]: v } as Partial<HomeInputs>);
+    if (question && v !== undefined) void writeLead("question-answer", { [question.field]: v } as Partial<HomeInputs>);
   };
 
   // Shortcut d loads the hero lead.
@@ -184,7 +184,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       setBusy(true);
       try {
         const fixed = Object.keys(overrides).length > 0;
-        const r = fixed ? await call<RefineResponse>("/api/refine", { inputs, overrides }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
+        const lid = leadRef.current;
+        const r = fixed ? await call<RefineResponse>("/api/refine", { inputs, overrides, ...(lid && baseVersion.current != null ? { lead_id: lid, base_version: baseVersion.current } : {}) }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
         if (r.ok) {
           const before = last.current;
           if (before && cause.current) {
@@ -201,7 +202,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
           cause.current = null; liveWhy.current = null;
           setPrev(before); last.current = r.data; setRes(r.data); setErr(null);
           if (!fixed) setDrafted(r.data);
-        } else setErr(r.error);
+        } else if (r.status === 409 && lid && fixed) stale(lid); else setErr(r.error);
         setBusy(false);
       } catch { /* superseded */ }
     }, 150);
@@ -273,7 +274,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   const snap = (): Snap => ({ changed, overrides, chips, ovChips });
   const remember = (why: string) => { setHistory((h) => [...h, snap()]); cause.current = why; setApprovedAt(null); };
 
-  async function onSay(sentence: string, quiet = false, route = "card sentence apply"): Promise<boolean> {
+  async function onSay(sentence: string, quiet = false, route = "sentence-apply"): Promise<boolean> {
     if (!res) return false;
     setSayBusy(true); setSayErr(null);
     const typical = Object.fromEntries(KEYS.map((k) => [COMPONENT_DESIGN_FIELD[k], res.components[k].neighbours.median_size]));
@@ -300,7 +301,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   function onFact(f: keyof HomeInputs, v: unknown, label: string) {
     remember(`${label} changed:`);
     setChanged((c) => ({ ...c, [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) }));
-    void writeLead("card fact chip", { [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) } as Partial<HomeInputs>);
+    void writeLead("hand-change", { [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) } as Partial<HomeInputs>);
   }
 
   function onUnchip(c: InterpretChange | InterpretOverride) {
@@ -337,7 +338,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!id) { done(); return; }
     // v2.5: release the proposal to the homeowner; the variant on screen is the one they sign.
     const key = (res.variants ?? drafted?.variants ?? []).find((v) => same(v.design, res.design))?.key;
-    approveLead(id, key, baseVersion.current).then((r) => { if (r.status === 409) stale(id); else if (r.ok) { setErr(null); done(); } else setErr(r.error); });
+    approveLead(id, key, baseVersion.current).then((r) => { if (r.status === 409) stale(id); else if (r.ok) { const v = (r.data as { version?: number }).version; if (v != null) baseVersion.current = v; setErr(null); done(); } else setErr(r.error); });
   }
 
   const onVariant = useCallback((v: Variant) => {

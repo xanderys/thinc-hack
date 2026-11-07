@@ -37,7 +37,7 @@ export default function AddSheet({ onClose, onCreated, sample, voice }: { onClos
     setBusy("add"); setErr(null);
     const place = read.inputs.address ?? read.postcode ?? text.trim();
     const facts: Partial<HomeInputs> = { ...read.inputs };
-    const r = await send<{ lead_id: string }>("/api/leads", { customer_name: name.trim() || place, address_or_postcode: place, installer_id: read.inputs.installer_id ?? "2a8ba8e2", facts, source: "planner" }, "board add lead");
+    const r = await send<{ lead_id: string }>("/api/leads", { customer_name: name.trim() || place, address_or_postcode: place, installer_id: read.inputs.installer_id ?? "2a8ba8e2", facts, source: "planner" }, "add-lead");
     setBusy(null);
     if (!r.ok) { setErr({ src: "Engine said", msg: r.error }); return; }
     try { sessionStorage.setItem(`marquee.read.${r.data.lead_id}`, JSON.stringify({ read, text })); } catch { /* storage blocked: the card reads the lead instead */ }

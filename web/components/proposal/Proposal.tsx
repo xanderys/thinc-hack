@@ -184,8 +184,9 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
       : act === "question" ? { action: act, question: question.trim(), proposal_hash: lead.proposal_hash }
       : { action: act, proposal_hash: lead.proposal_hash };
     if (act === "sign" && body.signature_png && body.signature_png.length * 0.75 > 200_000) { setBusy(null); setError({ act, text: "The signature image is over 200 KB. Clear it and sign again." }); return; }
-    const r = await decide(lead.lead_id, body);
+    const r = await decide(lead.lead_id, body, lead.version);
     setBusy(null);
+    if (r.status === 409) { setError({ act, text: "This proposal changed elsewhere. Reload the page to see the latest." }); return; }
     if (!r.ok) { setError({ act, text: r.error }); return; }
     const at = Date.parse(r.data.decided_at) || Date.now();
     setMine({ action: act, at, name: act === "sign" ? name.trim() : undefined, question: act === "question" ? question.trim() : undefined });
