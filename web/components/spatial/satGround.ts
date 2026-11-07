@@ -9,8 +9,9 @@
 import * as THREE from "three";
 import { setGoogleGround, onWhite, viewOpts } from "./whiteMode";
 import { setRealGround } from "./whiteContext";
+import { anchorOf } from "@/lib/tilesGeo";
 
-type Anchor = { lat: number; lon: number; beta: number }; // radians, from /api/tiles/status
+type Anchor = { lat: number; lon: number; beta: number }; // radians, from the engine origin (lib/tilesGeo.ts)
 const A = 6378137, E2 = 0.00669437999014;
 const ZOOM = 20;
 const MAX_TILES = 49;
@@ -48,7 +49,8 @@ function img(url: string, signal: AbortSignal) {
 }
 
 // Builds the Google ground for this glb and registers both pictures with the layers menu. Returns a cleanup.
-export function googleGround(root: THREE.Object3D, renderer: THREE.WebGLRenderer, address: string): () => void {
+// The anchor comes from the origin the card already has (planes.origin_utm32), computed here: no engine call.
+export function googleGround(root: THREE.Object3D, renderer: THREE.WebGLRenderer, origin: [number, number, number]): () => void {
   const ac = new AbortController();
   let off: (() => void) | null = null, tex: THREE.Texture | null = null, mat: THREE.Material | null = null;
   const ground: THREE.Mesh[] = [];
@@ -57,9 +59,7 @@ export function googleGround(root: THREE.Object3D, renderer: THREE.WebGLRenderer
   const bavaria = ground.map((g) => ({ g, mat: (g.userData.white ? g.userData.real : g.material) as THREE.Material, uv: g.geometry.getAttribute("uv") }));
 
   (async () => {
-    const s = await fetch(`/api/tiles/status?address=${encodeURIComponent(address)}`, { signal: ac.signal }).then((r) => r.json()) as { anchor?: Anchor };
-    const a = s.anchor;
-    if (!a) return;
+    const a: Anchor = anchorOf(origin);
     root.updateMatrixWorld(true);
     // The ground square's corners in lat/lon, then the tile range that covers them at ZOOM.
     const box = new THREE.Box3();

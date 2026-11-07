@@ -176,6 +176,7 @@ export class WhiteContext {
   // Follow the photo layer's aligned frame: its footprint is engine local [x east, y north], the tiles already sit
   // in the scene frame through its holder, so the mask is tested in world space.
   sync(f: { footprint: [number, number][]; version: number }) {
+    this.clipWalls();
     if (f.version === this.seen) return;
     this.seen = f.version;
     this.setFootprint(f.footprint.length > 2 ? [f.footprint.map(([x, y]) => [x, -y] as XZ)] : []);
@@ -237,13 +238,23 @@ export class WhiteContext {
           const m = o as THREE.Mesh, n = (m.name || m.parent?.name || "").toLowerCase();
           if (!m.isMesh) return;
           if (n.startsWith("roof")) m.visible = false;
-          if (n.startsWith("walls")) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => patchShader(x, CLIP_BODY, "white-clip-v1"));
         });
+        this.clipWalls();
       }
       refreshLines();
     };
     dress();
     this.off = onWhite(dress);
+  }
+
+  // The scene swaps the wall material (massing look, heat layer) at any time: patch whatever is there now, edge
+  // lines included. Idempotent, a handful of objects.
+  private clipWalls() {
+    this.glb?.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.material || !/^walls/.test((m.name || m.parent?.name || "").toLowerCase())) return;
+      (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => patchShader(x, CLIP_BODY, `white-clip-v1-${x.type}`));
+    });
   }
 
   detach() {
