@@ -641,6 +641,11 @@ class Engine:
             sim = hourly.simulate(clean, design)
             econ = sim.economics
             phys = hourly.validate_physics(clean, design, sim=sim)
+            rep, why = hourly.replay_2025(clean, design)  # additive: the typical-year economics above stay as they are
+            if rep:
+                econ["replay_2025"] = rep
+            else:
+                econ["assumptions"].append(f"2025 replay unavailable ({why}).")
         except Exception as e:  # keep serving with the ratio model; say why
             log.warning("hourly simulation failed, using annual lookup: %s", e)
             lookup["assumptions"].append(f"Hourly simulation unavailable ({e}); annual ratio model used.")

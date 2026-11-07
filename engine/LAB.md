@@ -80,6 +80,40 @@ Next candidate from this: the optimum battery for the chosen PV as a battery-sta
 | Verdict | Rejected. The optimum battery given the PV adds almost nothing alone; the iteration 3 battery gain (+3.5 on test, +2.7 on CV) needed the optimum PV and battery as features of the PV stage, which is also what moved PV. Mode kept off by default. |
 | Kept | `batfeat` mode in `app/model.py` (off), `lab/greybox.py --modes None:argmax,batfeat:argmax`. |
 
+## Iteration 5: 2025 replay, real weather and real negative prices (additive)
+
+Rebased onto `origin/engine` 1a149b8 first. Requested by Xander via THINC HACK MASTER. Model and typical-year economics untouched.
+
+| | |
+|---|---|
+| Change | `app/hourly/replay.py` (fetch, build, load); `year` argument on `sim.weather`, `pv_per_kwp`, `heat_shape`, `_flows`, `_bill`, `simulate` and `optimum` (default `None` = the typical year, code path unchanged); `sim.replay_2025(inputs, design)` returns the six fields or a reason; `Engine._physics` attaches `economics.replay_2025` or appends "2025 replay unavailable (...)" to `assumptions`; startup warms it. |
+| Prices | Energy-Charts `price?bzn=DE-LU`, 2025 (licence CC BY 4.0, Bundesnetzagentur / SMARD.de). Hourly to 30 Sep, 15-minute from 1 Oct (6,550 hourly plus 8,840 quarter-hour points); quarter-hours averaged per UTC hour, and the share of negative intervals per hour kept. Feed-in is withheld in that share of each hour (Solarspitzengesetz: section 51 EEG 2023 as amended, in force 25 Feb 2025, no payment in negative-price periods for new systems; https://www.gesetze-im-internet.de/eeg_2014/__51.html). The extension of the 20-year term by the lost periods (section 51a) is not counted. Retail stays the fixed tariff in every hour, feed-in the fixed EEG rate: no dynamic tariff is simulated. |
+| Weather | Open-Meteo historical API, `models=ecmwf_ifs` (identical to the API's best match for 2025; the `era5` model gives 1,256 instead of 1,302 kWh/m2), Munich 48.137 N 11.575 E, GHI, DNI, DHI, 2 m temperature, 10 m wind (CC BY 4.0). Radiation is the preceding hour's mean, so stamp T+1 feeds sim hour T and the sun position is taken at T+30 min; otherwise the same pvlib chain as the TMY. 2025 temperatures also drive the heat pump shape and COP. |
+| Storage | Raw JSON and the built CSV in `engine/.cache/replay2025/` (gitignored); the same 8,760-row CSV bundled as `app/hourly/munich_2025.csv` (519 KB, public data only). Load order cache, bundled; checked: with the cache moved the bundled file gives identical values; with both missing the block is omitted with the reason. |
+| Typical year unchanged | 20 designs (hero plus 19 test homes) before and after: design, optimum and every typical-year economics field identical; all 20 carry `replay_2025`. |
+| Latency | `replay_2025` alone on the 20 designs: median 1.3 ms, p95 2.3 ms, max 19.7 ms (first call for a new roof orientation builds its 2025 PV profile). Full `Engine.predict` on the same 20: median 207 to 215 ms, p95 245 to 246 ms. |
+
+Hero (Unterhaching, 5,000 kWh, 37 ct, roof east-west at 25 degrees from LoD2; design 7.2 kWp, 7 kWh):
+
+| Field | Typical year | 2025 |
+|---|---|---|
+| PV yield kWh | 6,533 | 7,095 |
+| Autarky | 65.0% | 68.1% |
+| Feed-in income EUR | 124 | 171 |
+| Bill after EUR | 523 | 419 |
+| Payback years | 10.8 | 9.9 |
+| Negative-price kWh unpaid | 1,488 (proxy: 573 sunniest hours) | 1,286 |
+
+Optimum (`app.hourly.optimum`, the hero's catalogue: PV 3.6 to 11.25 kWp, battery 5, 7, 10, 15 kWh): as served (expert tie-break) 7.2 kWp + 7 kWh under both years (NPV EUR 7,050 to 8,690); without a proposal (cheapest inside the tie band) 4.5 + 5 to 6.75 + 7; strict NPV argmax 10.35 + 7 under both (EUR 7,350 to 9,370). Real 2025 prices are kinder than the sunniest-hours proxy, so the optimum moves up slightly, not down.
+
+| Sanity | Result |
+|---|---|
+| PV yield, south 35 degrees | TMY 1,109, 2025 1,256 kWh/kWp: 9% above the top of the 1,000 to 1,150 band. GHI 1,300 kWh/m2 against TMY 1,191 (+9%; secondary sources put 2025 in southern Germany above 1,300, the national mean at 1,187, fourth-highest since 1983: https://gruenes.haus/globalstrahlung/, https://www.energiefluss24.de/solarstrahlung). The extra 4% beyond GHI comes from the split: 2025 DNI 1,558 against 1,150, diffuse 486 against 583, which favours a tilted south roof. Read 2025 yields as a sunny year on a model that likely leans 3 to 5% direct-heavy. Hero east-west: 907 to 986 kWh/kWp. |
+| Negative hours 2025 | 573 hours with a negative hourly price (SMARD publishes 573); 588 hours with at least one negative interval; 574.8 interval-hours. |
+| Mean day-ahead price | EUR 89.3 per MWh. |
+
+Proposed `docs/api.md` addition for THINC HACK MASTER (not edited here): In `interface Economics`, add `replay_2025?: { pv_yield_kwh: number; autarky_share: number; feed_in_income_eur: number; bill_after_eur: number; payback_years: number | null; negative_price_hours_curtailed_kwh: number; assumptions: string[] };  // v1.8, DesignResponse.economics only: the same design replayed on real 2025 Munich weather (Open-Meteo) and real DE-LU day-ahead prices (Energy-Charts), fixed retail tariff, fixed EEG feed-in withheld in negative-price intervals (Solarspitzengesetz); absent when the replay data cannot be read, with the reason in economics.assumptions. The typical-year fields are unchanged and remain the headline numbers.` Not set on `optimum.economics` or `variants[].economics`.
+
 ## Queue
 1. Done in iteration 2 (kept lowest option).
 2. Done in iteration 3 (not merged). Grey-box (approved by Xander via THINC HACK MASTER): base = physics optimum (`app.hourly.optimum`, installer catalogue), gradient boosting learns the expert's deviation per component, chained as today. Merge candidate only if it beats the current board.
