@@ -81,6 +81,7 @@ def startup():
     if STATE.get("inbox") is None:
         threading.Thread(target=warm_inbox, daemon=True).start()
     leads.load_all()  # before anything can create or step a lead
+    snapshot_untouched()
     leads.expire_stale()
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
     threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models(), roofs.warm_venue(), refresh_all_leads()),
@@ -689,6 +690,20 @@ def _rate_ok(ip: str, per_min: int = 20) -> bool:
     return True
 
 
+def _snapshot(lead: dict) -> dict:
+    """What a rehearsal resets to: the facts as the lead was created (roof and envelope are refetched on reset)."""
+    inp = {k: v for k, v in lead["inputs"].items() if k not in ("roof", "envelope")}
+    return {"inputs": json.loads(json.dumps(inp, default=float)), "status": lead["status"], "at": lead.get("created_at")}
+
+
+def snapshot_untouched():
+    """Leads made before snapshots existed get one only if no step has changed them yet."""
+    for lead in leads.LEADS.values():
+        if "initial" not in lead and not lead.get("history") and not lead.get("decision"):
+            lead["initial"] = _snapshot(lead)
+            leads.save(lead)
+
+
 def _new_lead(eng, raw: dict, name: str, place: str, source: str, block: bool, lead_id: Optional[str] = None) -> dict:
     inp = _facts(raw, block=block)
     unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
@@ -699,6 +714,7 @@ def _new_lead(eng, raw: dict, name: str, place: str, source: str, block: bool, l
             "customer_name": name, "address_or_postcode": place, "inputs": inp, "unknown": unknown, "draft": draft,
             "history": [], "next_question": nq, "next_spread": spread, "questions_asked": 0, "created_at": t, "updated_at": t,
             "aliases": []}
+    lead["initial"] = _snapshot(lead)
     leads.LEADS[lead["lead_id"]] = lead
     leads.save(lead)
     _full_draft_later(lead["lead_id"], inp)
@@ -869,7 +885,7 @@ def _lead_out(lead: dict) -> dict:
             "approved_at": lead.get("approved_at"), "approved_variant": lead.get("approved_variant"),
             "proposal_hash": current_hash(lead), "decision": dec,
             "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
-            "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"],
+            "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"], "pinned": bool(lead.get("pinned")),
             "created_at": lead["created_at"], "updated_at": lead["updated_at"]}
 
 
@@ -885,14 +901,60 @@ def get_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
 
 
 @app.delete("/api/leads/{lead_id}")
-def delete_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
+def delete_lead(lead_id: str, force: bool = False, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
+    if lead.get("pinned") and not force:
+        return err(409, "This lead is pinned (the demo lead). Unpin it first, or pass force=true.")
     leads.delete(lead["lead_id"])
     return {"deleted": lead["lead_id"]}
+
+
+class PinReq(BaseModel):
+    pinned: bool = True
+
+
+@app.put("/api/leads/{lead_id}/pin")
+def pin_lead(lead_id: str, req: Optional[PinReq] = None, x_intake_secret: Optional[str] = Header(None)):
+    """A pinned lead (the demo lead) is never removed by a cleanup; DELETE refuses it without force=true."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    lead["pinned"] = req.pinned if req else True
+    leads.save(lead)
+    return {"lead_id": lead["lead_id"], "pinned": lead["pinned"]}
+
+
+@app.put("/api/leads/{lead_id}/reset")
+def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
+    """Rehearsal reset: facts back to the creation snapshot, redrafted with the one pipeline; steps, approval and any
+    decision (and its signature) are dropped. Pinned and aliases stay."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    snap = lead.get("initial")
+    if not snap:
+        return err(409, "This lead has no creation snapshot (it was changed before snapshots existed); delete and recreate it.")
+    eng = engine()
+    inp = _facts(dict(snap["inputs"]), block=True)
+    draft = eng.predict(dict(inp))
+    unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
+    nq, spread = _question(eng, inp, unknown)
+    for k in ("decision", "approved_at", "approved_variant", "approved_hash"):
+        lead.pop(k, None)
+    (SIG_DIR / f"{lead['lead_id']}.png").unlink(missing_ok=True)
+    lead.update(inputs=inp, draft=draft, unknown=unknown, next_question=nq, next_spread=spread, questions_asked=0, history=[],
+                status=snap.get("status") or "draft", updated_at=leads.now(), draft_stamp=engine_stamp())
+    leads.save(lead)
+    return {"lead_id": lead["lead_id"], "status": lead["status"], "design": draft["design"], "reset_to": snap.get("at"),
+            "pinned": bool(lead.get("pinned"))}
 
 
 @app.get("/api/leads")
@@ -910,7 +972,8 @@ def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
             dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(l)}
         out.append({"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
                     "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
-                    "approved_at": l.get("approved_at"), "decision": dec, "created_at": l.get("created_at"), "updated_at": l["updated_at"]})
+                    "approved_at": l.get("approved_at"), "decision": dec, "created_at": l.get("created_at"), "updated_at": l["updated_at"],
+                    "pinned": bool(l.get("pinned"))})
     return out
 
 
