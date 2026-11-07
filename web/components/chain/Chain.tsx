@@ -8,7 +8,7 @@ import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
 import { INSTALLER_NAME } from "@/lib/api";
 import type { Layers, Bar, Check, RoofModel } from "@/components/spatial/types";
 import { findRot, rotLine } from "@/lib/rot";
-import type { StageView } from "@/components/spatial/camera";
+import { POSES, type StageView } from "@/components/spatial/camera";
 import type { Variant } from "@/components/stage/Plan";
 import House from "@/components/stage/House";
 import Why from "@/components/stage/Why";
@@ -114,7 +114,9 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
 
   const model: RoofModel | null = layers ? (Array.isArray(layers.planes) ? null : layers.planes) : null;
   const hasEnv = !!model?.envelope?.faces?.length, hasPlan = !!model?.plan?.outline?.length;
-  const layer = heatmap ? 2 : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, hasPlan ? 8 : 3, hasPlan ? 8 : 3][stage - 1];
+  // The planner's pick on the model (3D or Photo over the plan) holds until the stage changes.
+  const [pick, setPick] = useState<{ stage: number; layer: number } | null>(null);
+  const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, hasPlan ? 8 : 3, hasPlan ? 8 : 3][stage - 1];
   const bars = useMemo(() => Object.fromEntries((layers?.bars ?? []).map((b) => [BAR_AT[b.key], b])) as Record<number, Bar>, [layers]);
   // The four numbers come from the same run as the bars and checks when it is in; the design's own until then.
   const le = layers?.economics;
@@ -231,7 +233,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
 
       <div className={s.hero}>
         {address && spatial !== false ? (
-          <SpatialDemo inputs={inputs} design={d} response={res} address={address} layer={layer} view={heatmap ? undefined : view} bare leadId={leadId ?? undefined}
+          <SpatialDemo inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatmap ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools}>
             {overlays}
           </SpatialDemo>
