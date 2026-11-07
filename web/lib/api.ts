@@ -164,3 +164,16 @@ export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; 
 export interface WriteResponse { text: string; grounded: boolean; lines: Partial<Record<ComponentKey, string | null>>; cached?: boolean; }
 
 export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Installer A", "23c108b7": "Installer B" };
+
+// v1.9: the engine runs the call, one rolling draft per lead.
+export interface LeadChange { component: string; from: number | null; to: number | null; why: string; }
+export interface NextQuestion { field: string; question: string; why: string; options?: { value: unknown; label: string }[]; expected_swing: string; }
+export interface LeadCreated { lead_id: string; draft: DesignResponse; facts: HomeInputs; unknown: string[]; next_question: NextQuestion | null; }
+export interface Lead {
+  lead_id: string; status: "draft" | "in_call" | "done"; customer_name: string; address_or_postcode: string;
+  facts: HomeInputs; draft: DesignResponse;
+  history: { step: number; field: string; answer: unknown; changed: LeadChange[]; at: string }[];
+  next_question: NextQuestion | null; questions_asked: number; created_at: string; updated_at: string;
+}
+export interface LeadRow { lead_id: string; status: Lead["status"]; title: string; customer_name?: string; address_or_postcode?: string; created_at?: string; }
+export interface Priors { n_steps_logged: number; order: { field: string; mean_swing: number; times_asked: number }[]; }

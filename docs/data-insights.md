@@ -197,3 +197,9 @@ The inputs cap PV accuracy near 39 to 43%: identical homes get designs that diff
 7. has_ev and km: small PV uplift at A, weak wallbox signal.
 8. Installer catalogues as output constraints: module steps of 0.45 kWp, B package tiers, battery products, inverter steps (Huawei 3.68 to 15 kW; Sigenergy 5/8/10/20 kW).
 9. Load profile, electricity price: no measurable effect; keep for economics only.
+
+## Addendum, 7 Nov 2026 (THINC HACK MASTER, computed from the pack)
+Calendar time from `request_created_at` to `offer_created_at`, and from `offer_created_at` to `first_signed_at`, medians:
+- Installer 23c108b7: enquiry to offer 8.2 days (n = 260); offer to signature 28.7 days (n = 320).
+- Installer 2a8ba8e2: enquiry to offer 0.7 days (n = 18 only, most requests lack a timestamp); offer to signature 20.0 days (n = 1,276).
+The "8 days" on the homeowner summary and the deck is the installer 23c108b7 figure. It is calendar time including waiting, not planner hours.

@@ -2,7 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
 import { endTone, startRing, stopRing, tick, unlock } from "./sounds";
-import { HOME_FORM, INSTALLER_BRAND, homeFirstMessage, homeNote, homeVariables, type HomeAnswers, type InstallerId, type RoofInfo } from "./intake";
+import type { Lead } from "@/lib/api";
+import { designLine, n0, n2, pct } from "@/lib/stage";
+import { HOME_FORM, homeFacts, INSTALLER_BRAND, homeFirstMessage, homeNote, homeVariables, type HomeAnswers, type InstallerId, type RoofInfo } from "./intake";
 
 type Props = { agentId: string; installerId: InstallerId };
 
@@ -20,6 +22,8 @@ type Opt = "people" | "heating" | "ev" | "bill_band" | "roof";
 
 const locationOk = (s: string) => /\b\d{5}\b/.test(s);
 const first = (s: string) => s.trim().split(/\s+/)[0] ?? "";
+// Lead to offer today, from the installer B figure the coordinator gave (docs to confirm).
+const TODAY_MEDIAN_DAYS = 8;
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 function Page({ agentId, installerId }: Props) {
@@ -36,6 +40,13 @@ function Page({ agentId, installerId }: Props) {
   const nameRef = useRef<HTMLInputElement>(null), placeRef = useRef<HTMLInputElement>(null);
 
   const roof = useRef<RoofInfo | null | undefined>(undefined);
+  // v1.9: the lead exists from Submit; the engine refines its draft during the call.
+  const [leadId, setLeadId] = useState<string | null>(null);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [doneAt, setDoneAt] = useState<number | null>(null);
+  const [lead, setLead] = useState<Lead | null>(null);
+  const [summary, setSummary] = useState(false);
+  const [tickNow, setTickNow] = useState(0);
   const noted = useRef(false);
   const conversation = useConversation({
     onConnect: ({ conversationId }) => {
@@ -59,12 +70,33 @@ function Page({ agentId, installerId }: Props) {
     return () => clearInterval(t);
   }, [since]);
   useEffect(() => () => { if (ring.current) clearTimeout(ring.current); stopRing(); }, []);
+  // The stopwatch runs from Submit until the first design is ready.
+  useEffect(() => {
+    if (startedAt == null || doneAt != null) return;
+    const t = setInterval(() => setTickNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [startedAt, doneAt]);
+  useEffect(() => {
+    if (!leadId || doneAt != null) return;
+    const t = setInterval(async () => {
+      const r = await fetch(`/api/leads/${leadId}`, { cache: "no-store" }).catch(() => null);
+      if (!r?.ok) return;
+      const l: Lead = await r.json();
+      if (l.status === "done") { setLead(l); setDoneAt(Date.now()); }
+    }, 3000);
+    return () => clearInterval(t);
+  }, [leadId, doneAt]);
 
   const submit = () => {
     if (!a.name.trim()) { setMiss("name"); nameRef.current?.focus(); return; }
     if (!locationOk(a.location)) { setMiss("location"); placeRef.current?.focus(); return; }
     setMiss(null); setError(null);
     unlock();   // the submit tap allows every sound that follows
+    setStartedAt(Date.now()); setDoneAt(null); setLead(null); setLeadId(null); setSummary(false);
+    fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form" }) })
+      .then(async (r) => { const b = await r.json().catch(() => ({})); if (r.ok && b.lead_id) setLeadId(b.lead_id); })
+      .catch(() => {});
     // Look the address up while the phone rings, so the call starts with it.
     roof.current = undefined;
     const ctl = new AbortController(); setTimeout(() => ctl.abort(), 8000);
@@ -86,7 +118,7 @@ function Page({ agentId, installerId }: Props) {
     const go = () => conversation.startSession({
       agentId, connectionType: "webrtc",
       userId: `${a.name.trim()}|${a.location.trim()}`,
-      dynamicVariables: homeVariables(a, installerId, roof.current),
+      dynamicVariables: homeVariables(a, installerId, roof.current, leadId),
       overrides: { agent: { firstMessage: homeFirstMessage(a, installerId) } },
     });
     if (mic) mic.then((st) => { st.getTracks().forEach((t) => t.stop()); go(); }, (e) => setError(`Microphone: ${e?.message ?? e}`));
@@ -115,12 +147,51 @@ function Page({ agentId, installerId }: Props) {
     </header>
   );
 
+  const took = startedAt != null ? Math.max(0, Math.round(((doneAt ?? tickNow) - startedAt) / 1000)) : 0;
+  const notify = doneAt != null && !summary && (step === "thanks" || step === "declined" || step === "form");
+
+  if (summary && lead) {
+    const d = lead.draft, e = d.economics, v = d.variants?.[0];
+    const say = [
+      d.design.pv_kwp != null ? `${n2(d.design.pv_kwp)} kWp of solar panels on your roof.` : "No solar panels for now.",
+      d.design.battery_kwh != null ? `A ${n2(d.design.battery_kwh)} kWh battery keeps daytime sun for the evening.` : "No battery for now.",
+      d.design.heatpump_kw != null ? `A ${n2(d.design.heatpump_kw)} kW heat pump heats the house.` : "No heat pump for now.",
+      d.design.wallbox_kw != null ? `A wallbox for the car, ${n2(d.design.wallbox_kw)} kW.` : "No car charger for now.",
+    ];
+    return (
+      <div className="h-page">{head}
+        <section className="h-card h-in h-sum" key="sum">
+          <h1>Your first design, {first(a.name)}</h1>
+          <dl className="h-nums">
+            {e.annual && <div><dt>Solar a year</dt><dd>{n0(e.annual.pv_yield_kwh)} kWh</dd></div>}
+            <div><dt>Self-sufficiency</dt><dd>{pct(e.autarky_share)}%</dd></div>
+            <div><dt>Investment</dt><dd>{n0(e.capex_eur)} EUR</dd></div>
+            <div><dt>Payback</dt><dd>{e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`}</dd></div>
+          </dl>
+          <ul className="h-parts">{say.map((x) => <li key={x}>{x}</li>)}</ul>
+          {v && <p className="h-pref"><b>{v.label.split(" (")[0]}</b> {designLine(v.design)}</p>}
+          <p className="h-times"><span>Enquiry to design: {Math.floor(took / 60)} min {took % 60} s</span><span>Today: a median {TODAY_MEDIAN_DAYS} days</span></p>
+          <p className="h-send">{brand} will send the full offer.</p>
+        </section>
+      </div>
+    );
+  }
+
+  const banner = notify && (
+    <button type="button" className="ios-banner ios-note" onClick={() => setSummary(true)}>
+      <span className="ios-app" aria-hidden>{brand.charAt(0)}</span>
+      <span className="ios-note-t"><small><b>{brand}</b><span>now</span></small>Your first design is ready</span>
+    </button>
+  );
+
   if (step === "thanks" || step === "declined")
     return (
       <div className="h-page">{head}
         <section className="h-card h-in" key="end">
           <h1>{step === "thanks" ? `Thanks ${first(a.name)}, ${brand} will send the offer.` : `No problem, ${first(a.name)}. ${brand} will call you back later.`}</h1>
+          {startedAt != null && <p className="h-watch" aria-live="off">{doneAt != null ? `Enquiry to design: ${Math.floor(took / 60)} min ${took % 60} s` : `Your design: ${clock(took)}`}</p>}
         </section>
+        {banner}
       </div>
     );
 
