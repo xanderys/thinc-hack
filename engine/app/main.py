@@ -38,6 +38,8 @@ from .model import MODEL_VERSION, Engine, row_design, row_inputs
 
 log = logging.getLogger("engine")
 app = FastAPI(title="Reonic planner engine")
+from . import shading_routes  # noqa: E402  GET /api/roof/shading (branch shading)
+app.include_router(shading_routes.router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 STATE: dict = {"engine": None, "eval": None, "error": None}
