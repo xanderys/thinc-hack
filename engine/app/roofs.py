@@ -43,7 +43,8 @@ def to_contract(d: dict) -> dict:
             "floor_area_m2": d.get("floor_area_m2"), "storeys": d.get("storeys"),
             "floor_area_confidence": "estimate" if d.get("floor_area_m2") else None,
             "build_year_class": d.get("build_year_class"), "build_year_estimate": d.get("build_year_estimate"),
-            "heating_class": d.get("heating_class"), "zensus_confidence": d.get("zensus_confidence")}
+            "heating_class": d.get("heating_class"), "avg_flat_m2": d.get("avg_flat_m2"), "dwellings_class": d.get("dwellings_class"),
+            "zensus_confidence": d.get("zensus_confidence")}
 
 
 def lookup(address: str) -> dict:
@@ -55,6 +56,51 @@ def lookup(address: str) -> dict:
     if res["source"] != "none":  # do not cache misses: a source may be down for a moment
         CACHE.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(res, ensure_ascii=False))
+    return res
+
+
+def postcode_lookup(postcode: str) -> dict:
+    """Postcode alone: Nominatim centroid (cached), no building; Zensus 2022 estimates for the 100 m cell there."""
+    import re
+    pc = (re.search(r"\b\d{5}\b", postcode or "") or [None])[0]
+    empty = {"source": "none", "matched_address": "", "lat": None, "lon": None, "footprint_m2": None, "roof_area_m2": None,
+             "usable_area_m2": None, "segments": [], "max_panels": None, "max_kwp": None, "confidence": "none", "notes": []}
+    if not pc:
+        return {**empty, "notes": [f"'{postcode}' is not a five-digit German postcode."]}
+    path = CACHE / f"pc-{pc}.json"
+    if path.exists():
+        return json.loads(path.read_text())
+    m = _roof()
+
+    def fetch():
+        import time as _t
+        with m._lock:
+            wait = 1.0 - (_t.time() - m._last_nominatim)
+            if wait > 0:
+                _t.sleep(wait)
+            r = m.httpx.get("https://nominatim.openstreetmap.org/search",
+                            params={"postalcode": pc, "country": "de", "format": "jsonv2", "limit": 1},
+                            headers={"User-Agent": m.UA}, timeout=10)
+            m._last_nominatim = _t.time()
+        r.raise_for_status()
+        return {"results": r.json()}
+    hits = m._cached_json("nominatim-postcode", pc, fetch)["results"]
+    if not hits:
+        return {**empty, "notes": [f"Nominatim: no results for postcode {pc}"]}
+    h = hits[0]
+    lat, lon = float(h["lat"]), float(h["lon"])
+    import zensus
+    z = zensus.lookup(lat, lon) or {}
+    res = {**empty, "source": "postcode", "matched_address": h.get("display_name", pc), "lat": lat, "lon": lon,
+           "confidence": "estimated from postcode",
+           "floor_area_m2": None, "storeys": None, "floor_area_confidence": None,
+           "build_year_class": z.get("build_year_class"), "build_year_estimate": z.get("build_year_estimate"),
+           "heating_class": z.get("heating_class"), "avg_flat_m2": z.get("avg_flat_m2"), "dwellings_class": z.get("dwellings_class"),
+           "zensus_confidence": "estimated from postcode (Zensus 2022, 100 m cell at its centre)" if z else None,
+           "notes": [h.get("display_name", pc), "Postcode centre only: no building, so no roof area or panel count."]
+                    + ([] if z else ["Zensus cell not available here (outside the Munich index)."])}
+    CACHE.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(res, ensure_ascii=False))
     return res
 
 

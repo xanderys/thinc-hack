@@ -382,7 +382,10 @@ class Engine:
                 options.append({"value": val, "label": label, "design": d})
             if spread > 0:
                 qs.append({"field": field_, "current": cur, "options": options, "spread": round(spread, 2)})
-        return sorted(qs, key=lambda q: -q["spread"])[:3]
+        given = inp.get("_given")
+        no_use = given is not None and "annual_demand_kwh" not in given
+        # annual use is the prerequisite: when the lead gives none, it is asked first whatever the spread
+        return sorted(qs, key=lambda q: (not (no_use and q["field"] == "annual_demand_kwh"), -q["spread"]))[:3]
 
     def inbox(self, limit: int = 20) -> list:
         """Held-out new-system jobs in demo order: a PV and battery hit first, then varied installers and kinds."""

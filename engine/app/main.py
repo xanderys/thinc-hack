@@ -90,7 +90,7 @@ def cache_key() -> str:
 
 class HomeInputs(BaseModel):
     installer_id: Literal["2a8ba8e2", "23c108b7"]
-    annual_demand_kwh: float
+    annual_demand_kwh: float = 4500.0  # the pack default when the lead gives no use; /api/ask then asks for it first
     load_profile: Literal["H0", "FamilyOfFour", "HomeOfficeOnePerson", "FullTimeOnePerson", "SeniorOnePerson", "PartTimeOnePerson"] = "H0"
     num_inhabitants: Optional[float] = None
     house_size_sqm: Optional[float] = None
@@ -113,6 +113,7 @@ class HomeInputs(BaseModel):
     offer_date: Optional[str] = None
     preference: Optional[Literal["independence", "payback", "upfront"]] = None  # v1.7: reorders variants only
     address: Optional[str] = None   # v1.6: the engine looks the roof up
+    postcode: Optional[str] = None  # postcode alone: Zensus estimates at its centre, no roof
     roof: Optional[dict] = None     # v1.6: or a prior /api/roof result  # ISO date; picks the installer catalogue of that time. Default: latest.
 
 
@@ -175,6 +176,12 @@ def check_inputs(inp: dict):
     """Range checks, then resolve the roof (v1.6) into inp['roof'] when an address is given."""
     if not inp.get("has_ev"):
         inp["ev_annual_km"] = None  # a mileage without an EV is stale; it must never move the design
+    if inp.get("postcode") and not inp.get("address") and not inp.get("roof"):
+        try:
+            r = roofs.postcode_lookup(inp["postcode"])
+            inp["roof"] = r if r.get("source") != "none" else None
+        except Exception as e:
+            log.warning("postcode lookup failed: %s", e)
     if inp.get("address") and not inp.get("roof"):
         try:
             r = roofs.lookup(inp["address"])
@@ -186,7 +193,7 @@ def check_inputs(inp: dict):
     if not inp.get("house_built_year") and r.get("build_year_estimate"):
         inp["house_built_year"] = float(r["build_year_estimate"])
         est.append("build year")
-    if not inp.get("house_size_sqm") and r.get("floor_area_m2"):
+    if not inp.get("house_size_sqm") and r.get("floor_area_m2") and r.get("source") != "postcode":
         inp["house_size_sqm"] = float(r["floor_area_m2"])
         est.append("floor area")
     if est:  # heating_type is never set from heating_class: the cell says the system, not the fuel
@@ -364,10 +371,12 @@ def project(project_id: str):
 
 
 @app.get("/api/roof")
-def roof(address: str = ""):
-    if not address.strip():
-        return err(422, "address is missing.")
-    return roofs.lookup(address)
+def roof(address: str = "", postcode: str = ""):
+    if address.strip():
+        return roofs.lookup(address)
+    if postcode.strip():
+        return roofs.postcode_lookup(postcode)
+    return err(422, "address or postcode is missing.")
 
 
 class AskReq(BaseModel):

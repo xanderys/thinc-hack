@@ -194,7 +194,9 @@ def plausibility(inp, design, econ):
         msgs.append({"level": "ok" if 0.5 <= r <= 1.5 else "warn", "message": f"Battery {r:.1f} kWh per kWp (typical about 1)."})
     if inp.get("_estimated"):
         what = " and ".join(inp["_estimated"])
-        msgs.append({"level": "ok", "message": f"{what[0].upper() + what[1:]} estimated from the address (LoD2 building, Zensus 2022 100 m cell); confirm with the homeowner."})
+        src = ("the postcode (Zensus 2022 100 m cell at its centre)" if (inp.get("roof") or {}).get("source") == "postcode"
+               else "the address (LoD2 building, Zensus 2022 100 m cell)")
+        msgs.append({"level": "ok", "message": f"{what[0].upper() + what[1:]} estimated from {src}; confirm with the homeowner."})
     if inp.get("existing_solar_kwp") and not inp.get("has_solar"):
         msgs.append({"level": "warn", "message": f"Existing PV of {inp['existing_solar_kwp']:g} kWp is given but has_solar is false; it was ignored. Confirm whether the home has PV."})
     if inp.get("existing_storage_kwh") and not inp.get("has_storage"):
