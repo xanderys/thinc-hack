@@ -27,4 +27,16 @@ r=$(curl -s "$B/api/eval")
 echo "$r" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["overall"]["design_match_share"] is not None' 2>/dev/null \
   && step "GET /api/eval design_match_share" ok || step "GET /api/eval design_match_share" bad "$(echo "$r" | head -c 200)"
 
+# Engine v1.3 routes, straight to the engine
+E="${ENGINE_URL:-https://xanders-mac-mini.tail3f074b.ts.net:8443}"
+r=$(curl -s -X POST "$E/api/ask" -H "$J" -d "{\"inputs\":$HOME_IN}")
+echo "$r" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["questions"]' 2>/dev/null \
+  && step "engine POST /api/ask question" ok || step "engine POST /api/ask question" bad "$(echo "$r" | head -c 200)"
+r=$(curl -s -X POST "$E/api/ask" -H "$J" -d "{\"inputs\":$HOME_IN,\"unknown\":[]}")
+echo "$r" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["questions"]==[]' 2>/dev/null \
+  && step "engine POST /api/ask empty unknown" ok || step "engine POST /api/ask empty unknown" bad "$(echo "$r" | head -c 200)"
+r=$(curl -s "$E/api/inbox?limit=20")
+echo "$r" | python3 -c 'import sys,json;d=json.load(sys.stdin);d=d if isinstance(d,list) else d.get("rows",d.get("items",[]));assert len(d)==20' 2>/dev/null \
+  && step "engine GET /api/inbox 20 rows" ok || step "engine GET /api/inbox 20 rows" bad "$(echo "$r" | head -c 200)"
+
 exit $fail

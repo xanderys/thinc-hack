@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import pickle
+import threading
 import time
 from pathlib import Path
 from typing import Literal, Optional
@@ -49,6 +50,21 @@ def startup():
         hourly.simulate({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
     except Exception:
         log.exception("hourly warm-up failed")
+    threading.Thread(target=warm_inbox, daemon=True).start()
+
+
+INBOX_MAX = 60
+
+
+def warm_inbox():
+    try:
+        rows = STATE["engine"].inbox(INBOX_MAX)
+        for x in rows:
+            x["label"] = label(x.pop("_row"))
+        STATE["inbox"] = [{k: x[k] for k in ("project_id", "installer_id", "label", "inputs", "draft", "confidence", "expert", "within", "note")} for x in rows]
+        log.warning("inbox ready: %d rows", len(rows))
+    except Exception:
+        log.exception("inbox warm-up failed")
 
 
 CACHE = Path(__file__).resolve().parent.parent / ".cache"  # gitignored; holds project rows
@@ -317,6 +333,28 @@ def project(project_id: str):
             return {"project_id": project_id, "installer_id": r["installer_id"], "split": split, "inputs": inp,
                     "expert": row_design(r), "ours": eng.predict(inp)}
     return err(404, f"No project with id {project_id}")
+
+
+class AskReq(BaseModel):
+    inputs: HomeInputs
+    unknown: Optional[list[str]] = None  # fields the lead did not state; only these are asked
+
+
+@app.post("/api/ask")
+def ask(req: AskReq):
+    inp = req.inputs.model_dump()
+    check_inputs(inp)
+    return {"questions": engine().ask(inp, req.unknown)}
+
+
+@app.get("/api/inbox")
+def inbox(limit: int = 20):
+    engine()
+    if STATE.get("inbox") is None:
+        warm_inbox()
+    if STATE.get("inbox") is None:
+        return err(503, "The inbox could not be built; see the engine log.")
+    return STATE["inbox"][: max(1, min(limit, INBOX_MAX))]
 
 
 @app.get("/api/eval")
