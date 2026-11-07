@@ -2,6 +2,8 @@
 import { useRef, useState } from "react";
 import type { Design, DesignResponse, Economics, HomeInputs, Overrides, WriteResponse } from "@/lib/api";
 import House from "./House";
+import dynamic from "next/dynamic";
+const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
 import Flow from "./Flow";
 import Rules from "./Rules";
 import Why from "./Why";
@@ -28,6 +30,10 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
   const [closing, setClosing] = useState(false);
   const [ox, setOx] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The real house in 3D when the engine has a model for the address; the line drawing otherwise. Opens on Panels.
+  const [spatial, setSpatial] = useState(false);
+  const [layer3, setLayer3] = useState(3);
+  const address = inputs.address ?? inputs.roof?.matched_address;
   const installer = INSTALLER_NAME[inputs.installer_id as keyof typeof INSTALLER_NAME] ?? "this installer";
   // Opens out of the tapped number and closes back into it; a tap mid-close reopens at once.
   const toggle = (k: string, el: HTMLElement | null) => {
@@ -54,9 +60,14 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
         {prose && <span className={flag ? "flag" : "flag none"}> {flag ? <>One thing to check: {named(flag)}</> : "Nothing to check."}</span>}
       </p>
 
-      <div className="s-top">
+      {address && (
+        <div className="s-spatial">
+          <SpatialDemo inputs={inputs} design={res.design} address={address} response={res} layer={layer3} onLayerChange={setLayer3} onAvailable={setSpatial} />
+        </div>
+      )}
+      <div className={spatial ? "s-top solo" : "s-top"}>
         <div className="s-house">
-          <House design={res.design} />
+          {!spatial && <House design={res.design} />}
           {roofLine && <p className="s-roof" title={roofLine.credit}>{roofLine.text}</p>}
         </div>
         <div>
