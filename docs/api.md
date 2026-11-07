@@ -1,4 +1,4 @@
-# Engine API contract (v1.8)
+# Engine API contract (v1.9)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -145,6 +145,16 @@ interface Eval {
 
 - `POST /api/ask` body `{ inputs: HomeInputs, unknown?: (keyof HomeInputs)[] }` (when `unknown` is given, only those fields are candidates; `annual_demand_kwh` unknown → 3,000 | 5,000 | 6,500) → `{ questions: { field: keyof HomeInputs; current: unknown; options: { value: unknown; label: string; design: Design }[]; spread: number }[] }`, sorted by spread, top 3, empty when nothing moves. Candidates: `heating_type` Unknown → Gas | Heatpump; `has_ev` false → true at 12,000 km; `annual_demand_kwh` absent or the 4,500 default → 3,000 | 6,500; `heating_demand_kwh` missing on a fossil home → 12,000 | 20,000; `has_solar` false → true at 6 kWp. spread = Σ |Δsize| / tolerance (1 kWp, 2 kWh, 2 kW) plus 1 per decision flip, max over options.
 - `GET /api/inbox?limit=20` → `{ project_id, installer_id, label, inputs: HomeInputs, draft: Design, confidence: number, expert: Design, within: { pv: boolean; battery: boolean; heatpump: boolean; wallbox: boolean; all: boolean }, note: string }[]` from the test split in demo order (varied installers, EV, heating; the first row a PV and battery hit); confidence = mean confidence of included components; `within` by the eval tolerances; `note` = the deviation note when `all` is false, else "".
+
+## v1.9: the engine runs the call (rolling draft per lead)
+
+State lives in the engine (in-memory plus JSON under `engine/.cache/leads/`). All three endpoints also accept header `X-Marquee-Key: <shared secret from env MARQUEE_INTAKE_KEY>`; the step endpoint requires it (Rina calls it as an ElevenLabs server tool through the Funnel).
+
+- `POST /api/leads` body `{ customer_name, address_or_postcode, installer_id?, facts?: Partial<HomeInputs>, source: "form" | "call" }` → `{ lead_id, draft: DesignResponse, facts: HomeInputs, unknown: string[], next_question }`. Creates the lead, runs the roof or postcode lookup and the first draft from whatever is known.
+- `POST /api/intake/step` body `{ lead_id, answers: Partial<HomeInputs> | { field, value }[] , note?: string }` → `{ design: Design, draft: DesignResponse, changed: { component, from, to, why }[], next_question: { field, question: string, why: string, options?: { value, label }[], expected_swing: string } | null, done: boolean, step: number }`. `done` is true when no remaining unknown moves the design beyond tolerance (reuse /api/ask). Every step is appended to `engine/.cache/leads/steps.jsonl` (lead_id, step, field asked, answer, swing).
+- `GET /api/leads/{lead_id}` → `{ lead_id, status: "draft" | "in_call" | "done", customer_name, address_or_postcode, facts, draft: DesignResponse, history: { step, field, answer, changed, at }[], next_question, questions_asked: number, created_at, updated_at }`.
+- `GET /api/leads?limit=20` → the latest leads, newest first, with status and a one-line title.
+- `GET /api/intake/priors` → `{ n_steps_logged, order: { field, mean_swing, times_asked }[] }`: question priors re-ranked from the step log ("it learns which questions matter"); /api/ask uses them as tie-breakers only.
 
 Natural-language refinement ("the family buys an EV next year") is handled in `web/` (`POST /api/interpret` → `{ changes: { field, from, to, note }[], inputs: HomeInputs }`) with the Claude API, then `web/` calls `/api/refine`. The engine has no LLM.
 
