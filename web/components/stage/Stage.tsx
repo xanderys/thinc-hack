@@ -222,12 +222,14 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const ev = (Object.keys(overrides).length ? drafted?.variants : null) ?? res.variants ?? drafted?.variants;
     if (ev?.length) {
       const order = [...ev].sort((a, b) => (b.key === pref ? 1 : 0) - (a.key === pref ? 1 : 0));
-      return order.map((v, n) => {
+      // After a sentence or a hand change the design on screen may match none of the offers: list it first as Current.
+      const cur: Variant[] = order.some((v) => same(v.design, res.design)) ? [] : [{ name: "Current", tag: "Current", design: res.design, e: res.economics, note: "", current: true, overrides: null }];
+      return [...cur, ...order.map((v, n) => {
         const [name, how] = v.label.split(" (");
         return { name, tag: n === 0 ? "Preferred" : v.key === "expert" ? (how ? how.replace(/\)$/, "").replace(/^./, (c) => c.toUpperCase()).replace(" here ", " ") : "As planners design it") : "",
           design: v.design, e: v.economics, note: v.key === "expert" ? "" : v.note, current: same(v.design, res.design),
           overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } };
-      });
+      })];
     }
     const fixed = Object.keys(overrides).length > 0;
     const out: Variant[] = [{ name: variantName(res.design), tag: fixed ? "Chosen" : "", design: res.design, e: res.economics, overrides: null, current: true }];
