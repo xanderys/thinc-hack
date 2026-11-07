@@ -10,6 +10,7 @@ import { STEP, UNIT } from "./Refine";
 type Props = {
   lead: string; read: ReadResponse; inputs: HomeInputs; roof: RoofResult | null;
   onFact: (f: keyof HomeInputs, v: unknown, label: string) => void; setInstaller: (i: InstallerId) => void;
+  liveAsking?: string | null;
   question: AskQuestion | null; answer: unknown; onAnswer: (v: unknown) => void; askError: string | null; asking: boolean;
   pref: Pref; setPref: (p: Pref) => void;
   res: DesignResponse | null; overrides: Overrides; setOverride: (f: keyof Design, v: OverrideValue | undefined) => void;
@@ -55,6 +56,7 @@ export default function TopBar(p: Props) {
   const i = p.inputs;
   return (
     <section className="t-bar" aria-label="Inputs and decisions">
+      {p.liveAsking && <p className="t-asking" aria-live="polite"><span className="dot" aria-hidden />Asking: {p.liveAsking}</p>}
       {p.question && (
         <div className="t-ask s-in">
           <span>{QUESTION[p.question.field] ?? `What is ${String(p.question.field)}?`}</span>

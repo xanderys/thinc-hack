@@ -22,8 +22,10 @@ const COMPONENT_FIELD_SET: Record<string, true> = { pv_kwp: true, inverter_kw: t
 
 // A house opened from the board: the lead's id (refinements write back to it) and what was read.
 export type Seed = { leadId: string; read: ReadResponse; text?: string };
+// While Rina's call runs: the lead's facts so far, the step count, what the last answer changed and what she is asking.
+export type Live = { step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null };
 
-export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: (id: string) => void }) {
+export default function Stage({ seed, onApproved, live }: { seed?: Seed; onApproved?: (id: string) => void; live?: Live | null }) {
   const [lead, setLead] = useState(HERO_LEAD);
   const [read, setRead] = useState<ReadResponse | null>(null);
   const [readBusy, setReadBusy] = useState(false);
@@ -111,6 +113,16 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
     begin(seed.read, seed.leadId);
   }, [seed?.leadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Each answer from the call: the facts move, the design reruns, and what moved carries the engine's why.
+  const liveWhy = useRef<{ component: string; why: string }[] | null>(null);
+  useEffect(() => {
+    if (!live || !read) return;
+    const { installer_id: _i, ...facts } = live.facts as Partial<HomeInputs> & { installer_id?: string }; void _i;
+    if (Object.entries(facts).every(([k, v]) => JSON.stringify((read.inputs as Record<string, unknown>)[k]) === JSON.stringify(v))) return;
+    cause.current = "From the call:"; liveWhy.current = live.changed;
+    setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts } });
+  }, [live?.step]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function begin(data: ReadResponse, leadId?: string) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
     const r = { data };
@@ -148,12 +160,12 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
               .filter((f) => before.design[f] !== r.data.design[f])
               .map((f) => {
                 const key = f === "inverter_kw" ? "inverter" : KEYS.find((k) => COMPONENT_DESIGN_FIELD[k] === f)!;
-                const why = engineWhy.find((d) => d.component === key)?.why;
+                const why = engineWhy.find((d) => d.component === key)?.why ?? liveWhy.current?.find((d) => d.component === key)?.why;
                 return { name: key === "inverter" ? "Inverter" : NAME[key], from: before.design[f], to: r.data.design[f], unit: UNIT[f], why: why && why !== "Set by the planner." ? why : undefined };
               });
             setMoved({ cause: cause.current, lines });
           }
-          cause.current = null;
+          cause.current = null; liveWhy.current = null;
           setPrev(before); last.current = r.data; setRes(r.data); setErr(null);
           if (!fixed) setDrafted(r.data);
         } else setErr(r.error);
@@ -291,7 +303,7 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
   if (seed && read) return (
     <div className="st b-card-in">
       <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} setInstaller={setInstaller}
-        question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} asking={question === undefined}
+        question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} asking={question === undefined} liveAsking={live?.asking ?? null}
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
         canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}

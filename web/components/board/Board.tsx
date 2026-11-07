@@ -6,7 +6,7 @@ import type { Design, Lead as LeadT, LeadRow, ReadResponse } from "@/lib/api";
 import { call } from "@/lib/client";
 import { HERO_LEAD } from "@/lib/demo";
 import House from "@/components/stage/House";
-import type { Seed } from "@/components/stage/Stage";
+import type { Live, Seed } from "@/components/stage/Stage";
 import AddSheet from "./AddSheet";
 
 const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
@@ -50,6 +50,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
   const [openId, setOpenId] = useState<string | null>(initial ?? null);
   const [seed, setSeed] = useState<Seed | null>(null);
   const [seedErr, setSeedErr] = useState<string | null>(null);
+  const [liveLead, setLiveLead] = useState<LeadT | null>(null);
   const [adding, setAdding] = useState(false);
   const fetching = useRef(new Set<string>());
   const designsRef = useRef<Record<string, { at: string; d: Design }>>({});
@@ -106,9 +107,21 @@ export default function Board({ openId: initial }: { openId?: string }) {
     setSeed(null); setSeedErr(null);
     if (!openId) return;
     let stop = false;
-    call<LeadT>(`/api/leads/${openId}`).then((r) => { if (stop) return; if (r.ok) setSeed(seedOf(r.data)); else setSeedErr(r.error); });
+    call<LeadT>(`/api/leads/${openId}`).then((r) => { if (stop) return; if (r.ok) { setSeed(seedOf(r.data)); setLiveLead(r.data); } else setSeedErr(r.error); });
     return () => { stop = true; };
   }, [openId]);
+
+  // While the call runs, the open card keeps converging: poll the lead every 2.5 s until it is done.
+  const calling = liveLead?.lead_id === openId && liveLead?.status === "in_call";
+  useEffect(() => {
+    if (!openId || !calling) return;
+    const t = setInterval(() => call<LeadT>(`/api/leads/${openId}`).then((r) => { if (r.ok) setLiveLead(r.data); }), 2500);
+    return () => clearInterval(t);
+  }, [openId, calling]);
+  const liveFeed: Live | null = useMemo(() => !liveLead || liveLead.lead_id !== openId || !liveLead.history.length && liveLead.status !== "in_call" ? null : {
+    step: liveLead.history.length, facts: liveLead.facts, changed: liveLead.history.at(-1)?.changed ?? [],
+    asking: liveLead.status === "in_call" ? liveLead.next_question?.question ?? null : null,
+  }, [liveLead, openId]);
 
   const open = useCallback((id: string) => {
     history.pushState({ h: id }, "", `/h/${id}`);
@@ -138,16 +151,17 @@ export default function Board({ openId: initial }: { openId?: string }) {
 
   if (openId) return (
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
-      <div className="b-open-h">
+      <div className={calling ? "b-open-h live" : "b-open-h"}>
+        {calling && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
         <button type="button" className="b-close" onClick={close} aria-label="Close, back to the board">Close</button>
         <div>
           <h1>{openCard?.name ?? seed?.read.inputs.address ?? "House"}</h1>
-          <p>{[openCard?.place, openCard && (approved[openCard.id] ? STATUS.approved : STATUS[openCard.status])].filter(Boolean).join(" · ")}</p>
+          <p>{[openCard?.place, calling ? STATUS.in_call : openCard && (approved[openCard.id] ? STATUS.approved : STATUS[openCard.status])].filter(Boolean).join(" · ")}</p>
         </div>
       </div>
       {seedErr && <div className="error" role="alert"><span><span className="src">Engine said</span>{seedErr}</span><button className="btn ghost" onClick={() => { const id = openId; setOpenId(null); setTimeout(() => setOpenId(id), 0); }}>Retry</button></div>}
       {!seed && !seedErr && <p className="s-quiet s-wait">Opening the house</p>}
-      {seed && <Stage key={seed.leadId} seed={seed} onApproved={onApproved} />}
+      {seed && <Stage key={seed.leadId} seed={seed} onApproved={onApproved} live={liveFeed} />}
     </div>
   );
 
