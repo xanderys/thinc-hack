@@ -192,3 +192,27 @@
 .collapsed { min-width: 0; width: 100%; }
 .collapsed > * { min-width: 0; max-width: 100%; }
 @media (max-width: 760px) { .collapsed .scrub { max-width: calc(100% + 32px); } }
+
+/* 4 + 1: component colours on the step number (Reonic: Solar yellow, Battery storage green, Wallbox blue, Heat pump red). */
+.open .num { background: var(--step, var(--accent)); color: var(--step-ink, #fff); }
+.scrub button[aria-pressed="true"] .num { background: var(--step, var(--accent)); color: var(--step-ink, #fff); }
+.facts { margin: 8px 12px 12px; display: grid; gap: 6px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.facts p { margin: 0; }
+.facts b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.facts .passS, .facts .refS { margin: 0; }
+.ruleS { color: var(--ink-2); }
+.conf { justify-self: start; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 10px; background: #eef0fd; color: #071b71; }
+.tickRow { margin: 8px 12px 4px; }
+.tickRow ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.tickRow li { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; border: 1px solid var(--rule); border-radius: 999px; padding: 3px 10px 3px 4px; background: #fff; color: var(--ink-2); }
+.tickRow li b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.tickRow li i { font-style: normal; width: 18px; height: 18px; border-radius: 999px; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.t_pass i { background: #e3f5e9; color: #1b7a39; }
+.t_info i { background: var(--sheet-2); color: var(--ink-3); }
+.t_fail { border-color: #f3b5b5 !important; background: #fff1f1 !important; }
+.t_fail i { background: #fde2e2; color: #c81e25; }
+.tickRow > p { margin: 6px 0 0; }
+@media (max-width: 760px) {
+  .tickRow li { padding: 6px 10px 6px 6px; min-height: 32px; }
+}
+@media (max-width: 760px) { .scrub button { min-height: 44px; } }
