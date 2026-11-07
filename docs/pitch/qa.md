@@ -51,3 +51,6 @@ Partly. Rows where most similar homes agree are hits twice as often (56% against
 
 ## Reonic already scores leads. What does yours add?
 Reonic scores each lead 0 to 100 on project readiness, property quality, customer profile, solar potential, customer sentiment and budget alignment (docs.reonic.com, lead scoring). Ours adds the designed system and its economics before any visit, estimated from the address. Offer values are estimates from the engine's stated cost assumptions, shown in the Rules block, not quotes.
+
+## Would the verdict turn away real customers?
+We replayed it on the 258 held-out signed sales: 82% Visit, 17% Call first, 1% Decline. Every one of those homes was sold, so each Decline is a mistake: 2 of 258, both homes where our design proposes no PV (planners sold one 2.7 kWp, the other already had solar). No design paid back in over 20 years (median 10.8, highest 16.8). Call first fires almost only where yearly use was never recorded, the 4,500 kWh default, on 46 of 258. The limit is that the pack holds signed sales only, so it shows the rule is not trigger-happy and cannot show that it catches bad leads; the roof and address checks could not be replayed, as the pack has no addresses. (engine/lab/qualification_backtest.md) [UNCONFIRMED: wording]

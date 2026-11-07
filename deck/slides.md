@@ -34,7 +34,9 @@ footer: Marquee
 
 ## Which leads deserve a visit.
 
-<div class="data">The installer can see which leads deserve a visit before they spend a planner’s afternoon on one. And the planner arrives already knowing the likely answer, so the scan confirms the design instead of starting it.<br>installer B makes <b>34</b> offers a month: every Decline and Call first is a planner afternoon not spent on a site visit<br>illustrative: [UNCONFIRMED: Decline plus Call first count from the board, times hours a visit costs] planner hours a month</div>
+<div class="data">The installer can see which leads deserve a visit before they spend a planner’s afternoon on one. And the planner arrives already knowing the likely answer, so the scan confirms the design instead of starting it.<br>installer B makes <b>34</b> offers a month: every Decline and Call first is a planner afternoon not spent on a site visit<br>replayed on 258 held-out signed sales: Visit <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b><br>illustrative: [UNCONFIRMED: Decline plus Call first count from the board, times hours a visit costs] planner hours a month</div>
+
+[UNCONFIRMED: replay shares, engine/lab/qualification_backtest.md 1186795]
 
 [UNCONFIRMED: screenshot of the board grouped Visit, Call first, Decline, from THINC HACK MASTER about 01:30 Munich]
 
