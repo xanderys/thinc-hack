@@ -3,7 +3,7 @@
 
 import type {
   ComponentDetail, Design, DesignResponse, DiffItem, Eval, HomeInputs, InstallerId,
-  Neighbours, ProjectDetail, ProjectSummary, RefineResponse, ValidateResponse, Health,
+  Neighbours, ProjectDetail, ProjectSummary, RefineResponse, ValidateResponse, Health, AskResponse, InboxRow,
 } from "./api";
 
 export const MOCK_VERSION = "mock-0";
@@ -222,4 +222,23 @@ export function mockEval(): Eval {
       return { project_id: p.project_id, component: LABEL[c], ours: ours[c], expert: p.expert[c], note: "Mock deviation." };
     }),
   };
+}
+
+const TOL = { pv: (a: number, b: number) => Math.abs(a - b) <= Math.max(1, 0.15 * b), battery: (a: number, b: number) => Math.abs(a - b) <= 2 };
+const near = (a: number | null, b: number | null, f?: (a: number, b: number) => boolean) => (a == null) === (b == null) && (a == null || b == null || !f || f(a, b));
+
+export function mockAsk(inputs: HomeInputs, unknown?: (keyof HomeInputs)[]): AskResponse {
+  const can = (f: keyof HomeInputs) => unknown ? unknown.includes(f) : true;
+  if (!can("annual_demand_kwh")) return { questions: [] };
+  const options = [3000, 5000, 6500].map((v) => ({ value: v, label: `about ${v.toLocaleString("en-GB")} kWh`, design: baseDesign({ ...inputs, annual_demand_kwh: v }) }));
+  return { questions: [{ field: "annual_demand_kwh", current: inputs.annual_demand_kwh, options, spread: 1.8 }] };
+}
+
+export function mockInbox(limit = 20): InboxRow[] {
+  return mockProjects(limit).map((p) => {
+    const d = baseDesign(p.inputs), e = p.expert;
+    const w = { pv: near(d.pv_kwp, e.pv_kwp, TOL.pv), battery: near(d.battery_kwh, e.battery_kwh, TOL.battery), heatpump: near(d.heatpump_kw, e.heatpump_kw), wallbox: near(d.wallbox_kw, e.wallbox_kw) };
+    const all = w.pv && w.battery && w.heatpump && w.wallbox;
+    return { project_id: p.project_id, installer_id: p.installer_id, label: `${p.inputs.annual_demand_kwh.toLocaleString("en-GB")} kWh`, inputs: p.inputs, draft: d, confidence: 0.6, expert: e, within: { ...w, all }, note: all ? "" : "Mock deviation." };
+  });
 }

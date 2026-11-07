@@ -1,6 +1,7 @@
 """Chained sizing model: PV, then battery given PV, then heat pump, then wallbox. Statistics plus physics, no LLM."""
 import math
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
@@ -16,7 +17,7 @@ from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES, date_t
 
 SEED = 42
 K = 15
-MODEL_VERSION = "chain-hgb-knn-5+hourly"
+MODEL_VERSION = "chain-hgb-knn-7-mono+hourly"
 NO_PV_RULE = "pv"  # "pv": propose PV when a battery would otherwise have none; "battery_none": drop the battery
 T_NOW = {"t": 2026.3}  # latest offer date in train; used when a request carries no offer_date
 COMPONENTS = ["pv", "battery", "heatpump", "wallbox"]
@@ -25,26 +26,32 @@ TARGET = {"pv": "pv_kwp", "battery": "battery_kwh", "heatpump": "heatpump_kw", "
 NAMES = {"pv": "PV", "battery": "a battery", "heatpump": "a heat pump", "wallbox": "a wallbox"}
 
 
+MONO = True  # monotone in demand (PV) and price (battery); 4,500 kWh default imputed, missing price = 32 ct
+DEMAND_IMPUTE: dict = {}  # load profile -> median non-default demand in train
+
+
 def base_features(inp: dict, installer: str) -> dict:
     d = float(inp.get("annual_demand_kwh") or 0)
+    if MONO and d in (0.0, 4500.0) and DEMAND_IMPUTE:  # the pack's default, not a measurement
+        d = DEMAND_IMPUTE.get(inp.get("load_profile"), DEMAND_IMPUTE["_all"])
     f = {
         "inst": INSTALLERS.index(installer),
         "demand": d,
         "log_demand": math.log1p(d),
         "has_ev": float(bool(inp.get("has_ev"))),
-        "ev_km": inp.get("ev_annual_km") if inp.get("ev_annual_km") is not None else np.nan,
+        "ev_km": inp.get("ev_annual_km") if inp.get("has_ev") and inp.get("ev_annual_km") is not None else np.nan,  # stale mileage never counts
         "has_wallbox": float(bool(inp.get("has_wallbox"))),
         "has_solar": float(bool(inp.get("has_solar"))),
-        "solar_kwp": inp.get("existing_solar_kwp") if inp.get("existing_solar_kwp") is not None else np.nan,
+        "solar_kwp": inp.get("existing_solar_kwp") if inp.get("has_solar") and inp.get("existing_solar_kwp") is not None else np.nan,
         "has_storage": float(bool(inp.get("has_storage"))),
-        "storage_kwh": inp.get("existing_storage_kwh") if inp.get("existing_storage_kwh") is not None else np.nan,
+        "storage_kwh": inp.get("existing_storage_kwh") if inp.get("has_storage") and inp.get("existing_storage_kwh") is not None else np.nan,
         "heat_cost": inp.get("heating_cost_per_year_eur") if inp.get("heating_cost_per_year_eur") is not None else np.nan,
         "heat_demand": inp.get("heating_demand_kwh") if inp.get("heating_demand_kwh") is not None else np.nan,
-        "price": inp.get("electricity_price_ct_kwh") if inp.get("electricity_price_ct_kwh") is not None else np.nan,
+        "price": inp.get("electricity_price_ct_kwh") if inp.get("electricity_price_ct_kwh") is not None else (32.0 if MONO else np.nan),
         "inhabitants": inp.get("num_inhabitants") if inp.get("num_inhabitants") is not None else np.nan,
         "sqm": inp.get("house_size_sqm") if inp.get("house_size_sqm") is not None else np.nan,
         "t": date_t(inp["offer_date"]) if inp.get("offer_date") else T_NOW["t"],
-        "demand_default": float(d in (0.0, 4500.0)),
+        "demand_default": 0.0 if MONO else float(d in (0.0, 4500.0)),
     }
     for lp in LOAD_PROFILES:
         f[f"lp_{lp}"] = float(inp.get("load_profile") == lp)
@@ -102,6 +109,12 @@ class Engine:
         self.train, self.test = tr.reset_index(drop=True), te.reset_index(drop=True)
         tr = self.train
         T_NOW["t"] = max(date_t(x) for x in tr.offer_date)
+        real = tr[~tr.annual_demand_kwh.isin([0.0, 4500.0])]
+        DEMAND_IMPUTE.clear()
+        DEMAND_IMPUTE.update({lp: float(g.annual_demand_kwh.median()) for lp, g in real.groupby("load_profile") if len(g) >= 10})
+        DEMAND_IMPUTE["_all"] = float(real.annual_demand_kwh.median())
+        self.demand_impute = dict(DEMAND_IMPUTE)
+        self.t_now = T_NOW["t"]
         X = pd.DataFrame([base_features(r, r["installer_id"]) for r in tr.to_dict("records")])
         # offer date picks the battery catalogue only; as a model feature it lowered the scoreboard (README)
         X = X.drop(columns=["t"])
@@ -130,20 +143,22 @@ class Engine:
             self.knn[inst] = {"V": (V - mu) / sd * KNN_W, "mu": mu, "sd": sd, "rows": t.reset_index(drop=True)}
 
         y = {c: tr[TARGET[c]].values for c in COMPONENTS}
-        clf = lambda: HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=4, min_samples_leaf=15, random_state=SEED)
-        reg = lambda: HistGradientBoostingRegressor(max_iter=300, learning_rate=0.05, max_depth=4, min_samples_leaf=15, loss="absolute_error", random_state=SEED)
+        mono_pv = {"demand": 1, "log_demand": 1} if MONO else None
+        mono_bat = {"price": 1} if MONO else None
+        clf = lambda m=None: HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=4, min_samples_leaf=15, random_state=SEED, monotonic_cst=m)
+        reg = lambda m=None: HistGradientBoostingRegressor(max_iter=300, learning_rate=0.05, max_depth=4, min_samples_leaf=15, loss="absolute_error", random_state=SEED, monotonic_cst=m)
 
         # PV
-        self.models["pv_dec"] = clf().fit(X, y["pv"] > 0)
+        self.models["pv_dec"] = clf(mono_pv).fit(X, y["pv"] > 0)
         m = y["pv"] > 0
-        self.models["pv_size"] = reg().fit(X[m], y["pv"][m])
-        pv_oof = np.where(cross_val_predict(clf(), X, y["pv"] > 0, cv=5) , cross_val_predict(reg(), X, y["pv"], cv=5), 0.0)
+        self.models["pv_size"] = reg(mono_pv).fit(X[m], y["pv"][m])
+        pv_oof = np.where(cross_val_predict(clf(mono_pv), X, y["pv"] > 0, cv=5), cross_val_predict(reg(mono_pv), X, y["pv"], cv=5), 0.0)
         X1 = X.assign(pv=pv_oof)
         # battery given PV
-        self.models["bat_dec"] = clf().fit(X1, y["battery"] > 0)
+        self.models["bat_dec"] = clf(mono_bat).fit(X1, y["battery"] > 0)
         m = y["battery"] > 0
-        self.models["bat_size"] = reg().fit(X1[m], y["battery"][m])
-        bat_oof = np.where(cross_val_predict(clf(), X1, y["battery"] > 0, cv=5), cross_val_predict(reg(), X1, y["battery"], cv=5), 0.0)
+        self.models["bat_size"] = reg(mono_bat).fit(X1[m], y["battery"][m])
+        bat_oof = np.where(cross_val_predict(clf(mono_bat), X1, y["battery"] > 0, cv=5), cross_val_predict(reg(mono_bat), X1, y["battery"], cv=5), 0.0)
         X2 = X1.assign(battery=bat_oof)
         # heat pump: too few sold to learn a size; decision from data, size from physics
         self.hp_positive = int((y["heatpump"] > 0).sum())
@@ -154,7 +169,15 @@ class Engine:
         self.models["wb_size"] = clf().fit(X2[m], y["wallbox"][m] > 11)
         return self
 
-    # ---------- neighbours ----------
+    def restore_globals(self):
+        """Module-level state set in fit(); a pickled engine must put it back before predicting."""
+        if getattr(self, "t_now", None):
+            T_NOW["t"] = self.t_now
+        DEMAND_IMPUTE.clear()
+        DEMAND_IMPUTE.update(getattr(self, "demand_impute", {}))
+        return self
+
+        # ---------- neighbours ----------
     def neighbours(self, inp: dict, inst: str) -> pd.DataFrame:
         k = self.knn[inst]
         v = (knn_vec(base_features(inp, inst)) - k["mu"]) / k["sd"] * KNN_W
@@ -193,7 +216,8 @@ class Engine:
 
         # PV
         p_pv = float(self.models["pv_dec"].predict_proba(X)[0, 1])
-        pv, src = choose("pv_kwp", p_pv, lambda: snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"]))
+        pv_fn = lambda: self.roof_cap(inp, snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"]), cat["pv"])
+        pv, src = choose("pv_kwp", p_pv, pv_fn)
         comps["pv"] = self._detail("pv", pv, p_pv, nb, inp, src)
         # battery
         X1 = X.assign(pv=pv)
@@ -203,13 +227,20 @@ class Engine:
         nopv_note = None
         if bat and not pv and not inp.get("has_solar") and src == "model":
             if NO_PV_RULE == "pv" and "pv_kwp" not in ov:
-                pv = snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"])
+                pv = pv_fn()
                 comps["pv"] = self._detail("pv", pv, p_pv, nb, inp, "model")
                 comps["pv"]["reason"] = f"A battery needs PV to charge and none is recorded, so PV is proposed; {comps['pv']['reason']}"
                 X1 = X.assign(pv=pv)
                 bat = snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"]))
             else:
                 bat, nopv_note = 0.0, "No PV, new or recorded, so no battery: it could not charge from solar."
+        if pv and inp.get("roof") and inp["roof"].get("max_kwp"):
+            r = inp["roof"]
+            if self._capped.get(id(inp)):
+                comps["pv"]["reason"] += f" Capped by the roof: {r['max_panels']} modules fit, {r['max_kwp']:g} kWp at most."
+            else:
+                comps["pv"]["reason"] += f" The roof fits {r['max_panels']} modules, up to {r['max_kwp']:g} kWp."
+        self._capped.pop(id(inp), None)
         comps["battery"] = self._detail("battery", bat, p_b, nb, inp, src, pv=pv)
         if nopv_note:
             comps["battery"]["reason"] = nopv_note
@@ -225,18 +256,283 @@ class Engine:
         # wallbox: decision from the EV flag (learned decision lost to this rule on test; README)
         p_w = float(self.models["wb_dec"].predict_proba(X2)[0, 1])
         wb, src = choose("wallbox_kw", 1.0 if inp.get("has_ev") else 0.0,
-                         lambda: 22.0 if float(self.models["wb_size"].predict_proba(X2)[0, 1]) >= 0.5 else 11.0)
+                         lambda: self.wallbox_default(inst))
         comps["wallbox"] = self._detail("wallbox", wb, p_w, nb, inp, src)
 
         inv = ov["inverter_kw"] if isinstance(ov.get("inverter_kw"), (int, float)) else rules.inverter_kw(pv)
         design = {"pv_kwp": pv or None, "inverter_kw": inv if pv else None, "battery_kwh": bat or None,
                   "heatpump_kw": hp or None, "wallbox_kw": wb or None}
         econ, plaus, opt = self._physics(inp, design, inst, f["t"], full)
+        if full:
+            try:
+                for c in COMPONENTS:
+                    comps[c]["derivation"] = self._derivation(c, inp, design, comps[c], nb)
+            except Exception as e:
+                log.warning("derivation failed: %s", e)
         out = {"design": design, "explanation": self._explain(inp, design, comps, nb, econ),
                "components": comps, "plausibility": plaus, "economics": econ, "model_version": MODEL_VERSION}
         if opt:
             out["optimum"] = opt
+        if full and design.get("pv_kwp"):
+            try:
+                out["variants"] = self.variants(inp, design, econ)
+            except Exception as e:
+                log.warning("variants failed: %s", e)
         return out
+
+    def sizes_batch(self, inps: list[dict]) -> list[dict]:
+        """Sizes only, no overrides, for many homes in one pass per model; same logic as predict()."""
+        if not inps:
+            return []
+        F = [base_features(i, i["installer_id"]) for i in inps]
+        X = pd.DataFrame(F)[self.cols]
+        n = len(inps)
+        insts = [i["installer_id"] for i in inps]
+        p_pv = self.models["pv_dec"].predict_proba(X)[:, 1]
+        pv_raw = self.models["pv_size"].predict(X)
+        pv_alt = np.array([self.roof_cap(inps[k], snap(float(pv_raw[k]), self.catalogue[insts[k]]["pv"]), self.catalogue[insts[k]]["pv"]) for k in range(n)])
+        for i in inps:
+            self._capped.pop(id(i), None)
+        pv = np.where(p_pv >= 0.5, pv_alt, 0.0)
+        X1 = X.assign(pv=pv)
+        p_b = self.models["bat_dec"].predict_proba(X1)[:, 1]
+        b_raw = self.models["bat_size"].predict(pd.concat([X1, X.assign(pv=pv_alt)], ignore_index=True))
+        out = []
+        X2 = X1.copy()
+        bats = np.zeros(n)
+        for k in range(n):
+            cat_b = self.battery_catalogue(insts[k], F[k]["t"])
+            b = snap(float(b_raw[k]), cat_b) if p_b[k] >= 0.5 else 0.0
+            if b and not pv[k] and not inps[k].get("has_solar"):
+                if NO_PV_RULE == "pv":
+                    pv[k] = pv_alt[k]
+                    b = snap(float(b_raw[n + k]), cat_b)
+                else:
+                    b = 0.0
+            bats[k] = b
+        X2 = X.assign(pv=pv, battery=bats)
+        p_h = self.models["hp_dec"].predict_proba(X2)[:, 1] if self.models.get("hp_dec") else np.zeros(n)
+        p_22 = self.models["wb_size"].predict_proba(X2)[:, 1]
+        for k, i in enumerate(inps):
+            cat = self.catalogue[insts[k]]
+            hp = snap_up(rules.heatpump_kw(i), cat["heatpump"]) if p_h[k] >= 0.5 and i.get("heating_type") != "Heatpump" else 0.0
+            wb = self.wallbox_default(insts[k]) if i.get("has_ev") else 0.0
+            out.append({"pv_kwp": float(pv[k]) or None, "inverter_kw": rules.inverter_kw(pv[k]) if pv[k] else None,
+                        "battery_kwh": float(bats[k]) or None, "heatpump_kw": hp or None, "wallbox_kw": wb or None})
+        return out
+
+    _capped: ClassVar[dict] = {}  # inputs whose PV the roof capped, for the reason line
+
+    def roof_cap(self, inp, pv, cat) -> float:
+        """PV no larger than the roof holds (usable m2 / 5.5): the largest catalogue size that fits."""
+        r = inp.get("roof") or {}
+        m = r.get("max_kwp")
+        if not m or pv <= m:
+            return pv
+        fits = cat[cat <= m + 1e-9]
+        self._capped[id(inp)] = True
+        return float(fits.max()) if len(fits) else round(int(m / 0.45) * 0.45, 2)
+
+    def wallbox_default(self, inst) -> float:
+        """The installer's wallbox size if it sells one size at least 60% of the time, else 11 kW (registration only;
+        22 kW needs grid operator approval, docs/domain.md 1). The learned 11-vs-22 choice flipped on mileage alone: noise."""
+        s = self.train[(self.train.installer_id == inst) & (self.train.wallbox_kw > 0)].wallbox_kw
+        if len(s):
+            vc = s.value_counts(normalize=True)
+            if vc.iloc[0] >= 0.6:
+                return float(vc.index[0])
+        return 11.0
+
+    ASK_TOL = {"pv_kwp": 1.0, "battery_kwh": 2.0, "heatpump_kw": 2.0, "wallbox_kw": 2.0}
+
+    def ask(self, inp: dict, unknown: list | None = None) -> list:
+        """Value of information: which missing or default input would move the design most.
+        unknown: fields the lead did not state; when given, only those are asked (a stated "no EV" is never asked)."""
+        cands = []
+        ask_ = (lambda f, default: f in unknown) if unknown is not None else (lambda f, default: default)
+        if ask_("heating_type", inp.get("heating_type", "Unknown") == "Unknown"):
+            cands.append(("heating_type", inp.get("heating_type", "Unknown"),
+                          [("Gas", "Gas", {"heating_type": "Gas"}), ("Heatpump", "Heat pump", {"heating_type": "Heatpump"})]))
+        if ask_("has_ev", not inp.get("has_ev")):
+            cands.append(("has_ev", False, [(True, "Yes, about 12,000 km a year", {"has_ev": True, "ev_annual_km": 12000})]))
+        if ask_("annual_demand_kwh", not inp.get("annual_demand_kwh") or inp.get("annual_demand_kwh") == 4500):
+            cands.append(("annual_demand_kwh", inp.get("annual_demand_kwh"),
+                          [(3000, "about 3,000 kWh (two people)", {"annual_demand_kwh": 3000}),
+                           (5000, "about 5,000 kWh (family of four)", {"annual_demand_kwh": 5000}),
+                           (6500, "about 6,500 kWh (large household or home office)", {"annual_demand_kwh": 6500})]))
+        if ask_("heating_demand_kwh", inp.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable") and not inp.get("heating_demand_kwh")):
+            cands.append(("heating_demand_kwh", None,
+                          [(12000, "12,000 kWh", {"heating_demand_kwh": 12000}), (20000, "20,000 kWh", {"heating_demand_kwh": 20000})]))
+        if ask_("has_solar", not inp.get("has_solar")):
+            cands.append(("has_solar", False, [(True, "Yes, about 6 kWp", {"has_solar": True, "existing_solar_kwp": 6.0})]))
+        variants = [inp] + [{**inp, **ch} for _, _, opts in cands for _, _, ch in opts]
+        designs = self.sizes_batch(variants)
+        base, rest = designs[0], designs[1:]
+        qs, k = [], 0
+        for field_, cur, opts in cands:
+            options, spread = [], 0.0
+            for val, label, _ in opts:
+                d = rest[k]
+                k += 1
+                sp = 0.0
+                for key, tol in self.ASK_TOL.items():
+                    a, b = base[key] or 0.0, d[key] or 0.0
+                    sp += abs(a - b) / tol + (1.0 if (a > 0) != (b > 0) else 0.0)
+                spread = max(spread, sp)
+                options.append({"value": val, "label": label, "design": d})
+            if spread > 0:
+                qs.append({"field": field_, "current": cur, "options": options, "spread": round(spread, 2)})
+        return sorted(qs, key=lambda q: -q["spread"])[:3]
+
+    def inbox(self, limit: int = 20) -> list:
+        """Held-out new-system jobs in demo order: a PV and battery hit first, then varied installers and kinds."""
+        if getattr(self, "_inbox", None) is None:
+            te = self.test
+            te = te[(te.pv_kwp > 0) | te.has_solar].reset_index(drop=True)
+            rows = te.to_dict("records")
+            drafts = self.sizes_batch([row_inputs(r) for r in rows])
+            items = []
+            for r, d in zip(rows, drafts):
+                w = {c: bool(rules.within(c, [d[TARGET[c]] or 0.0], [r[TARGET[c]]])[0]) for c in COMPONENTS}
+                w["all"] = all(w.values())
+                items.append((r, d, w))
+            first = [x for x in items if x[2]["all"] and x[0]["installer_id"] == "2a8ba8e2" and x[0]["battery_kwh"] > 0
+                     and (x[0]["heating_type"] in ("Gas", "Oil") or x[0]["has_ev"])]
+            first = first or [x for x in items if x[2]["pv"] and x[2]["battery"] and x[0]["battery_kwh"] > 0]
+            def kind(r):
+                if r["heatpump_kw"] > 0 or r["heating_type"] != "Unknown":
+                    return "heating"
+                if r["has_ev"] or r["wallbox_kw"] > 0:
+                    return "ev"
+                return "battery" if r["battery_kwh"] > 0 else "pv_only"
+            buckets = {}
+            for x in items:
+                if first and x is first[0]:
+                    continue
+                buckets.setdefault((kind(x[0]), x[0]["installer_id"], x[2]["all"]), []).append(x)
+            keys = sorted(buckets, key=lambda k: (["battery", "ev", "heating", "pv_only"].index(k[0]), k[1], not k[2]))
+            ordered = first[:1]
+            while any(buckets[k] for k in keys):
+                for k in keys:
+                    if buckets[k]:
+                        ordered.append(buckets[k].pop(0))
+            self._inbox = ordered
+        out = []
+        for r, d, w in self._inbox[:limit]:
+            inp = row_inputs(r)
+            full = self.predict(inp, full=False)
+            inc = [c for c in full["components"].values() if c["decision"] == "include"]
+            note = ""
+            if not w["all"]:
+                c = next(c for c in ("pv", "battery", "wallbox", "heatpump") if not w[c])
+                note = self._deviation_note(c, r, d[TARGET[c]] or 0.0, float(r[TARGET[c]]))
+            out.append({"project_id": r["project_id"], "installer_id": r["installer_id"], "inputs": inp,
+                        "draft": full["design"], "confidence": round(float(np.mean([c["confidence"] for c in inc])), 2) if inc else 0.0,
+                        "expert": row_design(r), "within": w, "note": note, "_row": r})
+        return out
+
+    def _derivation(self, comp, inp, design, detail, nb) -> dict:
+        """Why this number (v1.5): one physical axiom with this home's numbers, then the learned adjustment that
+        closes the gap to the engine's value. The axiom is never the whole story: the adjustment says what the data adds."""
+        key = TARGET[comp]
+        final = design.get(key)
+        n = len(nb)
+        src_of = lambda k: "lead" if inp.get(k) not in (None, False, "Unknown") else "default"
+        planner = detail["reason"].startswith(("Set by the planner", "Included by the planner"))
+        s = nb[key].values
+        sim_in = roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")})
+
+        if comp == "pv":
+            yld = float(hourly.sim.pv_profile(sim_in, "Munich").sum())
+            d = float(inp.get("annual_demand_kwh") or 0)
+            ev = rules.ev_kwh(inp)
+            use = d + ev
+            ax = round(use / yld, 2) if yld else None
+            ins = [{"name": "household use", "value": d, "unit": "kWh a year", "source": src_of("annual_demand_kwh")},
+                   {"name": "yield here", "value": round(yld), "unit": "kWh per kWp a year", "source": "pvgis"}]
+            eq = f"{d:,.0f} kWh"
+            if ev:
+                ins.append({"name": "EV charging", "value": round(ev), "unit": "kWh a year", "source": src_of("ev_annual_km")})
+                eq = f"({d:,.0f} + {ev:,.0f} EV) kWh"
+            eq += f" / {yld:,.0f} kWh per kWp = {ax:g} kWp" if ax else ""
+            axiom = "A year of sun on this roof should cover a year of use; planners then oversize."
+            ratios = [x / (r_d / yld) for x, r_d in zip(s, nb.annual_demand_kwh.values) if x > 0 and r_d > 0] if yld else []
+            peer = f"; similar homes' median x{np.median(ratios):.1f}" if ratios else ""
+            if not final:
+                return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                        "adjustment": {"label": f"{(s == 0).sum()} of {n} similar homes got no new PV", "value": 0.0, "n_similar": n}, "final": None}
+            if inp.get("roof") and inp["roof"].get("max_kwp"):
+                ins.append({"name": "roof holds", "value": inp["roof"]["max_kwp"], "unit": "kWp", "source": inp["roof"].get("source", "lod2")})
+            label = ("set by the planner" if planner else
+                     f"planners like this one oversize: learned from {len(self.train[self.train.installer_id == inp['installer_id']])} past designs at this installer{peer}, snapped to a module count")
+            return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                    "adjustment": {"label": label, "value": round(final / ax, 2) if ax else 1.0, "n_similar": n}, "final": final}
+
+        if comp == "battery":
+            prof = hourly.sim.pv_profile(sim_in, "Munich")
+            shape = hourly.sim.household_shape()
+            night = float(shape[prof <= 1e-3].sum() / shape.sum())
+            daily = float(inp.get("annual_demand_kwh") or 0) / 365
+            ax = round(daily * night, 1)
+            ins = [{"name": "household use", "value": round(daily, 1), "unit": "kWh a day", "source": src_of("annual_demand_kwh")},
+                   {"name": "share used after sunset", "value": round(night, 2), "unit": "", "source": "pvgis"}]
+            eq = f"{daily:.1f} kWh a day x {night:.0%} after sunset = {ax:g} kWh"
+            axiom = "A battery should carry the evening and night from the day's sun."
+            if not final:
+                return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                        "adjustment": {"label": detail["reason"], "value": 0.0, "n_similar": n}, "final": None}
+            sold = self.battery_catalogue(inp["installer_id"], base_features(inp, inp["installer_id"])["t"])
+            ins.append({"name": "installer packages", "value": ", ".join(f"{x:g}" for x in sold), "unit": "kWh", "source": "catalogue"})
+            med = float(np.median(s[s > 0])) if (s > 0).any() else None
+            label = ("set by the planner" if planner else
+                     f"sized with the PV and snapped to the installer's package"
+                     + (f"; {int((s > 0).sum())} of {n} similar homes got a battery, median {med:g} kWh" if med else ""))
+            return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                    "adjustment": {"label": label, "value": round(final / ax, 2) if ax else 1.0, "n_similar": n}, "final": final}
+
+        if comp == "heatpump":
+            kw, note = rules.heat_load_kw(inp)
+            heat = inp.get("heating_demand_kwh") or (inp["heating_cost_per_year_eur"] / 0.12 if inp.get("heating_cost_per_year_eur") else None)
+            axiom = "A heat pump runs about 2,300 full-load hours a year, so heat demand over 2,300 hours gives its size."
+            if heat:
+                given = bool(inp.get("heating_demand_kwh"))
+                ins = [{"name": "heat demand", "value": round(heat), "unit": "kWh a year", "source": "lead" if given else "default"},
+                       {"name": "full-load hours", "value": 2300, "unit": "h", "source": "installer history"}]
+                eq = f"{heat:,.0f} kWh / 2,300 h = {heat / 2300:.1f} kW"
+                if not given:
+                    ins.insert(0, {"name": "heating cost", "value": inp["heating_cost_per_year_eur"], "unit": "EUR a year", "source": "lead"})
+                    ins.insert(1, {"name": "heat price", "value": 12, "unit": "ct per kWh of heat", "source": "default"})
+                    eq = f"EUR {inp['heating_cost_per_year_eur']:,.0f} / 12 ct = {heat:,.0f} kWh; " + eq
+                ax = round(heat / 2300, 1)
+            else:
+                ins = [{"name": "basis", "value": note, "unit": "", "source": "default"}]
+                eq = f"{note}: {kw:.1f} kW"
+                ax = round(kw, 1)
+            if inp.get("heating_type") == "Heatpump" and not final:
+                return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": None,
+                        "adjustment": {"label": "the home already heats with a heat pump", "value": 0.0, "n_similar": n}, "final": None}
+            if not final:
+                return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                        "adjustment": {"label": f"{int((s > 0).sum())} of {n} similar homes got a heat pump; this installer sold {self.hp_positive} in its history",
+                                       "value": 0.0, "n_similar": n}, "final": None}
+            sizes = self.catalogue[inp["installer_id"]]["heatpump"]
+            ins.append({"name": "installer sizes", "value": ", ".join(f"{x:g}" for x in sizes), "unit": "kW", "source": "catalogue"})
+            label = "set by the planner" if planner and detail["reason"].startswith("Set") else "rounded up to the next heat pump this installer sells"
+            return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                    "adjustment": {"label": label, "value": round(final / ax, 2) if ax else 1.0, "n_similar": n}, "final": final}
+
+        # wallbox
+        axiom = "A planned EV gets the installer's standard wallbox."
+        ins = [{"name": "EV planned", "value": "yes" if inp.get("has_ev") else "no", "unit": "", "source": src_of("has_ev")},
+               {"name": "installer standard", "value": self.wallbox_default(inp["installer_id"]), "unit": "kW", "source": "installer history"}]
+        std = self.wallbox_default(inp["installer_id"])
+        ax = std if inp.get("has_ev") else None
+        eq = f"EV planned: {std:g} kW" if inp.get("has_ev") else "No EV planned: none"
+        if final == ax or (not final and ax is None):
+            adj = None
+        else:
+            adj = {"label": "set by the planner" if planner else detail["reason"], "value": (final or 0) / ax if ax else 0.0, "n_similar": n}
+        return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax, "adjustment": adj, "final": final}
 
     def _physics(self, inp, design, inst, t, full):
         """Hourly simulation (app/hourly) when it runs; the annual ratio model otherwise. Economics.method says which."""
@@ -244,7 +540,7 @@ class Engine:
         lookup["method"] = "annual-lookup"
         if not full:
             return lookup, [], None
-        clean = {k: v for k, v in inp.items() if not k.startswith("_")}
+        clean = roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")})
         try:
             sim = hourly.simulate(clean, design)
             econ = sim.economics
@@ -259,13 +555,52 @@ class Engine:
             pvs = self.catalogue[inst]["pv"]
             pv0 = design["pv_kwp"] or 0
             near = pvs[(pvs >= 0.5 * pv0) & (pvs <= 1.6 * pv0)]
-            near = near[np.unique(np.linspace(0, len(near) - 1, min(12, len(near))).round().astype(int))] if len(near) else pvs
+            near = near[np.unique(np.linspace(0, len(near) - 1, min(8, len(near))).round().astype(int))] if len(near) else pvs
             cat = {"pv_kwp": sorted({float(x) for x in near} | {float(pv0)}),
                    "battery_kwh": [float(x) for x in self.battery_catalogue(inst, t)]}
             opt = hourly.optimum(clean, cat, design) if design.get("pv_kwp") else None
         except Exception as e:
             log.warning("optimum failed: %s", e)
         return econ, plaus, opt
+
+    VARIANT_LABEL = {"expert": "PV + storage (as planners here design it)", "independence": "Most independence",
+                     "payback": "Best payback", "upfront": "Lowest upfront cost"}
+
+    def variants(self, inp, design, econ) -> list:
+        """v1.7: the learned design plus three re-optimised over the installer's own sizes (hourly simulation each).
+        Heat pump and wallbox stay as in the expert design; PV is capped at the roof. Preference only reorders."""
+        inst = inp["installer_id"]
+        clean = roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")})
+        pvs = self.catalogue[inst]["pv"]
+        pv0 = design.get("pv_kwp") or float(np.median(pvs))
+        cap = (inp.get("roof") or {}).get("max_kwp") or 1e9
+        cand = pvs[(pvs >= 0.4 * pv0) & (pvs <= 2.0 * pv0) & (pvs <= cap + 1e-9)]
+        if len(cand) > 8:  # 8 PV sizes x the battery packages keeps /api/design under 300 ms
+            cand = cand[np.unique(np.linspace(0, len(cand) - 1, 8).round().astype(int))]
+        bats = [0.0] + [float(x) for x in self.battery_catalogue(inst, base_features(inp, inst)["t"])]
+        keep = {k: design.get(k) for k in ("heatpump_kw", "wallbox_kw")}
+        runs = []
+        for pv in sorted({float(x) for x in cand} | ({float(design["pv_kwp"])} if design.get("pv_kwp") else set())):
+            for bat in bats:
+                d = {"pv_kwp": pv, "inverter_kw": rules.inverter_kw(pv), "battery_kwh": bat or None, **keep}
+                runs.append((d, hourly.simulate(clean, d).economics))
+        if not runs:
+            return []
+        best_aut = max(e["autarky_share"] for _, e in runs)
+        ind = min((r for r in runs if r[1]["autarky_share"] >= best_aut - 0.01), key=lambda r: r[1]["capex_eur"])
+        pay = min((r for r in runs if r[1]["payback_years"]), key=lambda r: (r[1]["payback_years"], r[1]["capex_eur"]), default=None)
+        up = min(runs, key=lambda r: (r[1]["capex_eur"], -r[1]["autarky_share"]))
+        out = [{"key": "expert", "label": self.VARIANT_LABEL["expert"], "design": design, "economics": econ,
+                "note": "The design planners at this installer fit to homes like this one."}]
+        for key, r in (("independence", ind), ("payback", pay), ("upfront", up)):
+            if r is None:
+                continue
+            out.append({"key": key, "label": self.VARIANT_LABEL[key], "design": r[0], "economics": r[1],
+                        "note": variant_note(r[0], r[1], design, econ)})
+        pref = inp.get("preference")
+        if pref in ("independence", "payback", "upfront"):
+            out.sort(key=lambda v: v["key"] != pref)
+        return out
 
     def _detail(self, comp, size, p, nb, inp, src, pv=None):
         unit = UNITS[comp]
@@ -301,8 +636,10 @@ class Engine:
             if inp.get("heating_type") in ("Gas", "Oil"):
                 return f"Replaces the {inp['heating_type'].lower()} boiler: {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
             return f"Included by the planner: {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
+        if src == "include" and comp == "wallbox":
+            return f"Included by the planner at {fmt(size, unit)}: the standard size; 22 kW needs grid operator approval."
         if src == "include" and comp != "pv" and comp != "battery":
-            return f"Included by the planner at {fmt(size, unit)}, the size this installer fits most for homes like this."
+            return f"Included by the planner at {fmt(size, unit)}."
         if comp == "pv":
             if not inc:
                 return f"{n - k} of {n} similar homes got no new PV" + (" (existing system on the roof)." if inp.get("has_solar") else ".")
@@ -325,9 +662,9 @@ class Engine:
                 if inp.get("has_wallbox"):
                     return "The home already has a wallbox."
                 return f"No EV recorded, so no wallbox; {n - k} of {n} similar homes also went without."
-            if inp.get("has_ev") and k < n / 2:
-                return f"The home has an EV, so a wallbox at {fmt(size, unit)}; {k} of {n} similar homes got one."
-            return f"The home {ev}; {k} of {n} similar homes got a wallbox, most often {fmt(st['median_size'], unit)}."
+            if inp.get("has_ev"):
+                return f"The home has an EV, so a wallbox at {fmt(size, unit)}, the standard size (22 kW needs grid operator approval); {k} of {n} similar homes got one."
+            return f"The home {ev}; {k} of {n} similar homes got a wallbox."
 
     def _explain(self, inp, design, comps, nb, econ):
         d = inp.get("annual_demand_kwh") or 0
@@ -551,6 +888,45 @@ class Engine:
                 "method": "Agreement between near-identical training homes: each test home against the median design of 5 or more "
                           "training homes with identical installer, demand, EV flag and heating type, same tolerance bands as the scoreboard. "
                           "Covers the test homes that have such a group."}
+
+
+def roof_to_sim(inp: dict) -> dict:
+    """Pass a measured roof's orientation and area to the hourly simulation unless the planner gave them."""
+    r = inp.get("roof") or {}
+    segs = [x for x in r.get("segments") or [] if x.get("azimuth") is not None]
+    if not segs or inp.get("roof_azimuth_deg") is not None or inp.get("roof_orientation"):
+        return inp
+    from .roofs import facing
+    big = max(segs, key=lambda x: x["area_m2"])
+    out = {**inp, "roof_tilt_deg": inp.get("roof_tilt_deg") or big["pitch"], "roof_area_sqm": inp.get("roof_area_sqm") or r.get("usable_area_m2")}
+    if facing(segs) == "east-west":
+        out["roof_orientation"] = "east-west"
+    else:
+        out["roof_azimuth_deg"] = big["azimuth"]
+    return out
+
+
+def _kit(d):
+    pv, bat = d.get("pv_kwp") or 0, d.get("battery_kwh") or 0
+    return f"{pv:g} kWp" + (f" with {bat:g} kWh" if bat else " with no battery")
+
+
+def variant_note(d, e, d0, e0) -> str:
+    """One sentence against the expert variant, in the homeowner's terms."""
+    if (d.get("pv_kwp") or 0) == (d0.get("pv_kwp") or 0) and (d.get("battery_kwh") or 0) == (d0.get("battery_kwh") or 0):
+        return f"Same as the planners' design ({_kit(d)})."
+    parts = []
+    dc = e["capex_eur"] - e0["capex_eur"]
+    if abs(dc) >= 50:
+        parts.append(f"EUR {abs(dc):,.0f} {'more' if dc > 0 else 'less'} upfront")
+    da = round((e["autarky_share"] - e0["autarky_share"]) * 100)
+    if da:
+        parts.append(f"{abs(da)} point{'s' if abs(da) > 1 else ''} {'more' if da > 0 else 'less'} independence")
+    if e.get("payback_years") and e0.get("payback_years"):
+        dp = e["payback_years"] - e0["payback_years"]
+        if abs(dp) >= 0.1:
+            parts.append(f"pays back {abs(dp):.1f} years {'later' if dp > 0 else 'sooner'}")
+    return f"{_kit(d)}: " + (", ".join(parts) if parts else "about the same as the planners' design") + "."
 
 
 def physics_component(msg: str) -> str:

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why this number mockup</title>
+<link rel="stylesheet" href="base.css">
+<style>
+.page { max-width: 1376px; margin: 0 auto; padding: 28px 32px 56px; display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 0 44px; }
+.side { border-right: 1px solid var(--rule); padding-right: 28px; }
+.state { font: 11.5px "Mono"; color: var(--accent); margin: 26px 0 6px; }
+.state:first-child { margin-top: 0; }
+.comps { border-top: 1.5px solid var(--ink); }
+.comp { display: grid; grid-template-columns: 150px 150px minmax(0, 1fr) auto; gap: 4px 24px; padding: 15px 0; border-bottom: 1px solid var(--rule); align-items: baseline; }
+.comp .n { font-weight: 600; }
+.comp .s { font: 500 26px/1 "Mono"; letter-spacing: -0.02em; white-space: nowrap; }
+.comp .s button { font: inherit; letter-spacing: inherit; background: none; border: 0; padding: 0 0 2px; border-bottom: 1.5px dotted var(--ink-3); cursor: pointer; }
+.comp .s button.open { border-bottom: 2px solid var(--accent); }
+.comp .s .u { font-size: 13px; color: var(--ink-3); margin-left: 4px; font-weight: 400; }
+.comp .say { font-size: 15px; }
+.comp .why { font-size: 13px; border-bottom: 1px solid var(--ink-3); }
+.der { grid-column: 2 / 5; margin-top: 8px; border-left: 2px solid var(--accent); padding: 4px 0 4px 16px; }
+.axiom { font: 21px/1.25 "Serif", serif; margin: 0 0 10px; max-width: 52ch; }
+.ledger { display: grid; grid-template-columns: 22px 92px 120px minmax(0, 1fr); gap: 0 10px; align-items: baseline; font-size: 14px; max-width: 760px; }
+.ledger > span { padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.ledger .op { font: 500 16px "Mono"; color: var(--ink-3); text-align: center; }
+.ledger .v { font: 500 17px "Mono"; text-align: right; }
+.ledger .u { font: 13px "Mono"; color: var(--ink-2); }
+.ledger .w { color: var(--ink-2); }
+.ledger .w .src { font: 11.5px "Mono"; color: var(--ink-3); margin-left: 6px; }
+.ledger .sub { color: var(--ink-3); }
+.ledger .fin { font-weight: 500; border-bottom: 1.5px solid var(--ink); }
+.ledger .fin.v { color: var(--ink); }
+.ledger .adj { color: var(--accent); }
+.more { margin-top: 10px; font-size: 13.5px; background: none; border: 0; border-bottom: 1px solid var(--ink-3); padding: 0; }
+.fh { font-size: 13px; font-weight: 600; margin: 20px 0 0; padding-bottom: 6px; border-bottom: 1.5px solid var(--ink); }
+.fh:first-of-type { margin-top: 0; }
+.fact { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 2px 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); }
+.fact .k { font-size: 13px; color: var(--ink-3); padding-top: 2px; }
+.fact .fv { font-size: 15px; }
+.fact .fv.asked { color: var(--accent); }
+.fact .fq { grid-column: 2; font-size: 12px; color: var(--ink-3); }
+.pref { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--ink-3); margin: 10px 0 4px; }
+.pref button { background: var(--sheet); border: 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 8px 10px; text-align: left; font-size: 13.5px; }
+.pref button:nth-child(2n) { border-right: 0; }
+.pref button:nth-child(n+3) { border-bottom: 0; }
+.pref button.on { background: var(--accent); color: var(--paper); }
+.more2 { padding: 10px 0; border-bottom: 1px solid var(--rule); font-size: 13.5px; }
+.vh3 { font-size: 13px; font-weight: 600; margin: 34px 0 10px; }
+.vrow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--rule); }
+.v { padding: 14px 16px 16px; border-right: 1px solid var(--rule); background: var(--sheet); }
+.v:last-child { border-right: 0; }
+.v.on { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--paper); }
+.v .vh { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.v .vn { font-weight: 600; }
+.v .tagr { font-size: 12px; color: var(--accent); }
+.v .vs { font: 13px "Mono"; color: var(--ink-2); margin: 4px 0 12px; }
+.v dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 0; }
+.v dt { font-size: 12px; color: var(--ink-3); }
+.v dd { margin: 1px 0 0; font: 500 16px "Mono"; }
+.v .gap { display: inline-block; width: 56px; height: 12px; background: var(--rule); }
+.v .vnote { font-size: 12.5px; color: var(--ink-2); margin: 10px 0 0; }
+.roof { font-size: 13.5px; color: var(--ink-2); margin: 0 0 18px; }
+.notebox { font: 11.5px "Mono"; color: var(--accent); line-height: 1.5; }
+</style></head>
+<body>
+<header class="masthead"><span class="title">Planner</span><nav><span class="on">Plan</span><span>Check</span></nav><span class="engine">Model chain-hgb-knn-6+hourly, trained on 1,256 projects</span></header>
+<div class="page">
+  <div class="side">
+    <p class="notebox" style="margin:0 0 14px">Mock note: facts panel regrouped (Consumption, Demand, Preferences). The preference only reorders the offer variants; the learned design stays the proposal.</p>
+    <h3 class="fh">Consumption</h3>
+    <div class="fact"><span class="k">Annual use</span><span class="fv asked num">5,000 kWh</span><span class="fq">You answered</span></div>
+    <div class="fact"><span class="k">Heating</span><span class="fv">Gas, <span class="num">2,400 EUR</span> a year</span><span class="fq">"We heat with gas"</span></div>
+    <div class="fact"><span class="k">Price</span><span class="fv"><span class="num">37 ct</span> per kWh</span><span class="fq">"37 cents per kWh"</span></div>
+    <h3 class="fh">Demand</h3>
+    <div class="fact"><span class="k">Electric car</span><span class="fv">No</span><span class="fq">"No electric car yet"</span></div>
+    <div class="fact"><span class="k">Heat pump</span><span class="fv">Not planned</span><span class="fq">Not in the lead</span></div>
+    <div class="fact"><span class="k">Household</span><span class="fv">4 people</span><span class="fq">"family of four"</span></div>
+    <h3 class="fh">Preferences</h3>
+    <div class="fact"><span class="k">Wants</span><span class="fv">Solar with storage</span><span class="fq">"an offer for solar with storage"</span></div>
+    <div class="pref" role="group" aria-label="Preference"><button>Most independence</button><button>Best payback</button><button class="on">Lowest upfront cost</button><button>As planners design it</button></div>
+    <div class="more2">More details: Katharinenstraße 5, 82008 Unterhaching; 140 m², built 1985; no solar, no battery; Installer A</div>
+  </div>
+  <div>
+    <p class="roof">The roof fits 57 modules, about 116 m² at 25 degrees facing east-west, measured from Bavarian LoD2 data. Matched: 5, Katharinenstraße, Unterhaching, 82008.</p>
+    <p class="state">Level 1: the number and one plain sentence</p>
+    <div class="comps">
+      <div class="comp"><span class="n">Solar</span><span class="s"><button class="open">7.65</button><span class="u">kWp</span></span><span class="say">7.65 kWp of solar for your 5,000 kWh a year.</span><span class="why">Why</span>
+        <div class="der">
+          <p class="axiom">A year of sun on this roof should cover a year of use; planners then oversize.</p>
+          <button class="more">Show the sum</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="state">Level 2: the sum with this home's numbers</p>
+    <div class="comps">
+      <div class="comp"><span class="n">Solar</span><span class="s"><button class="open">7.65</button><span class="u">kWp</span></span><span class="say">7.65 kWp of solar for your 5,000 kWh a year.</span><span class="why">Why</span>
+        <div class="der">
+          <p class="axiom">A year of sun on this roof should cover a year of use; planners then oversize.</p>
+          <div class="ledger">
+            <span class="op"></span><span class="v">5,000</span><span class="u">kWh a year</span><span class="w">household use<span class="src">answer</span></span>
+            <span class="op">÷</span><span class="v">907</span><span class="u">kWh per kWp</span><span class="w">a year of sun on this roof, 25° east-west<span class="src">PVGIS, LoD2</span></span>
+            <span class="op">=</span><span class="v sub">5.51</span><span class="u">kWp</span><span class="w sub">what the sun alone asks for</span>
+          </div>
+          <button class="more">Show what planners do</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="state">Level 3: the learned adjustment that lands on the number</p>
+    <div class="comps">
+      <div class="comp"><span class="n">Solar</span><span class="s"><button class="open">7.65</button><span class="u">kWp</span></span><span class="say">7.65 kWp of solar for your 5,000 kWh a year.</span><span class="why">Why</span>
+        <div class="der">
+          <p class="axiom">A year of sun on this roof should cover a year of use; planners then oversize.</p>
+          <div class="ledger">
+            <span class="op"></span><span class="v">5,000</span><span class="u">kWh a year</span><span class="w">household use<span class="src">answer</span></span>
+            <span class="op">÷</span><span class="v">907</span><span class="u">kWh per kWp</span><span class="w">a year of sun on this roof, 25° east-west<span class="src">PVGIS, LoD2</span></span>
+            <span class="op">=</span><span class="v sub">5.51</span><span class="u">kWp</span><span class="w sub">what the sun alone asks for</span>
+            <span class="op adj">×</span><span class="v adj">1.39</span><span class="u"></span><span class="w">planners at Installer A oversize, learned from 15 similar homes<span class="src">installer history</span></span>
+            <span class="op">=</span><span class="v fin">7.65</span><span class="u fin">kWp</span><span class="w fin">snapped to whole modules</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="vh3">Offer variants</h3>
+    <div class="vrow">
+      <div class="v on"><div class="vh"><span class="vn">Lowest upfront cost</span><span class="tagr">Preferred</span></div><div class="vs">7.65 kWp</div>
+        <dl><div><dt>Yield</dt><dd>6,941 kWh</dd></div><div><dt>Autarky</dt><dd>34%</dd></div><div><dt>Investment</dt><dd>9,650 EUR</dd></div><div><dt>Payback</dt><dd>13.0 years</dd></div></dl>
+        <p class="vnote">4,500 EUR less upfront; half the independence.</p></div>
+      <div class="v"><div class="vh"><span class="vn">PV + storage</span><span class="tagr">As planners design it</span></div><div class="vs">7.65 kWp, 10 kWh</div>
+        <dl><div><dt>Yield</dt><dd>6,941 kWh</dd></div><div><dt>Autarky</dt><dd>70%</dd></div><div><dt>Investment</dt><dd>14,150 EUR</dd></div><div><dt>Payback</dt><dd>11.6 years</dd></div></dl>
+        <p class="vnote">The proposal.</p></div>
+      <div class="v"><div class="vh"><span class="vn">Most independence</span><span class="tagr"></span></div><div class="vs">8.55 kWp, 10 kWh</div>
+        <dl><div><dt>Yield</dt><dd><span class="gap"></span></dd></div><div><dt>Autarky</dt><dd>73%</dd></div><div><dt>Investment</dt><dd>14,950 EUR</dd></div><div><dt>Payback</dt><dd>11.7 years</dd></div></dl></div>
+      <div class="v"><div class="vh"><span class="vn">Best payback</span><span class="tagr"></span></div><div class="vs"><span class="gap"></span></div>
+        <dl><div><dt>Yield</dt><dd><span class="gap"></span></dd></div><div><dt>Autarky</dt><dd><span class="gap"></span></dd></div><div><dt>Investment</dt><dd><span class="gap"></span></dd></div><div><dt>Payback</dt><dd><span class="gap"></span></dd></div></dl></div>
+    </div>
+    <p class="notebox" style="margin-top:8px">Mock note: grey gaps fill from engine v1.7 variants; the note line is the engine's one sentence against the proposal.</p>
+  </div>
+</div>
+</body></html>

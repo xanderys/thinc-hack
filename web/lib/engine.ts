@@ -1,5 +1,5 @@
 import "server-only";
-import { mockDesign, mockEval, mockHealth, mockProject, mockProjects, mockRefine, mockValidate } from "./mock";
+import { mockAsk, mockDesign, mockEval, mockHealth, mockInbox, mockProject, mockProjects, mockRefine, mockValidate } from "./mock";
 
 export const ENGINE_URL = process.env.ENGINE_URL || "http://localhost:8000";
 export const isMock = ENGINE_URL === "mock";
@@ -18,6 +18,8 @@ function mock(method: string, path: string, search: URLSearchParams, body: any):
     return p ? ok(p) : { status: 404, body: { error: "Project not found" } };
   }
   if (path === "/api/eval") return ok(mockEval());
+  if (path === "/api/ask" && method === "POST") return ok(mockAsk(body.inputs, body.unknown));
+  if (path === "/api/inbox") return ok(mockInbox(Number(search.get("limit") ?? 20)));
   return { status: 404, body: { error: `Mock has no route ${method} ${path}` } };
 }
 

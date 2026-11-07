@@ -1,264 +1,242 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
-import HomeForm from "@/components/HomeForm";
-import DesignSheet from "@/components/DesignSheet";
-import ValidatePanel from "@/components/ValidatePanel";
-import OptimumBlock from "@/components/OptimumBlock";
-import type { Design, DesignResponse, HomeInputs, InterpretChange, InterpretResponse, RefineResponse } from "@/lib/api";
-import { call, fmt, COMPONENT_NAME } from "@/lib/client";
-import type { DiffItem, InterpretOverride, OverrideValue, Overrides } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Lead from "@/components/stage/Lead";
+import Plan, { type Variant } from "@/components/stage/Plan";
+import StepHead from "@/components/stage/StepHead";
+import Refine, { type Moved } from "@/components/stage/Refine";
+import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
+import { call } from "@/lib/client";
+import { HERO_LEAD } from "@/lib/demo";
+import { buildFacts, DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
+import { COMPONENT_DESIGN_FIELD } from "@/lib/api";
 
-const DESIGN_KEY: Record<keyof Design, string> = { pv_kwp: "pv", inverter_kw: "inverter", battery_kwh: "battery", heatpump_kw: "heatpump", wallbox_kw: "wallbox" };
-const COMPONENT_FIELD: Record<string, keyof Design> = { pv: "pv_kwp", inverter: "inverter_kw", battery: "battery_kwh", heatpump: "heatpump_kw", wallbox: "wallbox_kw" };
+const UNIT: Record<keyof Design, string> = { pv_kwp: "kWp", inverter_kw: "kW", battery_kwh: "kWh", heatpump_kw: "kW", wallbox_kw: "kW" };
+type Snap = { changed: Partial<HomeInputs>; overrides: Overrides; chips: InterpretChange[]; ovChips: InterpretOverride[] };
 
-const START: HomeInputs = {
-  installer_id: "2a8ba8e2", annual_demand_kwh: 5000, load_profile: "FamilyOfFour", num_inhabitants: 4,
-  house_size_sqm: 140, house_built_year: 1985, has_ev: false, has_wallbox: false, heating_type: "Gas",
-  electricity_price_ct_kwh: 32, has_solar: false, has_storage: false,
-};
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const COMPONENT_FIELD_SET: Record<string, true> = { pv_kwp: true, inverter_kw: true, battery_kwh: true, heatpump_kw: true, wallbox_kw: true };
 
-const FIELD_LABEL: Partial<Record<keyof HomeInputs, string>> = {
-  annual_demand_kwh: "Demand", num_inhabitants: "Inhabitants", has_ev: "EV", ev_annual_km: "EV distance",
-  has_wallbox: "Wallbox", heating_type: "Heating", house_size_sqm: "Floor area", house_built_year: "Year built",
-  electricity_price_ct_kwh: "Price", has_solar: "Solar", existing_solar_kwp: "Existing solar",
-  has_storage: "Battery", existing_storage_kwh: "Existing battery", load_profile: "Load profile", installer_id: "Installer",
-};
-function describe(a: HomeInputs, b: HomeInputs) {
-  const keys = (Object.keys({ ...a, ...b }) as (keyof HomeInputs)[]).filter((k) => a[k] !== b[k]);
-  if (keys.length === 0) return "Recomputed.";
-  return keys.slice(0, 3).map((k) => `${FIELD_LABEL[k] ?? k} ${show(a[k])} to ${show(b[k])}`).join(", ") + ".";
-}
-const showOv = (x: OverrideValue) => x === "include" ? "include" : x == null ? "none" : `fixed at ${x.toLocaleString("en-GB")}`;
-const show = (x: unknown) => x == null ? "none" : typeof x === "boolean" ? (x ? "yes" : "no") : typeof x === "number" ? x.toLocaleString("en-GB") : String(x);
-
-export default function Planner() {
-  const [inputs, setInputs] = useState<HomeInputs>(START);
+export default function Stage() {
+  const [lead, setLead] = useState(HERO_LEAD);
+  const [read, setRead] = useState<ReadResponse | null>(null);
+  const [readBusy, setReadBusy] = useState(false);
+  const [readErr, setReadErr] = useState<string | null>(null);
+  const [installer, setInstaller] = useState<InstallerId>("2a8ba8e2");
+  const [roof, setRoof] = useState<RoofResult | null>(null);
+  const [question, setQuestion] = useState<AskQuestion | null | undefined>(undefined); // undefined while asking
+  const [askErr, setAskErr] = useState<string | null>(null);
+  const [answer, setAnswer] = useState<unknown>(undefined);
+  const [changed, setChanged] = useState<Partial<HomeInputs>>({});    // from sentences, Moment 3
   const [overrides, setOverrides] = useState<Overrides>({});
-  const [validate, setValidate] = useState(false);
-  const [res, setRes] = useState<DesignResponse | RefineResponse | null>(null);
-  const [prev, setPrev] = useState<Design | null>(null);
-  const [moved, setMoved] = useState<DiffItem[]>([]);
-  const cause = useRef<string>("");
-  const lastInputs = useRef<HomeInputs>(START);
-  const [version, setVersion] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [res, setRes] = useState<DesignResponse | null>(null);
+  const [prev, setPrev] = useState<DesignResponse | null>(null);
+  const [drafted, setDrafted] = useState<DesignResponse | null>(null);  // the agent's own draft, no overrides
+  const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(0);
-  const last = useRef<Design | null>(null);
-
-  const [sentence, setSentence] = useState("");
+  const [write, setWrite] = useState<WriteResponse | null>(null);
+  const [writeBusy, setWriteBusy] = useState(false);
+  const [pvOnly, setPvOnly] = useState<RefineResponse | null>(null);
+  const last = useRef<DesignResponse | null>(null);
+  const cause = useRef<string | null>(null);
+  const [moved, setMoved] = useState<Moved | null>(null);
+  const [llm, setLlm] = useState<boolean | null>(null);
+  const [sayBusy, setSayBusy] = useState(false);
+  const [sayErr, setSayErr] = useState<string | null>(null);
   const [chips, setChips] = useState<InterpretChange[]>([]);
   const [ovChips, setOvChips] = useState<InterpretOverride[]>([]);
-  const [llm, setLlm] = useState<boolean | null>(null);
-  const [llmBusy, setLlmBusy] = useState(false);
-  const [llmError, setLlmError] = useState<string | null>(null);
+  const [history, setHistory] = useState<Snap[]>([]);
+  const [approvedAt, setApprovedAt] = useState<string | null>(null);
 
+  const inputs: HomeInputs = useMemo(() => {
+    const base: HomeInputs = { ...DEFAULTS, ...(read?.inputs ?? {}), installer_id: installer };
+    if (question && answer !== undefined) (base as unknown as Record<string, unknown>)[question.field] = answer;
+    const out: HomeInputs = { ...base, ...changed };
+    // One roof lookup per lead; later calls carry the result instead of the address.
+    if (roof && roof.source !== "none") { out.roof = roof; delete out.address; }
+    return out;
+  }, [read, installer, question, answer, changed, roof]);
+  const ready = !!read && question !== undefined && (question === null || answer !== undefined);
+
+  // Shortcut d loads the hero lead.
   useEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get("home");
-    if (!raw) return;
-    try { const h = JSON.parse(raw) as Partial<HomeInputs>; cause.current = "Loaded a held-out home."; setInputs({ ...START, num_inhabitants: undefined, house_size_sqm: undefined, house_built_year: undefined, ...h }); } catch { /* ignore a malformed link */ }
+    const on = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (e.key !== "d" || e.metaKey || e.ctrlKey || /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+      setLead(HERO_LEAD); setRead(null);
+    };
+    addEventListener("keydown", on); return () => removeEventListener("keydown", on);
   }, []);
 
-  useEffect(() => { call<{ available: boolean }>("/api/interpret").then((r) => setLlm(r.ok ? r.data.available : false)); }, []);
+  async function doRead() {
+    setReadBusy(true); setReadErr(null);
+    const r = await call<ReadResponse>("/api/read", { lead });
+    setReadBusy(false);
+    if (!r.ok) { setReadErr(r.error); return; }
+    setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(null); setPrev(null); last.current = null;
+    setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
+    setRead(r.data); setRoof(null);
+    if (r.data.inputs.address) call<RoofResult>(`/api/roof?address=${encodeURIComponent(r.data.inputs.address)}`).then((x) => setRoof(x.ok ? x.data : null));
+    const base: HomeInputs = { ...DEFAULTS, ...r.data.inputs, installer_id: installer };
+    // A restarting engine answers 502 for about 35 s: wait and ask again rather than skip the question.
+    for (let k = 0; ; k++) {
+      const a = await call<AskResponse>("/api/ask", { inputs: base, unknown: r.data.unknown });
+      if (a.ok) { setQuestion(a.data.questions[0] ?? null); setAskErr(null); return; }
+      if (/404|not found/i.test(a.error)) { setQuestion(null); setAskErr(null); return; }
+      if (k >= 15) { setQuestion(null); setAskErr(a.error); return; }
+      setAskErr(`${a.error} Asking again.`);
+      await new Promise((ok) => setTimeout(ok, 6000));
+    }
+  }
 
+  // Design, or refine when the planner has fixed something.
   useEffect(() => {
+    if (!ready) return;
     const ctl = new AbortController();
     const t = setTimeout(async () => {
       setBusy(true);
-      const fixed = Object.keys(overrides).length > 0;
       try {
-        const r = fixed
-          ? await call<RefineResponse>("/api/refine", { inputs, overrides }, ctl.signal)
-          : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
+        const fixed = Object.keys(overrides).length > 0;
+        const r = fixed ? await call<RefineResponse>("/api/refine", { inputs, overrides }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
         if (r.ok) {
           const before = last.current;
-          const engineDiff: DiffItem[] = "diff" in r.data ? (r.data as RefineResponse).diff : [];
-          const why = cause.current || describe(lastInputs.current, inputs);
-          const local: DiffItem[] = before ? (Object.keys(DESIGN_KEY) as (keyof Design)[])
-            .filter((k) => before[k] !== r.data.design[k] && !engineDiff.some((d) => d.component === DESIGN_KEY[k]))
-            .map((k) => ({ component: DESIGN_KEY[k], from: before[k], to: r.data.design[k], why })) : [];
-          const fresh = engineDiff.filter((d) => !before || !(d.component in COMPONENT_FIELD) || before[COMPONENT_FIELD[d.component]] !== d.to);
-          if (before) setMoved([...fresh, ...local].filter((d) => d.from !== d.to));
-          cause.current = ""; lastInputs.current = inputs;
-          setPrev(before);
-          last.current = r.data.design;
-          setRes(r.data);
-          setVersion((v) => v + 1);
-          setError(null);
-        } else setError(r.error);
+          if (before && cause.current) {
+            const engineWhy = "diff" in r.data ? (r.data as RefineResponse).diff : [];
+            const lines = ([...KEYS.map((k) => COMPONENT_DESIGN_FIELD[k]), "inverter_kw"] as (keyof Design)[])
+              .filter((f) => before.design[f] !== r.data.design[f])
+              .map((f) => {
+                const key = f === "inverter_kw" ? "inverter" : KEYS.find((k) => COMPONENT_DESIGN_FIELD[k] === f)!;
+                const why = engineWhy.find((d) => d.component === key)?.why;
+                return { name: key === "inverter" ? "Inverter" : NAME[key], from: before.design[f], to: r.data.design[f], unit: UNIT[f], why: why && why !== "Set by the planner." ? why : undefined };
+              });
+            setMoved({ cause: cause.current, lines });
+          }
+          cause.current = null;
+          setPrev(before); last.current = r.data; setRes(r.data); setErr(null);
+          if (!fixed) setDrafted(r.data);
+        } else setErr(r.error);
         setBusy(false);
-      } catch { /* aborted by a newer change */ }
-    }, 300);
+      } catch { /* superseded */ }
+    }, 150);
     return () => { clearTimeout(t); ctl.abort(); };
-  }, [inputs, overrides, retry]);
+  }, [ready, inputs, overrides, retry]);
 
   useEffect(() => {
-    if (!error?.includes("restarting")) return;
+    if (!err?.includes("restarting")) return;
     const t = setTimeout(() => setRetry((x) => x + 1), 8000);
     return () => clearTimeout(t);
-  }, [error, retry]);
+  }, [err, retry]);
 
-  const setOverride = useCallback((field: keyof Design, value: OverrideValue | undefined) => {
-    cause.current = "Set by the planner.";
-    setOvChips((c) => c.filter((x) => x.field !== field));
-    setOverrides((o) => {
-      const n = { ...o };
-      if (value === undefined) delete n[field]; else n[field] = value;
-      return n;
-    });
-  }, []);
+  // Prose and component lines, grounded in the engine's facts.
+  const facts = useMemo(() => res ? buildFacts(inputs, res) : null, [res]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!facts) return;
+    const ctl = new AbortController();
+    setWriteBusy(true); setWrite(null);
+    call<WriteResponse>("/api/write", { facts, mode: "planner" }, ctl.signal)
+      .then((r) => { setWrite(r.ok ? r.data : null); setWriteBusy(false); })
+      .catch(() => {});
+    return () => ctl.abort();
+  }, [facts]);
 
-  async function interpret() {
-    setLlmBusy(true); setLlmError(null);
-    const r = await call<InterpretResponse>("/api/interpret", { sentence, inputs, design: res?.design ?? {}, overrides, typical: res ? Object.fromEntries((Object.keys(res.components) as (keyof typeof res.components)[]).map((k) => [COMPONENT_FIELD[k], res.components[k].neighbours.median_size])) : {} });
-    setLlmBusy(false);
-    if (!r.ok) { setLlmError(r.error); return; }
+  // The PV-only variant for the current home.
+  useEffect(() => {
+    setPvOnly(null);
+    if (!res || res.design.battery_kwh == null) return;
+    const ctl = new AbortController();
+    call<RefineResponse>("/api/refine", { inputs, overrides: { ...overrides, battery_kwh: null } }, ctl.signal)
+      .then((r) => { if (r.ok) setPvOnly(r.data); }).catch(() => {});
+    return () => ctl.abort();
+  }, [res]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const variants: Variant[] = useMemo(() => {
+    if (!res) return [];
+    const fixed = Object.keys(overrides).length > 0;
+    const out: Variant[] = [{ name: variantName(res.design), tag: fixed ? "Chosen" : "Recommended", design: res.design, e: res.economics, overrides: null, current: true }];
+    if (fixed && drafted && !same(drafted.design, res.design)) out.push({ name: variantName(drafted.design, res.design), tag: "Recommended", design: drafted.design, e: drafted.economics, overrides: {}, current: false });
+    const o = res.optimum;
+    if (o && !same(o.design, res.design)) out.push({ name: variantName(o.design, res.design), tag: "Earns most", design: o.design, e: o.economics, overrides: { ...overrides, pv_kwp: o.design.pv_kwp, battery_kwh: o.design.battery_kwh }, current: false });
+    if (res.design.battery_kwh != null) out.push({ name: "PV only", tag: "Cheapest", design: pvOnly?.design ?? { ...res.design, battery_kwh: null }, e: pvOnly?.economics ?? null, overrides: { ...overrides, battery_kwh: null }, current: false });
+    return out.filter((v, k) => out.findIndex((w) => w.name === v.name) === k);
+  }, [res, drafted, pvOnly, overrides]);
+
+  useEffect(() => { call<{ available: boolean }>("/api/interpret").then((r) => setLlm(r.ok ? r.data.available : false)); }, []);
+
+  const snap = (): Snap => ({ changed, overrides, chips, ovChips });
+  const remember = (why: string) => { setHistory((h) => [...h, snap()]); cause.current = why; setApprovedAt(null); };
+
+  async function onSay(sentence: string): Promise<boolean> {
+    if (!res) return false;
+    setSayBusy(true); setSayErr(null);
+    const typical = Object.fromEntries(KEYS.map((k) => [COMPONENT_DESIGN_FIELD[k], res.components[k].neighbours.median_size]));
+    const r = await call<InterpretResponse>("/api/interpret", { sentence, inputs, design: res.design, overrides, typical });
+    setSayBusy(false);
+    if (!r.ok) { setSayErr(r.error); return false; }
     const ovs = r.data.overrides ?? [];
-    if (r.data.changes.length === 0 && ovs.length === 0) { setLlmError("Nothing in that sentence changes the home."); return; }
-    cause.current = `"${sentence.trim()}"`;
+    if (r.data.changes.length === 0 && ovs.length === 0) { setSayErr("Nothing in that sentence changes the home."); return false; }
+    remember(`After "${sentence}":`);
+    const add: Partial<HomeInputs> = {};
+    for (const c of r.data.changes) (add as Record<string, unknown>)[c.field] = c.to;
+    setChanged((c) => ({ ...c, ...add }));
     setChips((c) => [...c.filter((x) => !r.data.changes.some((y) => y.field === x.field)), ...r.data.changes]);
     setOvChips((c) => [...c.filter((x) => !ovs.some((y) => y.field === x.field)), ...ovs]);
     if (ovs.length) setOverrides((o) => { const n = { ...o }; for (const v of ovs) n[v.field] = v.to; return n; });
-    setInputs(r.data.inputs);
-    setSentence("");
+    return true;
   }
 
-  function removeOvChip(ch: InterpretOverride) {
-    setOvChips((c) => c.filter((x) => x !== ch));
-    cause.current = "Planner choice removed.";
-    setOverrides((o) => { const n = { ...o }; if (ch.from === undefined) delete n[ch.field]; else n[ch.field] = ch.from; return n; });
+  function onUnchip(c: InterpretChange | InterpretOverride) {
+    remember("Change removed.");
+    if ((c as InterpretOverride).field in COMPONENT_FIELD_SET) {
+      const o = c as InterpretOverride;
+      setOvChips((x) => x.filter((y) => y !== o));
+      setOverrides((x) => { const n = { ...x }; if (o.from === undefined) delete n[o.field]; else n[o.field] = o.from; return n; });
+    } else {
+      const ch = c as InterpretChange;
+      setChips((x) => x.filter((y) => y !== ch));
+      setChanged((x) => { const n = { ...x } as Record<string, unknown>; delete n[ch.field]; return n as Partial<HomeInputs>; });
+    }
   }
 
-  function removeChip(ch: InterpretChange) {
-    setChips((c) => c.filter((x) => x !== ch));
-    setInputs((i) => {
-      const n = { ...i } as Record<string, unknown>;
-      if (ch.from == null) delete n[ch.field]; else n[ch.field] = ch.from;
-      return n as unknown as HomeInputs;
-    });
+  const setOverride = useCallback((f: keyof Design, v: OverrideValue | undefined) => {
+    setHistory((h) => [...h, { changed, overrides, chips, ovChips }]); cause.current = "Changed by hand:"; setApprovedAt(null);
+    setOverrides((o) => { const n = { ...o }; if (v === undefined) delete n[f]; else n[f] = v; return n; });
+  }, [changed, overrides, chips, ovChips]);
+
+  function onUndo() {
+    const h = history[history.length - 1];
+    if (!h) return;
+    setHistory(history.slice(0, -1)); cause.current = "Undone:"; setApprovedAt(null);
+    setChanged(h.changed); setOverrides(h.overrides); setChips(h.chips); setOvChips(h.ovChips);
   }
 
-  const diff = moved;
-  const reasons = new Set(res ? Object.values(res.components).map((c) => c.reason) : []);
-  const e = res?.economics;
+  function onApprove() {
+    if (!res) return;
+    const at = new Date();
+    try { sessionStorage.setItem("marquee.approved", JSON.stringify({ inputs, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
+    setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+  }
+
+  const onVariant = useCallback((v: Variant) => {
+    if (!v.overrides) return;
+    setHistory((h) => [...h, { changed, overrides, chips, ovChips }]); cause.current = `Switched to ${v.name}:`; setApprovedAt(null);
+    setOverrides(v.overrides);
+  }, [changed, overrides, chips, ovChips]);
+  const flag = res ? pickFlag(res) : null;
+  const at = !read ? 0 : approvedAt ? 2 : res ? 1 : 0;
 
   return (
-    <div className="planner">
-      <aside>
-        <HomeForm value={inputs} onChange={setInputs} />
-      </aside>
-
-      <div>
-        <div className="sheet-head">
-          <h1>{validate ? "Your design" : "Proposed system"}</h1>
-          <span className="status" aria-live="polite">{busy && !validate ? "Recomputing" : ""}</span>
+    <div className="st">
+      <StepHead title={res ? "Plan system" : "Lead"} at={at} />
+      <div className="s-stage">
+        <Lead lead={lead} setLead={setLead} read={read} busy={readBusy} error={readErr} onRead={doRead} onEdit={() => setRead(null)}
+          inputs={inputs} changed={changed} setInstaller={setInstaller} roof={roof}
+          question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} />
+        <div className="s-main">
+          {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
+          {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} />}
+          {res && <Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
+            moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} />}
         </div>
-        <span className="seg mode" role="group" aria-label="Mode">
-          <button type="button" aria-pressed={!validate} onClick={() => setValidate(false)}>Propose</button>
-          <button type="button" aria-pressed={validate} onClick={() => setValidate(true)}>Validate my design</button>
-        </span>
-
-        {validate ? <ValidatePanel inputs={inputs} start={res?.design ?? null} /> : <>
-
-        {error && (
-          <div className="error" role="alert">
-            <span><span className="src">Engine said</span>{error}</span>
-            <button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button>
-          </div>
-        )}
-
-        {!res && !error && (
-          <div aria-hidden>
-            {[0, 1, 2, 3].map((k) => (
-              <div className="comp" key={k}><div className="skeleton">PV array</div><div className="skeleton size">00.0</div><div className="skeleton">Reason sentence placeholder for loading</div></div>
-            ))}
-          </div>
-        )}
-
-        {res && (
-          <>
-            <DesignSheet res={res} prev={prev} version={version} overrides={overrides} setOverride={setOverride} />
-
-            <div className="refine">
-              <h2>Tell it what changes</h2>
-              {llm === false ? (
-                <p className="note">Sentence input is off: no ANTHROPIC_API_KEY in web/.env.local. The fields and Fix controls still work.</p>
-              ) : (
-                <form className="say" onSubmit={(ev) => { ev.preventDefault(); if (sentence.trim()) interpret(); }}>
-                  <input value={sentence} onChange={(ev) => setSentence(ev.target.value)} placeholder="The family buys an EV next year"
-                    aria-label="Describe a change to the home" disabled={llmBusy} />
-                  <button className="btn" type="submit" disabled={llmBusy || !sentence.trim()}>{llmBusy ? "Reading" : "Apply"}</button>
-                </form>
-              )}
-              {llmError && <div className="error" role="alert"><span><span className="src">Interpreter said</span>{llmError}</span></div>}
-              {(chips.length > 0 || ovChips.length > 0) && (
-                <div className="chips">
-                  {chips.map((c) => (
-                    <span className="chip" key={`${c.field}-${String(c.to)}`} title={c.note}>
-                      <span>{FIELD_LABEL[c.field] ?? c.field}: <span className="num">{show(c.from)}</span> to <span className="num">{show(c.to)}</span></span>
-                      <button aria-label={`Undo ${FIELD_LABEL[c.field] ?? c.field}`} onClick={() => removeChip(c)}>×</button>
-                    </span>
-                  ))}
-                  {ovChips.map((c) => (
-                    <span className="chip" key={`${c.field}-${String(c.to)}`} title={c.note}>
-                      <span>{COMPONENT_NAME[DESIGN_KEY[c.field]]}: <span className="num">{showOv(c.to)}</span></span>
-                      <button aria-label={`Undo ${COMPONENT_NAME[DESIGN_KEY[c.field]]}`} onClick={() => removeOvChip(c)}>×</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {diff.length > 0 && (
-                <div className="scroll">
-                  <table className="diff">
-                    <thead><tr><th>What moved</th><th>From</th><th></th><th>To</th><th>Why</th></tr></thead>
-                    <tbody>
-                      {diff.map((d, k) => (
-                        <tr key={k}>
-                          <td>{COMPONENT_NAME[d.component] ?? d.component}</td>
-                          <td className="num">{fmt.n(d.from)}</td>
-                          <td className="arrow" aria-hidden>→</td>
-                          <td className="num">{fmt.n(d.to)}</td>
-                          <td>{d.why}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            <div className="two">
-              <div>
-                <h2>{e?.method === "hourly-simulation" ? "Economics, hourly simulation" : "Rough economics"}</h2>
-                {e && (
-                  <>
-                    <dl className="figures">
-                      <div><dt>Investment</dt><dd className="num">{fmt.eur(e.capex_eur)}</dd></div>
-                      <div><dt>Saving a year</dt><dd className="num">{fmt.eur(e.annual_saving_eur)}</dd></div>
-                      <div><dt>Payback</dt><dd className="num">{e.payback_years == null ? "n/a" : `${fmt.n(e.payback_years)} yrs`}</dd></div>
-                      <div><dt>Self-consumption</dt><dd className="num">{fmt.pct(e.self_consumption_share)}</dd></div>
-                      <div><dt>Autarky</dt><dd className="num">{fmt.pct(e.autarky_share)}</dd></div>
-                    </dl>
-                    <details><summary>Assumptions</summary><ul>{e.assumptions.map((a, k) => <li key={k}>{a}</li>)}</ul></details>
-                  </>
-                )}
-              </div>
-              <div>
-                <h2>Plausibility</h2>
-                <ul className="flags">
-                  {res.plausibility.map((p, k) => (
-                    <li key={k} className={p.level}><span className="lvl">{p.level === "ok" ? "OK" : "Check"}</span><span>{p.message}</span></li>
-                  ))}
-                </ul>
-                <ul className="explain">{res.explanation.filter((x) => !reasons.has(x)).map((x, k) => <li key={k}>{x}</li>)}</ul>
-              </div>
-            </div>
-
-            {res.optimum && <OptimumBlock design={res.design} economics={res.economics} optimum={res.optimum} />}
-          </>
-        )}
-        </>}
       </div>
     </div>
   );

@@ -243,9 +243,11 @@ def _feedin_eur_kwh(kwp):
     return (FEEDIN_LOW * min(kwp, 10) + FEEDIN_HIGH * max(kwp - 10, 0)) / kwp / 100
 
 
-def _capex(design):
+def _capex(inputs, design):
+    """(total capex, PV plus battery capex)."""
     pv, bat, hp, wb = (design.get(k) or 0 for k in ("pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"))
-    return pv * rules.pv_cost_per_kwp(pv) + bat * BAT_EUR_KWH + (rules.HP_COST if hp else 0) + (rules.WALLBOX_COST if wb else 0)
+    solar = pv * rules.pv_cost_per_kwp(pv) + bat * BAT_EUR_KWH
+    return solar + (rules.hp_net_capex(inputs) if hp else 0) + (rules.WALLBOX_COST if wb else 0), solar
 
 
 @lru_cache(maxsize=4)
@@ -287,8 +289,8 @@ def simulate(inputs: dict, design: dict, location="Munich") -> SimResult:
     if adds_hp:
         fuel = inputs.get("heating_cost_per_year_eur") or after["heat"] * HEAT_EUR_PER_KWH
         bill_b += fuel
-    capex = _capex(design)
-    opex = OPEX_SHARE * (capex - (rules.HP_COST if design.get("heatpump_kw") else 0) - (rules.WALLBOX_COST if design.get("wallbox_kw") else 0))
+    capex, solar_capex = _capex(inputs, design)
+    opex = OPEX_SHARE * solar_capex
     saving = bill_b - bill_a - opex
 
     pv_y = after["pv"].sum()
@@ -310,10 +312,17 @@ def simulate(inputs: dict, design: dict, location="Munich") -> SimResult:
         a.append(f"EV {after['ev'].sum():,.0f} kWh a year at {EV_KWH_PER_100KM:g} kWh/100 km, charged from {EV_START_H}:00.")
     if after["hp"].any():
         _, src = heat_demand_kwh(inputs, design)
+        if design.get("heatpump_kw"):
+            a.append(rules.hp_capex_note(inputs))
         a.append(f"Heat pump {after['hp'].sum():,.0f} kWh a year: {after['heat']:,.0f} kWh heat ({src}) at JAZ {JAZ}.")
     a.append(f"No feed-in pay in the {NEG_PRICE_HOURS} sunniest hours (negative prices, 2025); upkeep {OPEX_SHARE:.1%} of PV and battery cost a year.")
     a.append(f"NPV over {YEARS} years at {DISCOUNT:.0%} discount, {DEGRADATION:.1%} a year PV degradation, no battery replacement.")
     a.append("PV EUR 1,350 per kWp at 5 kWp falling to EUR 1,000 at 20 kWp; battery EUR 450 per kWh.")
+
+    # PV used in each hour (direct or from the battery), shared across loads by their share of that hour
+    covered_h = after["direct"] + after["discharge"]
+    share = np.divide(covered_h, after["load"], out=np.zeros(8760), where=after["load"] > 0)
+    from_pv = {k: float((share * after[k]).sum()) for k in ("house", "ev", "hp")}
 
     econ = {
         "capex_eur": float(round(capex, -1)), "annual_saving_eur": float(round(saving, -1)),
@@ -324,7 +333,11 @@ def simulate(inputs: dict, design: dict, location="Munich") -> SimResult:
             "pv_yield_kwh": round(float(pv_y)), "load_kwh": round(float(load)), "self_consumed_kwh": round(float(sc_kwh)),
             "fed_in_kwh": round(float(after["feed_in"].sum())), "grid_import_kwh": round(float(after["grid_import"].sum())),
             "feed_in_income_eur": round(float(income)), "bill_before_eur": round(float(bill_b)),
-            "bill_after_eur": round(float(bill_a)), "npv_20y_eur": round(npv, -1) if npv is not None else None,
+            "bill_after_eur": round(float(bill_a)),
+            "battery_charged_kwh": float(round(after["charge"].sum())), "battery_discharged_kwh": float(round(after["discharge"].sum())),
+            "ev_charge_kwh": float(round(after["ev"].sum())), "ev_from_pv_kwh": float(round(from_pv["ev"])),
+            "home_from_pv_kwh": float(round(from_pv["house"])),
+            "heatpump_kwh": float(round(after["hp"].sum())), "heatpump_from_pv_kwh": float(round(from_pv["hp"])), "npv_20y_eur": round(npv, -1) if npv is not None else None,
         },
     }
     return SimResult(econ, after)
