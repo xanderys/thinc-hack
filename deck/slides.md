@@ -36,11 +36,10 @@ footer: Marquee
 
 # “The family buys an EV next year.”
 
-<div class="data">paste the lead<br>one question: how much electricity a year<br>the offer, with its proof<br>change it in a sentence</div>
+<div class="data">roof <b>57 modules</b> fit, <b>116 m²</b> at 25° east-west, from Bavarian LoD2 data<br>offer <b>7.65 kWp</b>, <b>10 kWh</b>, payback <b>11.6 years</b><br>after the sentence <b>10.35 kWp</b>, <b>10 kWh</b>, <b>11 kW</b> wallbox, <b>10.5 years</b></div>
 
 <p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
 
-[UNCONFIRMED: demo slide follows the stage flow in docs/briefs/stage.md]
 
 ---
 
