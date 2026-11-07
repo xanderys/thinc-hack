@@ -130,7 +130,7 @@ export function streetOf(address?: string) {
   return first && /[a-zA-ZäöüÄÖÜß]/.test(first) && /\d/.test(first) ? first : null;
 }
 
-const MULTI_UNIT_FOOTPRINT_M2 = 300; // larger footprints are treated as apartment buildings
+const MULTI_UNIT_FOOTPRINT_M2 = 200; // larger footprints are treated as apartment buildings
 
 export function isMultiUnit(a: Partial<FormAnswers>, roof?: RoofInfo | null) {
   return a.house_type === "apartment" || (!!roof?.footprint_m2 && roof.footprint_m2 > MULTI_UNIT_FOOTPRINT_M2);
