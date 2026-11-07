@@ -460,7 +460,7 @@ def roof_photo(address: str = ""):
 
 
 @app.get("/api/roof/model")
-def roof_model(address: str = "", build_year: Optional[int] = None):
+def roof_model(address: str = "", build_year: Optional[int] = None, kwp: Optional[float] = None):
     """v2.1: the planes of the actual house (LoD2, per-plane sun yield, panel layout) and a URL to its 3D model."""
     if not address.strip():
         return err(422, "address is missing.")
@@ -471,8 +471,12 @@ def roof_model(address: str = "", build_year: Optional[int] = None):
     except Exception as e:
         return err(404, str(e))
     planes = {}
+    if kwp:  # the same layout the design's economics run on (app/layout.py)
+        from . import layout as L
+        lo = L.layout({"address": address, "house_built_year": build_year}, kwp)
+        planes = lo["planes"] if lo else {}
     p = info.get("planes_json_path")
-    if p and Path(p).exists():
+    if not planes and p and Path(p).exists():
         planes = json.loads(Path(p).read_text())
     return {**(planes if isinstance(planes, dict) else {"planes": planes}), "glb_url": roofs.model_url(address),
             "textured": info.get("textured"), "licence": info.get("licence"), "source": info.get("source")}

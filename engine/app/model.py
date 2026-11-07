@@ -307,7 +307,9 @@ class Engine:
                 continue
             d = {"pv_kwp": row["kwp"] or None, "inverter_kw": rules.inverter_kw(row["kwp"]) if row["kwp"] else None,
                  "battery_kwh": row["kwh"] or None, **keep}
-            e = hourly.simulate(sim_in, d).economics
+            from . import layout as L
+            e = hourly.simulate(L.sim_inputs({k: v for k, v in sim_in.items() if k != "pv_planes"} | {"address": inp.get("address"),
+                                "house_built_year": inp.get("house_built_year")}, d) if inp.get("address") else sim_in, d).economics
             out.append({"key": key, "label": label, "design": d, "economics": e, "note": variant_note(d, e, design, econ)})
         pref = inp.get("preference")
         if pref in ("independence", "payback", "upfront"):
@@ -762,6 +764,9 @@ class Engine:
         return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax, "adjustment": adj, "final": final}
 
     def _physics(self, inp, design, inst, t, full, extras=True):
+        from . import layout as L
+        if design.get("pv_kwp") and inp.get("address"):  # the hourly year runs on the modules laid out on the real planes
+            inp = L.sim_inputs({k: v for k, v in inp.items() if k != "pv_planes"}, design)
         """Hourly simulation (app/hourly) when it runs; the annual ratio model otherwise. Economics.method says which."""
         lookup = rules.economics(inp, design)
         lookup["method"] = "annual-lookup"

@@ -4,11 +4,14 @@ from the hourly simulation; both through the same hourly physics as every other 
 import hashlib
 import json
 
+import logging
+
 import numpy as np
 
 from . import hourly, roofs, rules
 
 _CACHE: dict = {}
+log = logging.getLogger("engine")
 SOURCES = [
     {"key": "pvgis", "citation": "PVGIS typical meteorological year, Munich, European Commission JRC", "url": "https://re.jrc.ec.europa.eu/pvg_tools/en/"},
     {"key": "pvlib", "citation": "pvlib python, Holmgren et al., J. Open Source Software 3(29), 884, 2018", "url": "https://pvlib-python.readthedocs.io"},
@@ -60,34 +63,54 @@ def _day(sim_in, design) -> dict:
 
 
 def explain(eng, inp: dict, design: dict | None) -> dict:
-    """rules-2 frontier(), day() and sources() when planner_rules has them; the engine's own grid otherwise."""
+    """One run: the design's laid-out modules, its hourly year, its day and night; the frontier from rules-2's sweep."""
     try:
-        from .planner_rules import physics as P, frontier as f2, day as d2
+        from .planner_rules import physics as P, frontier as f2
     except Exception:
         return explain_grid(eng, inp, design)
-    k = _key(inp, design or {}) + "-r2"
+    from . import layout as L
+    from .model import roof_to_sim
+    resp = eng.predict(dict(inp), extras=False)  # hourly economics on the laid-out planes (same pipeline as /api/design)
+    if design is not None:
+        design = {kk: design.get(kk) for kk in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
+        if design.get("pv_kwp") and not design.get("inverter_kw"):
+            design["inverter_kw"] = rules.inverter_kw(design["pv_kwp"])
+    else:
+        design = resp["design"]
+    k = _key(inp, design) + "-one-run"
     if k in _CACHE:
         return _CACHE[k]
-    resp = eng.predict(dict(inp), full=False) if design is None else None
-    design = (resp["design"] if resp else design)
-    design = {kk: design.get(kk) for kk in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
-    t = __import__("app.model", fromlist=["base_features"]).base_features(inp, inp["installer_id"])["t"]
-    rec_in = eng.rules_inputs(inp)
-    cat = eng.rules_catalogue(inp["installer_id"], t)
-    fr = f2(rec_in, None, cat, None)
-    dy = d2(rec_in, design)
+    clean = roof_to_sim({kk: v for kk, v in inp.items() if not kk.startswith("_")})
+    lo = L.layout(inp, design.get("pv_kwp"))
+    sim_in = {**clean, "pv_planes": lo["pv_planes"]} if lo else clean
+    day, night, econ = _day(sim_in, design)
+    use = float(inp.get("annual_demand_kwh") or 0) + rules.ev_kwh(inp)
+    night.update(battery_kwh=design.get("battery_kwh") or 0, htw_cap_kwh=round(1.5 * use / 1000, 1))
+    rid = L.run_id(inp, design, sim_in.get("pv_planes"))
+    # the design endpoint's economics must be this run's
+    d_econ = resp["economics"] if resp["design"] == design else econ
+    pairs = {"pv_yield_kwh": (econ["annual"]["pv_yield_kwh"], d_econ["annual"]["pv_yield_kwh"]),
+             "capex_eur": (econ["capex_eur"], d_econ["capex_eur"])}
+    if lo and lo["modules"] != L.modules_for(design.get("pv_kwp")):
+        log.warning("layers: %d modules on the roof against %d in the design (%s)", lo["modules"], L.modules_for(design.get("pv_kwp")), inp.get("address"))
+    for name, (a, b) in pairs.items():
+        if a != b:
+            log.warning("layers: %s differs between explain (%s) and design (%s) for %s", name, a, b, inp.get("address"))
+    hp_kw = (resp["components"]["heatpump"].get("derivation") or {}).get("axiom_result") if design.get("heatpump_kw") else None
     planes = None
-    if inp.get("address") and roofs.model_available():
-        try:
-            m = roofs._roof().model(inp["address"], kwp=design.get("pv_kwp"))
-            planes = {**json.loads(open(m["planes_json_path"]).read()), "glb_url": roofs.model_url(inp["address"])}
-        except Exception as ex:
-            planes = {"error": str(ex)}
-    obj = (resp or {}).get("objective") or {"name": (resp or {}).get("model_version") or "rules-2-physics",
-                                            "sentence": "The design is the calibrated planner rules; the frontier is the home's own physics.",
-                                            "sources": []}
-    out = {"planes": planes, "day": {"date": dy.get("date"), "hours": dy.get("hours")}, "night": dy.get("night"),
-           "frontier": fr, "chosen": design, "objective": obj, "sources": P.sources()}
+    if lo:
+        planes = {**lo["planes"], "glb_url": roofs.model_url(inp["address"])}
+    t = __import__("app.model", fromlist=["base_features"]).base_features(inp, inp["installer_id"])["t"]
+    fr = f2(eng.rules_inputs(inp), None, eng.rules_catalogue(inp["installer_id"], t), None)
+    obj = resp.get("objective") or {"name": resp.get("model_version"),
+                                    "sentence": "The design is the readable rule list; the frontier is the home's own physics.", "sources": []}
+    out = {"planes": planes, "day": day, "night": night, "frontier": fr, "chosen": design, "objective": obj, "sources": P.sources(),
+           "economics": econ,
+           "consistency": {"modules_on_roof": lo["modules"] if lo else None, "modules_in_design": L.modules_for(design.get("pv_kwp")),
+                           "pv_yield_kwh_used": econ["annual"]["pv_yield_kwh"], "layout_kwh_per_year": lo["kwh_per_year"] if lo else None,
+                           "shaded": bool(lo and lo["shaded"]), "battery_kwh_used": design.get("battery_kwh") or 0,
+                           "heat_load_kw_used": hp_kw, "same_run_id": rid,
+                           "design_economics_match": all(a == b for a, b in pairs.values())}}
     _CACHE[k] = out
     return out
 
