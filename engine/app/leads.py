@@ -144,7 +144,7 @@ def normalise(answers, dropped: list | None = None) -> dict:
     return out
 
 
-META = ("customer_name", "installer_name", "heating_age")
+META = ("customer_name", "installer_name")
 
 
 def map_intake(f: dict, dropped: list | None = None) -> tuple[dict, dict]:
@@ -167,6 +167,8 @@ def map_intake(f: dict, dropped: list | None = None) -> tuple[dict, dict]:
             if dropped is None:
                 raise
             dropped.append({"field": "home_office", "value": v, "reason": str(e)})
+    if "heating_age" in f:  # the boiler's age in years feeds rule 3 (heat pump)
+        f["boiler_age_years"] = f.pop("heating_age")
     bill = f.pop("monthly_bill_eur", None)
     out.update(normalise(f, dropped))
     if bill is not None and not out.get("annual_demand_kwh"):

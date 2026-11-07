@@ -75,6 +75,9 @@ def startup():
         log.exception("hourly warm-up failed")
     if STATE.get("inbox") is None:
         threading.Thread(target=warm_inbox, daemon=True).start()
+    leads.load_all()  # before anything can create or step a lead
+    model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
+    threading.Thread(target=roofs.warm, daemon=True).start()
     threading.Thread(target=warm_rules_eval, daemon=True).start()
 
 
@@ -92,9 +95,6 @@ def warm_rules_eval():
     except Exception as e:
         log.exception("recommenders eval failed")
         STATE["rules_eval"] = {"error": str(e)}
-    threading.Thread(target=roofs.warm, daemon=True).start()
-    leads.load_all()
-    model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
 
 
 INBOX_MAX = 60
@@ -148,6 +148,7 @@ class HomeInputs(BaseModel):
     roof_azimuth_deg: Optional[float] = None
     roof_tilt_deg: Optional[float] = None
     roof_orientation: Optional[str] = None
+    boiler_age_years: Optional[float] = None  # v2.0: rule 3 replaces a gas or oil boiler older than boiler_age (default 20)
     offer_date: Optional[str] = None
     preference: Optional[Literal["independence", "payback", "upfront"]] = None  # v1.7: reorders variants only
     address: Optional[str] = None   # v1.6: the engine looks the roof up
@@ -634,8 +635,9 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     step = lead["questions_asked"] + 1
     t = leads.now()
     field_asked = asked if asked in ans else (next(iter(ans)) if ans else None)
+    was_done = lead.get("status") == "done"  # a planner refinement after the call keeps the lead done
     lead.update(inputs=inp, unknown=unknown, draft=draft, next_question=nq, questions_asked=step, updated_at=t,
-                status="done" if nq is None else "in_call")
+                status="done" if (nq is None or was_done) else "in_call")
     if not lead.get("customer_name") and meta.get("customer_name"):
         lead["customer_name"] = meta["customer_name"]
     if not lead.get("address_or_postcode") and (ans.get("address") or ans.get("postcode")):
