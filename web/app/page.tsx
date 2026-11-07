@@ -26,7 +26,7 @@ function describe(a: HomeInputs, b: HomeInputs) {
   if (keys.length === 0) return "Recomputed.";
   return keys.slice(0, 3).map((k) => `${FIELD_LABEL[k] ?? k} ${show(a[k])} to ${show(b[k])}`).join(", ") + ".";
 }
-const show = (x: unknown) => x == null ? "unset" : typeof x === "boolean" ? (x ? "yes" : "no") : typeof x === "number" ? x.toLocaleString("en-GB") : String(x);
+const show = (x: unknown) => x == null ? "none" : typeof x === "boolean" ? (x ? "yes" : "no") : typeof x === "number" ? x.toLocaleString("en-GB") : String(x);
 
 export default function Planner() {
   const [inputs, setInputs] = useState<HomeInputs>(START);

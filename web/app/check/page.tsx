@@ -88,7 +88,7 @@ export default function Check() {
                   <td className="num">{ours == null ? "none" : `${fmt.n(ours)} ${unit}`}</td>
                   <td className="num">{expert == null ? "none" : `${fmt.n(expert)} ${unit}`}</td>
                   <td>{tol(k)}</td>
-                  <td className={ok ? "mark-ok" : "mark-off"}>{ok ? "✓ Within" : "✗ Off"}</td>
+                  <td className={ok ? "mark-ok" : "mark-off"}>{ok ? "Within" : "Off"}</td>
                 </tr>
               );
             })}
