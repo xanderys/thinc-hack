@@ -30,6 +30,7 @@ def startup():
         path = CACHE / f"engine-{key}.pkl"
         if path.exists():
             STATE["engine"], STATE["eval"] = pickle.loads(path.read_bytes())
+            STATE["engine"].restore_globals()
             log.warning("loaded cached model %s in %.1fs", key, time.time() - t)
         else:
             df, stats = data.load()
@@ -106,6 +107,7 @@ class HomeInputs(BaseModel):
     roof_tilt_deg: Optional[float] = None
     roof_orientation: Optional[str] = None
     offer_date: Optional[str] = None
+    preference: Optional[Literal["independence", "payback", "upfront"]] = None  # v1.7: reorders variants only
     address: Optional[str] = None   # v1.6: the engine looks the roof up
     roof: Optional[dict] = None     # v1.6: or a prior /api/roof result  # ISO date; picks the installer catalogue of that time. Default: latest.
 
