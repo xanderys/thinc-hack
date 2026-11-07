@@ -344,9 +344,12 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         <div ref={host} className={s.host} />
         <svg ref={svg} className={s.flows} aria-hidden="true" />
         <div ref={overlay} className={s.overlay} aria-hidden="true" />
-        {!ready && !absent && !layersErr && <div className={s.wait}>Loading the house</div>}
+        {!ready && !absent && !layersErr && <>
+          <svg className={s.houseSkel} viewBox="0 0 240 160" aria-hidden><defs><linearGradient id="hsk" x1="0" x2="1"><stop offset="0" stopColor="#e3e6ef" /><stop offset="0.5" stopColor="#f3f4f8" /><stop offset="1" stopColor="#e3e6ef" /><animate attributeName="x1" values="-1;1" dur="1.2s" repeatCount="indefinite" /><animate attributeName="x2" values="0;2" dur="1.2s" repeatCount="indefinite" /></linearGradient></defs><path d="M30 84 L120 24 L210 84 V148 H30 Z" fill="url(#hsk)" /></svg>
+          <div className={s.wait}>Building the 3D model of the house</div>
+        </>}
         {ready && busy && <div className={s.wait}>Updating for this design</div>}
-        {ready && !glbOk && !glbErr && <div className={s.wait}>Loading the aerial photo</div>}
+        {ready && !glbOk && !glbErr && <div className={s.wait}>Fetching the aerial photo</div>}
         {glbErr && <div className={s.err}>{glbErr}<button type="button" onClick={() => setRetryGlb((x) => x + 1)}>Retry</button></div>}
         {layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTryN((x) => x + 1)}>Retry</button></div>}
 

@@ -27,7 +27,8 @@ export default function ProposalPage({ id }: { id: string }) {
     return (
       <div className="h-page">
         <section className="h-card" style={{ marginTop: 24 }}>
-          <h1>{error ? "This proposal did not load" : "Loading your proposal"}</h1>
+          <h1>{error ? "This proposal did not load" : "Opening your proposal"}</h1>
+          {!error && <div aria-hidden style={{ display: "grid", gap: 10, marginTop: 16 }}><span className="s-skel" style={{ height: 180 }} /><span className="s-skel" style={{ height: 18, width: "60%" }} /><span className="s-skel" style={{ height: 18, width: "45%" }} /><span className="s-skel" style={{ height: 48 }} /></div>}
           {error && <p className="h-why" role="alert">{error} <button type="button" className="pp-link" onClick={() => setTries(tries + 1)}>Try again</button></p>}
         </section>
       </div>
