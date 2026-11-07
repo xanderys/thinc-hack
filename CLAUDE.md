@@ -2,13 +2,26 @@
 
 From a few facts about a home, propose PV, battery and heat pump the way an experienced planner would, let the planner refine it, and prove it against real expert designs. Judges: Reonic (technical depth, user fit, business impact, demo) then a VC jury (creativity, realisability, usability, pitch).
 
-## The demo moment (the goal; every unit serves these four steps, in Reonic's words)
+## Expected outcome (the goal, in Reonic's words)
+"We expect a working slice with an end-to-end demo story, not a production system. Reach the minimum first, then aim higher."
+
+**Minimum**
+- For a given project, your system proposes a complete design, PV, battery and heat pump as appropriate, with a short explanation of why.
+- You measure how close your designs come to the expert designs on projects your system has not seen.
+- The planner changes at least one input or component and receives an updated design.
+
+**Stretch goals**
+- An analysis of where and why your designs deviate from the experts.
+- Alternatives and confidence for every recommendation.
+- A validation view for planners, or a view in which homeowners explore their offer, built on the same engine.
+
+**The demo moment** ("a five-minute story like this")
 1. **A home is described:** a planner enters a few basic facts about a project.
 2. **A complete system appears:** PV, battery and heat pump as appropriate, with a short explanation of why.
 3. **The design is refined:** for example, "the family is buying an electric car next year", and the design adapts sensibly.
 4. **It is checked against reality:** the proposal is compared with the expert design for the same project, and you show how well your system does across many projects.
 
-Before any change, ask which step it makes better or safer on stage. If none, it waits.
+Before any change, ask which minimum, stretch goal or demo step it makes better or safer on stage. Minimum before stretch. If none, it waits.
 
 ## Run it
 - Engine: `cd engine && uv sync && REONIC_DATA_DIR="/path/to/Project Data" uv run uvicorn app.main:app --port 8000`
