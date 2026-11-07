@@ -29,7 +29,8 @@ const skipOf = (p: RoofPlane) => p.skip_reason || p.skip || p.shade_reason || nu
 function sunHtml(p: RoofPlane) {
   const loss = p.shade_loss_share;
   if (p.yield_shaded_kwh_per_kwp != null && loss != null && loss >= 0.005)
-    return `<b>${fmt0(p.yield_shaded_kwh_per_kwp)}</b> kWh/kWp<br/><span>${Math.round(loss * 100)}% lost to shade</span>`;
+    return `<b>${fmt0(p.yield_shaded_kwh_per_kwp)}</b> kWh/kWp after shade<br/><span>${Math.round(loss * 100)}% lost to shade</span>`;
+  if (p.yield_shaded_kwh_per_kwp != null) return `<b>${fmt0(p.yield_shaded_kwh_per_kwp)}</b> kWh/kWp after shade`;
   return `<b>${fmt0(p.yield_kwh_per_kwp)}</b> kWh/kWp`;
 }
 
@@ -200,7 +201,7 @@ export class SpatialScene {
     this.targets = [];
     [this.placeholder, this.outlines, this.tints, this.kit, this.sunGroup].forEach((g) => g.clear());
     const target = model.planes.filter((p) => p.is_target);
-    const ys = model.planes.map((p) => p.yield_kwh_per_kwp).filter((x) => x > 0);
+    const ys = model.planes.map((p) => p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp).filter((x) => x > 0);
     this.yieldScale = [Math.min(...ys), Math.max(...ys)];
 
     // Paper-grey placeholder of every roof plane until the glb arrives.

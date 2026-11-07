@@ -25,8 +25,11 @@
 .err button, .ctl button { appearance: none; border: 1px solid var(--ink); background: var(--paper); border-radius: 0; padding: 4px 10px; cursor: pointer; font-size: 13px; }
 .err button { margin-left: 10px; }
 
+.nwrap { position: absolute; top: 10px; left: 10px; display: grid; gap: 4px; justify-items: start; max-width: calc(100% - 130px); pointer-events: none; }
+.check { margin: 0; font-size: 11px; line-height: 1.3; color: var(--ink-2); background: var(--paper); border: 1px solid var(--rule-strong); padding: 3px 8px; }
+.check.bad { color: var(--paper); background: var(--ink); border-color: var(--ink); font-weight: 600; }
 .numbers {
-  position: absolute; top: 10px; left: 10px; display: grid; grid-template-columns: repeat(2, auto); gap: 0;
+  display: grid; grid-template-columns: repeat(2, auto); gap: 0;
   background: var(--paper); border: 1px solid var(--ink); pointer-events: none;
 }
 .numbers div { padding: 6px 10px 5px; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); min-width: 92px; }
@@ -50,7 +53,7 @@
 .side { position: absolute; right: 10px; bottom: 10px; width: 360px; background: var(--paper); border: 1px solid var(--ink); padding: 6px 6px 2px; }
 .legend { position: absolute; left: 10px; bottom: 10px; display: grid; gap: 3px; font-size: 11px; color: var(--ink-2); background: var(--paper); border: 1px solid var(--ink); padding: 6px 8px; pointer-events: none; }
 .legend .bar { width: 140px; height: 8px; }
-.legend .ends { display: flex; justify-content: space-between; font-family: var(--font-mono), monospace; }
+.legend .ends { display: flex; gap: 12px; justify-content: space-between; font-family: var(--font-mono), monospace; }
 
 .caption { border: 1.5px solid var(--ink); border-top: 0; padding: 14px 16px 12px; display: grid; gap: 8px; background: var(--paper); }
 .sentence { font-family: var(--font-serif), serif; font-size: 22px; line-height: 1.2; margin: 0; letter-spacing: -0.01em; }
