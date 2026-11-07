@@ -1,45 +1,48 @@
 {
   "inputs": {
     "installer_id": "2a8ba8e2",
+    "address": "Katharinenstraße 5, 82008 Unterhaching",
     "annual_demand_kwh": 5000,
     "load_profile": "FamilyOfFour",
     "num_inhabitants": 4,
     "house_size_sqm": 140,
     "house_built_year": 1985,
     "has_ev": true,
+    "ev_annual_km": 15000,
     "has_wallbox": false,
     "heating_type": "Gas",
     "heating_cost_per_year_eur": 2400,
-    "electricity_price_ct_kwh": 37,
     "has_solar": false,
-    "has_storage": false
+    "has_storage": false,
+    "electricity_price_ct_kwh": 37
   },
   "design": {
-    "pv_kwp": 7.65,
-    "inverter_kw": 6,
+    "pv_kwp": 10.35,
+    "inverter_kw": 8,
     "battery_kwh": 10,
     "heatpump_kw": 10.5,
     "wallbox_kw": 11
   },
   "explanation": [
     "Sized for 5,000 kWh a year plus an EV, in the style of installer 2a8ba8e2.",
-    "7.7 kWp is 1.5 kWp per 1,000 kWh of demand; 13 of 15 similar homes got PV, median 9.9 kWp.",
-    "14 of 15 similar homes got a battery, median 10 kWh; this is 1.3 kWh per kWp.",
+    "10.3 kWp is 2.1 kWp per 1,000 kWh of demand; 13 of 15 similar homes got PV, median 9.9 kWp. The roof fits 57 modules, up to 21.02 kWp.",
+    "14 of 15 similar homes got a battery, median 10 kWh; this is 1.0 kWh per kWp.",
     "Replaces the gas boiler: 10.5 kW from the heat load (EUR 2,400 heating cost at 12 ct per kWh of heat, over 2,300 full-load hours).",
-    "The home has an EV; 9 of 15 similar homes got a wallbox, most often 22 kW."
+    "The home has an EV, so a wallbox at 11 kW, the standard size (22 kW needs grid operator approval); 9 of 15 similar homes got one."
   ],
   "economics": {
-    "capex_eur": 51750,
-    "annual_saving_eur": 2000,
-    "payback_years": 25.9,
-    "self_consumption_share": 0.633,
-    "autarky_share": 0.392,
+    "capex_eur": 33010,
+    "annual_saving_eur": 2130,
+    "payback_years": 15.5,
+    "self_consumption_share": 0.609,
+    "autarky_share": 0.403,
     "assumptions": [
       "Hourly simulation over one typical year (Munich PVGIS TMY, pvlib), household load BDEW H25 with single-home scatter.",
       "Electricity 37 ct/kWh, rising 2% a year; feed-in 7.7 ct up to 10 kWp, 6.66 ct above.",
-      "Roof 180 degrees azimuth, 35 degrees tilt (assumed south).",
+      "Roof east-west.",
       "Battery 90% usable, 90% round trip, greedy self-consumption.",
-      "EV 2,160 kWh a year at 18 kWh/100 km, charged from 18:00.",
+      "EV 2,700 kWh a year at 18 kWh/100 km, charged from 18:00.",
+      "Heat pump EUR 36,400 less the 30% base subsidy, less EUR 10,000 for the boiler replacement it avoids: EUR 15,480 counted.",
       "Heat pump 5,882 kWh a year: 20,000 kWh heat (heating cost over 12 ct per kWh of heat) at JAZ 3.4.",
       "No feed-in pay in the 573 sunniest hours (negative prices, 2025); upkeep 1.5% of PV and battery cost a year.",
       "NPV over 20 years at 3% discount, 0.5% a year PV degradation, no battery replacement.",
@@ -47,15 +50,22 @@
     ],
     "method": "hourly-simulation",
     "annual": {
-      "pv_yield_kwh": 8478,
-      "load_kwh": 13042,
-      "self_consumed_kwh": 5363,
-      "fed_in_kwh": 3115,
-      "grid_import_kwh": 7929,
-      "feed_in_income_eur": 98,
-      "bill_before_eur": 5049,
-      "bill_after_eur": 2836,
-      "npv_20y_eur": -17690
+      "pv_yield_kwh": 9391,
+      "load_kwh": 13582,
+      "self_consumed_kwh": 5721,
+      "fed_in_kwh": 3670,
+      "grid_import_kwh": 8113,
+      "feed_in_income_eur": 129,
+      "bill_before_eur": 5249,
+      "bill_after_eur": 2872,
+      "battery_charged_kwh": 2519,
+      "battery_discharged_kwh": 2267,
+      "ev_charge_kwh": 2700,
+      "ev_from_pv_kwh": 1413,
+      "home_from_pv_kwh": 2371,
+      "heatpump_kwh": 5882,
+      "heatpump_from_pv_kwh": 1686,
+      "npv_20y_eur": 3250
     }
   }
 }
