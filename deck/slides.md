@@ -60,13 +60,13 @@ footer: Marquee
 
 <!-- _class: ink -->
 
-<p class="label">Design: physics first, then the planner</p>
+<p class="label">Design: rules a planner can read</p>
 
-## Where each extra euro stops earning.
+## Each installer’s habits, as rules on screen.
 
-<div class="data">the physics knee gives this home <b>[UNCONFIRMED: kWp]</b> and <b>[UNCONFIRMED: kWh]</b><br>planners here would sell <b>[UNCONFIRMED: kWp]</b> and <b>[UNCONFIRMED: kWh]</b><br>the frontier shows what each extra euro earns</div>
+<div class="data">installer B, PV by yearly use:<br>up to <b>2,900 kWh</b>: <b>6.75 kWp</b>   up to <b>3,750</b>: <b>7.2</b><br>up to <b>8,950</b>: <b>11.7</b>   above: <b>13.05</b><br>beside it, the physics variants: best value, most independence</div>
 
-[UNCONFIRMED: story slide for the first-principles engine; numbers from the 08:00 note]
+[UNCONFIRMED: production rule list (rules4.json, installer 23c108b7, fit half); physics optimum as variants]
 
 ---
 
@@ -78,15 +78,13 @@ footer: Marquee
 
 ---
 
-<p class="label">The exam: 654 homes, 5-fold out-of-fold</p>
+<p class="label">The exam: 633 sealed test homes</p>
 
-<div class="stat">17.6%</div>
+## Named rules a planner can read match a black box trained on the same data.
 
-## A rule list a planner can audit matches the experts more often than a black box trained on the same data.
+<div class="data">all four right, sealed half / clean 126: rules <b>18.6%</b> / <b>23.0%</b><br>black box <b>19.0%</b> on its 126 unseen homes, a tie (p 0.33 to 1.00)<br>textbook <b>6.8%</b> / <b>6.3%</b><br>where we differ, our design earns more over 20 years on <b>327</b> homes, the expert’s on <b>180</b></div>
 
-<div class="data">all four right: rules <b>17.6%</b>, black box <b>15.3%</b>, textbook <b>6.4%</b><br>counting any variant the expert offered: rules <b>19.7%</b><br>physics: better 20-year value than the expert design on <b>568</b> homes, worse on <b>12</b></div>
-
-[UNCONFIRMED: settled lab headline and numbers; final digits at 08:00. Footnotes: 136 of 654 had more than one variant; roof and budget are not in the export]
+[UNCONFIRMED: final scoreboard from engine/lab/reports/final_test.md; about 19 to 23% is the ceiling the export's inputs allow; never "rules beat ML"]
 
 <p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
 
