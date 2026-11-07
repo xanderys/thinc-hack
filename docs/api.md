@@ -195,3 +195,6 @@ The envelope block on `/api/explain/layers` (`planes.envelope`) and `/api/roof/m
 - `faces[].window_share` and `faces[].window_share_source` on wall and window faces: window area over gross wall on that side. Currently 0.20 for every build-year class, as roof/model assumes.
 - `constants`: `{ bivalence_c: { value: -6, unit: "C", label, source }, hot_water_kw_per_person: { value: 0.5, unit: "kW per person", label, source } }`.
 - `estimated_from: "address"`.
+
+## v2.8 (engine 1510b93, additive): imagery vintage
+`RoofResult` (`/api/roof`) and the roof model (`/api/roof/model`) carry `imagery: { dop20_flown: "YYYY-MM-DD" | null, lod2_stand: "YYYY-MM-DD" | null, source_note: string }`. `dop20_flown` is the DOP20 date from the LDBV WMS info layer (`by_dop20_info`, field `ua`). `lod2_stand` is the matched building's LoD2 CityGML `creationDate`. A date missing from the source is null and `source_note` says why (postcode only, no building, or tile still being read). No date is ever estimated.
