@@ -2,7 +2,7 @@
 // First frames for the 3D view: a picture of the scene as the planner last saw it settle (same camera as the
 // landing view), kept per lead, design and frame shape, shown while the photo mesh streams and cross-faded away
 // when the live house is sharp. Reusable for card thumbnails: snapshotOf(scene) returns a JPEG data URL.
-// Kept in this browser (localStorage) and in the web server's memory (/api/snap), never in the repo or a database.
+// Kept only in this browser (localStorage), never on a server, in the repo or a database.
 import type { SpatialScene } from "./scene";
 
 type Inner = { renderer: { render: (s: unknown, c: unknown) => void; domElement: HTMLCanvasElement }; scene: unknown; camera: unknown };
@@ -30,14 +30,11 @@ export function snapKey(lead: string, design: string, aspect: number) {
 }
 
 const LS = (k: string) => `marquee.snap.${k}`;
+// The picture holds Google imagery, so it stays in the viewer's own browser (Map Tiles caching terms): no server copy.
 export async function loadSnap(key: string, signal?: AbortSignal): Promise<string | null> {
-  try { const v = window.localStorage.getItem(LS(key)); if (v) return v; } catch { /* storage off */ }
-  try {
-    const r = await fetch(`/api/snap?k=${encodeURIComponent(key)}`, { signal });
-    return r.ok ? ((await r.json()) as { url?: string }).url ?? null : null;
-  } catch { return null; }
+  if (signal?.aborted) return null;
+  try { return window.localStorage.getItem(LS(key)); } catch { return null; }
 }
 export function saveSnap(key: string, url: string) {
-  try { window.localStorage.setItem(LS(key), url); } catch { /* full or off: the server copy still helps */ }
-  fetch(`/api/snap?k=${encodeURIComponent(key)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) }).catch(() => {});
+  try { window.localStorage.setItem(LS(key), url); } catch { /* full or off: no first frame next time */ }
 }
