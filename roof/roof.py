@@ -408,10 +408,10 @@ def lookup(address: str, source: str | None = None) -> RoofResult:
     return RoofResult("none", lat, lon, notes=[name] + tried)
 
 
-def model(address: str, kwp: float | None = None) -> dict:
+def model(address: str, kwp: float | None = None, build_year: int | None = None) -> dict:
     """3D model of the house: {glb_path, planes_json_path, textured, licence, source, key, model}. See model/."""
     from model import model as _model
-    return _model(address, kwp)
+    return _model(address, kwp, build_year)
 
 
 if __name__ == "__main__":
