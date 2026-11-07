@@ -72,7 +72,7 @@ export interface Layers {
 }
 
 // The engine labels points with keys ("knee", "payback") or with words; show words.
-const LABEL: Record<string, string> = { knee: "Recommended", payback: "Best payback", independence: "Most independence", upfront: "Lowest upfront cost", value: "Best 20-year value", npv: "Best 20-year value", expert: "As planners design it" };
+const LABEL: Record<string, string> = { knee: "Recommended", payback: "Best payback", independence: "Most independence", upfront: "Lowest upfront cost", value: "Best 20-year value", npv: "Best 20-year value", expert: "As planners design it", chosen: "Recommended", recommended: "Recommended", best_value: "Best 20-year value", lowest_upfront: "Lowest upfront cost", best_payback: "Best payback", most_independence: "Most independence" };
 export const labelOf = (p: FrontierPoint) => (p.label ? LABEL[p.label] ?? p.label : p.chosen ? "Recommended" : "");
 
 export const planesOf = (x: RoofModel | RoofPlane[] | undefined | null): RoofPlane[] => (!x ? [] : Array.isArray(x) ? x : x.planes ?? []);
