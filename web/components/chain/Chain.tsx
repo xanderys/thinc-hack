@@ -144,7 +144,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
 
   const go = (n: number) => { setAuto(false); setStage(n); setWhy(null); };
 
-  const tools = ({ view: v, setView }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void }) => (
+  const tools = ({ view: v, setView, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
     <div className={s.toolbar} role="toolbar" aria-label="Model">
       <Inert label="Select"><path d="M5 3l12 7-5 1.5L9.5 17z" /></Inert>
       <Inert label="Pan"><path d="M7 11V5.5a1.5 1.5 0 013 0V10m0-1.5V4a1.5 1.5 0 013 0v5m0-3a1.5 1.5 0 013 0v6c0 3.5-2.5 6-6 6s-5-1.5-6.5-4L3 11.5a1.5 1.5 0 012.5-1.5L7 12" /></Inert>
@@ -155,7 +155,8 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
       <button type="button" className={s.tb} aria-pressed={heatmap} onClick={() => setHeatmap((x) => !x)} title="Sun heatmap" aria-label="Sun heatmap"><Ico><path d="M10 2l8 4-8 4-8-4zM2 10l8 4 8-4M2 14l8 4 8-4" /></Ico></button>
       <div className={s.seg} role="group" aria-label="View">
         <button type="button" aria-pressed={v === "2d"} onClick={() => setView("2d")}>2D</button>
-        <button type="button" aria-pressed={v === "3d"} onClick={() => setView("3d")}>3D</button>
+        <button type="button" aria-pressed={v === "3d" && !photo?.on} onClick={() => setView("3d")}>3D</button>
+        {photo && <button type="button" aria-pressed={photo.on} onClick={() => photo.set(true)}>Photo</button>}
       </div>
       <button type="button" className={s.save} aria-disabled="true" title="Saved with Approve">Save</button>
     </div>

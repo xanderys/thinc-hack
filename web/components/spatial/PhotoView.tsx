@@ -15,7 +15,7 @@ const credit: React.CSSProperties = {
   borderRadius: 6, pointerEvents: "none",
 };
 const wait: React.CSSProperties = {
-  position: "absolute", left: 12, top: 12, zIndex: 2, margin: 0, fontSize: 12, color: "var(--ink-3)",
+  position: "absolute", left: 12, bottom: 22, zIndex: 2, margin: 0, fontSize: 12, color: "var(--ink-3)",
   fontFamily: "var(--font-mono), monospace", background: "rgba(253, 253, 251, 0.85)", padding: "1px 6px", pointerEvents: "none",
 };
 
@@ -65,7 +65,7 @@ export function usePhoto(address: string, scene: SpatialScene | null, active: bo
   const overlay = live ? (
     <>
       {!shown && <p style={wait}>Loading the photo</p>}
-      {shown && <p style={credit}>Google Maps{text ? ` · ${text}` : ""}</p>}
+      {shown && <p style={credit}>{["Google", ...text.split("; ").filter((x) => x && x !== "Google")].join(" · ")}</p>}
     </>
   ) : null;
 

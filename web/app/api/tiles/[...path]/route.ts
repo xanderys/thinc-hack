@@ -29,7 +29,7 @@ function anchorFor(address: string) {
 const warmAddress = (address: string) => anchorFor(address).then((a) => (a ? warm(address, a) : null));
 
 // Warm the hero address the first time this route loads in a server process.
-if (tilesKey()) warmAddress(HERO).catch(() => {});
+if (tilesKey() && process.env.NEXT_PHASE !== "phase-production-build") warmAddress(HERO).catch(() => {});
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
