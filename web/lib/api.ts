@@ -1,4 +1,4 @@
-// Copied from docs/api.md (v1). Change only when the contract changes.
+// Copied from docs/api.md (v1.3.1). Change only when the contract changes.
 
 export type InstallerId = "2a8ba8e2" | "23c108b7";
 export type LoadProfile = "H0" | "FamilyOfFour" | "HomeOfficeOnePerson" | "FullTimeOnePerson" | "SeniorOnePerson" | "PartTimeOnePerson";
@@ -48,7 +48,8 @@ export interface Economics {
   self_consumption_share: number; autarky_share: number;
   assumptions: string[];
   method?: "hourly-simulation" | "annual-lookup";   // v1.2
-  annual?: { pv_yield_kwh: number; load_kwh: number; self_consumed_kwh: number; fed_in_kwh: number; grid_import_kwh: number; feed_in_income_eur: number; bill_before_eur: number; bill_after_eur: number; npv_20y_eur: number | null };
+  annual?: { pv_yield_kwh: number; load_kwh: number; self_consumed_kwh: number; fed_in_kwh: number; grid_import_kwh: number; feed_in_income_eur: number; bill_before_eur: number; bill_after_eur: number; npv_20y_eur: number | null;
+    battery_charged_kwh?: number; battery_discharged_kwh?: number; ev_charge_kwh?: number; ev_from_pv_kwh?: number; home_from_pv_kwh?: number }; // v1.3.1
 }
 
 export interface Optimum {               // v1.2
@@ -110,3 +111,20 @@ export interface InterpretResponse { changes: InterpretChange[]; inputs: HomeInp
 export const COMPONENT_DESIGN_FIELD: Record<ComponentKey, keyof Design> = {
   pv: "pv_kwp", battery: "battery_kwh", heatpump: "heatpump_kw", wallbox: "wallbox_kw",
 };
+
+// v1.3
+export interface AskOption { value: unknown; label: string; design: Design; }
+export interface AskQuestion { field: keyof HomeInputs; current: unknown; options: AskOption[]; spread: number; }
+export interface AskResponse { questions: AskQuestion[]; }
+
+export interface InboxRow {
+  project_id: string; installer_id: InstallerId; label: string; inputs: HomeInputs; draft: Design; confidence: number; expert: Design;
+  within: { pv: boolean; battery: boolean; heatpump: boolean; wallbox: boolean; all: boolean }; note: string;
+}
+
+// LLM edge, web only
+export interface ReadFact { field: keyof HomeInputs; value: unknown; quote: string; }
+export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; }
+export interface WriteResponse { text: string; grounded: boolean; cached?: boolean; }
+
+export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Installer A", "23c108b7": "Installer B" };
