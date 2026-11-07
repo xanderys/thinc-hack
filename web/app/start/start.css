@@ -1,0 +1,47 @@
+/* Homeowner widget. Scoped with :has so it never touches the planner pages. */
+body:has(.start-root) { background: #F5F6F3; }
+body:has(.start-root) .masthead { display: none; }
+body:has(.start-root) main { max-width: none; padding: 0; }
+
+.start-root {
+  --s-ground: #F5F6F3; --s-ink: #0A0C14; --s-ink-2: #555862; --s-rule: #D9DBD4;
+  --s-accent: #0D1BFE; --s-accent-soft: #E7E9FF;
+  min-height: 100dvh; background: var(--s-ground); color: var(--s-ink);
+  display: flex; justify-content: center; padding: 20px 16px 32px;
+}
+.s-panel { width: 100%; max-width: 440px; animation: s-in 767ms var(--spring-smooth-500, ease-out) both; }
+@keyframes s-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .s-panel { animation: s-fade 200ms ease-out both; }
+  @keyframes s-fade { from { opacity: 0; } to { opacity: 1; } }
+}
+
+.s-panel h1 { font-family: var(--font-serif), serif; font-weight: 400; font-size: 30px; line-height: 1.1; letter-spacing: -0.01em; margin: 0 0 20px; }
+.s-q { border: 0; margin: 0 0 18px; padding: 0; min-width: 0; }
+.s-q legend, .s-q label.s-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; padding: 0; }
+.s-q .s-hint { font-weight: 400; color: var(--s-ink-2); }
+.s-chips { display: grid; grid-template-columns: repeat(var(--cols, 2), 1fr); gap: 8px; }
+.s-chip {
+  min-height: 44px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid var(--s-rule); background: transparent; color: var(--s-ink);
+  font-size: 15px; cursor: pointer; transition: background-color 200ms, border-color 200ms;
+}
+.s-chip[aria-pressed="true"] { border-color: var(--s-accent); background: var(--s-accent-soft); color: var(--s-accent); font-weight: 500; }
+.s-input {
+  width: 100%; min-height: 44px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--s-rule);
+  background: transparent; font-size: 16px;
+}
+.s-input:focus-visible, .s-chip:focus-visible, .s-go:focus-visible { outline: 2px solid var(--s-accent); outline-offset: 2px; }
+.s-go {
+  width: 100%; min-height: 52px; margin-top: 6px; border: 0; border-radius: 6px;
+  background: var(--s-accent); color: #F5F6F3; font-size: 16px; font-weight: 600; cursor: pointer;
+}
+.s-go:disabled { background: var(--s-rule); color: var(--s-ink-2); cursor: default; }
+.s-go.s-quiet { background: transparent; color: var(--s-ink); border: 1px solid var(--s-rule); }
+.s-small { font-size: 13px; color: var(--s-ink-2); margin: 10px 0 0; }
+.s-status { font-size: 15px; color: var(--s-ink-2); margin: 0 0 16px; }
+.s-captions { list-style: none; padding: 0; margin: 0 0 20px; font-size: 16px; line-height: 1.45; }
+.s-captions li { margin-bottom: 10px; }
+.s-captions .s-you { color: var(--s-ink-2); }
+.s-error { font-size: 14px; margin: 12px 0 0; }
+@media (hover: hover) { .s-chip:hover { border-color: var(--s-ink-2); } }

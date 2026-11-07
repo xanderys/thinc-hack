@@ -5,7 +5,10 @@ HERE = pathlib.Path(__file__).parent
 API = "https://api.elevenlabs.io"
 VOICE_ID = "iP95p4xoKVk53GoZ742B"  # Chris: casual, down-to-earth, conversational
 LLM = "claude-haiku-5-5"
-FIRST = "Hi, it's Sam from the solar team, with a few quick questions for your design. Which postcode is the house in?"
+FIRST = "Hi {{first_name}}, it's Sam from the solar team, with a few quick questions for your design. {{first_question}}"
+# Defaults for a call without the form (planner-side MarqueeCall); the widget sends real values (web/app/start/intake.ts formVariables).
+PLACEHOLDERS = {k: "not given" for k in ("postcode", "house_type", "people", "monthly_bill_eur", "kwh_estimate", "heating", "ev", "interests")}
+PLACEHOLDERS.update(first_name="there", first_question="Which postcode is the house in?", installer_id="2a8ba8e2")
 
 
 def key():
@@ -42,6 +45,7 @@ def main():
             "agent": {
                 "first_message": FIRST,
                 "language": "en",
+                "dynamic_variables": {"dynamic_variable_placeholders": PLACEHOLDERS},
                 "prompt": {
                     "prompt": (HERE / "prompt.md").read_text(),
                     "llm": LLM,

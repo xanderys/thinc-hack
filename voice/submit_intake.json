@@ -1,7 +1,7 @@
 {
   "type": "client",
   "name": "submit_intake",
-  "description": "Send everything learned on the call to the planner. Call once, after the recap. Leave out fields you did not learn.",
+  "description": "Send everything known, form facts and call facts together, to the planner. Call once, after the recap. Leave out fields still unknown.",
   "expects_response": true,
   "response_timeout_secs": 20,
   "parameters": {
@@ -156,6 +156,18 @@
           "description": "Field name"
         },
         "description": "Names of fields you estimated, converted or took from a band. Every other field counts as stated."
+      },
+      "interests": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "solar, battery, heatpump or charger"
+        },
+        "description": "What they are interested in, from the form."
+      },
+      "first_name": {
+        "type": "string",
+        "description": "First name, if given."
       }
     }
   }

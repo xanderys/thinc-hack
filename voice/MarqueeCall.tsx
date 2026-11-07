@@ -1,9 +1,9 @@
 "use client";
-// Web call with the Marquee intake agent. Needs `npm i @elevenlabs/react@1.21.1` in web/.
+// Planner-side web call with the Marquee intake agent (no form). Needs `npm i @elevenlabs/react@1.21.1` in web/.
 // Renders nothing without an agent id, so it can sit behind an env flag.
 import { useRef, useState } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
-import { toHomeInputs, type IntakeFacts, type InstallerId } from "./intake";
+import { formVariables, toHomeInputs, type IntakeFacts, type InstallerId } from "@/app/start/intake";
 
 export interface MarqueeCallProps {
   agentId?: string; // NEXT_PUBLIC_ELEVENLABS_AGENT_ID
@@ -53,7 +53,7 @@ function Call({ agentId, installerId, address, onIntake }: MarqueeCallProps & { 
     setError(null);
     setLines([]);
     setSent(false);
-    conversation.startSession({ agentId, connectionType: "webrtc" });
+    conversation.startSession({ agentId, connectionType: "webrtc", dynamicVariables: formVariables(undefined, installerId) });
   };
 
   return (
