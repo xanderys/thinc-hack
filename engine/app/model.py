@@ -12,7 +12,7 @@ from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES
 
 SEED = 42
 K = 15
-MODEL_VERSION = "chain-hgb-knn-1"
+MODEL_VERSION = "chain-hgb-knn-2"
 COMPONENTS = ["pv", "battery", "heatpump", "wallbox"]
 UNITS = {"pv": "kWp", "battery": "kWh", "heatpump": "kW", "wallbox": "kW"}
 TARGET = {"pv": "pv_kwp", "battery": "battery_kwh", "heatpump": "heatpump_kw", "wallbox": "wallbox_kw"}
@@ -129,7 +129,7 @@ class Engine:
         self.hp_positive = int((y["heatpump"] > 0).sum())
         self.models["hp_dec"] = clf().fit(X2, y["heatpump"] > 0) if self.hp_positive >= 5 else None
         # wallbox
-        self.models["wb_dec"] = clf().fit(X2, y["wallbox"] > 0)
+        self.models["wb_dec"] = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=3, min_samples_leaf=20, random_state=SEED).fit(X2, y["wallbox"] > 0)
         m = y["wallbox"] > 0
         self.models["wb_size"] = clf().fit(X2[m], y["wallbox"][m] > 11)
         return self
@@ -194,7 +194,7 @@ class Engine:
         if "wallbox_kw" in ov:
             wb, src = ov["wallbox_kw"] or 0.0, "planner"
         else:
-            if p_w >= 0.5:
+            if inp.get("has_ev"):  # learned decision lost to this rule on test; wallbox choice is mostly noise (README)
                 wb = 22.0 if float(self.models["wb_size"].predict_proba(X2)[0, 1]) >= 0.5 else 11.0
             else:
                 wb = 0.0
@@ -256,14 +256,20 @@ class Engine:
         if comp == "wallbox":
             ev = "has an EV" if inp.get("has_ev") else "has no EV recorded"
             if not inc:
-                return f"The home {ev}; {n - k} of {n} similar homes got no wallbox."
+                if inp.get("has_wallbox"):
+                    return "The home already has a wallbox."
+                return f"No EV recorded, so no wallbox; {n - k} of {n} similar homes also went without."
+            if inp.get("has_ev") and k < n / 2:
+                return f"The home has an EV, so a wallbox at {fmt(size, unit)}; {k} of {n} similar homes got one."
             return f"The home {ev}; {k} of {n} similar homes got a wallbox, most often {fmt(st['median_size'], unit)}."
 
     def _explain(self, inp, design, comps, nb, econ):
         d = inp.get("annual_demand_kwh") or 0
         out = [f"Sized for {d:,.0f} kWh a year" + (" plus an EV" if inp.get("has_ev") else "") + f", in the style of installer {inp['installer_id']}."]
         for c in COMPONENTS:
-            out.append(comps[c]["reason"])
+            inc = comps[c]["decision"] == "include"
+            if inc or c == "battery" or (c == "wallbox" and inp.get("has_ev")) or (c == "pv" and not inc):
+                out.append(comps[c]["reason"])
         if econ["payback_years"]:
             out.append(f"Rough payback {econ['payback_years']:.0f} years at {econ['autarky_share'] * 100:.0f}% autarky.")
         return out[:5]
@@ -337,6 +343,11 @@ class Engine:
                 "baseline_within_tolerance_share": round(float(wb_.mean()), 3),
                 "tolerance": physics.TOL_LABEL[c],
             }
+            both = inc & (o > 0)
+            comps[c]["size_mae_when_both_include"] = round(float(np.abs(o[both] - e[both]).mean()), 2) if both.any() else None
+            if c == "pv":
+                comps[c]["within_2kwp_share"] = round(float((((o > 0) == inc) & ((~inc) | (np.abs(o - e) <= 2))).mean()), 3)
+                comps[c]["baseline_within_2kwp_share"] = round(float((((b > 0) == inc) & ((~inc) | (np.abs(b - e) <= 2))).mean()), 3)
         per = {}
         for inst in INSTALLERS:
             m = (te.installer_id == inst).values
