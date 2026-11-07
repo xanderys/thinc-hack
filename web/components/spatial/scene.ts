@@ -9,6 +9,7 @@ import { flowsOf, lerpHour, p2 } from "./types";
 import { facing } from "./facing";
 import { poseOffset, springStep, type Focus, type Pose } from "./camera";
 import { ShadeLayer } from "./shading";
+import { neighbourEdges, outlineMesh, whiteFallback } from "./whiteContext";
 import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
@@ -132,6 +133,7 @@ export class SpatialScene {
   private plan: Plan | null = null;
   private planG: SVGGElement | null = null;
   private shade = new ShadeLayer();
+  private ctxLines = new THREE.Group(); // neighbours' footprints on the white ground
 
   constructor(private host: HTMLElement, private overlay: HTMLElement, private svg: SVGSVGElement, private opts: SceneOpts) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
@@ -144,7 +146,7 @@ export class SpatialScene {
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xd6d1c5, 1.9));
     this.sunLight.position.set(-20, 30, 25);
     this.scene.add(this.sunLight);
-    this.scene.add(this.placeholder, this.outlines, this.tints, this.panels, this.kit, this.sunGroup);
+    this.scene.add(this.ctxLines, this.placeholder, this.outlines, this.tints, this.panels, this.kit, this.sunGroup);
 
     // Touch moves the model, never the page.
     this.renderer.domElement.style.touchAction = "none";
@@ -261,7 +263,8 @@ export class SpatialScene {
 
   setModel(model: RoofModel) {
     this.targets = [];
-    [this.placeholder, this.outlines, this.tints, this.kit, this.sunGroup].forEach((g) => g.clear());
+    [this.placeholder, this.outlines, this.tints, this.kit, this.sunGroup, this.ctxLines].forEach((g) => g.clear());
+    this.ctxLines.add(outlineMesh(neighbourEdges(model.planes)));
     const target = model.planes.filter((p) => p.is_target);
     this.shade.setPlanes(target);
     const ys = model.planes.map((p) => p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp).filter((x) => x > 0);
@@ -366,6 +369,7 @@ export class SpatialScene {
       // The target footprint comes with the roof model; until it is in, flatten later.
       this.glbRoot = gltf.scene; this.flattened = false;
       if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene);
+      whiteFallback(gltf.scene);
       this.scene.add(gltf.scene);
       this.placeholder.visible = false;
       if (this.heat) this.setHeat(this.heat);
