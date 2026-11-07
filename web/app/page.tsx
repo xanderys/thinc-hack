@@ -96,7 +96,8 @@ export default function Stage() {
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(null); setPrev(null); last.current = null;
     setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
     setRead(r.data); setRoof(null);
-    if (r.data.inputs.address) call<RoofResult>(`/api/roof?address=${encodeURIComponent(r.data.inputs.address)}`).then((x) => setRoof(x.ok ? x.data : null));
+    const where = r.data.inputs.address ? `address=${encodeURIComponent(r.data.inputs.address)}` : r.data.postcode ? `postcode=${r.data.postcode}` : null;
+    if (where) call<RoofResult>(`/api/roof?${where}`).then((x) => setRoof(x.ok ? x.data : null));
     const base: HomeInputs = { ...DEFAULTS, ...r.data.inputs, installer_id: installer };
     // A restarting engine answers 502 for about 35 s: wait and ask again rather than skip the question.
     for (let k = 0; ; k++) {
