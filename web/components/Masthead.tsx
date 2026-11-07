@@ -27,7 +27,7 @@ export default function Masthead() {
       </nav>
       <span className={`engine${mock || health.err ? " mock" : ""}`}>
         {health.err ? health.err : !health.h ? "" : mock ? "Mock engine: fixtures, not the model" :
-          `Drafted from ${health.h.trained_on.projects.toLocaleString("en-GB")} signed offers`}
+          `Physics engine, measured against ${health.h.trained_on.projects.toLocaleString("en-GB")} signed offers`}
       </span>
     </header>
   );

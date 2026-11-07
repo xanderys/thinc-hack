@@ -554,3 +554,6 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 @keyframes s-pulse { 50% { opacity: 0.3; } }
 .l-refine { border-top: 1.5px solid var(--ink); padding-top: 14px; margin: 4px 0 20px; }
 .l-refine .s-moved { margin-top: 10px; }
+.s-top.solo { grid-template-columns: minmax(0, 1fr); }
+.s-top.solo .s-house:empty { display: none; }
+.s-spatial { margin: 6px 0 18px; }
