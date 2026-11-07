@@ -59,12 +59,47 @@ def _day(sim_in, design) -> dict:
     hours = []
     for i in idx:
         hours.append({"h": int(local[i].hour), "pv_kw": round(float(h["pv"][i]), 3), "load_kw": round(float(h["load"][i]), 3),
+                      "direct_self_kw": round(float(h["direct"][i]), 3),  # PV used in the home the same hour
                       "battery_kw": round(float(h["discharge"][i] - h["charge"][i]), 3),  # + = battery supplies the home
                       "grid_kw": round(float(h["grid_import"][i] - h["feed_in"][i]), 3),  # + = import
                       "soc_kwh": round(float(soc_all[i]), 3)})
     dark = [x for x in hours if x["pv_kw"] < 0.01]
-    evening = sum(x["load_kw"] for x in dark)  # what the home uses while the panels are dark that day
-    return {"date": f"{day.strftime('%d %B')} (a typical-year weekday: PV at the 70th percentile of April and May, the home's use at its median)", "hours": hours}, {"evening_kwh": round(evening, 2), "night_hours": len(dark)}, res.economics
+    evening = sum(x["load_kw"] for x in dark if x["h"] >= 12)  # after sunset to midnight
+    overnight = sum(x["load_kw"] for x in dark if x["h"] < 12)  # midnight to sunrise
+    return {"date": f"{day.strftime('%d %B')} (a typical-year weekday: PV at the 70th percentile of April and May, the home's use at its median)", "hours": hours}, {"evening_kwh": round(evening, 2), "night_kwh": round(overnight, 2), "dark_kwh": round(evening + overnight, 2),
+                                               "night_hours": len(dark)}, res.economics
+
+
+EV_SOURCES = [
+    {"key": "ev_consumption", "citation": "18 kWh per 100 km, the engine's hourly simulation (app/hourly/sim.py), a mid-size EV in mixed driving"},
+    {"key": "home_share", "citation": "Fraunhofer ISI, press release 21/2025: about 80 percent of electric cars registered in Germany are charged at home",
+     "url": "https://www.isi.fraunhofer.de/en/presse/2025/presseinfo-21-elektroautos-ladeinfrastruktur-mehrparteienhaus.html"},
+    {"key": "wallbox", "citation": "11 kW needs registration with the grid operator, 22 kW its approval; 22 kW needs a 3-phase 32 A supply",
+     "url": "https://www.vattenfall.de/infowelt-energie/wallbox-anmelden"},
+]
+
+
+def ev_block(inp: dict, design: dict):
+    """The car in numbers, when the home has one: what it adds to the home's load and what the wallbox must deliver."""
+    if not inp.get("has_ev"):
+        return None
+    from .hourly import sim as S
+    km = float(inp.get("ev_annual_km") or 12000)
+    per100 = float(S.EV_KWH_PER_100KM)
+    annual = km * per100 / 100
+    share = 0.8
+    night = annual * share / 365
+    window_h = 12  # 18:00 to 06:00
+    wb = design.get("wallbox_kw") or 11.0
+    return {"annual_km": km, "kwh_per_100km": per100, "annual_kwh": round(annual), "home_share": share,
+            "annual_kwh_at_home": round(annual * share),
+            "simulated_at_home_kwh": round(annual),  # the hourly year charges every km at home: an upper bound for the home's load
+            "charging_window": "18:00 to 06:00", "kwh_per_night_typical": round(night, 1),
+            "kw_needed": round(night / window_h, 2), "wallbox_kw": wb, "hours_per_night_at_wallbox": round(night / wb, 1),
+            "km_per_hour_at_11kw": round(11 / (per100 / 100)), "note_22kw": "22 kW only with a 3-phase 32 A supply",
+            "note": ("The hourly simulation charges the whole year at home from 18:00 (an upper bound); about 80% is the German "
+                     "average share charged at home."),
+            "sources": EV_SOURCES}
 
 
 def explain(eng, inp: dict, design: dict | None) -> dict:
@@ -108,7 +143,9 @@ def explain(eng, inp: dict, design: dict | None) -> dict:
     t = __import__("app.model", fromlist=["base_features"]).base_features(inp, inp["installer_id"])["t"]
     fr = L.public_rows(L.value_frontier(eng, inp, design))  # the same simulated set the variants are picked from
     obj = resp.get("objective") or L.OBJECTIVE
+    ev = ev_block(inp, design)
     out = {"planes": planes, "day": day, "night": night, "frontier": fr, "chosen": design, "objective": obj, "sources": P.sources(),
+           **({"ev": ev} if ev else {}),
            "economics": econ,
            "consistency": {"modules_on_roof": lo["modules"] if lo else None, "modules_in_design": L.modules_for(design.get("pv_kwp")),
                            "pv_yield_kwh_used": econ["annual"]["pv_yield_kwh"], "layout_kwh_per_year": lo["kwh_per_year"] if lo else None,
