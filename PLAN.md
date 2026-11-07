@@ -36,6 +36,7 @@ Contract between units: `docs/api.md`. Change it only through the orchestrator.
 - 14:00 Engine live on the mini behind Tailscale Funnel with the full contract; merged to main. First scoreboard: full-design match 19.7% vs 2.5% baseline; PV MAE 3.4 kWp (weak), battery within 2 kWh 52.9% vs 40.4%.
 
 ## Next
+- 15:45 Product plan approved (see docs/briefs/stage.md): agentic stage at /, Reality at /check, old pages at /classic. Engine adds /api/ask and /api/inbox (v1.3). Deck resumed.
 - Engine: PV accuracy (no-PV retrofits as a first decision, catalogue snapping), wallbox, economics lookup, README.
 - Web: mock-backed planner by 16:15, then real engine.
 - Insights: docs/data-insights.md by 15:45.

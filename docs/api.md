@@ -1,4 +1,4 @@
-# Engine API contract (v1.2)
+# Engine API contract (v1.3)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -100,6 +100,11 @@ interface Eval {
   deviations: { project_id: string; component: string; ours: number | null; expert: number | null; note: string }[]; // top 20
 }
 ```
+
+## v1.3 additions (LLM-free, additive)
+
+- `POST /api/ask` body `{ inputs: HomeInputs }` → `{ questions: { field: keyof HomeInputs; current: unknown; options: { value: unknown; label: string; design: Design }[]; spread: number }[] }`, sorted by spread, top 3, empty when nothing moves. Candidates: `heating_type` Unknown → Gas | Heatpump; `has_ev` false → true at 12,000 km; `annual_demand_kwh` absent or the 4,500 default → 3,000 | 6,500; `heating_demand_kwh` missing on a fossil home → 12,000 | 20,000; `has_solar` false → true at 6 kWp. spread = Σ |Δsize| / tolerance (1 kWp, 2 kWh, 2 kW) plus 1 per decision flip, max over options.
+- `GET /api/inbox?limit=20` → `{ project_id, installer_id, label, inputs: HomeInputs, draft: Design, confidence: number, expert: Design, within: { pv: boolean; battery: boolean; heatpump: boolean; wallbox: boolean; all: boolean }, note: string }[]` from the test split in demo order (varied installers, EV, heating; the first row a PV and battery hit); confidence = mean confidence of included components; `within` by the eval tolerances; `note` = the deviation note when `all` is false, else "".
 
 Natural-language refinement ("the family buys an EV next year") is handled in `web/` (`POST /api/interpret` → `{ changes: { field, from, to, note }[], inputs: HomeInputs }`) with the Claude API, then `web/` calls `/api/refine`. The engine has no LLM.
 
