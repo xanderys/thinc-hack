@@ -78,11 +78,15 @@ footer: Marquee
 
 ---
 
-<p class="label">The exam: homes no engine saw</p>
+<p class="label">The exam: 654 homes, 5-fold out-of-fold</p>
 
-## [UNCONFIRMED: proposed “Matches the black box, with every rule visible.” and line “physics optimum: better 20-year value on 98% of homes”; never “beats”]
+<div class="stat">17.6%</div>
 
-<div class="data">all four right: physics <b>[UNCONFIRMED]</b>, calibrated rules <b>[UNCONFIRMED]</b>, black box <b>[UNCONFIRMED]</b>, textbook <b>[UNCONFIRMED]</b><br>PV within 1 kWp or 15%: <b>[UNCONFIRMED]</b></div>
+## A rule list a planner can audit matches the experts more often than a black box trained on the same data.
+
+<div class="data">all four right: rules <b>17.6%</b>, black box <b>15.3%</b>, textbook <b>6.4%</b><br>counting any variant the expert offered: rules about <b>20%</b><br>physics: better 20-year value than the expert design on <b>568</b> homes, worse on <b>12</b></div>
+
+[UNCONFIRMED: settled lab headline and numbers; final digits at 08:00. Footnotes: 136 of 654 had more than one variant; roof and budget are not in the export]
 
 <p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
 
