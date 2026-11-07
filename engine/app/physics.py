@@ -78,14 +78,14 @@ def pv_cost_per_kwp(kwp):
 
 def shares(demand, pv, bat):
     """Return (self_consumption, autarky). Ratio model calibrated to domain.md 2: no battery about 30% autarky
-    at PV = demand, 10 kWp with 10 kWh about 60% at 4,500 kWh."""
+    at PV = demand, 10 kWp with 10 kWh about 65% at 4,500 kWh, battery gain degressive."""
     if not pv or demand <= 0:
         return 0.0, 0.0
     gen = pv * YIELD
     rho = gen / demand
-    aut0 = min(0.3 * rho ** 0.4, 0.45)
+    aut0 = min(0.3 * rho ** 0.3, 0.42)
     daily = demand / 365
-    aut = aut0 + (0.25 * (1 - np.exp(-(bat or 0) / (0.6 * daily))) if bat else 0)
+    aut = aut0 + (0.35 * min(rho, 1.0) * (1 - np.exp(-(bat or 0) / (0.5 * daily))) if bat else 0)
     aut = float(min(aut, 0.9, 0.95 * rho))
     return float(min(aut * demand / gen, 1.0)), aut
 
