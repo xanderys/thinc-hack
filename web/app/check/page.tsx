@@ -29,6 +29,8 @@ export default function Check() {
   const [ev, setEv] = useState<Eval | null>(null);
   const [evErr, setEvErr] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [facts, setFacts] = useState<{ label: string; text: string }[]>([]);
+  useEffect(() => { call<{ facts: { label: string; text: string }[] }>("/api/insights").then((r) => { if (r.ok) setFacts(r.data.facts); }); }, []);
 
   useEffect(() => {
     call<ProjectSummary[]>("/api/projects?split=test&limit=50").then((r) => {
@@ -88,14 +90,14 @@ export default function Check() {
                   <td className="num">{ours == null ? "none" : `${fmt.n(ours)} ${unit}`}</td>
                   <td className="num">{expert == null ? "none" : `${fmt.n(expert)} ${unit}`}</td>
                   <td>{tol(k)}</td>
-                  <td className={ok ? "mark-ok" : "mark-off"}>{ok ? "✓ Within" : "✗ Off"}</td>
+                  <td className={ok ? "mark-ok" : "mark-off"}>{ok ? "Within" : "Off"}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      {detail && <ul className="explain">{detail.ours.components.pv.reason && KEYS.map((k) => <li key={k}><strong>{COMPONENT_NAME[k]}.</strong> {detail.ours.components[k].reason}</li>)}</ul>}
+      {detail && <ul className="explain">{detail.ours.components.pv.reason && KEYS.map((k) => <li key={k} className="row"><span className="lbl">{COMPONENT_NAME[k]}</span><span>{detail.ours.components[k].reason}</span></li>)}</ul>}
 
       <div className="section">
         <div className="sheet-head"><h1>Scoreboard</h1>{ev && <span className="meta">{ev.split.test} held-out projects, {ev.split.method}</span>}</div>
@@ -106,7 +108,9 @@ export default function Check() {
               <div>
                 <dl className="figures">
                   <div><dt>Whole design matches</dt><dd className="num big">{fmt.pct(ev.overall.design_match_share)}</dd></div>
-                  <div><dt>Rule-of-thumb baseline</dt><dd className="num big" style={{ color: "var(--ink-3)" }}>{fmt.pct(ev.overall.baseline_design_match_share)}</dd></div>
+                  {ev.overall.ceiling_design_match_share != null && <div><dt>Ceiling</dt><dd className="num big">{fmt.pct(ev.overall.ceiling_design_match_share)}</dd></div>}
+                  <div><dt>{ev.overall.textbook_design_match_share != null ? "Textbook rule" : "Rule-of-thumb baseline"}</dt><dd className="num big" style={{ color: "var(--ink-3)" }}>{fmt.pct(ev.overall.textbook_design_match_share ?? ev.overall.baseline_design_match_share)}</dd></div>
+                  {ev.overall.floor_slope_design_match_share != null && <div><dt>Floor plus slope</dt><dd className="num big" style={{ color: "var(--ink-3)" }}>{fmt.pct(ev.overall.floor_slope_design_match_share)}</dd></div>}
                 </dl>
                 <p className="note">{ev.overall.definition}</p>
               </div>
@@ -120,6 +124,39 @@ export default function Check() {
                 </table>
               </div>
             </div>
+
+            {ev.ceiling && (
+              <div className="section">
+                <h2>How often planners agree with themselves</h2>
+                <dl className="figures">
+                  <div><dt>PV</dt><dd className="num">{fmt.pct(ev.ceiling.pv_agreement_share)}</dd></div>
+                  <div><dt>Battery</dt><dd className="num">{fmt.pct(ev.ceiling.battery_agreement_share)}</dd></div>
+                </dl>
+                <p className="note">{ev.ceiling.method}</p>
+              </div>
+            )}
+
+            {KEYS.some((k) => ev.components[k].ceiling_within_tolerance_share != null || ev.components[k].textbook_within_tolerance_share != null || ev.components[k].floor_slope_within_tolerance_share != null) && (
+              <div className="section scroll">
+                <h2>Within tolerance</h2>
+                <table className="data">
+                  <thead><tr><th>Component</th><th className="num">Ours</th><th className="num">Ceiling</th><th className="num">Textbook</th><th className="num">Floor plus slope</th></tr></thead>
+                  <tbody>{KEYS.map((k) => {
+                    const c = ev.components[k];
+                    const v = (x: number | null | undefined) => x == null ? "n/a" : fmt.pct(x);
+                    return (
+                      <tr key={k}>
+                        <td>{COMPONENT_NAME[k]}</td>
+                        <td className="num">{v(c.within_tolerance_share)}</td>
+                        <td className="num">{v(c.ceiling_within_tolerance_share)}</td>
+                        <td className="num" style={{ color: "var(--ink-3)" }}>{v(c.textbook_within_tolerance_share ?? c.baseline_within_tolerance_share)}</td>
+                        <td className="num" style={{ color: "var(--ink-3)" }}>{v(c.floor_slope_within_tolerance_share)}</td>
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+            )}
 
             <div className="section scroll">
               <h2>By component</h2>
@@ -139,8 +176,21 @@ export default function Check() {
                   );
                 })}</tbody>
               </table>
-              <p className="note">Lower line in each cell: rule-of-thumb baseline.</p>
+              <p className="note">Lower line in each cell: textbook rule.</p>
             </div>
+
+            {facts.length > 0 && (
+              <div className="section">
+                <h2>Where we differ from experts</h2>
+                <ul className="facts">
+                  {facts.map((f) => <li key={f.label}><span className="lbl">{f.label}</span><span>{f.text}</span></li>)}
+                  {ev.ceiling && ev.components.pv.within_tolerance_share != null && (
+                    <li><span className="lbl">Live scoreboard</span><span>PV within tolerance: ours <span className="num">{fmt.pct(ev.components.pv.within_tolerance_share)}</span>, planners against their own similar homes <span className="num">{fmt.pct(ev.ceiling.pv_agreement_share)}</span>.</span></li>
+                  )}
+                </ul>
+                <p className="note">Source: docs/data-insights.md and /api/eval.</p>
+              </div>
+            )}
 
             <div className="section scroll">
               <h2>Largest deviations</h2>

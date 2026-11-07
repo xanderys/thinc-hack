@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { COMPONENT_DESIGN_FIELD, type ComponentKey, type Design, type DesignResponse } from "@/lib/api";
+import { COMPONENT_DESIGN_FIELD, type ComponentKey, type Design, type DesignResponse, type OverrideValue, type Overrides } from "@/lib/api";
 import { fmt } from "@/lib/client";
 
 const ROWS: { key: ComponentKey; name: string; step: number }[] = [
@@ -14,8 +14,8 @@ type Props = {
   res: DesignResponse;
   prev: Design | null;
   version: number;
-  overrides: Partial<Design>;
-  setOverride: (field: keyof Design, value: number | null | undefined) => void;
+  overrides: Overrides;
+  setOverride: (field: keyof Design, value: OverrideValue | undefined) => void;
 };
 
 function Value({ value, unit, was, version }: { value: number | null; unit: string; was: number | null | undefined; version: number }) {
@@ -34,18 +34,21 @@ const clean = (x: number | null | undefined) => x == null ? "" : String(Math.rou
 
 function Fix({ field, current, unit, step, overrides, setOverride }: {
   field: keyof Design; current: number | null; unit: string; step: number;
-  overrides: Partial<Design>; setOverride: Props["setOverride"];
+  overrides: Overrides; setOverride: Props["setOverride"];
 }) {
   const fixed = field in overrides;
-  const mode = !fixed ? "auto" : overrides[field] == null ? "none" : "value";
-  const [draft, setDraft] = useState<string>(clean(overrides[field] ?? current));
+  const mode = !fixed ? "auto" : overrides[field] === "include" ? "include" : overrides[field] == null ? "none" : "value";
+  const fixedNum = typeof overrides[field] === "number" ? overrides[field] as number : null;
+  const [draft, setDraft] = useState<string>(clean(fixedNum ?? current));
   useEffect(() => { if (mode !== "value") setDraft(clean(current)); }, [current, mode]);
+  useEffect(() => { if (fixedNum != null) setDraft((d) => (Number(d) === fixedNum ? d : clean(fixedNum))); }, [fixedNum]);
   const commit = (s: string) => { const n = Number(s); if (s !== "" && Number.isFinite(n) && n > 0) setOverride(field, n); };
   return (
     <div className="fix">
       <span className="label">Planner</span>
       <span className="seg" role="group" aria-label="Fix this component">
         <button type="button" aria-pressed={mode === "auto"} onClick={() => setOverride(field, undefined)}>Auto</button>
+        <button type="button" aria-pressed={mode === "include"} onClick={() => setOverride(field, "include")}>Include</button>
         <button type="button" aria-pressed={mode === "none"} onClick={() => setOverride(field, null)}>None</button>
         <button type="button" aria-pressed={mode === "value"} onClick={() => commit(draft || String(current ?? step))}>Fix at</button>
       </span>
@@ -68,7 +71,7 @@ export default function DesignSheet({ res, prev, version, overrides, setOverride
         return (
           <div className="comp" key={key}>
             <div className="name">{name}
-              <small>{field in overrides ? "Fixed by planner" : `Confidence ${fmt.pct(c.confidence)}`}</small>
+              <small>{field in overrides ? (overrides[field] === "include" ? "Included by planner" : "Fixed by planner") : `Confidence ${fmt.pct(c.confidence)}`}</small>
             </div>
             <Value value={value} unit={c.unit} was={prev?.[field]} version={version} />
             <div className="body">
