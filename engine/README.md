@@ -8,7 +8,7 @@ Statistics plus physics, no LLM. Proposes PV, battery, heat pump and wallbox in 
 cd engine && uv sync && REONIC_DATA_DIR="/path/to/Project Data" uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-`./run.sh` keeps it up on port 8000 and restarts it in 2 s if it exits. The first start trains (about 35 s); later starts load the model from `engine/.cache/` (gitignored, keyed on data files and engine code) in about 4 s. Contract: `docs/api.md` v1.2 (refine overrides take a number, null or "include"; eval carries textbook, floor-slope and near-identical-homes shares; economics from the hourly simulation; `optimum`). Extra fields beyond the contract: `HomeInputs.roof_area_sqm`, `roof_azimuth_deg`, `roof_tilt_deg`, `roof_orientation` (read by the simulation), `HomeInputs.offer_date` (optional ISO date, picks the battery catalogue of that time; default latest); `/api/eval` adds `baselines` (full detail per rule), `ceiling.covered_test_share`, `all_projects` (all 314 test jobs), `size_mae_when_both_include`, `within_2kwp_share` (PV) and per-installer `baseline_design_match_share`; `/api/projects/{id}` adds `split`; `/api/projects` items add a one-line `label` and come in a varied order (both installers; battery, heat pump, EV, PV only, wallbox, no PV).
+`./run.sh` keeps it up on port 8000 and restarts it in 2 s if it exits. The first start trains (about 35 s); later starts load the model from `engine/.cache/` (gitignored, keyed on data files and engine code) in about 4 s. Contract: `docs/api.md` v1.3 (`/api/ask`, `/api/inbox`; refine overrides take a number, null or "include"; eval carries textbook, floor-slope and near-identical-homes shares; economics from the hourly simulation; `optimum`). Extra fields beyond the contract: `/api/ask` takes optional `unknown: string[]`; `HomeInputs.roof_area_sqm`, `roof_azimuth_deg`, `roof_tilt_deg`, `roof_orientation` (read by the simulation), `HomeInputs.offer_date` (optional ISO date, picks the battery catalogue of that time; default latest); `/api/eval` adds `baselines` (full detail per rule), `ceiling.covered_test_share`, `all_projects` (all 314 test jobs), `size_mae_when_both_include`, `within_2kwp_share` (PV) and per-installer `baseline_design_match_share`; `/api/projects/{id}` adds `split`; `/api/projects` items add a one-line `label` and come in a varied order (both installers; battery, heat pump, EV, PV only, wallbox, no PV).
 
 ## Data
 
@@ -68,6 +68,14 @@ The test split (20%, stratified by installer, seed 42) is never used for fitting
 Economics come from the hourly simulation in `app/hourly/` (REONIC PHYSICS; method and limits in `docs/physics.md`): one typical Munich year, BDEW load profile, greedy battery dispatch. `economics.method` says `hourly-simulation`; if the simulation fails the engine falls back to the annual ratio model (`annual-lookup`, `app/rules.py`) and says so in `assumptions`. `DesignResponse.optimum` is the economically best PV and battery from the installer's own sizes (up to 12 PV sizes around the proposal, the battery sizes on sale at the offer date), with a one-line note on where the expert habit and the maths disagree. `validate_physics` checks (clipping, battery cycles against night load, heat pump full-load hours, extreme autarky or self-consumption) are appended to `plausibility` and, when not ok, to `/api/validate` as "unusual". The scoreboard skips the simulation (sizes only).
 
 Latency through the Funnel: `/api/design` p50 194 ms, p95 280 ms; `/api/refine` about 275 ms.
+
+## Question picker and inbox (v1.3)
+
+`POST /api/ask` re-sizes the home once per answer to each open question (heating type, EV, annual use, heat demand, existing PV) in one batched pass through the chain, and ranks questions by how far the design moves: the sum over components of |change in size| / tolerance (1 kWp, 2 kWh, 2 kW) plus 1 per include/none flip, the largest over the answers. Top 3; an empty list when no answer moves the design. With `unknown` in the request only those fields are asked, so a fact the lead stated is never asked. About 80 ms at normal load.
+
+`GET /api/inbox` replays held-out new-system jobs: draft, mean confidence of the included components, the expert design, within-tolerance per component, and the deviation note on misses. The first row is a PV and battery hit at 2a8ba8e2; the rest rotate through installers and kinds of job. Built in the background at startup (up to 60 rows).
+
+Heat pump cost: EUR 36,400 less the 30% base subsidy, less EUR 10,000 for the boiler replacement it avoids when it replaces gas or oil (`rules.hp_net_capex`, used by both the hourly simulation and the fallback).
 
 ## Scoreboard
 
