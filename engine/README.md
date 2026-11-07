@@ -53,7 +53,7 @@ On the full 258 board (half of it in the formula's fit half): 20.9% / 17.1% / 6.
 
 ## If the mini is unreachable
 
-If the mini is unreachable, run `engine/fallback.sh` on the MacBook and set `ENGINE_URL` to its Tailscale address. It finds the data pack under `.handoff`, reads the same `~/.config/marquee/*.env` switches, copies the bundled hero roof (`engine/fallback/roof2`, public LoD2 and Zensus figures only), and serves on port 8000; the first start trains for about a minute, later starts load `engine/.cache`.
+If the mini is unreachable, run `engine/fallback.sh` on the MacBook and set `ENGINE_URL` to its Tailscale address. It finds the data pack under `.handoff`, reads the same `~/.config/marquee/*.env` switches, copies the bundled hero roof (`engine/fallback/roof2`, public LoD2 and Zensus figures only), and serves on port 8000 with `RECOMMENDER=rules` unless the env file says otherwise; the first start trains for about a minute, later starts load `engine/.cache`. The intake step needs `~/.config/marquee/intake.env` copied from the mini (it holds the secret, so copy it by hand, never through git).
 
 ## Data
 

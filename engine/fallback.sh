@@ -10,6 +10,7 @@ done
 [ -n "$REONIC_DATA_DIR" ] || { echo "No data pack found: set REONIC_DATA_DIR to the 'Project Data' folder"; exit 1; }
 [ -f "$HOME/.config/marquee/engine.env" ] && set -a && . "$HOME/.config/marquee/engine.env" && set +a
 [ -f "$HOME/.config/marquee/intake.env" ] && set -a && . "$HOME/.config/marquee/intake.env" && set +a
+export RECOMMENDER="${RECOMMENDER:-rules}"  # the live recommender on the mini since 7 Nov
 mkdir -p .cache/roof2 && cp -n fallback/roof2/*.json .cache/roof2/ 2>/dev/null || true  # hero roof without the network
 uv sync -q
 echo "Engine on http://0.0.0.0:${PORT:-8000} (first start trains for about a minute; later starts load engine/.cache)"
