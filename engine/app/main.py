@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import data
+from . import data, roofs
 from .model import MODEL_VERSION, Engine, row_design, row_inputs
 
 log = logging.getLogger("engine")
@@ -51,6 +51,7 @@ def startup():
     except Exception:
         log.exception("hourly warm-up failed")
     threading.Thread(target=warm_inbox, daemon=True).start()
+    threading.Thread(target=roofs.warm, daemon=True).start()
 
 
 INBOX_MAX = 60
@@ -104,7 +105,9 @@ class HomeInputs(BaseModel):
     roof_azimuth_deg: Optional[float] = None
     roof_tilt_deg: Optional[float] = None
     roof_orientation: Optional[str] = None
-    offer_date: Optional[str] = None  # ISO date; picks the installer catalogue of that time. Default: latest.
+    offer_date: Optional[str] = None
+    address: Optional[str] = None   # v1.6: the engine looks the roof up
+    roof: Optional[dict] = None     # v1.6: or a prior /api/roof result  # ISO date; picks the installer catalogue of that time. Default: latest.
 
 
 class Design(BaseModel):
@@ -163,6 +166,13 @@ DESIGN_RANGES = {"pv_kwp": (0, 100), "inverter_kw": (0, 100), "battery_kwh": (0,
 
 
 def check_inputs(inp: dict):
+    """Range checks, then resolve the roof (v1.6) into inp['roof'] when an address is given."""
+    if inp.get("address") and not inp.get("roof"):
+        try:
+            r = roofs.lookup(inp["address"])
+            inp["roof"] = r if r.get("source") != "none" else None
+        except Exception as e:
+            log.warning("roof lookup failed: %s", e)
     bad = []
     for k, (lo, hi, unit) in RANGES.items():
         v = inp.get(k)
@@ -333,6 +343,13 @@ def project(project_id: str):
             return {"project_id": project_id, "installer_id": r["installer_id"], "split": split, "inputs": inp,
                     "expert": row_design(r), "ours": eng.predict(inp)}
     return err(404, f"No project with id {project_id}")
+
+
+@app.get("/api/roof")
+def roof(address: str = ""):
+    if not address.strip():
+        return err(422, "address is missing.")
+    return roofs.lookup(address)
 
 
 class AskReq(BaseModel):
