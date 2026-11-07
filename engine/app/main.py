@@ -616,6 +616,7 @@ class LeadReq(BaseModel):
     installer_id: Optional[Literal["2a8ba8e2", "23c108b7"]] = None
     facts: Optional[dict] = None
     source: Literal["form", "call"] = "form"
+    test: bool = False  # scratch lead from an agent: hidden from GET /api/leads unless include_test=1
 
 
 class StepReq(BaseModel):
@@ -753,6 +754,9 @@ def create_lead(req: LeadReq, request: Request, x_intake_secret: Optional[str] =
            **leads.where(req.address_or_postcode), **mapped}
     raw["_given"] = [k for k in raw if k != "installer_id"] + (["installer_id"] if req.installer_id else [])
     lead = _new_lead(eng, raw, req.customer_name, req.address_or_postcode, req.source, block=False)
+    if req.test:
+        lead["test"] = True
+        leads.save(lead)
     if meta:
         lead["meta"] = meta
     return {"lead_id": lead["lead_id"], "draft": lead["draft"], "facts": _public(lead["inputs"]), "unknown": lead["unknown"],
@@ -980,11 +984,12 @@ def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
 
 
 @app.get("/api/leads")
-def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
+def list_leads(limit: int = 20, include_test: bool = False, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     leads.expire_stale()
-    rows = sorted(leads.LEADS.values(), key=lambda l: l["updated_at"], reverse=True)[: max(1, min(limit, 200))]
+    rows = sorted((l for l in leads.LEADS.values() if include_test or not l.get("test")), key=lambda l: l["updated_at"],
+                  reverse=True)[: max(1, min(limit, 200))]
     for l in rows:
         refresh_lead(l)
     out = []
@@ -995,7 +1000,7 @@ def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
         out.append({"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
                     "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
                     "approved_at": l.get("approved_at"), "decision": dec, "created_at": l.get("created_at"), "updated_at": l["updated_at"],
-                    "pinned": bool(l.get("pinned"))})
+                    "pinned": bool(l.get("pinned")), "test": bool(l.get("test"))})
     return out
 
 
