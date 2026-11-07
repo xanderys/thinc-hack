@@ -109,3 +109,18 @@ section.ink .data b, section.blue .data b { color: var(--paper); }
 /* Chamfer: large surfaces only */
 .panel { clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%); }
 img.panel { max-height: 380px; }
+
+/* Reonic's own checklist item this slide proves, verbatim */
+.brief {
+  position: absolute;
+  left: 112px;
+  right: 112px;
+  bottom: 68px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  margin: 0;
+  max-width: none;
+}
+section.ink .brief, section.blue .brief { color: var(--on-dark-2); }

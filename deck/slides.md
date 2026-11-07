@@ -4,6 +4,7 @@ theme: marquee
 size: 16:9
 paginate: true
 footer: Marquee
+
 ---
 
 <!-- _class: blue -->
@@ -25,6 +26,10 @@ footer: Marquee
 
 [UNCONFIRMED: screenshot of the planner from https://marquee-reonic.vercel.app as `img/planner.png` with class panel]
 
+<p class="brief">Reonic minimum: “your system proposes a complete design, PV, battery and heat pump as appropriate, with a short explanation of why.”</p>
+
+[UNCONFIRMED: also tick stretch “Alternatives and confidence for every recommendation.” (live per THINC HACK MASTER)]
+
 ---
 
 <!-- _class: ink -->
@@ -32,6 +37,8 @@ footer: Marquee
 <p class="label">Live</p>
 
 # “The family is buying an electric car next year.”
+
+<p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
 
 ---
 
@@ -45,6 +52,8 @@ footer: Marquee
 
 <div class="data">two planners, identical homes <b>40.3%</b><br>textbook rule <b>14.6%</b><br>all four components <b>19.1%</b>, planner ceiling <b>22.7%</b></div>
 
+<p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
+
 ---
 
 <!-- _class: ink -->
@@ -54,6 +63,8 @@ footer: Marquee
 ## Experts follow rules nobody wrote down.
 
 <div class="data">PV <b>6.5 kWp + 0.58 per MWh</b>; the textbook under-sizes <b>82%</b><br>battery in <b>95%</b> of PV designs, about <b>1 kWh per kWp</b><br><b>91%</b> of wallboxes go to homes flagged without an EV</div>
+
+[UNCONFIRMED: tick stretch “An analysis of where and why your designs deviate from the experts.” once /check ships it; line “Inputs explain 15% of PV size: the gap is intake data, not the model.”]
 
 ---
 
@@ -74,6 +85,8 @@ footer: Marquee
 ## From first draft to checked offer.
 
 <div class="data"><b>1</b> learns each installer’s catalogue and defaults<br><b>2</b> roof area and household size at intake<br><b>3</b> flags a design unusual for homes like this one<br><b>4</b> homeowner switches the battery and sees the bill change</div>
+
+[UNCONFIRMED: if the validation view ships, tick stretch “A validation view for planners ... built on the same engine.” and move item 3 out of the roadmap]
 
 ---
 
