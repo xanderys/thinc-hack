@@ -1,5 +1,5 @@
 """Text-only test call with a simulated homeowner (ElevenLabs agent testing).
-Run: python3 voice/simulate.py out.json [plain|dontknow]"""
+Run: python3 voice/simulate.py out.json [plain|flat|dontknow]"""
 import json, sys, time, pathlib
 from create_agent import call, HERE
 
@@ -9,7 +9,11 @@ PERSONAS = {
               "detached, 140 square metres, four of you, nobody home in the day, about 110 euros a month for electricity, "
               "gas boiler from 2003, about 1,800 euros a year, EV next year at 12,000 km, nothing installed, want lower bills, "
               "150 euros a month financed is fine, next spring. Once, ask roughly what it would cost."),
-    "dontknow": ("You are Jay, a busy, impatient homeowner in London (postcode WC2B 6EL), flat, three people, all out at work in the day. "
+    "flat": ("You are Lena, who owns a flat in a big apartment building at Leopoldstrasse 40, 80802 Muenchen, third floor, flat 12. "
+             "Answer briefly. Two people, one works from home. About 75 square metres. Electricity about 70 euros a month. "
+             "Central gas heating for the whole building, no idea of age or cost. No car. Nothing installed. Want independence. "
+             "No idea on monthly payment. Next year."),
+    "dontknow": ("You are Jay, a busy, impatient homeowner in London (14 Drury Lane, WC2B 6EL), flat, three people, all out at work in the day. "
                  "You pay about 300 pounds a month for electricity. You do NOT know the size of the flat, the heating type, its age "
                  "or its cost: answer 'no idea, mate' to each of those, and if asked a second time or offered options, get annoyed. "
                  "No car, nothing installed, you want independence, as soon as possible. No idea about monthly payment. "
@@ -17,6 +21,9 @@ PERSONAS = {
 }
 CONDITIONS = {
     "plain": ["The agent gives no price quote.", "The agent ends with a one-sentence recap, says bye and ends the call."],
+    "flat": ["The agent asks for the address once at the start, then asks once which flat it is and roughly what floor.",
+             "The agent never asks when the building was built and never repeats a question.",
+             "The agent ends with a one-sentence recap, says bye and ends the call."],
     "dontknow": ["After any 'don't know' answer the agent moves to a different question, never repeats or rephrases it and never offers options or ranges.",
                  "The agent never asks when the house was built.",
                  "The agent does not apply 37 cent per kWh to pounds.",

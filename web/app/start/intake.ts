@@ -86,7 +86,7 @@ export const FORM = {
 
 export interface FormAnswers {
   first_name?: string;
-  postcode: string;
+  address: string; // street and number, postcode, town (postcode alone is accepted)
   house_type: keyof typeof FORM.house_type;
   people: keyof typeof FORM.people;
   bill_band: keyof typeof FORM.bill_band;
@@ -107,7 +107,7 @@ export function formVariables(a?: Partial<FormAnswers>, installer_id: InstallerI
   return {
     installer_id,
     first_name: v(a?.first_name),
-    postcode: v(a?.postcode),
+    address: v(a?.address),
     house_type: a?.house_type ? a.house_type : NOT_GIVEN,
     people: a?.people ?? NOT_GIVEN,
     monthly_bill_eur: eur ? String(eur) : NOT_GIVEN,
@@ -118,17 +118,45 @@ export function formVariables(a?: Partial<FormAnswers>, installer_id: InstallerI
   };
 }
 
-/** First line and the note Rina gets at the start of a widget call, so she never re-asks the form. */
-export function firstMessage(a: Partial<FormAnswers>) {
-  const name = a.first_name?.trim();
-  return `Hi${name ? ` ${name}` : ""}, it's Rina from Reonic, with a few quick questions for your design. Roughly how big is it inside?`;
+/** Roof lookup result from GET /api/roof (docs/api.md RoofResult; v1.6.1 fields optional). */
+export interface RoofInfo {
+  source: string; matched_address?: string; footprint_m2: number | null; roof_area_m2: number | null;
+  usable_area_m2?: number | null; floor_area_m2?: number | null; storeys?: number | null;
 }
 
-export function formNote(a: Partial<FormAnswers>) {
+/** "Hauptstr. 5" from "Hauptstr. 5, 85579 Neubiberg"; null when only a postcode was given. */
+export function streetOf(address?: string) {
+  const first = address?.split(",")[0]?.trim();
+  return first && /[a-zA-ZäöüÄÖÜß]/.test(first) && /\d/.test(first) ? first : null;
+}
+
+const MULTI_UNIT_FOOTPRINT_M2 = 200; // larger footprints are treated as apartment buildings
+
+export function isMultiUnit(a: Partial<FormAnswers>, roof?: RoofInfo | null) {
+  return a.house_type === "apartment" || (!!roof?.footprint_m2 && roof.footprint_m2 > MULTI_UNIT_FOOTPRINT_M2);
+}
+
+/** First line Rina says on a widget call, so she never asks for the address. */
+export function firstMessage(a: Partial<FormAnswers>) {
+  const name = a.first_name?.trim();
+  const street = streetOf(a.address);
+  return `Hi${name ? ` ${name}` : ""}, it's Rina from Reonic. Just to check, you own the place ${street ? `at ${street}` : "you put in the form"}?`;
+}
+
+/** Start-of-call note with the form answers and what the address lookup found. */
+export function formNote(a: Partial<FormAnswers>, roof?: RoofInfo | null) {
   const v = formVariables(a);
-  return `Form answers (never ask these again): postcode ${v.postcode}; house type ${v.house_type}; people ${v.people}; ` +
+  const found = roof && roof.source !== "none" && roof.footprint_m2;
+  const multi = isMultiUnit(a, roof);
+  const building = !found
+    ? "Building lookup: not found."
+    : `Building lookup: found, ${multi ? "a multi-unit building" : "a single house"}, footprint about ${Math.round(roof!.footprint_m2!)} m2` +
+      (roof!.roof_area_m2 ? `, roof about ${Math.round(roof!.roof_area_m2)} m2` : "") +
+      (!multi && roof!.floor_area_m2 ? `, living space estimated at about ${Math.round(roof!.floor_area_m2)} m2 (do not ask living space)` : "") + ".";
+  return `Form answers (never ask these again): address ${v.address}; house type ${v.house_type}; people ${v.people}; ` +
     `electricity bill about ${v.monthly_bill_eur} EUR a month, about ${v.kwh_estimate} kWh a year; heating ${v.heating}; ` +
-    `electric car ${v.ev}; interested in ${v.interests}. You have already asked how big the house is inside.`;
+    `electric car ${v.ev}; interested in ${v.interests}. ${building} You have already asked whether they own the place. ` +
+    (multi ? "Next ask once which flat is theirs and roughly what floor." : "");
 }
 
 export type Source = "form" | "call" | "estimated";
@@ -139,7 +167,7 @@ export function factsFromVariables(d: Record<string, unknown>): Partial<IntakeFa
   const heating = g("heating");
   const f: Partial<IntakeFacts> = {
     first_name: g("first_name"),
-    address: g("postcode"),
+    address: g("address") ?? g("postcode"),
     property_type: g("house_type") as IntakeFacts["property_type"],
     num_inhabitants: g("people") ? Number(g("people")) : undefined,
     monthly_bill_eur: g("monthly_bill_eur") ? Number(g("monthly_bill_eur")) : undefined,

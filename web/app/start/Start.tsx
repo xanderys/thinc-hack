@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
-import { FORM, firstMessage, formNote, formVariables, type FormAnswers, type InstallerId } from "./intake";
+import { FORM, firstMessage, formNote, formVariables, type FormAnswers, type InstallerId, type RoofInfo } from "./intake";
 
 type Props = { agentId: string; installerId: InstallerId };
 
@@ -43,7 +43,7 @@ function Widget({ agentId, installerId }: Props) {
     },
   });
 
-  const ready = /^\d{5}$/.test(a.postcode ?? "") && a.house_type && a.people && a.bill_band && a.heating && a.ev;
+  const ready = /\d{4,5}/.test(a.address ?? "") && a.house_type && a.people && a.bill_band && a.heating && a.ev;
 
   const start = () => {
     if (!ready) return;
@@ -51,7 +51,14 @@ function Widget({ agentId, installerId }: Props) {
     setLines([]);
     connected.current = false;
     setStep("call");
-    sendNote.current = () => conversation.sendContextualUpdate(formNote(a));
+    let roof: RoofInfo | null | undefined;
+    const send = () => { if (connected.current && roof !== undefined) conversation.sendContextualUpdate(formNote(a, roof)); };
+    sendNote.current = send;
+    const ctl = new AbortController();
+    setTimeout(() => ctl.abort(), 8000);
+    fetch(`/start/roof?address=${encodeURIComponent(a.address ?? "")}`, { signal: ctl.signal })
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      .then((r: RoofInfo | null) => { roof = r; send(); });
     conversation.startSession({
       agentId, connectionType: "webrtc",
       dynamicVariables: formVariables(a, installerId),
@@ -101,9 +108,9 @@ function Widget({ agentId, installerId }: Props) {
     <form className="s-panel" key="form" onSubmit={(e) => { e.preventDefault(); start(); }}>
       <h1>Your energy design</h1>
       <div className="s-q">
-        <label className="s-label" htmlFor="s-postcode">Postcode</label>
-        <input id="s-postcode" className="s-input" inputMode="numeric" autoComplete="postal-code" maxLength={5}
-          value={a.postcode ?? ""} onChange={(e) => setA({ ...a, postcode: e.target.value.replace(/\D/g, "") })} />
+        <label className="s-label" htmlFor="s-address">Address <span className="s-hint">street, number, postcode, town</span></label>
+        <input id="s-address" className="s-input" autoComplete="street-address" placeholder="Hauptstr. 5, 85579 Neubiberg"
+          value={a.address ?? ""} onChange={(e) => setA({ ...a, address: e.target.value })} />
       </div>
       {one("house_type", "House")}
       {one("people", "People living there")}
