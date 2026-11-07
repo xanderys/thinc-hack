@@ -105,7 +105,7 @@ def site(lat: float, lon: float) -> dict:
     c = tfp.centroid
     z0 = min(p[2] for s in target["surfaces"] if s[0] == "G" for p in s[1][0])
     return {"target": target, "context": ctx, "origin": [c.x, c.y, z0], "tile": f"{e}_{n}",
-            "distance_m": round(best_d, 1), "footprint_m2": round(tfp.area, 1)}
+            "distance_m": round(best_d, 1), "near": near, "footprint_m2": round(tfp.area, 1)}
 
 
 # ---------- planes ----------

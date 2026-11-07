@@ -16,7 +16,7 @@ from trimesh.visual.material import PBRMaterial
 from trimesh.visual.texture import TextureVisuals
 
 import roof as R
-from . import geometry, layout, sun, texture
+from . import envelope, geometry, layout, shade, street, sun, texture
 from .layout import lay_out  # noqa: F401  (public)
 
 OUT = R.CACHE / "model"
@@ -157,19 +157,36 @@ def _build(address: str) -> dict:
             "source": "Bayern LoD2 CityGML" + (" + DOP20 orthophoto (WMS by_dop20c)" if img is not None else ""),
             "licence": texture.ATTRIBUTION, "sun_source": sun.source(), "sun_best_kwh_per_kwp": best,
             "planes": planes}
+    shade.annotate(meta, s, k)
+    meta["envelope_geom"] = envelope.geom(s)
+    meta["zensus_build_year"] = _zensus_year(lat, lon)
+    meta["street"], meta["street_note"] = street.street(address)
     (OUT / f"{k}.base.json").write_text(json.dumps(meta, ensure_ascii=False))
     return meta
 
 
-def model(address: str, kwp: float | None = None) -> dict:
+def _zensus_year(lat: float, lon: float) -> int | None:
+    try:
+        import zensus
+        z = zensus.lookup(lat, lon) or {}
+        return z.get("build_year_estimate")
+    except Exception:
+        return None
+
+
+def model(address: str, kwp: float | None = None, build_year: int | None = None) -> dict:
     """Builds once per address (cached), lays out kwp of modules (None: every good plane, full).
+    build_year from the lead wins; else the Zensus 100 m cell; else a default (envelope.DEFAULT_YEAR).
     Raises roof.NotFound with the source's own words when there is no LoD2 building."""
     k = key(address)
     base = OUT / f"{k}.base.json"
     meta = json.loads(base.read_text()) if base.exists() and (OUT / f"{k}.glb").exists() else None
-    if meta is None or not meta["textured"]:   # an untextured build retries the WMS next time
+    if meta is None or not meta["textured"] or "envelope_geom" not in meta:   # untextured or pre-shade builds rebuild
         meta = _build(address)
     meta["layout"] = lay_out(meta["planes"], kwp)
+    zy = meta.get("zensus_build_year")
+    meta["envelope"] = envelope.compute(meta["envelope_geom"], build_year or zy,
+                                        "lead" if build_year else "zensus" if zy else "default")
     path = OUT / f"{k}.json"
     path.write_text(json.dumps(meta, ensure_ascii=False))
     return {"glb_path": str(OUT / f"{k}.glb"), "planes_json_path": str(path), "textured": meta["textured"],
