@@ -226,9 +226,16 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     else if (L === 2) sc.setLabels(sc.planeLabels("sun"));
     else if (L === 3) { const all = Object.values(counts ?? {}).reduce((x, y) => x + y, 0); sc.setLabels(sc.planeLabels("panels", counts, all && design.pv_kwp ? design.pv_kwp / all : undefined)); }
     else if (L === 7) sc.setLabels(sc.setXray(envelope));
+    else if (L === 5) {
+      // Battery step: the battery carries its size; Wallbox step: the wallbox does, or nothing.
+      const f = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+      const bt = stage !== "extras" && design.battery_kwh ? `${f(design.battery_kwh)} kWh` : null;
+      const wb = stage !== "storage" && design.wallbox_kw ? `${f(design.wallbox_kw)} kW` : null;
+      sc.setLabels(sc.kitLabels(bt, wb));
+    }
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, sunTint]);
+  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, design.battery_kwh, stage, sunTint]);
 
   // The plan layer is always top-down; the other layers keep the planner's choice.
   useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);

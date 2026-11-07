@@ -277,3 +277,9 @@
 .flash { animation: flash 1400ms var(--spring-smooth) both; }
 @keyframes flash { 0% { background-color: #fff3d6; } 100% { background-color: #fff; } }
 @media (max-width: 760px) { .three { padding-left: 12px; } }
+/* The hero before the 3D code arrives: the same house shimmer the view shows until its first frame. */
+.heroSkel { position: absolute; inset: 0; display: grid; place-items: center; }
+.heroSkel svg { width: min(40%, 280px); height: auto; }
+.heroSkel path { fill: #e3e6ef; animation: skelPulse 1.2s ease-in-out infinite alternate; }
+@keyframes skelPulse { from { fill: #e3e6ef; } to { fill: #f3f4f8; } }
+@media (prefers-reduced-motion: reduce) { .heroSkel path { animation: none; } }

@@ -30,6 +30,10 @@ const DAY_SECONDS = 12;
 // prio: when two labels come within 24 px the lesser hides. tap: a roof plane's label that shows only once that plane is tapped.
 export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string; prio?: number; tap?: string };
 const GAP = 24;
+// On-model chips: one line each, never more than four on screen; a chip that would overlap another tries below,
+// left and right of its anchor before it hides.
+const MAX_CHIPS = 4, CHIP_GAP = 6;
+const kwpS = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 2 });
 
 
 
@@ -701,15 +705,25 @@ export class SpatialScene {
         ? `<b>${face}</b>`
         : kind === "sun"
           ? sunHtml(p)
-          : k > 0
-            // Panels: each used face carries its own module count and yield, so the card does not have to.
-            ? `<b>${p.pitch < 3 ? "Flat roof" : `${facing(p.azimuth).replace(/^./, (x) => x.toUpperCase())} face`}</b><br/><span>${k} modules${kwpPerModule ? `, ${fmt0(k * kwpPerModule * (p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp))} kWh a year` : ""}</span>`
-            : !skipOf(p) ? `<b>0</b> modules` : `No modules<br/><span>${skipOf(p)}</span>`;
-      return { key: `${kind}-${p.id}`, at, html, prio: k * 1000 + p.area_m2, ...(k > 0 ? {} : { tap: p.id }) };
+          : (() => {
+            // Panels: one chip per face, "East face · 9 kWp · 20 modules"; an empty face shows its chip on tap.
+            const name = p.pitch < 3 ? "Flat roof" : `${facing(p.azimuth).replace(/^./, (x) => x.toUpperCase())} face`;
+            if (k > 0) return `${name} · ${kwpPerModule ? `<b>${kwpS(k * kwpPerModule)} kWp</b> · ` : ""}${k} modules`;
+            return skipOf(p) ? `${name} · no modules, ${skipOf(p)}` : `${name} · no modules`;
+          })();
+      return { key: `${kind}-${p.id}`, at, html, cls: kind === "panels" ? `chip ${k > 0 ? "c-pv" : ""}` : undefined, prio: k * 1000 + p.area_m2, ...(k > 0 ? {} : { tap: p.id }) };
     });
   }
 
   nodeLabel(key: "roof" | "home" | "batt" | "grid", html: string) { this.nodeLabels[key] = html; }
+
+  // Battery and wallbox steps: the marker on the house carries its size ("10 kWh", "11 kW").
+  kitLabels(batt: string | null, wb: string | null): Label[] {
+    const out: Label[] = [];
+    if (batt) out.push({ key: "kit-batt", at: this.anchors.batt.clone().setY(1.65), html: `<b>${batt}</b>`, cls: "chip c-bat", prio: 5e6 });
+    if (wb && this.wallbox) out.push({ key: "kit-wb", at: this.wallbox.position.clone().add(new THREE.Vector3(0, 0.45, 0)), html: `<b>${wb}</b>`, cls: "chip c-ev", prio: 5e6 });
+    return out;
+  }
 
   // Day layer: hours of one representative day, played over 12 s.
   setDay(hours: DayHour[] | null, play: boolean) {
@@ -858,7 +872,9 @@ export class SpatialScene {
     }
     // Never two labels within 24 px: the tapped face first, then by priority (modules, then area); the lesser hides.
     const NODE: Record<string, number> = { "node-roof": 4e6, "node-home": 3e6, "node-batt": 2e6, "node-grid": 1e6 };
-    const shown: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    const shown: { x0: number; y0: number; x1: number; y1: number; chip: boolean }[] = [];
+    const VW = this.host.clientWidth, VH = this.host.clientHeight;
+    let chips = 0;
     all.map((x) => ({ x, pr: x.tap && x.tap === this.tapped ? 1e9 : NODE[x.key] ?? x.prio ?? 0 }))
       .sort((a, b) => b.pr - a.pr)
       .forEach(({ x }) => {
@@ -866,16 +882,21 @@ export class SpatialScene {
         if (!el) return;
         if (x.key.startsWith("node-") && el.innerHTML !== x.html) { el.innerHTML = x.html; this.labelSize.delete(x.key); }
         const p = this.project(x.at);
-        const batt = x.key === "node-batt";
-        el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) ${batt ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
-        let ok = p.ok && (!x.tap || x.tap === this.tapped);
+        const batt = x.key === "node-batt", chip = !!x.cls?.includes("chip");
+        let ok = p.ok && (!x.tap || x.tap === this.tapped) && (!chip || chips < MAX_CHIPS);
+        let dx = 0, dy = 0;
         if (ok) {
           let sz = this.labelSize.get(x.key);
           if (!sz || !sz.w) { sz = { w: el.offsetWidth, h: el.offsetHeight }; this.labelSize.set(x.key, sz); }
-          const r = { x0: p.x - sz.w / 2, x1: p.x + sz.w / 2, y0: batt ? p.y + 10 : p.y - sz.h, y1: batt ? p.y + 10 + sz.h : p.y };
-          if (shown.some((q) => r.x0 < q.x1 + GAP && q.x0 < r.x1 + GAP && r.y0 < q.y1 + GAP && q.y0 < r.y1 + GAP)) ok = false;
-          else shown.push(r);
+          const base = { x0: p.x - sz.w / 2, x1: p.x + sz.w / 2, y0: batt ? p.y + 10 : p.y - sz.h, y1: batt ? p.y + 10 + sz.h : p.y };
+          const tries: [number, number][] = chip ? [[0, 0], [0, sz.h + 10], [-(sz.w / 2 + 10), sz.h / 2], [sz.w / 2 + 10, sz.h / 2], [0, -(sz.h + 6)]] : [[0, 0]];
+          const hit = (r: typeof base, c: boolean) => shown.some((q) => { const g = c && q.chip ? CHIP_GAP : GAP; return r.x0 < q.x1 + g && q.x0 < r.x1 + g && r.y0 < q.y1 + g && q.y0 < r.y1 + g; });
+          const at = tries.map(([ox, oy]) => ({ ox, oy, r: { x0: base.x0 + ox, x1: base.x1 + ox, y0: base.y0 + oy, y1: base.y1 + oy } }))
+            .find(({ r }) => !hit(r, chip) && (!chip || (r.x0 >= 2 && r.x1 <= VW - 2 && r.y0 >= 2 && r.y1 <= VH - 2)));
+          if (!at) ok = false;
+          else { dx = at.ox; dy = at.oy; shown.push({ ...at.r, chip }); if (chip) chips++; }
         }
+        el.style.transform = `translate(${(p.x + dx).toFixed(1)}px, ${(p.y + dy).toFixed(1)}px) ${batt ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
         el.style.visibility = ok ? "visible" : "hidden";
       });
 

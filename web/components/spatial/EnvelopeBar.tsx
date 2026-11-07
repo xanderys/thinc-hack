@@ -17,7 +17,8 @@ const deg = (x: number) => `${x < 0 ? "−" : ""}${Math.abs(x)} °C`;
 const pc = (x: number) => `${Math.round(x * 100)} %`;
 
 // Leads on the shares (the same numbers and colours as the x-ray); the envelope total is an upper bound, in small type.
-export function EnvelopeBar({ env }: { env: Envelope }) {
+// bare: the step card shows the bar alone; the shares sit on the house as chips.
+export function EnvelopeBar({ env, bare }: { env: Envelope; bare?: boolean }) {
   const { list, total } = elementsOf(env);
   const c = constantsOf(env);
   const win = windowNote(env);
@@ -25,7 +26,7 @@ export function EnvelopeBar({ env }: { env: Envelope }) {
     <div className={s.bar}>
       <div className={s.head}><span>Where the heat goes</span></div>
       <div className={s.track}>{list.filter((e) => e.w > 0).map((e) => <span key={e.key} style={{ flex: e.w, background: e.colour }} title={`${e.name} ${pc(e.share)}, ${n0(e.w)} W`} />)}</div>
-      <ul className={s.legend}>
+      {!bare && <><ul className={s.legend}>
         {list.map((e) => (
           <li key={e.key} title={e.note ?? undefined}><i style={{ background: e.colour }} />{e.name} <b>{pc(e.share)}</b><span className={s.w}>{n0(e.w)} W{e.key === "window" && win ? `, ${win}` : e.w === 0 && e.note ? `, ${e.note}` : ""}</span></li>
         ))}
@@ -35,7 +36,7 @@ export function EnvelopeBar({ env }: { env: Envelope }) {
         <summary>Constants</summary>
         <p title={c.bivalence_source ?? undefined}>Bivalence point <b>{deg(c.bivalence_c)}</b></p>
         <p title={c.hot_water_source ?? undefined}>Hot water <b>{n1(c.hot_water_kw_per_person)} kW</b> per person</p>
-      </details>
+      </details></>}
     </div>
   );
 }

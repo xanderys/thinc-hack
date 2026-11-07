@@ -20,7 +20,8 @@ import { SiteVisitNote, useCardQualification } from "@/components/qualify/Verdic
 import ShadingPanel from "@/components/spatial/ShadingScrubber";
 import { EnvelopeBar, HeatPumpStep } from "@/components/spatial/EnvelopeBar";
 
-const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
+// While the 3D code loads, the hero shows the same house shimmer the view shows until its first frame.
+const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false, loading: () => <HouseSkel /> });
 
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-GB");
@@ -209,7 +210,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   const checkHead = (() => { const c = layers?.checks ?? []; const bad = c.filter(isFail).length, out = c.filter(refOut).length; return c.length ? (bad ? `${bad} of ${c.length} checks flag` : out ? "Checks pass; battery above Reonic’s guide" : `All ${c.length} checks pass`) : "Checks"; })();
   const rule = (k: string) => res.rules?.find((r) => r.name === k);
-  const ruleText = (k: string) => { const r = rule(k); return r?.rule?.text ?? null; };
   const head5: string[] = [
     `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}${multi ? ", shared roof" : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh` : "None",
@@ -228,17 +228,11 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     `${eur(e.capex_eur)}${breakEven ? `, break-even in ${breakEven} years` : ""}`,
   ];
   const head = FIVE ? head5 : head8;
-  // Panels: what the roof takes against what the house will use, the size, the cap, the rule and how many signed designs agree.
+  // Panels, behind Why: what the roof takes against what the house will use, and the size against the cap.
   const useBar: Bar = { key: "roof", title: "Use", unit: "kWh", total: (inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0),
     segments: [{ name: "household", value: inputs.annual_demand_kwh ?? 0, unit: "kWh", source_tag: "lead" }, ...(layers?.ev ? [{ name: "electric car", value: layers.ev.annual_kwh, unit: "kWh", source_tag: "default" as const }] : [])],
     sentence: layers?.ev ? "Sized for today's use plus the car." : "Sized for today's use.", sources: [] };
   const capKwp = Number(rule("cap")?.sentence.match(/(\d+)\s*kWp/)?.[1] ?? 30);
-  const agree = (() => {
-    const m = ruleText("pv")?.match(/\((\d[\d,]*) of (\d[\d,]*)/);
-    if (m) return `${m[1]} of ${m[2]} similar signed designs`;
-    const nb = res.components.pv?.neighbours;
-    return nb?.n ? `${Math.round(nb.share_included * nb.n)} of ${nb.n} similar signed designs` : null;
-  })();
   const shade = layers?.checks?.find((c) => /shad/i.test(c.name));
   const ratio = d.battery_kwh && d.pv_kwp ? d.battery_kwh / d.pv_kwp : null;
   // Level two of each step card: one plain sentence why. Research (similar designs, sources, rules) lives behind Why.
@@ -343,31 +337,24 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
                     <>
                       {line2[n] && <p className={s.l2} data-pending={!!pending || !fresh}>{line2[n]}</p>}
                       {n <= 3 && bar && !(n === 3 && !d.wallbox_kw && !layers?.ev) && <BarView bar={n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} bare />}
-                      {n === 4 && hasEnv && <EnvelopeBar env={model!.envelope!} />}
+                      {n === 4 && hasEnv && <EnvelopeBar env={model!.envelope!} bare />}
                     </>
                   )}
-                  <div className={s.whyrow}>
+                  {!(n === 3 && !(WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation)) && <div className={s.whyrow}>
                     <button type="button" className={s.whyb} aria-expanded={whyStep === n} onClick={() => { setWhyStep((w) => (w === n ? null : n)); setWhy(WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation ? { k: WHY_AT[n]!, level: 1 } : null); }}>Why</button>
-                  </div>
+                  </div>}
                   {whyStep === n && (
                     <div className={s.whyPanel}>
                       {n === 1 && <>
                         <BarView bar={useBar} />
                         <p>{n2(d.pv_kwp ?? 0)} kWp{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}</p>
-                        {ruleText("pv") && <p className={s.ruleS}>{ruleText("pv")}</p>}
-                        {agree && <p className={s.ruleS}>{agree}</p>}
-                        {rot && <p className={s.rot}>{rot}</p>}
                       </>}
                       {n === 2 && <>
                         {ratio != null && <p>{n2(ratio)} kWh per kWp: {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0</p>}
-                        {ruleText("battery") && <p className={s.ruleS}>{ruleText("battery")}</p>}
                       </>}
-                      {n === 3 && ruleText("wb") && <p className={s.ruleS}>{ruleText("wb")}</p>}
                       {n === 4 && <>
                         <HeatPumpStep res={res} inputs={inputs} env={null} multi={multi} variants={variants} onVariant={onVariant} />
-                        {ruleText("hp") && <p className={s.ruleS}>{ruleText("hp")}</p>}
                       </>}
-                      {n <= 3 && bar?.sources.length ? <p className={s.barSrc}>{bar.sources.join("; ")}</p> : null}
                       {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />}
                     </div>
                   )}
@@ -425,6 +412,13 @@ function Ico({ children }: { children: ReactNode }) {
 }
 function Inert({ label, children }: { label: string; children: ReactNode }) {
   return <button type="button" className={`${s.tb} ${s.inert}`} aria-disabled="true" title={`${label}: not in this demo`} aria-label={`${label}, not in this demo`}><Ico>{children}</Ico></button>;
+}
+function HouseSkel() {
+  return (
+    <div className={s.heroSkel} aria-hidden="true">
+      <svg viewBox="0 0 240 160"><path d="M30 84 L120 24 L210 84 V148 H30 Z" /></svg>
+    </div>
+  );
 }
 function Bolt() {
   return <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><path d="M11 1L3 12h6l-1 7 8-11h-6z" fill="#374be6" /></svg>;
