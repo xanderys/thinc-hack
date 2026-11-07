@@ -81,7 +81,7 @@ def startup():
     leads.expire_stale()
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
     threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models()), daemon=True).start()
-    threading.Thread(target=warm_rules_eval, daemon=True).start()
+    # the scoreboard is the lab's sealed table (final_test.json); the live recompute stays available via warm_rules_eval()
 
 
 def warm_rules_eval():
@@ -792,18 +792,51 @@ def evaluation():
     engine()
     out = dict(STATE["eval"])
     out["synthetic"] = synthetic_report()  # v1.4: null until the suite has written a report
+    try:  # the lab's sealed test-half score, run once: these ARE the scoreboard's numbers (not recomputed)
+        ft = json.loads((Path(__file__).parent / "final_test.json").read_text())
+        out["final_test"] = ft
+        out.update(sealed_scoreboard(ft))
+    except Exception as e:
+        log.warning("final test table unavailable: %s", e)
     try:  # the lab's measurement rows: which definition of "right" moves the score (fit half, out-of-fold)
         out["measurement"] = json.loads((Path(__file__).parent / "measurement.json").read_text())
     except Exception:
         pass
     out["exam_note"] = ("The exam homes carry no address, so every column is scored without roof, shade or envelope data; "
                         "live leads add them.")
-    re_ = STATE.get("rules_eval") or {}
-    if "error" not in re_ and re_:
-        out.update(re_)
-    elif re_:
-        out["recommenders_error"] = re_["error"]
+
     return out
+
+
+ENGINE_KEY = {"rules-4": "readout", "rules-3-band": "band", "rules-1": "calibrated", "physics": "formula",
+              "black box": "blackbox", "textbook": "textbook"}
+
+
+def sealed_scoreboard(ft: dict) -> dict:
+    """recommenders, recommenders_detail and deviation_quality from the lab's sealed test-half table."""
+    def block(pop, gt, band):
+        out = {}
+        for r in ft["rows"]:
+            if (r["population"], r["ground_truth"], r["band"]) == (pop, gt, band) and r["engine"] in ENGINE_KEY:
+                out[ENGINE_KEY[r["engine"]]] = {"design_match_share": r["all_four"], "pv_within": r["pv"], "battery_within": r["battery"],
+                                                "wallbox_decision": r["wallbox"], "n": r["n"]}
+        return out
+    detail = {f"{p} | {g} | {b}": block(p, g, b) for p in ("test half", "clean 126")
+              for g in ("lowest option", "any offered option") for b in ("ours", "package step")}
+    dv = next((d for d in ft.get("deviation", []) if d["engine"] == "rules-4" and d["population"] == "test half"), None)
+    md = next((d for d in ft.get("deviation_medians", []) if d["engine"] == "rules-4" and d["population"] == "test half"), None)
+    dq = None
+    if dv:
+        dq = {"n_differ": dv["n_differ"], "ours_better_npv": dv["ours_better_npv"], "expert_better_npv": dv["expert_better_npv"],
+              "ours_better_payback": dv["ours_better_payback"], "expert_better_payback": dv["expert_better_payback"],
+              "ours_better_autarky": dv["ours_better_autarky"], "expert_better_autarky": dv["expert_better_autarky"],
+              "median_npv_gain_eur": (md or {}).get("median_npv_gain_eur"),
+              "method": "rules-4 against the lowest-option expert design on the 633-home test half, where PV, battery or wallbox is "
+                        "outside tolerance; both designs through the same hourly simulation (lab, sealed run)"}
+    return {"recommenders": block("test half", "lowest option", "ours"), "recommenders_detail": detail,
+            "recommenders_note": ("Sealed test-half run by the lab (engine/lab/reports/final_test.md). The black box is scored only on "
+                                  "its 126 unseen homes. " + ft.get("significance", "")),
+            "deviation_quality": dq}
 
 
 def synthetic_report():
