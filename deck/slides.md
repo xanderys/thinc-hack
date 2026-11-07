@@ -36,7 +36,7 @@ footer: Marquee
 
 # “The family buys an EV next year.”
 
-<div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>[UNCONFIRMED: kWp]</b>, <b>[UNCONFIRMED: kWh]</b>, payback <b>[UNCONFIRMED: years]</b><br>after one sentence <b>[UNCONFIRMED: kWp, kWh, wallbox, payback]</b></div>
+<div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>10.35 kWp</b>, <b>10 kWh</b>, payback <b>10.3 years</b>, independence <b>76%</b><br>the car adds an <b>11 kW</b> wallbox and changes the year: independence <b>76%</b> to <b>60%</b><br>the physics variant beside it: a larger array would earn more<br>[UNCONFIRMED: v5 hero numbers, final digits at 08:00]</div>
 
 [UNCONFIRMED: screenshot of the house card opened into the full design, from the live build]
 
@@ -84,7 +84,7 @@ footer: Marquee
 
 ## A rule list a planner can audit matches the experts more often than a black box trained on the same data.
 
-<div class="data">all four right: rules <b>17.6%</b>, black box <b>15.3%</b>, textbook <b>6.4%</b><br>counting any variant the expert offered: rules about <b>20%</b><br>physics: better 20-year value than the expert design on <b>568</b> homes, worse on <b>12</b></div>
+<div class="data">all four right: rules <b>17.6%</b>, black box <b>15.3%</b>, textbook <b>6.4%</b><br>counting any variant the expert offered: rules <b>19.7%</b><br>physics: better 20-year value than the expert design on <b>568</b> homes, worse on <b>12</b></div>
 
 [UNCONFIRMED: settled lab headline and numbers; final digits at 08:00. Footnotes: 136 of 654 had more than one variant; roof and budget are not in the export]
 

@@ -15,7 +15,7 @@ Read figures off the screen; say none we have not seen live.
 1. "This is the planner's board: one card per house. I press plus and paste Frau Weber's email. Her house appears as a card." [also works by typing or a call]
 2. "I open it. The inputs and toggles sit across the top, and here is her real house in 3D, roof, shade and layers from open Bavarian data, no site visit."
 3. "Here is the design: [read PV, battery and payback off the screen]. Every number opens its source."
-4. "The family buys an EV next year." [type it] "One sentence, and the design re-sizes around the car: [read what moved]. That is an offer ready to send."
+4. "The family buys an EV next year." [type it] "Planners here keep the same array and battery. The car adds the wallbox and changes the year: independence drops from 76 to 60 percent. And the physics variant beside it says a larger array would earn more. That is an offer ready to send."
 [UNCONFIRMED: demo steps follow the board-of-cards product; check against the live build in about three hours]
 
 ## 1:50 to 2:20, slide 4, Xander
