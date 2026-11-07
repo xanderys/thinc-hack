@@ -3,7 +3,20 @@ name = "roof"
 version = "0.1.0"
 description = "Address to usable roof area, segments and panel count"
 requires-python = ">=3.12"
-dependencies = ["httpx", "pyproj", "shapely", "lxml", "fastapi", "uvicorn"]
+dependencies = [
+    "httpx",
+    "pyproj",
+    "shapely",
+    "lxml",
+    "fastapi",
+    "uvicorn",
+    "trimesh>=5.2.0",
+    "numpy>=2.5.4",
+    "pillow>=13.0.0",
+    "pvlib>=0.16.1",
+    "pandas>=3.1.1",
+    "mapbox-earcut>=2.1.0",
+]
 
 [tool.uv]
 package = false
