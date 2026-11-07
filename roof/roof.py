@@ -369,6 +369,16 @@ def from_lod2(lat: float, lon: float, hit: dict | None = None) -> RoofResult:
 SOURCES = {"bayern_lod2": from_lod2, "google_solar": from_google, "osm": from_osm}
 
 
+def _add_zensus(res: RoofResult) -> None:
+    import zensus
+    z = zensus.lookup(res.lat, res.lon) if res.lat is not None else None
+    if z:
+        for k, v in z.items():
+            setattr(res, k, v)
+    else:
+        res.notes.append("Zensus 100 m cell: not available (run `python zensus.py build`, or address outside Munich region)")
+
+
 def lookup(address: str, source: str | None = None) -> RoofResult:
     """Best available source, or one named source. Never raises for a missing roof."""
     try:
@@ -381,6 +391,7 @@ def lookup(address: str, source: str | None = None) -> RoofResult:
         try:
             res = SOURCES[key](lat, lon, hit)
             res.notes = [name] + tried + res.notes
+            _add_zensus(res)
             return res
         except (NotFound, RuntimeError, httpx.HTTPError) as e:
             tried.append(str(e))
