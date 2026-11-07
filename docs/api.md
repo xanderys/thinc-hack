@@ -1,4 +1,4 @@
-# Engine API contract (v2.2)
+# Engine API contract (v2.3)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -167,6 +167,9 @@ State lives in the engine (in-memory plus JSON under `engine/.cache/leads/`). Th
 
 ## v2.2: front photo (optional, Google key on the engine host only)
 - `GET /api/roof/photo?address=...` proxies a Street View Static image (cached by address; 404 with Google's words when there is none). `RoofResult.photo_url?` points at it; `RoofResult.google_panels?` (Solar API maxArrayPanelsCount) when available. Never a dependency.
+
+## v2.3: explanation layers for the spatial demonstration
+- `POST /api/explain/layers` body `{ inputs: HomeInputs, design?: Design }` → `{ planes: (as /api/roof/model, with chosen_panels for this design), day: { date: string; hours: { h: number; pv_kw: number; load_kw: number; battery_kw: number; grid_kw: number; soc_kwh: number }[] }, night: { evening_kwh: number; night_hours: number; battery_kwh: number; htw_cap_kwh: number }, frontier: { kwp: number; kwh: number; capex_eur: number; npv_20y_eur: number; autarky_share: number; payback_years: number | null; chosen: boolean; label?: string }[], chosen: Design, objective: { name: string; sentence: string; sources: string[] }, sources: { key: string; citation: string; url?: string }[] }`. Day = a representative spring weekday from the hourly year. Cached per inputs hash.
 
 Natural-language refinement ("the family buys an EV next year") is handled in `web/` (`POST /api/interpret` → `{ changes: { field, from, to, note }[], inputs: HomeInputs }`) with the Claude API, then `web/` calls `/api/refine`. The engine has no LLM.
 
