@@ -22,8 +22,8 @@ export default function Masthead() {
     <header className="masthead">
       <span className="title">Planner</span>
       <nav>
-        <Link href="/" aria-current={path === "/" ? "page" : undefined}>Design</Link>
-        <Link href="/check" aria-current={path === "/check" ? "page" : undefined}>Check against reality</Link>
+        <Link href="/" aria-current={path === "/" ? "page" : undefined}>Plan</Link>
+        <Link href="/check" aria-current={path === "/check" ? "page" : undefined}>Check</Link>
       </nav>
       <span className={`engine${mock || health.err ? " mock" : ""}`}>
         {health.err ? health.err : !health.h ? "" : mock ? "Mock engine: fixtures, not the model" :

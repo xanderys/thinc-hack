@@ -1,0 +1,100 @@
+"use client";
+import type { AskQuestion, HomeInputs, InstallerId, ReadResponse } from "@/lib/api";
+import { INSTALLER_NAME } from "@/lib/api";
+import { HEATING_WORD, n0, optionLabel, QUESTION } from "@/lib/stage";
+
+type Props = {
+  lead: string; setLead: (s: string) => void;
+  read: ReadResponse | null; busy: boolean; error: string | null; onRead: () => void; onEdit: () => void;
+  inputs: HomeInputs; changed: Partial<HomeInputs>;
+  setInstaller: (i: InstallerId) => void;
+  question: AskQuestion | null; answer: unknown; onAnswer: (v: unknown) => void; askError: string | null;
+};
+
+// The lead with every quoted span underlined.
+function Marked({ text, quotes }: { text: string; quotes: string[] }) {
+  const low = text.toLowerCase(), ranges: [number, number][] = [];
+  for (const q of quotes) { const i = low.indexOf(q.toLowerCase()); if (i >= 0) ranges.push([i, i + q.length]); }
+  ranges.sort((a, b) => a[0] - b[0]);
+  const out: React.ReactNode[] = []; let at = 0;
+  for (const [s, e] of ranges) { if (s < at) continue; out.push(text.slice(at, s), <mark key={s}>{text.slice(s, e)}</mark>); at = e; }
+  out.push(text.slice(at));
+  return <>{out}</>;
+}
+
+function Fact({ k, v, src, was }: { k: string; v: React.ReactNode; src: React.ReactNode; was?: string }) {
+  return (
+    <div className="s-fact">
+      <span className="fk">{k}</span>
+      <span className="fv">{v}{was != null && <span className="chg">was {was}</span>}</span>
+      <span className="fq">{src}</span>
+    </div>
+  );
+}
+
+export default function Lead(p: Props) {
+  const { read, inputs: i } = p;
+  const quote = (f: keyof HomeInputs) => read?.found.find((x) => x.field === f)?.quote;
+  const src = (f: keyof HomeInputs) => {
+    const q = quote(f);
+    if (q) return `"${q}"`;
+    if (f === p.question?.field && p.answer !== undefined) return "You answered";
+    return "Not in the lead";
+  };
+  const evWas = "has_ev" in p.changed && read && read.inputs.has_ev !== p.changed.has_ev ? (read.inputs.has_ev ? "yes" : "no") : undefined;
+  const more = [
+    i.house_size_sqm ? `${n0(i.house_size_sqm)} m²` : null,
+    i.house_built_year ? `built ${i.house_built_year}` : null,
+    i.heating_cost_per_year_eur ? `heating ${n0(i.heating_cost_per_year_eur)} EUR a year` : null,
+    i.electricity_price_ct_kwh ? `${i.electricity_price_ct_kwh} ct/kWh` : null,
+    i.has_solar ? `solar ${i.existing_solar_kwp ?? ""} kWp already` : "no solar",
+    i.has_storage ? `battery ${i.existing_storage_kwh ?? ""} kWh already` : "no battery",
+  ].filter(Boolean).join(", ");
+
+  return (
+    <section className="s-lead" aria-label="The lead">
+      <h2 className="s-h3">{read ? "From the lead" : "Paste the lead."}</h2>
+      {!read ? (
+        <form onSubmit={(e) => { e.preventDefault(); if (p.lead.trim()) p.onRead(); }}>
+          <textarea className="s-mailin" value={p.lead} onChange={(e) => p.setLead(e.target.value)} rows={11} aria-label="The lead" disabled={p.busy} />
+          <div className="s-row"><button className="btn" type="submit" disabled={p.busy || !p.lead.trim()}>{p.busy ? "Reading" : "Read it"}</button></div>
+        </form>
+      ) : (
+        <div className="s-mail s-in"><Marked text={p.lead} quotes={read.found.map((f) => f.quote)} /><button className="s-link" onClick={p.onEdit}>Edit</button></div>
+      )}
+      {p.error && <div className="error" role="alert"><span><span className="src">Claude said</span>{p.error}</span><button className="btn ghost" onClick={p.onRead}>Retry</button></div>}
+
+      {read && (
+        <div className="s-facts s-in">
+          <Fact k="Annual use" v={<span className={p.answer !== undefined && !quote("annual_demand_kwh") ? "num asked" : "num"}>{quote("annual_demand_kwh") || p.answer !== undefined || p.question == null ? `${n0(i.annual_demand_kwh)} kWh` : "Not known yet"}</span>} src={src("annual_demand_kwh")} />
+          <Fact k="Heating" v={HEATING_WORD[i.heating_type]} src={src("heating_type")} />
+          <Fact k="Electric car" v={i.has_ev ? <>Yes{i.ev_annual_km ? <>, <span className="num">{n0(i.ev_annual_km)} km</span> a year</> : null}</> : "No"} src={evWas ? "Changed in a sentence" : src("has_ev")} was={evWas} />
+          <Fact k="Household" v={i.num_inhabitants ? `${i.num_inhabitants} people` : "Not known"} src={src("num_inhabitants")} />
+          <div className="s-fact">
+            <span className="fk">Installer</span>
+            <span className="fv"><span className="seg" role="group" aria-label="Installer style">
+              {(Object.keys(INSTALLER_NAME) as InstallerId[]).map((id) => <button key={id} type="button" aria-pressed={i.installer_id === id} onClick={() => p.setInstaller(id)}>{INSTALLER_NAME[id]}</button>)}
+            </span></span>
+            <span className="fq">Design style to follow</span>
+          </div>
+          <details className="s-more"><summary>More details</summary><p>{more}</p></details>
+        </div>
+      )}
+
+      {read && p.question && (
+        <div className="s-ask s-in">
+          <p>{QUESTION[p.question.field] ?? `What is ${String(p.question.field)}?`} It changes the design most.</p>
+          <span className="seg" role="group" aria-label="Answer">
+            {p.question.options.map((o) => (
+              <button key={String(o.value)} type="button" className={typeof o.value === "number" ? "num" : undefined} aria-pressed={p.answer === o.value} title={o.label} onClick={() => p.onAnswer(o.value)}>
+                {optionLabel(p.question!.field, o.value)}
+              </button>
+            ))}
+          </span>
+          {p.question.field.endsWith("_kwh") && <span className="label s-unit">kWh</span>}
+        </div>
+      )}
+      {read && p.askError && <p className="s-quiet" role="status"><span className="src">Engine said </span>{p.askError}</p>}
+    </section>
+  );
+}
