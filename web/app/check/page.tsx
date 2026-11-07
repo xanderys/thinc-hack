@@ -198,6 +198,7 @@ function Score({ ev }: { ev: Eval | null }) {
         {o.textbook_design_match_share != null && <> A textbook rule manages {pct1(o.textbook_design_match_share)}</>}
         {o.ceiling_design_match_share != null && <>, and two planners at the same installer, given near-identical homes, agree {pct1(o.ceiling_design_match_share)} of the time</>}.</p>
       {pv.within_tolerance_share != null && ev.ceiling && <p>On solar alone the draft is within tolerance {pct1(pv.within_tolerance_share)} of the time, against {pct1(ev.ceiling.pv_agreement_share)} for planners agreeing with each other.</p>}
+      {ev.synthetic?.headline_short && <p>{ev.synthetic.headline_short}</p>}
       <details>
         <summary>All the numbers</summary>
         <table className="c-table small">
@@ -207,6 +208,14 @@ function Score({ ev }: { ev: Eval | null }) {
           ); })}</tbody>
         </table>
         <p className="c-sub">{ev.split.method}</p>
+        {ev.synthetic && ev.synthetic.invariants.length > 0 && (
+          <table className="c-table small">
+            <thead><tr><th>On {n0(ev.synthetic.n)} synthetic homes</th>{ev.synthetic.before && <th className="r">Before</th>}<th className="r">Now</th></tr></thead>
+            <tbody>{ev.synthetic.invariants.map((i) => { const b = ev.synthetic?.before?.pass_share[i.name]; return (
+              <tr key={i.name}><td>{i.name}</td>{ev.synthetic?.before && <td className="r num">{b == null ? "n/a" : pct1(b)}</td>}<td className="r num">{pct1(i.pass_share)}</td></tr>
+            ); })}</tbody>
+          </table>
+        )}
         <p className="c-sub"><a href="/classic/check">The full tables</a></p>
       </details>
     </section>

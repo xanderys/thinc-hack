@@ -233,7 +233,7 @@ export default function Stage() {
           question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-          {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} />}
+          {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} />}
           {res && <Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
             moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} />}
         </div>

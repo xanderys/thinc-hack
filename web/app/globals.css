@@ -401,3 +401,46 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
   .c-inbox .ir.head { display: none; }
   .c-score p { font-size: 22px; }
 }
+
+/* Why this number: grows out of the tapped number and closes back into it. */
+.s-comp .num-b { font: inherit; letter-spacing: inherit; color: inherit; background: none; border: 0; padding: 0 0 2px; border-bottom: 1.5px dotted var(--ink-3); cursor: pointer; }
+.s-comp .num-b.open { border-bottom: 2px solid var(--accent); }
+.s-der { grid-column: 2 / 5; margin-top: 8px; border-left: 2px solid var(--accent); padding: 4px 0 4px 16px; transform-origin: var(--ox, 0) 0; }
+.s-der .axiom { font: 21px/1.25 var(--font-serif), serif; margin: 0 0 10px; max-width: 52ch; }
+.s-der .ledger { display: grid; grid-template-columns: 22px 92px 120px minmax(0, 1fr); gap: 0 10px; align-items: baseline; font-size: 14px; max-width: 760px; }
+.s-der .ledger > span { padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.s-der .ledger .op { font: 500 16px var(--font-mono), monospace; color: var(--ink-3); text-align: center; }
+.s-der .ledger .v { font: 500 17px var(--font-mono), monospace; text-align: right; display: block; }
+.s-der .ledger .u { font: 13px var(--font-mono), monospace; color: var(--ink-2); }
+.s-der .ledger .w { color: var(--ink-2); }
+.s-der .src { font: 11.5px var(--font-mono), monospace; color: var(--ink-3); margin-left: 6px; }
+.s-der .ledger .sub { color: var(--ink-3); }
+.s-der .ledger .fin { font-weight: 500; color: var(--ink); border-bottom: 1.5px solid var(--ink); }
+.s-der .ledger .adj { color: var(--accent); }
+.s-der .eq { font: 15px var(--font-mono), monospace; color: var(--ink-2); margin: 0; }
+.s-der .srcs { margin: 14px 0 0; max-width: 760px; }
+.s-der .srcs > div { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--rule); font-size: 13.5px; }
+.s-der .srcs dt { color: var(--ink-3); }
+.s-der .srcs dd { margin: 0; }
+.s-der .more { margin-top: 10px; font-size: 13.5px; background: none; border: 0; border-bottom: 1px solid var(--ink-3); padding: 0; cursor: pointer; min-height: 24px; color: var(--ink); }
+@media (prefers-reduced-motion: no-preference) {
+  .s-der { animation: s-grow 500ms var(--spring-smooth) both; }
+  .s-der.out { animation: s-shrink 500ms var(--spring-smooth) both; pointer-events: none; }
+  .s-der .s-step { animation: s-arrive 500ms var(--spring-smooth) both; }
+  @keyframes s-grow { from { opacity: 0; transform: scale(0.94, 0.7); } to { opacity: 1; transform: none; } }
+  @keyframes s-shrink { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.94, 0.7); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .s-der, .s-der .s-step { animation: s-fade-r 200ms linear both; }
+  .s-der.out { animation: s-fade-out-r 200ms linear both; pointer-events: none; }
+  @keyframes s-fade-out-r { from { opacity: 1; } to { opacity: 0; } }
+}
+@media (max-width: 640px) {
+  .s-der { grid-column: 1 / -1; padding-left: 12px; }
+  .s-der .axiom { font-size: 19px; }
+  .s-der .ledger { grid-template-columns: 14px 58px 74px minmax(0, 1fr); gap: 0 8px; font-size: 13px; }
+  .s-der .ledger .v { font-size: 15px; }
+  .s-der .ledger .u { font-size: 11.5px; }
+  .s-der .srcs > div { grid-template-columns: 1fr; gap: 0; }
+  .s-der .more { min-height: 44px; }
+}
