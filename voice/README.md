@@ -69,4 +69,4 @@ Polled every 3 s; the ElevenLabs list is cached for 2 s and names per call are c
 { conversation_id: string; status: "in_progress" | "done" | "failed"; started_at: number | null /* unix s */;
   call_secs: number | null; customer_name: string | null; address_or_postcode: string | null; title: string | null }[]
 ```
-`in_progress` covers the live call and the few seconds of post-call analysis; `done` means `/start/lead/<id>` returns the facts and design. While live, name and address come from `userId`; after the call, from the dynamic variables.
+Finished calls under 45 s or without a customer name are left out. `in_progress` covers the live call and the few seconds of post-call analysis; `done` means `/start/lead/<id>` returns the facts and design. While live, name and address come from `userId`; after the call, from the dynamic variables.
