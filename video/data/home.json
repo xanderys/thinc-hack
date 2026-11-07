@@ -17,55 +17,71 @@
     "electricity_price_ct_kwh": 37
   },
   "design": {
-    "pv_kwp": 9.45,
-    "inverter_kw": 8,
-    "battery_kwh": 10,
+    "pv_kwp": 22.5,
+    "inverter_kw": 20,
+    "battery_kwh": 15,
     "heatpump_kw": 10.5,
     "wallbox_kw": 11
   },
   "explanation": [
-    "Sized for 5,000 kWh a year plus an EV, in the style of installer 2a8ba8e2.",
-    "9.4 kWp is 1.9 kWp per 1,000 kWh of demand; 13 of 15 similar homes got PV, median 9.9 kWp. The roof fits 57 modules, up to 21.02 kWp.",
-    "14 of 15 similar homes got a battery, median 10 kWh; this is 1.1 kWh per kWp.",
-    "Replaces the gas boiler: 10.5 kW from the heat load (EUR 2,400 heating cost at 12 ct per kWh of heat, over 2,300 full-load hours).",
-    "The home has an EV, so a wallbox at 11 kW, the standard size (22 kW needs grid operator approval); 9 of 15 similar homes got one."
+    "22.5 kWp on the best planes: the last step returns 1.00 EUR per EUR over 20 years, and the roof is full.",
+    "15 kWh: the last package step returns 1.28 EUR per EUR; one night needs 9.7 kWh. Above HTW's cap of 7.5 kWh usable.",
+    "10.5 kW heat pump: 20,000 kWh of heat over 2,000 full-load hours; it costs 2,820 EUR of 20-year value.",
+    "An electric car and no wallbox: 11 kW.",
+    "Inverter 20 kW: DC/AC 1.12."
   ],
   "economics": {
-    "capex_eur": 32310,
-    "annual_saving_eur": 2040,
-    "payback_years": 15.8,
-    "self_consumption_share": 0.641,
-    "autarky_share": 0.387,
+    "capex_eur": 46000,
+    "annual_saving_eur": 3170,
+    "payback_years": 14.5,
+    "self_consumption_share": 0.412,
+    "autarky_share": 0.584,
     "assumptions": [
       "Hourly simulation over one typical year (Munich PVGIS TMY, pvlib), household load BDEW H25 with single-home scatter.",
       "Electricity 37 ct/kWh, rising 2% a year; feed-in 7.7 ct up to 10 kWp, 6.66 ct above.",
       "Roof east-west.",
       "Battery 90% usable, 90% round trip, greedy self-consumption.",
       "EV 2,700 kWh a year at 18 kWh/100 km, charged from 18:00.",
-      "Heat pump EUR 36,400 less the 30% base subsidy, less EUR 10,000 for the boiler replacement it avoids: EUR 15,480 counted.",
+      "Heat pump EUR 33,500 less the 30% BEG base subsidy on up to EUR 28,000, less EUR 10,000 for the boiler replacement it avoids: EUR 15,100 counted.",
       "Heat pump 5,882 kWh a year: 20,000 kWh heat (heating cost over 12 ct per kWh of heat) at JAZ 3.4.",
       "No feed-in pay in the 573 sunniest hours (negative prices, 2025); upkeep 1.5% of PV and battery cost a year.",
-      "NPV over 20 years at 3% discount, 0.5% a year PV degradation, no battery replacement.",
-      "PV EUR 1,350 per kWp at 5 kWp falling to EUR 1,000 at 20 kWp; battery EUR 450 per kWh."
+      "NPV over 20 years at 3% discount, 0.5% a year PV degradation; battery replaced after 15 years (15 years or 6,000 cycles).",
+      "PV EUR 2,333 plus EUR 883 per kWp (EUR 1,350 per kWp at 5 kWp, 1,000 at 20 kWp); battery EUR 500 per kWh."
     ],
     "method": "hourly-simulation",
     "annual": {
-      "pv_yield_kwh": 8575,
+      "pv_yield_kwh": 20242,
       "load_kwh": 13582,
-      "self_consumed_kwh": 5496,
-      "fed_in_kwh": 3078,
-      "grid_import_kwh": 8328,
-      "feed_in_income_eur": 108,
+      "self_consumed_kwh": 8334,
+      "fed_in_kwh": 11908,
+      "grid_import_kwh": 5655,
+      "feed_in_income_eur": 455,
       "bill_before_eur": 5249,
-      "bill_after_eur": 2973,
-      "battery_charged_kwh": 2417,
-      "battery_discharged_kwh": 2175,
+      "bill_after_eur": 1637,
+      "battery_charged_kwh": 4068,
+      "battery_discharged_kwh": 3661,
       "ev_charge_kwh": 2700,
-      "ev_from_pv_kwh": 1354,
-      "home_from_pv_kwh": 2291,
+      "ev_from_pv_kwh": 2082,
+      "home_from_pv_kwh": 3256,
       "heatpump_kwh": 5882,
-      "heatpump_from_pv_kwh": 1610,
-      "npv_20y_eur": 2460
+      "heatpump_from_pv_kwh": 2588,
+      "npv_20y_eur": 5280
+    },
+    "replay_2025": {
+      "pv_yield_kwh": 21972,
+      "autarky_share": 0.595,
+      "feed_in_income_eur": 625,
+      "bill_after_eur": 1410,
+      "payback_years": 13.6,
+      "negative_price_hours_curtailed_kwh": 4701,
+      "assumptions": [
+        "Replay of calendar 2025: Munich hourly weather from the Open-Meteo historical API (ECMWF IFS, CC BY 4.0), PV through the same pvlib chain as the typical year.",
+        "Day-ahead prices DE-LU from Energy-Charts (Fraunhofer ISE; Bundesnetzagentur | SMARD.de, CC BY 4.0), 15-minute prices from October averaged per hour.",
+        "Retail price stays the fixed tariff in every hour (no dynamic tariff simulated); feed-in is the fixed EEG rate, the spot price only decides when it is paid.",
+        "No feed-in pay in negative-price intervals (EEG 2023 section 51 as amended by the Solarspitzengesetz, in force 25 Feb 2025, for new systems); the lost intervals added to the end of the 20-year term (section 51a) are not counted.",
+        "Same load, battery, capex and upkeep as the typical year; payback is capex over the 2025 saving.",
+        "588 hours with a negative day-ahead interval in 2025; data read from the bundled file."
+      ]
     }
   }
 }

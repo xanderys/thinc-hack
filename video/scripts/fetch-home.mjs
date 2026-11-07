@@ -30,7 +30,7 @@ const get = async (url) => {
   console.error(`Engine 502 at ${url}`);
   process.exit(1);
 };
-const q = `address=${encodeURIComponent(address)}`;
+const q = `address=${encodeURIComponent(address)}${inputs.house_built_year ? `&build_year=${inputs.house_built_year}` : ""}`;
 mkdirSync(new URL("../public/model/", import.meta.url), { recursive: true });
 writeFileSync(new URL("../public/model/planes.json", import.meta.url), await get(`${base}/api/roof/model?${q}`));
 writeFileSync(new URL("../public/model/house.glb", import.meta.url), await get(`${base}/api/roof/model/file?${q}`));
