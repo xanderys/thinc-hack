@@ -75,6 +75,9 @@ def startup():
         log.exception("hourly warm-up failed")
     if STATE.get("inbox") is None:
         threading.Thread(target=warm_inbox, daemon=True).start()
+    leads.load_all()  # before anything can create or step a lead
+    model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
+    threading.Thread(target=roofs.warm, daemon=True).start()
     threading.Thread(target=warm_rules_eval, daemon=True).start()
 
 
@@ -92,9 +95,6 @@ def warm_rules_eval():
     except Exception as e:
         log.exception("recommenders eval failed")
         STATE["rules_eval"] = {"error": str(e)}
-    threading.Thread(target=roofs.warm, daemon=True).start()
-    leads.load_all()
-    model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
 
 
 INBOX_MAX = 60
