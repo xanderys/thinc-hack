@@ -39,3 +39,6 @@ Words: "replay" for what we built, "closed loop" for the roadmap. Never "world m
 
 ## How do you know the model behaves sensibly on homes it has never seen?
 [UNCONFIRMED: Xander to approve] Metamorphic, simulation-verified testing: 10,000 synthetic homes built from the real inputs, with the hourly physics as the oracle, 1.2 million simulations. Fixes shipped on 7 Nov took monotonicity violations from 3,135 to 740. "More demand never lowers PV" holds 99.8% of the time (was 91.4%), and "a higher tariff never shrinks the battery" holds 92.6% (was 73.7%). Plausible designs: 99.6%. Bad inputs caught: 75.7% (was 51.1%). Caveat: since the fix the model sizes batteries a little larger, so 27% sit inside HTW Berlin's storage cap, against 34% for real experts; the physics optimum shown next to each design makes the gap visible. Never say "physics-informed neural network". Source: docs/synthetic.md.
+
+## Is it really 8 days of work?
+No. The 8 days is median calendar time from enquiry to offer at one installer (23c108b7, 260 projects with both dates in the Reonic export, request_created_at to offer_created_at), and it includes waiting. Marquee removes the design and draft step, not the site visit. Offer to signature is a further 28 days (median; p25 15, p75 43).

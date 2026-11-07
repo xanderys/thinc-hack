@@ -14,9 +14,7 @@ footer: Marquee
 
 # Enquiry to offer: 8 days today, seconds with Marquee.
 
-<p>Median calendar time, one installer, 260 projects, waiting included. Marquee removes the design and draft step, not the site visit.</p>
-
-[UNCONFIRMED: footnote wording]
+<p>Median, one installer, 260 projects</p>
 
 <p class="brief">Reonic case brief: the first credible offer often wins (p5)</p>
 
