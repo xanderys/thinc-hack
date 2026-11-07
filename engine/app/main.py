@@ -630,6 +630,8 @@ def _lead_out(lead: dict) -> dict:
 
 @app.get("/api/leads/{lead_id}")
 def get_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
@@ -638,6 +640,8 @@ def get_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
 
 @app.get("/api/leads")
 def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
     rows = sorted(leads.LEADS.values(), key=lambda l: l["updated_at"], reverse=True)[: max(1, min(limit, 200))]
     return [{"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
              "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
