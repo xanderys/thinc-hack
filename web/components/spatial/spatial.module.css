@@ -124,3 +124,5 @@
 .massTag { position: absolute; left: 12px; bottom: 40px; z-index: 2; margin: 0; font-size: 11px; color: var(--ink-2); background: rgba(253, 253, 251, 0.88); border: 1px solid var(--rule); border-radius: 6px; padding: 1px 7px; pointer-events: none; }
 .layersBtn { appearance: none; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); padding: 4px 6px; display: inline-flex; align-items: center; cursor: pointer; }
 .layersBtn[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.houseSkel { position: absolute; left: 50%; top: 50%; width: min(40%, 280px); height: auto; transform: translate(-50%, -50%); }
+@media (prefers-reduced-motion: reduce) { .houseSkel animate { display: none; } }

@@ -52,6 +52,10 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   const [pref, setPref] = useState<Pref>("expert");
   const last = useRef<DesignResponse | null>(null);
   const cause = useRef<string | null>(null);
+  // An edit puts the numbers in a pending state at once; they settle when the engine answers.
+  const [pending, setPending] = useState<number | null>(null);
+  const [resIn, setResIn] = useState<HomeInputs | null>(null);   // the facts the design on screen was drawn from
+  const [resCause, setResCause] = useState<string | null>(null);
   // The homeowner's lead when the stage was opened from a call: refinements write back to it.
   const leadRef = useRef<string | null>(null);
   const [moved, setMoved] = useState<Moved | null>(null);
@@ -72,7 +76,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!out.address && roof && roof.source !== "none" && !roof.pending) out.roof = roof;
     return out;
   }, [read, installer, question, answer, changed, roof]);
-  const ready = !!read && question !== undefined && (question === null || answer !== undefined);
+  // The open card designs at once: an unanswered question uses the engine's default for that fact, so a hand change
+  // never waits on it (it used to: edits on a card with an open question only moved the layers numbers).
+  const ready = !!read && question !== undefined && (!!seed || question === null || answer !== undefined);
   // Writes to the lead happen only on an explicit action (an answer tap, Apply, a fact chip, Listening, Approve), never
   // from an effect or a view change. Each carries the lead version the card was showing; a 409 means the lead changed
   // elsewhere, and the board reloads it.
@@ -180,6 +186,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   useEffect(() => {
     if (!ready) return;
     const ctl = new AbortController();
+    if (cause.current) setPending((p) => p ?? Date.now());
+    const asked = inputs, why = cause.current;
     const t = setTimeout(async () => {
       setBusy(true);
       try {
@@ -200,12 +208,12 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
             setMoved({ cause: cause.current, lines });
           }
           cause.current = null; liveWhy.current = null;
-          setPrev(before); last.current = r.data; setRes(r.data); setErr(null);
+          setPrev(before); last.current = r.data; setRes(r.data); setResIn(asked); setResCause(why); setErr(null); setPending(null);
           if (!fixed) setDrafted(r.data);
-        } else if (r.status === 409 && lid && fixed) stale(lid); else setErr(r.error);
+        } else if (r.status === 409 && lid && fixed) stale(lid); else { setErr(r.error); setPending(null); }
         setBusy(false);
       } catch { /* superseded */ }
-    }, 150);
+    }, why?.startsWith("Changed by hand") ? 250 : 0);   // typed sizes wait 250 ms for the next key; taps go at once
     return () => { clearTimeout(t); ctl.abort(); };
   }, [ready, inputs, overrides, retry]);
 
@@ -356,7 +364,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
       {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
-      {res && <Chain res={res} prev={prev} inputs={inputs} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={history.length > 0} onUndo={onUndo} answered={answer != null} redraft={moved}
+      {res && <Chain res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={history.length > 0} onUndo={onUndo} answered={answer != null} redraft={moved}
         decide={<Decide pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />}
         refine={<Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
           moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} bare />} />}

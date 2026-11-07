@@ -29,9 +29,9 @@ const pc = (x: number) => `${Math.round(x * 100)} %`;
 const eur = (x: number) => `${x < 0 ? "-" : ""}€${n0(Math.abs(x))}`;
 
 // Variants as side-by-side tabs; an offer equal to another tab is folded into it as a small tag (Stage sets also).
-function VariantTabs({ variants, onVariant }: { variants: Variant[]; onVariant: (v: Variant) => void }) {
+function VariantTabs({ variants, onVariant, pending }: { variants: Variant[]; onVariant: (v: Variant) => void; pending?: boolean }) {
   return (
-    <div className={s.vtabs} role="group" aria-label="Variants">
+    <div className={s.vtabs} role="group" aria-label="Variants" data-pending={pending || undefined}>
       {variants.map((v) => {
         const d = v.design, pick = !v.current && !!v.overrides;
         return (
@@ -47,19 +47,17 @@ function VariantTabs({ variants, onVariant }: { variants: Variant[]; onVariant: 
   );
 }
 
-type Delta = { k: string; from: string; to: string };
-// Headline numbers that a refinement moved, before and after; the unit rides on each side so "none" reads plainly.
-function deltas(was: DesignResponse, now: DesignResponse): Delta[] {
-  const kw = (u: string) => (x: number | null | undefined) => (x ? `${n2(x)} ${u}` : "none");
-  const rows: [string, string, string][] = [
-    ["Autarky", pc(was.economics.autarky_share), pc(now.economics.autarky_share)],
-    ["PV", kw("kWp")(was.design.pv_kwp), kw("kWp")(now.design.pv_kwp)],
-    ["Battery", kw("kWh")(was.design.battery_kwh), kw("kWh")(now.design.battery_kwh)],
-    ["Heat pump", kw("kW")(was.design.heatpump_kw), kw("kW")(now.design.heatpump_kw)],
-    ["Wallbox", kw("kW")(was.design.wallbox_kw), kw("kW")(now.design.wallbox_kw)],
-    ["Investment", eur(was.economics.capex_eur), eur(now.economics.capex_eur)],
-  ];
-  return rows.filter(([, a, b]) => a !== b).map(([k, from, to]) => ({ k, from, to }));
+// A figure that changed: the old value crossfades to the new; after a sentence or a hand edit the old one stays in
+// place with an arrow for 1.5 s. Never a separate card, never in the way of input.
+function Fig({ v, arrow }: { v: string; arrow: boolean }) {
+  const [f, setF] = useState<{ v: string; was: string | null; n: number }>({ v, was: null, n: 0 });
+  useEffect(() => { setF((x) => (x.v === v ? x : { v, was: arrow ? x.v : null, n: x.n + 1 })); }, [v]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!f.was) return; const t = setTimeout(() => setF((x) => ({ ...x, was: null })), 1500); return () => clearTimeout(t); }, [f.n, f.was]);
+  return (
+    <span key={f.n} className={f.n ? s.figIn : undefined}>
+      {f.was && <><span className={s.figWas}>{f.was}</span><span className={s.figTo} aria-label="to"> → </span></>}{f.v}
+    </span>
+  );
 }
 
 // Four components and the offer, in Reonic's names and colours; the old eight-stage path stays behind NEXT_PUBLIC_CHAIN=8.
@@ -82,6 +80,7 @@ const SEG_COLOUR: Record<string, string> = {
 
 type Props = {
   res: DesignResponse; prev: DesignResponse | null; inputs: HomeInputs; leadId?: string | null;
+  pending?: number | null; cause?: string | null;   // an edit waiting on the engine (since); what made the design on screen
   variants: Variant[]; onVariant: (v: Variant) => void; canUndo: boolean; onUndo: () => void; decide?: ReactNode;
   redraft?: unknown;   // changes on every refinement (sentence, hand change, call step); a new design without one is not a redraft
   answered: boolean; refine: ReactNode;
@@ -93,20 +92,13 @@ function useReduce() {
   return r;
 }
 
-export default function Chain({ res, prev, inputs, leadId, variants, onVariant, canUndo, onUndo, answered, refine, decide, redraft }: Props) {
+export default function Chain({ res, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, refine, decide, redraft }: Props) {
   const reduce = useReduce();
-  // A refinement shows what moved, large over the model, for about 4 s; then the figures settle into the card.
-  const [delta, setDelta] = useState<{ rows: Delta[]; settle: boolean } | null>(null);
-  useEffect(() => {
-    if (!prev) { setDelta(null); return; }
-    const rows = deltas(prev, res);
-    if (!rows.length) return;
-    setDelta({ rows, settle: false });
-    const a = setTimeout(() => setDelta((x) => x && { ...x, settle: true }), 4000);
-    const b = setTimeout(() => setDelta(null), 4600);
-    return () => { clearTimeout(a); clearTimeout(b); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prev]);
+  // Over 2 s the pending state says how long it has waited.
+  const [, beat] = useState(0);
+  useEffect(() => { if (!pending) return; const t = setInterval(() => beat((x) => x + 1), 500); return () => clearInterval(t); }, [pending]);
+  const waited = pending ? (Date.now() - pending) / 1000 : 0;
+  const edit = !!cause && !/^Switched to/.test(cause);
   const q = useCardQualification(inputs, res, leadId);   // visit verdict: offer value, confidence, what to confirm on site
   // Draft first: the chain plays once, on the first open of a lead; after that the design is there at once and the
   // chain waits as a collapsed strip under the model.
@@ -206,9 +198,11 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
   const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : (FIVE ? [3, 5, 5, hasEnv ? 7 : 1, hasPlan ? 8 : 3] : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, hasPlan ? 8 : 3, hasPlan ? 8 : 3])[stage - 1];
   const bars = useMemo(() => Object.fromEntries((layers?.bars ?? []).map((b) => [BAR_AT[b.key], b])) as Record<number, Bar>, [layers]);
   // The four numbers come from the same run as the bars and checks when it is in; the design's own until then.
-  const le = layers?.economics;
+  const d0 = res.design as unknown as Record<string, unknown>;
+  const fresh = !layers?.chosen || (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (Number((layers.chosen as unknown as Record<string, unknown>)[k]) || 0) === (Number(d0[k]) || 0));
+  const le = fresh ? layers?.economics : undefined;
   const e = le ? { ...res.economics, ...le, annual: { ...res.economics.annual!, ...(le.annual ?? {}) } } as typeof res.economics : res.economics, a = e.annual;
-  const breakEven = layers?.economics?.break_even_year ?? (e as { break_even_year?: number | null }).break_even_year ?? null;
+  const breakEven = le?.break_even_year ?? (e as { break_even_year?: number | null }).break_even_year ?? null;
   const d = res.design;
   const rot = rotLine(findRot(res.components.pv?.derivation, layers, res));
 
@@ -280,19 +274,14 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
   const overlays = (
     <>
       <div className={s.sim}>
-        <p className={s.simH}><Bolt /> Simulation</p>
-        <dl className={s.kpis}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}</dd></div>)}</dl>
+        <p className={s.simH}><Bolt /> Simulation{pending && waited > 2 ? <span className={s.waited}>Redrafting, {n1(waited)} s</span> : null}</p>
+        <dl className={s.kpis} data-pending={!!pending}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd><Fig v={x.v} arrow={edit} /></dd></div>)}</dl>
         {address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div>}
       </div>
-      {delta && (
-        <div className={`${s.delta} ${delta.settle ? s.settle : ""}`} aria-live="polite">
-          {delta.rows.map((r) => <p key={r.k}><span className={s.dK}>{r.k}</span><span className={s.dWas}>{r.from}</span><span className={s.dTo} aria-label="to">→</span><b>{r.to}</b></p>)}
-        </div>
-      )}
       {stage === N && variants.length > 0 && (
         <div className={s.variants}>
           <p className={s.varH}>Variants</p>
-          <VariantTabs variants={variants} onVariant={onVariant} />
+          <VariantTabs variants={variants} onVariant={onVariant} pending={!!pending} />
         </div>
       )}
     </>
@@ -315,7 +304,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
           </div>
           {stage === N && variants.length > 0 && (
             <div className={s.varList}>
-              <VariantTabs variants={variants} onVariant={onVariant} />
+              <VariantTabs variants={variants} onVariant={onVariant} pending={!!pending} />
             </div>
           )}
           {stage === N && <SiteVisitNote q={q} />}
@@ -332,7 +321,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
               <button type="button" className={s.ih} onClick={() => go(n)} aria-expanded={open}>
                 <span className={s.num}>{n}</span>
                 <span className={s.it}>{t}{moved.has(n) && <span className={s.moved}>Moved</span>}{multi && FIVE && (n <= 2 || n === N) && <span className={s.flatTag}>Single-family figure</span>}</span>
-                <span className={s.ihead}>{head[i]}</span>
+                <span className={s.ihead} data-pending={!!pending || !fresh}>{head[i]}</span>
               </button>
               {FIVE && open && n === N && layers?.checks && <CheckRow checks={layers.checks} />}
               {FIVE && open && n === 1 && multi && <p className={s.shared}>Shared roof, apartment building: single-family design does not apply<span>{building!.reason}</span></p>}
@@ -372,7 +361,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
               {open && n === N && a && <Offer res={{ ...res, economics: e }} />}
               {open && n === N && variants.length > 0 && (
                 <div className={s.varList}>
-                  <VariantTabs variants={variants} onVariant={onVariant} />
+                  <VariantTabs variants={variants} onVariant={onVariant} pending={!!pending} />
                 </div>
               )}
               {open && n === N && <SiteVisitNote q={q} />}

@@ -241,22 +241,27 @@
 .vtab .vAlso { margin: 0; }
 .vtab[aria-pressed="true"] .vAlso { background: rgba(255, 255, 255, 0.2); color: #fff; }
 
-/* Before and after a refinement, over the model; never takes input. */
-.delta { position: absolute; top: 12px; left: 12px; min-width: 290px; z-index: 4; pointer-events: none; display: grid; gap: 4px; padding: 12px 14px; background: #fff; border: 1px solid var(--rule); border-radius: 12px; transform-origin: top left; animation: grow 500ms var(--spring-smooth) both; transition: transform 500ms var(--spring-smooth), opacity 500ms var(--spring-smooth); }
-.delta p { margin: 0; display: flex; align-items: baseline; gap: 8px; font-variant-numeric: tabular-nums; }
-.dK { min-width: 92px; font-size: 13px; color: var(--ink-3); }
-.dWas { font-size: 28px; font-weight: 300; color: var(--ink-3); letter-spacing: -0.02em; }
-.dTo { font-size: 22px; color: var(--ink-3); }
-.delta b { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
-.settle { animation: none; transform: scale(0.96); opacity: 0; }
+/* Figures: old crossfades to new (0.35 s spring, bounce 0); after an edit the old value waits in place with an arrow. */
+.figIn { display: inline-block; animation: figIn 500ms var(--spring-snappy-350) both; }
+.figWas { color: var(--ink-3); font-weight: 400; }
+.figTo { color: var(--ink-3); font-weight: 400; }
+@keyframes figIn { from { opacity: 0; } to { opacity: 1; } }
+.waited { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--ink-3); }
+
+/* Pending: the numbers an edit will move shimmer at once, in their final size, until the engine answers. */
+.kpis[data-pending="true"] dd, .vtabs[data-pending="true"] .vtFig, .vtabs[data-pending="true"] .vtPrice, .ihead[data-pending="true"] {
+  color: transparent; border-radius: 6px;
+  background: linear-gradient(90deg, var(--sheet-2) 0%, #e9ecf5 50%, var(--sheet-2) 100%) 0 0 / 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+.kpis[data-pending="true"] dd * { color: transparent; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .delta { animation: fade 200ms ease-out both; transition: opacity 200ms ease-out; }
-  .settle { transform: none; }
+  .figIn { animation: none; }
+  .kpis[data-pending="true"] dd, .vtabs[data-pending="true"] .vtFig, .vtabs[data-pending="true"] .vtPrice, .ihead[data-pending="true"] { animation: none; }
 }
 @media (max-width: 760px) {
-  .delta { top: 8px; left: 8px; right: 8px; min-width: 0; padding: 6px 10px; gap: 2px; }
-  .dK { min-width: 70px; font-size: 11.5px; }
-  .dWas, .delta b { font-size: 20px; }
-  .dTo { font-size: 15px; }
   .varList .vtabs { margin: 0 -12px; padding: 0 12px; }
 }
+/* Phone cells are too narrow for "old → new": the figure crossfades in place, so the card never grows. */
+@media (max-width: 760px) { .figWas, .figTo { display: none; } }

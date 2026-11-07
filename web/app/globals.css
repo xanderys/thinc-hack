@@ -726,3 +726,13 @@ input, select, textarea { border-radius: 8px; }
 .b-open-h .b-offer { font-size: 13.5px; color: var(--ink-2); }
 .b-open-h p.b-small { margin: 2px 0 0; font-size: 11.5px; color: var(--ink-3); }
 .b-open-h .b-verdict { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+
+/* Skeletons: the final layout's size, shimmering until the content lands; nothing jumps. */
+.b-skel, .s-skel { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--sheet-2) 0%, #e6e9f2 50%, var(--sheet-2) 100%) 0 0 / 200% 100%; animation: skel 1.2s linear infinite; }
+.b-card .b-skel { background-color: #eceef4; background-image: linear-gradient(90deg, #eceef4 0%, #f6f7fa 50%, #eceef4 100%); }
+.b-skel-chip { width: 64px; height: 22px; border-radius: 999px; }
+.b-skel-house { height: 120px; flex: 0 0 120px; }
+.b-skel-line { width: 70%; height: 16px; margin-top: 4px; }
+.b-skel-line.short { width: 40%; }
+@keyframes skel { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .b-skel, .s-skel { animation: none; } }
