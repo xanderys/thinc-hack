@@ -231,7 +231,14 @@ class Engine:
             out = self.predict_rules(inp, overrides, full, extras, engine=mode)
         else:
             out = self.predict_ml(inp, overrides, full, extras)
-        return with_heat_bound(inp, out)
+        out = with_heat_bound(inp, out)
+        try:  # the same id /api/explain/layers reports, so a stored draft and the layers can be compared
+            from . import layout as L
+            lo = L.layout(inp, out["design"].get("pv_kwp")) if inp.get("address") else None
+            out["same_run_id"] = L.run_id(inp, out["design"], lo["pv_planes"] if lo else None)
+        except Exception:
+            pass
+        return out
 
     def rules_catalogue(self, inst: str, t: float) -> dict:
         cat = self.catalogue[inst]

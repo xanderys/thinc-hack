@@ -91,7 +91,7 @@ def explain(eng, inp: dict, design: dict | None) -> dict:
     day, night, econ = _day(sim_in, design)
     use = float(inp.get("annual_demand_kwh") or 0) + rules.ev_kwh(inp)
     night.update(battery_kwh=design.get("battery_kwh") or 0, htw_cap_kwh=round(1.5 * use / 1000, 1))
-    rid = L.run_id(inp, design, sim_in.get("pv_planes"))
+    rid = L.run_id(inp, design, lo["pv_planes"] if lo else None)
     # the design endpoint's economics must be this run's
     d_econ = resp["economics"] if resp["design"] == design else econ
     pairs = {"pv_yield_kwh": (econ["annual"]["pv_yield_kwh"], d_econ["annual"]["pv_yield_kwh"]),
