@@ -16,7 +16,7 @@ from trimesh.visual.material import PBRMaterial
 from trimesh.visual.texture import TextureVisuals
 
 import roof as R
-from . import envelope, geometry, layout, shade, street, sun, texture
+from . import envelope, geometry, layout, plan, shade, street, sun, texture
 from .layout import lay_out  # noqa: F401  (public)
 
 OUT = R.CACHE / "model"
@@ -159,6 +159,7 @@ def _build(address: str) -> dict:
             "planes": planes}
     shade.annotate(meta, s, k)
     meta["envelope_geom"] = envelope.geom(s)
+    meta["plan_base"] = plan.base(s, lat, lon)
     meta["zensus_build_year"] = _zensus_year(lat, lon)
     meta["street"], meta["street_note"] = street.street(address)
     (OUT / f"{k}.base.json").write_text(json.dumps(meta, ensure_ascii=False))
@@ -181,12 +182,13 @@ def model(address: str, kwp: float | None = None, build_year: int | None = None)
     k = key(address)
     base = OUT / f"{k}.base.json"
     meta = json.loads(base.read_text()) if base.exists() and (OUT / f"{k}.glb").exists() else None
-    if meta is None or not meta["textured"] or "envelope_geom" not in meta:   # untextured or pre-shade builds rebuild
+    if meta is None or not meta["textured"] or "envelope_geom" not in meta or "plan_base" not in meta:   # untextured or pre-shade builds rebuild
         meta = _build(address)
     meta["layout"] = lay_out(meta["planes"], kwp)
     zy = meta.get("zensus_build_year")
     meta["envelope"] = envelope.compute(meta["envelope_geom"], build_year or zy,
                                         "lead" if build_year else "zensus" if zy else "default")
+    meta["plan"] = plan.finish(meta)
     path = OUT / f"{k}.json"
     path.write_text(json.dumps(meta, ensure_ascii=False))
     return {"glb_path": str(OUT / f"{k}.glb"), "planes_json_path": str(path), "textured": meta["textured"],
