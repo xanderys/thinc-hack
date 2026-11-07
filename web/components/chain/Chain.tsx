@@ -47,19 +47,19 @@ function VariantTabs({ variants, onVariant }: { variants: Variant[]; onVariant: 
   );
 }
 
-type Delta = { k: string; from: string; to: string; u: string };
-// Headline numbers that a refinement moved, before and after.
+type Delta = { k: string; from: string; to: string };
+// Headline numbers that a refinement moved, before and after; the unit rides on each side so "none" reads plainly.
 function deltas(was: DesignResponse, now: DesignResponse): Delta[] {
-  const kw = (x: number | null | undefined) => (x ? n2(x) : "none");
-  const rows: Delta[] = [
-    { k: "Autarky", from: String(Math.round(was.economics.autarky_share * 100)), to: String(Math.round(now.economics.autarky_share * 100)), u: "%" },
-    { k: "PV", from: kw(was.design.pv_kwp), to: kw(now.design.pv_kwp), u: "kWp" },
-    { k: "Battery", from: kw(was.design.battery_kwh), to: kw(now.design.battery_kwh), u: "kWh" },
-    { k: "Heat pump", from: kw(was.design.heatpump_kw), to: kw(now.design.heatpump_kw), u: "kW" },
-    { k: "Wallbox", from: kw(was.design.wallbox_kw), to: kw(now.design.wallbox_kw), u: "kW" },
-    { k: "Investment", from: eur(was.economics.capex_eur), to: eur(now.economics.capex_eur), u: "" },
+  const kw = (u: string) => (x: number | null | undefined) => (x ? `${n2(x)} ${u}` : "none");
+  const rows: [string, string, string][] = [
+    ["Autarky", pc(was.economics.autarky_share), pc(now.economics.autarky_share)],
+    ["PV", kw("kWp")(was.design.pv_kwp), kw("kWp")(now.design.pv_kwp)],
+    ["Battery", kw("kWh")(was.design.battery_kwh), kw("kWh")(now.design.battery_kwh)],
+    ["Heat pump", kw("kW")(was.design.heatpump_kw), kw("kW")(now.design.heatpump_kw)],
+    ["Wallbox", kw("kW")(was.design.wallbox_kw), kw("kW")(now.design.wallbox_kw)],
+    ["Investment", eur(was.economics.capex_eur), eur(now.economics.capex_eur)],
   ];
-  return rows.filter((r) => r.from !== r.to);
+  return rows.filter(([, a, b]) => a !== b).map(([k, from, to]) => ({ k, from, to }));
 }
 
 // Four components and the offer, in Reonic's names and colours; the old eight-stage path stays behind NEXT_PUBLIC_CHAIN=8.
@@ -286,7 +286,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
       </div>
       {delta && (
         <div className={`${s.delta} ${delta.settle ? s.settle : ""}`} aria-live="polite">
-          {delta.rows.map((r) => <p key={r.k}><span className={s.dK}>{r.k}</span><span className={s.dWas}>{r.from}</span><span className={s.dTo} aria-label="to">→</span><b>{r.to}</b>{r.u && <span className={s.dU}>{r.u}</span>}</p>)}
+          {delta.rows.map((r) => <p key={r.k}><span className={s.dK}>{r.k}</span><span className={s.dWas}>{r.from}</span><span className={s.dTo} aria-label="to">→</span><b>{r.to}</b></p>)}
         </div>
       )}
       {stage === N && variants.length > 0 && (

@@ -558,6 +558,9 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 /* Listening: the laptop mic follows a call on speaker. */
 .s-listen { margin: 10px 0 4px; display: grid; gap: 6px; justify-items: start; }
 .s-listen .btn.on { display: inline-flex; align-items: center; gap: 8px; border-color: var(--accent); color: var(--accent); }
+.s-live { display: inline-flex; align-items: center; gap: 6px; }
+.s-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; font-size: 14px; }
+.s-chip .dot { background: #fff; }
 .s-listen .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .s-heard { margin: 0; font-size: 14px; color: var(--ink); font-style: italic; max-width: 60ch; }
 .s-last { margin: 0; }
