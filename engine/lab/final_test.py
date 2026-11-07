@@ -23,10 +23,10 @@ from lab.score_rules import CACHE, NEW_SYSTEM, Worktrees, git, rules_designs, fr
 from lab.split import load_split
 
 
-def worker_designs(wts, sha, module, fit_df, items):
-    out = CACHE / f"final_{module}_{sha}.json"
+def worker_designs(wts, sha, module, fit_df, items, fn=None):
+    out = CACHE / f"final_{module}{'_' + fn if fn else ''}_{sha}.json"
     if not out.exists():
-        req = {"engine": str(wts.engine(sha)), "module": module, "fit_df": fit_df, "items": items, "out": str(out)}
+        req = {"engine": str(wts.engine(sha)), "module": module, "fit_df": fit_df, "items": items, "out": str(out), "fn": fn}
         with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False, dir=CACHE) as f:
             pickle.dump(req, f)
         try:
@@ -57,6 +57,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--final", action="store_true")
     ap.add_argument("--extra-rules4-ref", default="445656e")
+    ap.add_argument("--rules5-ref", help="final v2: add rules-5 and its textbook, write final_test_v2.md, no deviation simulation")
     ap.add_argument("--rules4-ref", default="6c3b46b")
     ap.add_argument("--rules3-ref", default="6c3b46b")
     ap.add_argument("--rules1-ref", default="6c3b46b")
@@ -93,6 +94,11 @@ def main():
     designs["black box"].loc[bb_mask] = predict_frame(eng, test[bb_mask]).values
     designs["textbook"] = pd.DataFrame([eng.baseline(row_inputs(r)) for r in test.to_dict("records")], index=test.index)[list(TARGET.values())].fillna(0.0)
 
+    if a.rules5_ref:
+        sha5 = git("rev-parse", a.rules5_ref)
+        designs = {"rules-5 (" + sha5[:7] + ")": fr(worker_designs(wts, sha5, "rules5", fit_df, items), test),
+                   "rules-5 textbook (no corrections)": fr(worker_designs(wts, sha5, "rules5", fit_df, items, fn="textbook"), test),
+                   "rules-4 (" + git("rev-parse", "--short", a.rules4_ref) + ")": designs["rules-4"], **{k: v for k, v in designs.items() if k not in ("rules-4", "rules-4 leaf default (" + a.extra_rules4_ref + ")", "physics")}}
     opts = options_by_project(set(test.project_id) | set(fit_ids))
     inst_sizes = {}
     for p in fit_ids:
@@ -112,6 +118,8 @@ def main():
           "Bands. Ours: PV 1 kWp or 15%, battery 2 kWh. Reonic-style, **pending the expert's answer**: PV as ours, battery within one package step of the installer's own sold sizes "
           "(each design snapped to its own installer's sizes, never pooled), wallbox decision only. Heat pump is the decision in both. Any offered option: the same option must satisfy all four.", ""]
     hits_cache = {}
+    R4 = next(k for k in designs if k.startswith("rules-4 (") and "leaf default" not in k) if a.rules5_ref else "rules-4"
+    R5 = next((k for k in designs if k.startswith("rules-5 (")), None)
     for popname, fm in (("test half", test), ("clean 126", clean)):
         sub = test.project_id.isin(set(fm.project_id)).values
         for gt in ("lowest option", "any offered option"):
@@ -127,19 +135,26 @@ def main():
                 md.append("")
 
     # paired McNemar, rules-4 vs rules-1 and vs black box, lowest option ours (the headline definition) and any option ours
-    md += ["## Paired McNemar, rules-4 against the others, all four, ours band", "",
-           "| Population | Ground truth | Against | Homes | Only rules-4 | Only other | Exact p |", "|---|---|---|---|---|---|---|"]
+    F = R5 if a.rules5_ref else R4
+    md += [f"## Paired McNemar, {F} against the others, all four, ours band", "",
+           "| Population | Ground truth | Against | Homes | Only " + F.split(" (")[0] + " | Only other | Exact p |", "|---|---|---|---|---|---|---|"]
     for popname in ("test half", "clean 126"):
         for gt in ("lowest option", "any offered option"):
-            p4, h4 = hits_cache[(popname, gt, "ours", "rules-4")]
-            for other in ("rules-1", "black box"):
+            p4, h4 = hits_cache[(popname, gt, "ours", F)]
+            for other in ([R4, "rules-1", "black box"] if a.rules5_ref else ["rules-1", "black box"]):
                 po, ho = hits_cache[(popname, gt, "ours", other)]
                 common = sorted(set(p4) & set(po))
                 i4 = {p: x for p, x in zip(p4, h4)}; io = {p: x for p, x in zip(po, ho)}
                 b = int(sum(i4[p] and not io[p] for p in common)); c = int(sum(io[p] and not i4[p] for p in common))
-                md.append(f"| {popname} | {gt} | {other} | {len(common)} | {b} | {c} | {mcnemar_exact(b, c):.3f} |")
+                md.append(f"| {popname} | {gt} | {other.split(' (')[0]} | {len(common)} | {b} | {c} | {mcnemar_exact(b, c):.3f} |")
     md.append("")
 
+    if a.rules5_ref:
+        text = "\n".join(md)
+        text = text.replace("# FINAL test-half score (run once)", "# FINAL v2: second look at the test half (first look was rules-4)")
+        (Path(__file__).parent / "reports" / "final_test_v2.md").write_text(text + "\n")
+        print(text)
+        return
     # deviation quality, one process: expert, rules-4 and physics designs through simulate() at the rules-4 ref
     sha4 = git("rev-parse", a.rules4_ref)
     need = {}

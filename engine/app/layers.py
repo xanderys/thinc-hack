@@ -27,6 +27,11 @@ def _key(inp, design):
     return hashlib.sha256(json.dumps([clean, design], sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
+def _cf(sim_in, design, econ):
+    from . import cashflow
+    return cashflow.add(sim_in, design, econ)
+
+
 def _day(sim_in, design) -> dict:
     res = hourly.simulate(sim_in, design)
     h = res.hourly
@@ -67,7 +72,7 @@ def _day(sim_in, design) -> dict:
     evening = sum(x["load_kw"] for x in dark if x["h"] >= 12)  # after sunset to midnight
     overnight = sum(x["load_kw"] for x in dark if x["h"] < 12)  # midnight to sunrise
     return {"date": f"{day.strftime('%d %B')} (a typical-year weekday: PV at the 70th percentile of April and May, the home's use at its median)", "hours": hours}, {"evening_kwh": round(evening, 2), "night_kwh": round(overnight, 2), "dark_kwh": round(evening + overnight, 2),
-                                               "night_hours": len(dark)}, res.economics
+                                               "night_hours": len(dark)}, _cf(sim_in, design, res.economics)
 
 
 EV_SOURCES = [
