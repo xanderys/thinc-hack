@@ -232,6 +232,12 @@ class Engine:
         else:
             out = self.predict_ml(inp, overrides, full, extras)
         out = with_heat_bound(inp, out)
+        try:
+            dv = out["components"]["pv"].get("derivation")
+            if isinstance(dv, dict):
+                dv["rule_of_thumb_comparison"] = self.rule_of_thumb_comparison(inp, out["design"])
+        except Exception:
+            pass
         try:  # the same id /api/explain/layers reports, so a stored draft and the layers can be compared
             from . import layout as L
             lo = L.layout(inp, out["design"].get("pv_kwp")) if inp.get("address") else None
@@ -979,6 +985,40 @@ class Engine:
     # ---------- eval ----------
     BASELINES = {"textbook": "1.3 kWp per MWh plus 2.5 kWp with an EV (docs/domain.md rule 1)",
                  "floor_slope": "6.5 kWp plus 0.58 kWp per MWh (median fit, docs/data-insights.md)"}
+
+    def reonic_rule(self, inp: dict) -> dict:
+        """Reonic's published rules of thumb (docs and blog): 1 kWp and 1.25 kWh storage per 1,000 kWh annual use incl. EV,
+        snapped to the installer's sizes; no heat pump unless asked (no published rule); 11 kW wallbox with an EV
+        (grid connection / 1.5, 35 A default); EV default 20,000 km."""
+        inst = inp["installer_id"]
+        cat = self.catalogue[inst]
+        ev = (inp.get("ev_annual_km") or 20000) * 0.18 if inp.get("has_ev") else 0.0
+        mwh = ((inp.get("annual_demand_kwh") or 0) + ev) / 1000
+        t = base_features(inp, inst)["t"]
+        return {"pv_kwp": snap(mwh * 1.0, cat["pv"]), "battery_kwh": snap(1.25 * mwh, self.battery_catalogue(inst, t)),
+                "heatpump_kw": 0.0, "wallbox_kw": 11.0 if inp.get("has_ev") else 0.0}
+
+    def planners_kwp_per_mwh(self, inst: str | None = None) -> float:
+        """Median kWp per MWh of annual use incl. EV that the planners fitted in signed designs: the rules' fit half, homes
+        with real use (untouched 4,500 kWh defaults left out). inst None = both installers."""
+        k = f"_pk_{inst}"
+        if not hasattr(self, k):
+            from .planner_rules import test_ids
+            tid = set(test_ids())
+            t = self.df[~self.df.project_id.isin(tid) & (self.df.pv_kwp > 0) & ~self.df.annual_demand_kwh.isin([0, 4500])]
+            if inst:
+                t = t[t.installer_id == inst]
+            use = t.annual_demand_kwh + [rules.ev_kwh(r) for r in t.to_dict("records")]
+            setattr(self, k, round(float((t.pv_kwp / (use / 1000)).median()), 2) if len(t) else None)
+        return getattr(self, k)
+
+    def rule_of_thumb_comparison(self, inp: dict, design: dict) -> dict:
+        ev = rules.ev_kwh(inp)
+        mwh = ((inp.get("annual_demand_kwh") or 0) + ev) / 1000
+        pv = design.get("pv_kwp") or 0
+        return {"reonic_kwp_per_mwh": 1.0, "planners_kwp_per_mwh": self.planners_kwp_per_mwh(inp["installer_id"]),
+                "this_design_kwp_per_mwh": round(pv / mwh, 2) if mwh else None,
+                "note": "Reonic's rule of thumb is about 1 kWp per 1,000 kWh; this installer's planners fit the median shown (signed designs)."}
 
     def baseline(self, inp: dict, kind: str = "textbook") -> dict:
         cat = self.catalogue[inp["installer_id"]]
