@@ -13,6 +13,7 @@ import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
 import { usePhoto } from "./PhotoView";
 import LayersMenu from "./LayersMenu";
+import { isOrigin } from "@/lib/tilesGeo";
 import { setImagery, useViewOpts, type Imagery } from "./whiteMode";
 import s from "./spatial.module.css";
 import ShadingPanel from "./ShadingScrubber";
@@ -143,7 +144,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const L = ids.includes(layer) ? layer : 1;
   // In 3D the Google mesh replaces the LoD2 house when it loads (PhotoView.tsx); never on the plan layer.
   // Ground picture and imagery dates for the layers menu (satGround.ts, whiteMode.ts).
-  useEffect(() => { if (glbOk) scene.current?.groundFor(address); }, [glbOk, address]);
+  const groundOrigin = (model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32;
+  const groundKey = isOrigin(groundOrigin) ? groundOrigin.join(",") : "";
+  useEffect(() => { if (glbOk && isOrigin(groundOrigin)) scene.current?.groundFor(groundOrigin); }, [glbOk, groundKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
   const vo = useViewOpts();
   const credit = vo.google && vo.ground === "google" && vo.credit ? ` · Ground: ${vo.credit}` : "";
