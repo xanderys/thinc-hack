@@ -80,13 +80,18 @@ Economics come from the hourly simulation in `app/hourly/` (REONIC PHYSICS; meth
 
 2025 was a sunny year: global irradiance in Germany was about 9% above normal ([gruenes.haus](https://gruenes.haus/globalstrahlung/)), and the Open-Meteo reanalysis leans towards direct sun, so a south roof yields 1,256 kWh/kWp in the replay against 1,000 to 1,150 in a normal Munich year. Read the 2025 figures as one sunny year, not as a forecast; the typical-year figures stay the pinned ones. The replay counts 573 negative-price hours, matching SMARD.
 
+### What the lab tried overnight
+
+The lab ran five measured changes on 5-fold cross-validation inside the training data, scoring the locked 314-home test set only for changes that passed CV. Four model changes were rejected because PV within tolerance fell or the gain was under 0.5 points: reading PV from inverter packages at 2a8ba8e2 (CV all four 17.7% to 18.0%, PV 40.7% to 40.0%), choosing the last or most common offer option as the expert label (no column records the signed option; options are mostly battery and wallbox variants around one array), a grey-box model learning the expert's deviation from the physics optimum (CV all four 8.5% against 16.9%, because the optimum's median PV is 3.8 kWp against the experts' 9.0), and the optimum as a feature (test all four 17.1% to 18.2% and battery 48.8% to 52.3%, but PV 37.6% to 36.0%). The one merge was additive: a replay of each design on real 2025 Munich weather and day-ahead prices, which for the hero home gives payback 9.9 years against 10.8 in a typical year and 1,286 kWh exported unpaid in 573 negative-price hours. Experts size PV well above the economic optimum, which is the clearest finding of the night.
+
+
 Latency through the Funnel: `/api/design` p50 194 ms, p95 280 ms; `/api/refine` about 275 ms.
 
 ## Question picker and inbox (v1.3)
 
 `POST /api/ask` re-sizes the home once per answer to each open question (heating type, EV, annual use, heat demand, existing PV) in one batched pass through the chain, and ranks questions by how far the design moves: the sum over components of |change in size| / tolerance (1 kWp, 2 kWh, 2 kW) plus 1 per include/none flip, the largest over the answers. Top 3; an empty list when no answer moves the design. With `unknown` in the request only those fields are asked, so a fact the lead stated is never asked. About 80 ms at normal load.
 
-`GET /api/inbox` replays held-out new-system jobs: draft, mean confidence of the included components, the expert design, within-tolerance per component, and the deviation note on misses. The first row is a PV and battery hit at 2a8ba8e2; the rest rotate through installers and kinds of job. Built in the background at startup (up to 60 rows).
+`GET /api/inbox` is the overnight drafts: held-out new-system jobs with real inputs (no sub-2 kWp leftovers, no untouched 4,500 kWh defaults), each with the draft, the expert design, within-tolerance per component and, on a miss, one plain sentence naming it. `confidence` is the share of the 15 most similar past homes whose design is within tolerance of the draft on all four components; rows come least sure first. On 60 held-out rows, agreement 0.4 to 0.6 hits 56% against about 33% below 0.4, so it halves the miss rate, no more. Built once at training and stored with the model cache, so it serves in about 20 ms, also right after a restart.
 
 Heat pump cost: EUR 36,400 less the 30% base subsidy, less EUR 10,000 for the boiler replacement it avoids when it replaces gas or oil (`rules.hp_net_capex`, used by both the hourly simulation and the fallback).
 
