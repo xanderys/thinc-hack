@@ -213,7 +213,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         } else if (r.status === 409 && lid && fixed) stale(lid); else { setErr(r.error); setPending(null); }
         setBusy(false);
       } catch { /* superseded */ }
-    }, 250);
+    }, why?.startsWith("Changed by hand") ? 250 : 0);   // typed sizes wait 250 ms for the next key; taps go at once
     return () => { clearTimeout(t); ctl.abort(); };
   }, [ready, inputs, overrides, retry]);
 
