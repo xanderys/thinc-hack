@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import HomeForm from "@/components/HomeForm";
 import DesignSheet from "@/components/DesignSheet";
 import ValidatePanel from "@/components/ValidatePanel";
+import OptimumBlock from "@/components/OptimumBlock";
 import type { Design, DesignResponse, HomeInputs, InterpretChange, InterpretResponse, RefineResponse } from "@/lib/api";
 import { call, fmt, COMPONENT_NAME } from "@/lib/client";
 import type { DiffItem, InterpretOverride, OverrideValue, Overrides } from "@/lib/api";
@@ -229,7 +230,7 @@ export default function Planner() {
 
             <div className="two">
               <div>
-                <h2>Rough economics</h2>
+                <h2>{e?.method === "hourly-simulation" ? "Economics, hourly simulation" : "Rough economics"}</h2>
                 {e && (
                   <>
                     <dl className="figures">
@@ -253,6 +254,8 @@ export default function Planner() {
                 <ul className="explain">{res.explanation.filter((x) => !reasons.has(x)).map((x, k) => <li key={k}>{x}</li>)}</ul>
               </div>
             </div>
+
+            {res.optimum && <OptimumBlock design={res.design} economics={res.economics} optimum={res.optimum} />}
           </>
         )}
         </>}

@@ -47,6 +47,15 @@ export interface Economics {
   capex_eur: number; annual_saving_eur: number; payback_years: number | null;
   self_consumption_share: number; autarky_share: number;
   assumptions: string[];
+  method?: "hourly-simulation" | "annual-lookup";   // v1.2
+  annual?: { pv_yield_kwh: number; load_kwh: number; self_consumed_kwh: number; fed_in_kwh: number; grid_import_kwh: number; feed_in_income_eur: number; bill_before_eur: number; bill_after_eur: number; npv_20y_eur: number | null };
+}
+
+export interface Optimum {               // v1.2
+  design: Design;
+  economics: Economics;
+  delta_vs_proposal: { capex_eur: number; annual_saving_eur: number; payback_years: number | null; autarky_share: number };
+  note: string;
 }
 
 export type ComponentKey = "pv" | "battery" | "heatpump" | "wallbox";
@@ -57,6 +66,7 @@ export interface DesignResponse {
   components: { pv: ComponentDetail; battery: ComponentDetail; heatpump: ComponentDetail; wallbox: ComponentDetail };
   plausibility: Plausibility[];
   economics: Economics;
+  optimum?: Optimum;
   model_version: string;
 }
 

@@ -104,6 +104,12 @@ function respond(i: HomeInputs, d: Design, fixed: Partial<Design> = {}): DesignR
       ],
     },
     model_version: MOCK_VERSION,
+    optimum: d.pv_kwp == null ? undefined : {
+      design: { ...d, pv_kwp: d.pv_kwp + 2, battery_kwh: d.battery_kwh == null ? null : Math.max(5, d.battery_kwh - 2.5) },
+      economics: { capex_eur: capex + 1300, annual_saving_eur: saving + 240, payback_years: pb == null ? null : Math.round((pb - 0.8) * 10) / 10, self_consumption_share: sc, autarky_share: Math.min(0.9, aut + 0.04), assumptions: [], method: "hourly-simulation" },
+      delta_vs_proposal: { capex_eur: 1300, annual_saving_eur: 240, payback_years: pb == null ? null : -0.8, autarky_share: 0.04 },
+      note: "Mock: more PV and a smaller battery pay back sooner here.",
+    },
   };
 }
 

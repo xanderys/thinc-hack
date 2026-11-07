@@ -182,3 +182,5 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .facts li, .explain li.row { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 4px 16px; }
 .facts .lbl, .explain .lbl { font-family: var(--font-sans), sans-serif; font-size: 13px; color: var(--ink-3); padding-top: 3px; }
 @media (max-width: 640px) { .facts li, .explain li.row { grid-template-columns: 1fr; } }
+.optimum .opt-note { font-family: var(--font-serif), serif; font-size: 21px; line-height: 1.3; margin: 0 0 14px; max-width: 60ch; }
+.optimum tr.differs td { color: var(--accent); }
