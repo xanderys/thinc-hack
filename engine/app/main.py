@@ -21,13 +21,13 @@ from . import model as model_mod
 
 
 def _load_env():
-    """engine/.env (gitignored): MARQUEE_INTAKE_KEY for the intake step."""
-    p = Path(__file__).resolve().parent.parent / ".env"
-    if p.exists():
-        for line in p.read_text().splitlines():
-            k, _, v = line.partition("=")
-            if k.strip() and v.strip() and k.strip() not in os.environ:
-                os.environ[k.strip()] = v.strip().strip('"')
+    """INTAKE_SECRET from ~/.config/marquee/intake.env (shared with the voice builder; never in git)."""
+    for p in (Path.home() / ".config" / "marquee" / "intake.env", Path(__file__).resolve().parent.parent / ".env"):
+        if p.exists():
+            for line in p.read_text().splitlines():
+                k, _, v = line.partition("=")
+                if k.strip() and v.strip() and k.strip() not in os.environ:
+                    os.environ[k.strip()] = v.strip().strip('"')
 
 
 _load_env()
@@ -434,12 +434,25 @@ class LeadReq(BaseModel):
 
 class StepReq(BaseModel):
     lead_id: str
-    answers: Union[dict, list] = {}
+    facts_so_far: Optional[dict] = None   # v1.9: voice intake names, latest value per field
+    answers: Union[dict, list, None] = None  # older shape: HomeInputs fields or [{field, value}]
     note: Optional[str] = None
 
 
-def _facts(raw: dict) -> dict:
-    """Validate merged facts as HomeInputs; returns inputs with _given (fields actually known)."""
+def _facts(raw: dict, block: bool = True) -> dict:
+    """Validate merged facts as HomeInputs; returns inputs with _given (fields actually known).
+    block=False never waits on a cold roof or postcode lookup: it starts one and drafts without the roof."""
+    if not block and not raw.get("roof"):
+        if raw.get("address"):
+            r = roofs.cached(raw["address"])
+        elif raw.get("postcode"):
+            r = roofs.cached_postcode(raw["postcode"])
+        else:
+            r = None
+        if r and r.get("source") != "none":
+            raw = {**raw, "roof": r}
+        elif r is None:
+            raw = {k: v for k, v in raw.items() if k not in ("address", "postcode")} | {"_place": raw.get("address") or raw.get("postcode")}
     try:
         h = HomeInputs(**{k: v for k, v in raw.items() if not k.startswith("_")})
     except Exception as e:
@@ -448,6 +461,9 @@ def _facts(raw: dict) -> dict:
         raise InputError(msg)
     inp = {**h.model_dump(), "_given": sorted(set(raw.get("_given") or []) | h.model_fields_set)}
     check_inputs(inp)
+    if raw.get("_place"):  # keep the place for the next step, when the roof will be cached
+        inp["address" if not leads.PC.match(raw["_place"]) else "postcode"] = raw["_place"]
+        inp["roof"] = None
     return inp
 
 
@@ -484,43 +500,87 @@ def _full_draft_later(lead_id: str, inp: dict):
 
 
 def _key_ok(key: Optional[str]) -> bool:
-    want = os.environ.get("MARQUEE_INTAKE_KEY")
+    want = os.environ.get("INTAKE_SECRET")
     return bool(want) and key == want
 
 
-@app.post("/api/leads")
-def create_lead(req: LeadReq, x_marquee_key: Optional[str] = Header(None)):
-    eng = engine()
-    raw = {"installer_id": req.installer_id or (req.facts or {}).get("installer_id") or "2a8ba8e2",
-           **leads.where(req.address_or_postcode), **leads.normalise(req.facts or {})}
-    raw["_given"] = [k for k in raw if k != "installer_id"] + (["installer_id"] if req.installer_id else [])
-    inp = _facts(raw)
+_RATE: dict = {}
+
+
+def _rate_ok(ip: str, per_min: int = 20) -> bool:
+    t = time.time()
+    q = [x for x in _RATE.get(ip, []) if t - x < 60]
+    if len(q) >= per_min:
+        _RATE[ip] = q
+        return False
+    _RATE[ip] = q + [t]
+    return True
+
+
+def _new_lead(eng, raw: dict, name: str, place: str, source: str, block: bool, lead_id: Optional[str] = None) -> dict:
+    inp = _facts(raw, block=block)
     unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
     draft = eng.predict(dict(inp), extras=False)
     nq, spread = _question(eng, inp, unknown)
     t = leads.now()
-    lead = {"lead_id": leads.new_id(), "status": "draft", "source": req.source, "customer_name": req.customer_name,
-            "address_or_postcode": req.address_or_postcode, "inputs": inp, "unknown": unknown, "draft": draft,
+    lead = {"lead_id": lead_id or leads.new_id(), "status": "draft" if source == "form" else "in_call", "source": source,
+            "customer_name": name, "address_or_postcode": place, "inputs": inp, "unknown": unknown, "draft": draft,
             "history": [], "next_question": nq, "next_spread": spread, "questions_asked": 0, "created_at": t, "updated_at": t,
-            "roof": inp.get("roof")}
+            "aliases": []}
     leads.LEADS[lead["lead_id"]] = lead
     leads.save(lead)
     _full_draft_later(lead["lead_id"], inp)
-    return {"lead_id": lead["lead_id"], "draft": draft, "facts": _public(inp), "unknown": unknown, "next_question": nq}
+    return lead
+
+
+@app.post("/api/leads")
+def create_lead(req: LeadReq, request: Request, x_intake_secret: Optional[str] = Header(None)):
+    eng = engine()
+    if not _key_ok(x_intake_secret) and not _rate_ok(request.client.host if request.client else "?"):
+        return err(429, "Too many new leads from this address; try again in a minute.")
+    mapped, meta = leads.map_intake(req.facts or {})
+    raw = {"installer_id": req.installer_id or mapped.get("installer_id") or "2a8ba8e2",
+           **leads.where(req.address_or_postcode), **mapped}
+    raw["_given"] = [k for k in raw if k != "installer_id"] + (["installer_id"] if req.installer_id else [])
+    lead = _new_lead(eng, raw, req.customer_name, req.address_or_postcode, req.source, block=False)
+    if meta:
+        lead["meta"] = meta
+    return {"lead_id": lead["lead_id"], "draft": lead["draft"], "facts": _public(lead["inputs"]), "unknown": lead["unknown"],
+            "next_question": lead["next_question"]}
 
 
 @app.post("/api/intake/step")
-def intake_step(req: StepReq, x_marquee_key: Optional[str] = Header(None)):
-    if not _key_ok(x_marquee_key):
-        return err(401, "Missing or wrong X-Marquee-Key header.")
+def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
     eng = engine()
-    lead = leads.LEADS.get(req.lead_id)
-    if not lead:
-        return err(404, f"No lead with id {req.lead_id}")
     try:
-        ans = leads.normalise(req.answers)
+        if req.facts_so_far is not None:
+            ans, meta = leads.map_intake(req.facts_so_far)
+        else:
+            ans, meta = leads.normalise(req.answers or {}), {}
     except ValueError as e:
         return err(422, str(e))
+    lead = leads.LEADS.get(req.lead_id) or next((l for l in leads.LEADS.values() if req.lead_id in l.get("aliases", [])), None)
+    if not lead:  # upsert: link to the homeowner page's lead by name and place, else start one from what is known
+        name = meta.get("customer_name") or ""
+        place = ans.get("address") or ans.get("postcode") or ""
+        lead = leads.find_linked(name, place)
+        if lead:
+            lead.setdefault("aliases", []).append(req.lead_id)
+        else:
+            raw = {"installer_id": ans.get("installer_id") or "2a8ba8e2", **ans}
+            raw["_given"] = [k for k in ans]
+            lead = _new_lead(eng, raw, name, place, "call", block=False, lead_id=req.lead_id)
+            lead["meta"] = meta
+            lead["history"].append({"step": 0, "field": None, "answer": ans, "changed": [], "note": "call started", "at": lead["created_at"]})
+            leads.save(lead)
+            return {"design": lead["draft"]["design"], "draft": lead["draft"], "changed": [], "next_question": lead["next_question"],
+                    "done": lead["next_question"] is None, "step": 0}
+    if meta:
+        lead.setdefault("meta", {}).update(meta)
+    # only fields that are new or changed count as this step's answer
+    ans = {k: v for k, v in ans.items() if lead["inputs"].get(k) != v or k not in (lead["inputs"].get("_given") or [])}
     unknown_fields = [k for k in ans if k not in HomeInputs.model_fields]
     if unknown_fields:
         return err(422, f"Unknown field: {', '.join(unknown_fields)}.")
@@ -528,8 +588,8 @@ def intake_step(req: StepReq, x_marquee_key: Optional[str] = Header(None)):
     raw = {**lead["inputs"], **ans, "_given": sorted(set(lead["inputs"].get("_given", [])) | set(ans))}
     if ans.get("has_ev") is True and not ans.get("ev_annual_km") and not raw.get("ev_annual_km"):
         raw["ev_annual_km"] = 12000.0
-    raw.pop("roof", None) if ("address" in ans or "postcode" in ans) else None
-    inp = _facts(raw)
+    raw.pop("roof", None) if ("address" in ans or "postcode" in ans or not raw.get("roof")) else None
+    inp = _facts(raw, block=False)
     before = lead["draft"]["design"]
     draft = eng.predict(dict(inp), extras=False)
     unknown = [c for c in lead["unknown"] if c not in ans]
@@ -545,6 +605,10 @@ def intake_step(req: StepReq, x_marquee_key: Optional[str] = Header(None)):
     field_asked = asked if asked in ans else (next(iter(ans)) if ans else None)
     lead.update(inputs=inp, unknown=unknown, draft=draft, next_question=nq, questions_asked=step, updated_at=t,
                 status="done" if nq is None else "in_call")
+    if not lead.get("customer_name") and meta.get("customer_name"):
+        lead["customer_name"] = meta["customer_name"]
+    if not lead.get("address_or_postcode") and (ans.get("address") or ans.get("postcode")):
+        lead["address_or_postcode"] = ans.get("address") or ans.get("postcode")
     lead["history"].append({"step": step, "field": field_asked, "answer": {k: ans[k] for k in ans}, "changed": changed,
                             "note": req.note, "at": t})
     swing = lead.get("next_spread", 0.0) if field_asked == asked else 0.0
@@ -565,15 +629,15 @@ def _lead_out(lead: dict) -> dict:
 
 
 @app.get("/api/leads/{lead_id}")
-def get_lead(lead_id: str, x_marquee_key: Optional[str] = Header(None)):
-    lead = leads.LEADS.get(lead_id)
+def get_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
+    lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
     return _lead_out(lead)
 
 
 @app.get("/api/leads")
-def list_leads(limit: int = 20, x_marquee_key: Optional[str] = Header(None)):
+def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
     rows = sorted(leads.LEADS.values(), key=lambda l: l["updated_at"], reverse=True)[: max(1, min(limit, 200))]
     return [{"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
              "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
@@ -581,7 +645,7 @@ def list_leads(limit: int = 20, x_marquee_key: Optional[str] = Header(None)):
 
 
 @app.get("/api/intake/priors")
-def intake_priors(x_marquee_key: Optional[str] = Header(None)):
+def intake_priors(x_intake_secret: Optional[str] = Header(None)):
     return leads.priors()
 
 

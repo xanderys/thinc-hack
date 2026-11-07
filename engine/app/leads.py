@@ -120,6 +120,45 @@ def normalise(answers) -> dict:
     return out
 
 
+META = ("customer_name", "installer_name", "heating_age")
+
+
+def map_intake(f: dict) -> tuple[dict, dict]:
+    """Voice intake names to HomeInputs (latest value per field wins); returns (inputs, meta). Nulls are skipped."""
+    f = {k: v for k, v in (f or {}).items() if v is not None and v != ""}
+    meta = {k: f.pop(k) for k in META if k in f}
+    out = {}
+    if "ev" in f:
+        ev = str(f.pop("ev")).strip().lower()
+        out["has_ev"] = ev in ("now", "planned", "yes", "true")
+    if "home_office" in f:
+        ho = _bool(f.pop("home_office"))
+        if ho and float(f.get("num_inhabitants") or 1) <= 1:
+            out["load_profile"] = "HomeOfficeOnePerson"
+    bill = f.pop("monthly_bill_eur", None)
+    out.update(normalise(f))
+    if bill is not None and not out.get("annual_demand_kwh"):
+        price = (out.get("electricity_price_ct_kwh") or 32.0) / 100
+        # 90% of the bill is energy, 10% the standing charge (assumption); at the tariff
+        out["annual_demand_kwh"] = round(_num(bill) * 12 * 0.9 / price, -1)
+        meta["annual_demand_from_bill"] = f"EUR {_num(bill):g} a month at {price * 100:.0f} ct/kWh, 10% standing charge"
+    return out, meta
+
+
+def norm_key(name: str, place: str) -> str:
+    return re.sub(r"\W+", "", f"{name}|{place}".lower())
+
+
+def find_linked(name: str, place: str):
+    k = norm_key(name or "", place or "")
+    if not name or not place:
+        return None
+    for lead in sorted(LEADS.values(), key=lambda l: l["updated_at"], reverse=True):
+        if norm_key(lead.get("customer_name") or "", lead.get("address_or_postcode") or "") == k:
+            return lead
+    return None
+
+
 def swing_text(base: dict, options: list) -> str:
     """Plain range of what the answer would do to the design."""
     parts = []

@@ -59,6 +59,38 @@ def lookup(address: str) -> dict:
     return res
 
 
+_warming: set = set()
+
+
+def cached(address: str):
+    """The cached lookup, or None; never blocks. Starts a background lookup on a miss."""
+    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
+    path = CACHE / f"{key}.json"
+    if path.exists():
+        return json.loads(path.read_text())
+    if key not in _warming:
+        _warming.add(key)
+        import threading
+        threading.Thread(target=lambda: (lookup(address), _warming.discard(key)), daemon=True).start()
+    return None
+
+
+def cached_postcode(pc: str):
+    import re as _re
+    m = _re.search(r"\b\d{5}\b", pc or "")
+    if not m:
+        return None
+    path = CACHE / f"pc-{m.group()}.json"
+    if path.exists():
+        return json.loads(path.read_text())
+    key = "pc" + m.group()
+    if key not in _warming:
+        _warming.add(key)
+        import threading
+        threading.Thread(target=lambda: (postcode_lookup(pc), _warming.discard(key)), daemon=True).start()
+    return None
+
+
 def postcode_lookup(postcode: str) -> dict:
     """Postcode alone: Nominatim centroid (cached), no building; Zensus 2022 estimates for the 100 m cell there."""
     import re
