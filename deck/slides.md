@@ -12,11 +12,13 @@ footer: Marquee
 
 <p class="label">Marquee</p>
 
-# At the same installer, near-identical homes get the same full design 16% of the time.
+# Enquiry to offer: 8 days today, seconds with Marquee.
 
-<p>258 held-out signed projects</p>
+<p>Median calendar time, one installer, 260 projects, waiting included. Marquee removes the design and draft step, not the site visit.</p>
 
-[UNCONFIRMED: opener line; source engine/README.md, all four, near-identical homes 16.1%]
+[UNCONFIRMED: footnote wording]
+
+<p class="brief">Reonic case brief: the first credible offer often wins (p5)</p>
 
 ---
 
