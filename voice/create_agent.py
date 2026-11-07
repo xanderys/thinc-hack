@@ -5,10 +5,10 @@ HERE = pathlib.Path(__file__).parent
 API = "https://api.elevenlabs.io"
 VOICE_ID = "lcMyyd2HUfFzxdCaC4Ta"  # Lucy, Fresh & Casual (young British female, library voice added as "Rina (Lucy)")
 LLM = "claude-haiku-5-5"
-FIRST = "Hi, it's Rina from Reonic, with a few quick questions for your design. What's the address of the house?"
+FIRST = "Hi, it's Rina from your installer, with a few quick questions for your design. What's the address of the house?"
 # No required dynamic variables, so the agent also runs on the ElevenLabs talk-to page. The widget overrides the first
 # message and sends the form answers as a contextual update (web/app/start/intake.ts formNote).
-ASR_KEYWORDS = ["Reonic", "kilowatt hours", "square metres", "wallbox", "heat pump", "solar", "battery", "boiler", "postcode", "Strasse"]
+ASR_KEYWORDS = ["kilowatt hours", "square metres", "wallbox", "heat pump", "solar", "battery", "boiler", "postcode", "Strasse"]
 OVERRIDES = {"conversation_config_override": {"agent": {"first_message": True}}}
 
 

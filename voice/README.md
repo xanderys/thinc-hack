@@ -49,12 +49,12 @@ conversation.startSession({
   agentId: "agent_4201m6v70wckem7sd6nq4mkt40s4",
   connectionType: "webrtc",
   userId: `${customer_name}|${address_or_postcode}`,               // lets /start/leads show the live call by name
-  dynamicVariables: { customer_name, address_or_postcode, installer_id, house_type, people, monthly_bill_eur,
+  dynamicVariables: { customer_name, address_or_postcode, installer_name, installer_id, house_type, people, monthly_bill_eur,
                       kwh_estimate, heating, ev, interests, floor_area_m2, multi_unit },   // all strings; omit unknowns
-  overrides: { agent: { firstMessage: `Hi ${customer_name}, it's Rina from Reonic. Just to check, are you living at ${address_or_postcode}?` } },
+  overrides: { agent: { firstMessage: `Hi ${customer_name}, it's Rina from ${installer_name}. Just to check, are you living at ${address_or_postcode}?` } },
 });
 // in onConnect:
-conversation.sendContextualUpdate(`Enquiry (never ask these again): name ${customer_name}; address ${address_or_postcode}; ` +
+conversation.sendContextualUpdate(`Enquiry (never ask these again): installer ${installer_name}; name ${customer_name}; address ${address_or_postcode}; ` +
   `house type ${house_type}; people ${people}; bill about ${monthly_bill_eur} EUR a month, about ${kwh_estimate} kWh a year; ` +
   `heating ${heating}; electric car ${ev}; interested in ${interests}; living space ${floor_area_m2} m2; multi-unit building ${multi_unit}. ` +
   `You have already asked whether they live at the address.`);   // leave out parts that are unknown

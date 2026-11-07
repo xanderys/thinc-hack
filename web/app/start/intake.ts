@@ -140,7 +140,7 @@ export function isMultiUnit(a: Partial<FormAnswers>, roof?: RoofInfo | null) {
 export function firstMessage(a: Partial<FormAnswers>) {
   const name = a.first_name?.trim();
   const street = streetOf(a.address);
-  return `Hi${name ? ` ${name}` : ""}, it's Rina from Reonic. Just to check, you own the place ${street ? `at ${street}` : "you put in the form"}?`;
+  return `Hi${name ? ` ${name}` : ""}, it's Rina from your installer. Just to check, you own the place ${street ? `at ${street}` : "you put in the form"}?`;
 }
 
 /** Start-of-call note with the form answers and what the address lookup found. */
