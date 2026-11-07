@@ -7,12 +7,16 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 from sklearn.model_selection import cross_val_predict, train_test_split
 
-from . import rules
+import logging
+
+from . import hourly, rules
+
+log = logging.getLogger("engine")
 from .data import HEATING_TYPES, INSTALLERS, LOAD_PROFILES, date_t
 
 SEED = 42
 K = 15
-MODEL_VERSION = "chain-hgb-knn-5"
+MODEL_VERSION = "chain-hgb-knn-5+hourly"
 NO_PV_RULE = "pv"  # "pv": propose PV when a battery would otherwise have none; "battery_none": drop the battery
 T_NOW = {"t": 2026.3}  # latest offer date in train; used when a request carries no offer_date
 COMPONENTS = ["pv", "battery", "heatpump", "wallbox"]
@@ -167,7 +171,8 @@ class Engine:
                 "median_size": q(50), "p25": q(25), "p75": q(75)}
 
     # ---------- prediction ----------
-    def predict(self, inp: dict, overrides: dict | None = None) -> dict:
+    def predict(self, inp: dict, overrides: dict | None = None, full: bool = True) -> dict:
+        """full=False skips the hourly simulation and optimum (used by the scoreboard, which only needs sizes)."""
         inst = inp["installer_id"]
         if inst not in self.catalogue:
             raise ValueError(f"Unknown installer_id {inst}")
@@ -226,10 +231,41 @@ class Engine:
         inv = ov["inverter_kw"] if isinstance(ov.get("inverter_kw"), (int, float)) else rules.inverter_kw(pv)
         design = {"pv_kwp": pv or None, "inverter_kw": inv if pv else None, "battery_kwh": bat or None,
                   "heatpump_kw": hp or None, "wallbox_kw": wb or None}
-        econ = rules.economics(inp, design)
-        plaus = rules.plausibility(inp, design, econ)
-        return {"design": design, "explanation": self._explain(inp, design, comps, nb, econ),
-                "components": comps, "plausibility": plaus, "economics": econ, "model_version": MODEL_VERSION}
+        econ, plaus, opt = self._physics(inp, design, inst, f["t"], full)
+        out = {"design": design, "explanation": self._explain(inp, design, comps, nb, econ),
+               "components": comps, "plausibility": plaus, "economics": econ, "model_version": MODEL_VERSION}
+        if opt:
+            out["optimum"] = opt
+        return out
+
+    def _physics(self, inp, design, inst, t, full):
+        """Hourly simulation (app/hourly) when it runs; the annual ratio model otherwise. Economics.method says which."""
+        lookup = rules.economics(inp, design)
+        lookup["method"] = "annual-lookup"
+        if not full:
+            return lookup, [], None
+        clean = {k: v for k, v in inp.items() if not k.startswith("_")}
+        try:
+            sim = hourly.simulate(clean, design)
+            econ = sim.economics
+            phys = hourly.validate_physics(clean, design, sim=sim)
+        except Exception as e:  # keep serving with the ratio model; say why
+            log.warning("hourly simulation failed, using annual lookup: %s", e)
+            lookup["assumptions"].append(f"Hourly simulation unavailable ({e}); annual ratio model used.")
+            return lookup, rules.plausibility(inp, design, lookup), None
+        plaus = [p for p in rules.plausibility(inp, design, econ) if not p["message"].startswith("DC/AC")] + phys
+        opt = None
+        try:
+            pvs = self.catalogue[inst]["pv"]
+            pv0 = design["pv_kwp"] or 0
+            near = pvs[(pvs >= 0.5 * pv0) & (pvs <= 1.6 * pv0)]
+            near = near[np.unique(np.linspace(0, len(near) - 1, min(12, len(near))).round().astype(int))] if len(near) else pvs
+            cat = {"pv_kwp": sorted({float(x) for x in near} | {float(pv0)}),
+                   "battery_kwh": [float(x) for x in self.battery_catalogue(inst, t)]}
+            opt = hourly.optimum(clean, cat, design) if design.get("pv_kwp") else None
+        except Exception as e:
+            log.warning("optimum failed: %s", e)
+        return econ, plaus, opt
 
     def _detail(self, comp, size, p, nb, inp, src, pv=None):
         unit = UNITS[comp]
@@ -260,8 +296,11 @@ class Engine:
         if src == "planner":
             return f"Set by the planner; {k} of {n} similar homes had {NAMES[comp]}."
         if src == "include" and comp == "heatpump":
-            what = "Replaces the existing heat pump" if inp.get("_hp_replacement") else "Included by the planner"
-            return f"{what}; {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
+            if inp.get("_hp_replacement"):
+                return f"Replacement heat pump sized from the heating demand: {fmt(size, unit)} ({rules.heat_load_note(inp)})."
+            if inp.get("heating_type") in ("Gas", "Oil"):
+                return f"Replaces the {inp['heating_type'].lower()} boiler: {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
+            return f"Included by the planner: {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
         if src == "include" and comp != "pv" and comp != "battery":
             return f"Included by the planner at {fmt(size, unit)}, the size this installer fits most for homes like this."
         if comp == "pv":
@@ -298,7 +337,8 @@ class Engine:
             if inc or c == "battery" or (c == "wallbox" and inp.get("has_ev")) or (c == "pv" and not inc):
                 out.append(comps[c]["reason"])
         if econ["payback_years"]:
-            out.append(f"Rough payback {econ['payback_years']:.0f} years at {econ['autarky_share'] * 100:.0f}% autarky.")
+            how = "Simulated" if econ.get("method") == "hourly-simulation" else "Rough"
+            out.append(f"{how} payback {econ['payback_years']:.0f} years at {econ['autarky_share'] * 100:.0f}% autarky.")
         return out[:5]
 
     # ---------- validate ----------
@@ -315,6 +355,10 @@ class Engine:
             level, msg = "ok", None
             if comp in hard:
                 level, msg = "implausible", hard[comp]
+            elif comp == "wallbox" and inc and v > 11 and not inp.get("has_ev"):
+                none, w11 = int((s == 0).sum()), int((s == 11).sum())
+                level = "unusual"
+                msg = f"{fmt(v, UNITS[comp])} with no EV recorded: {none} of {len(s)} similar homes got no wallbox and {w11} got 11 kW."
             elif inc != (st["share_included"] >= 0.5):
                 share = st["share_included"] if inc else 1 - st["share_included"]
                 if share < 0.2:
@@ -328,6 +372,15 @@ class Engine:
             if msg is None:
                 msg = (f"{fmt(v, UNITS[comp])} is in line with similar homes." if inc else f"No {NAMES[comp].split(' ', 1)[-1]} is in line with similar homes.")
             flags.append({"component": comp, "level": level, "message": msg, "neighbours": st})
+        try:
+            clean = {k: v for k, v in inp.items() if not k.startswith("_")}
+            for p in hourly.validate_physics(clean, {k: design.get(k) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}):
+                if p["level"] != "ok":
+                    comp = physics_component(p["message"])
+                    flags.append({"component": comp, "level": "unusual", "message": p["message"],
+                                  "neighbours": self.nb_stats(nb, comp)})
+        except Exception as e:
+            log.warning("validate_physics failed: %s", e)
         return flags
 
     def battery_catalogue(self, inst, t):
@@ -370,7 +423,7 @@ class Engine:
         ours, base, base2 = [], [], []
         for r in rows:
             inp = row_inputs(r)
-            d = self.predict(inp)["design"]
+            d = self.predict(inp, full=False)["design"]
             ours.append({k: (d[k] or 0.0) for k in TARGET.values()})
             base.append(self.baseline(inp))
             base2.append(self.baseline(inp, "floor_slope"))
@@ -495,8 +548,20 @@ class Engine:
                 "components": {c: round(float(h.mean()), 3) for c, h in hits.items()},
                 "design_match_share": round(float(allc.mean()), 3),
                 "covered_test_share": round(float(len(t) / len(te)), 3),
-                "method": "Each test home against the median design of 5 or more training homes with identical installer, "
-                          "demand, EV flag and heating type; same tolerance bands as the scoreboard. Covers the test homes that have such a group."}
+                "method": "Agreement between near-identical training homes: each test home against the median design of 5 or more "
+                          "training homes with identical installer, demand, EV flag and heating type, same tolerance bands as the scoreboard. "
+                          "Covers the test homes that have such a group."}
+
+
+def physics_component(msg: str) -> str:
+    m = msg.lower()
+    if "battery" in m or "usable" in m or "cycles" in m:
+        return "battery"
+    if "heat pump" in m:
+        return "heatpump"
+    if "wallbox" in m:
+        return "wallbox"
+    return "pv"
 
 
 def row_inputs(r: dict) -> dict:

@@ -8,7 +8,7 @@ Statistics plus physics, no LLM. Proposes PV, battery, heat pump and wallbox in 
 cd engine && uv sync && REONIC_DATA_DIR="/path/to/Project Data" uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-`./run.sh` keeps it up on port 8000 and restarts it in 2 s if it exits. The first start trains (about 35 s); later starts load the model from `engine/.cache/` (gitignored, keyed on data files and engine code) in about 4 s. Contract: `docs/api.md` v1.1 (refine overrides take a number, null or "include"; eval carries textbook, floor-slope and ceiling shares). Extra fields beyond the contract: `HomeInputs.offer_date` (optional ISO date, picks the battery catalogue of that time; default latest); `/api/eval` adds `baselines` (full detail per rule), `ceiling.covered_test_share`, `size_mae_when_both_include`, `within_2kwp_share` (PV) and per-installer `baseline_design_match_share`; `/api/projects/{id}` adds `split`; `/api/projects` items add a one-line `label` and come in a varied order (both installers; battery, heat pump, EV, PV only, wallbox, no PV).
+`./run.sh` keeps it up on port 8000 and restarts it in 2 s if it exits. The first start trains (about 35 s); later starts load the model from `engine/.cache/` (gitignored, keyed on data files and engine code) in about 4 s. Contract: `docs/api.md` v1.2 (refine overrides take a number, null or "include"; eval carries textbook, floor-slope and near-identical-homes shares; economics from the hourly simulation; `optimum`). Extra fields beyond the contract: `HomeInputs.roof_area_sqm`, `roof_azimuth_deg`, `roof_tilt_deg`, `roof_orientation` (read by the simulation), `HomeInputs.offer_date` (optional ISO date, picks the battery catalogue of that time; default latest); `/api/eval` adds `baselines` (full detail per rule), `ceiling.covered_test_share`, `all_projects` (all 314 test jobs), `size_mae_when_both_include`, `within_2kwp_share` (PV) and per-installer `baseline_design_match_share`; `/api/projects/{id}` adds `split`; `/api/projects` items add a one-line `label` and come in a varied order (both installers; battery, heat pump, EV, PV only, wallbox, no PV).
 
 ## Data
 
@@ -63,11 +63,17 @@ A planner override (number or null) replaces a stage's output; "include" forces 
 
 The test split (20%, stratified by installer, seed 42) is never used for fitting, catalogue snapping or neighbours.
 
+## Physics and economics
+
+Economics come from the hourly simulation in `app/hourly/` (REONIC PHYSICS; method and limits in `docs/physics.md`): one typical Munich year, BDEW load profile, greedy battery dispatch. `economics.method` says `hourly-simulation`; if the simulation fails the engine falls back to the annual ratio model (`annual-lookup`, `app/rules.py`) and says so in `assumptions`. `DesignResponse.optimum` is the economically best PV and battery from the installer's own sizes (up to 12 PV sizes around the proposal, the battery sizes on sale at the offer date), with a one-line note on where the expert habit and the maths disagree. `validate_physics` checks (clipping, battery cycles against night load, heat pump full-load hours, extreme autarky or self-consumption) are appended to `plausibility` and, when not ok, to `/api/validate` as "unusual". The scoreboard skips the simulation (sizes only). `app/physics.py` is an alias of `app/rules.py` kept for `app/hourly`'s import.
+
+Latency through the Funnel: `/api/design` p50 194 ms, p95 280 ms; `/api/refine` about 275 ms.
+
 ## Scoreboard
 
-Scored on 258 new-system test jobs: the expert fitted PV, or PV is recorded. The other 56 test jobs are add-ons (battery extensions, wallboxes) to PV the status quo does not record; a design tool proposing for a home without PV cannot reproduce them, so they are reported separately. Ceiling: each test home against the median design of 5 or more training homes with identical installer, demand, EV flag and heating type (covers 72% of test homes), i.e. how often near-identical homes agree.
+Scored on 258 new-system test jobs: the expert fitted PV, or PV is recorded. The other 56 test jobs are add-ons (battery extensions, wallboxes) to PV the status quo does not record; a design tool proposing for a home without PV cannot reproduce them, so they are reported separately. About 200 battery-only add-ons to homes recorded without PV are excluded from the main board; on all 314 test jobs we score 14.6% vs 5.4%. "Near-identical homes" is the agreement between near-identical training homes: each test home against the median design of 5 or more training homes with identical installer, demand, EV flag and heating type (covers 72% of test homes).
 
-| Within tolerance | Ours | Textbook | Floor-slope | Ceiling |
+| Within tolerance | Ours | Textbook | Floor-slope | Near-identical homes |
 |---|---|---|---|---|
 | PV ±1 kWp or 15% | 36.8% | 17.8% | 31.0% | 31.7% |
 | Battery ±2 kWh | 49.6% | 47.7% | 47.7% | 53.2% |
@@ -83,7 +89,7 @@ All 314 test jobs, add-ons included: all four 14.6% (textbook 5.4%), PV 30.6%, b
 
 ## Known limits
 
-- PV size has hit the ceiling of the inputs: we agree with the expert more often than near-identical homes agree with each other. In 5-fold CV on train, GBM, kNN medians (k 15 and 30), kWp-per-MWh models and a blend are all within 0.1 kWp MAE (about 2.5 kWp on PV jobs). Many homes carry the 4,500 kWh default demand and nothing else; roof, orientation and budget are not in the data.
+- PV size is limited by the inputs: we agree with the expert slightly more often than near-identical homes agree with each other. In 5-fold CV on train, GBM, kNN medians (k 15 and 30), kWp-per-MWh models and a blend are all within 0.1 kWp MAE (about 2.5 kWp on PV jobs). Many homes carry the 4,500 kWh default demand and nothing else; roof, orientation and budget are not in the data.
 - Wallbox: 297 of 319 wallboxes at 2a8ba8e2 went to homes with no EV recorded. A learned classifier scored 75.2% on test against 76.1% for the EV rule, so the engine uses the rule. The data does not say who will buy a car.
 - Heat pump: 13 sold in the whole pack, 5 in test. The model ties the always-none baseline; size is physics, not learned.
-- Economics are rough and labelled: ratio model for autarky (no battery about 30% at PV equal to demand; 10 kWp with 10 kWh on 4,500 kWh about 66%), cost per kWp and per kWh from 2026 German averages. Every assumption is returned in `economics.assumptions`.
+- Economics: costs are 2026 German averages, not installer prices (the pack has none). The hourly simulation assumes a south roof at 35 degrees unless roof inputs are given; the fallback ratio model gives about 30% autarky with no battery at PV equal to demand, about 66% for 10 kWp with 10 kWh on 4,500 kWh. Every assumption is returned in `economics.assumptions`.

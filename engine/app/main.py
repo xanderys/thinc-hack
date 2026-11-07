@@ -30,19 +30,25 @@ def startup():
         if path.exists():
             STATE["engine"], STATE["eval"] = pickle.loads(path.read_bytes())
             log.warning("loaded cached model %s in %.1fs", key, time.time() - t)
-            return
-        df, stats = data.load()
-        eng = Engine(df, stats).fit()
-        STATE["engine"] = eng
-        STATE["eval"] = eng.evaluate()
-        CACHE.mkdir(exist_ok=True)
-        for old in CACHE.glob("engine-*.pkl"):
-            old.unlink()
-        path.write_bytes(pickle.dumps((eng, STATE["eval"])))
-        log.warning("trained in %.1fs on %d projects", time.time() - t, len(eng.train))
+        else:
+            df, stats = data.load()
+            eng = Engine(df, stats).fit()
+            STATE["engine"] = eng
+            STATE["eval"] = eng.evaluate()
+            CACHE.mkdir(exist_ok=True)
+            for old in CACHE.glob("engine-*.pkl"):
+                old.unlink()
+            path.write_bytes(pickle.dumps((eng, STATE["eval"])))
+            log.warning("trained in %.1fs on %d projects", time.time() - t, len(eng.train))
     except Exception as e:  # keep serving /health with the reason
         STATE["error"] = str(e)
         log.exception("startup failed")
+        return
+    try:  # warm the hourly simulation (cold call about 1 s); failure falls back to the annual lookup per request
+        from . import hourly
+        hourly.simulate({"annual_demand_kwh": 4500, "installer_id": "2a8ba8e2"}, {"pv_kwp": 9, "inverter_kw": 8, "battery_kwh": 10})
+    except Exception:
+        log.exception("hourly warm-up failed")
 
 
 CACHE = Path(__file__).resolve().parent.parent / ".cache"  # gitignored; holds project rows
@@ -78,6 +84,10 @@ class HomeInputs(BaseModel):
     existing_solar_kwp: Optional[float] = None
     has_storage: bool = False
     existing_storage_kwh: Optional[float] = None
+    roof_area_sqm: Optional[float] = None       # read by the hourly simulation (v1.2)
+    roof_azimuth_deg: Optional[float] = None
+    roof_tilt_deg: Optional[float] = None
+    roof_orientation: Optional[str] = None
     offer_date: Optional[str] = None  # ISO date; picks the installer catalogue of that time. Default: latest.
 
 
@@ -211,7 +221,7 @@ def refine(req: RefineReq):
     if ov.get("inverter_kw") == "include":
         ov.pop("inverter_kw")
     check_design({k: v for k, v in ov.items() if v != "include"}, "overrides")
-    before = eng.predict(inp)
+    before = eng.predict(inp, full=False)  # only its sizes feed the diff
     after = eng.predict(inp, ov)
     diff = []
     for k, comp in FIELDS.items():
@@ -219,7 +229,7 @@ def refine(req: RefineReq):
         if a != b:
             if ov.get(k) == "include":
                 r = after["components"][comp]["reason"]
-                why = r if r.startswith(("Included", "Replaces")) else f"Included by the planner; sized by the engine. {r}"
+                why = r if r.startswith(("Included", "Replaces", "Replacement")) else f"Included by the planner; sized by the engine. {r}"
             elif k in ov:
                 why = "Set by the planner."
             elif comp == "inverter":
