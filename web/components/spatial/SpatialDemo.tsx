@@ -179,6 +179,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     const prev = prevLayer.current;
     prevLayer.current = L;
     sc.setHeat(null);
+    if (L !== 7) sc.setXray(null);
     sc.show({ outlines: L <= 3, panels: L >= 3 && L !== 7, kit: L >= 4 && L <= 6, sun: L === 4, battery: L === 5 && !!design.battery_kwh ? "lit" : "plain" });
     sc.setTint(L === 2 || (sunTint && L === 3) ? "yield" : "off");
     sc.setWallbox(!!design.wallbox_kw);
@@ -187,7 +188,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     if (L === 1) sc.setLabels(sc.planeLabels("roof"));
     else if (L === 2) sc.setLabels(sc.planeLabels("sun"));
     else if (L === 3) sc.setLabels(sc.planeLabels("panels", counts));
-    else if (L === 7) sc.setLabels(sc.setHeat(envelope));
+    else if (L === 7) sc.setLabels(sc.setXray(envelope));
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, sunTint]);

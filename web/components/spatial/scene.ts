@@ -9,6 +9,7 @@ import { flowsOf, lerpHour, p2 } from "./types";
 import { facing } from "./facing";
 import { poseOffset, springStep, type Focus, type Pose } from "./camera";
 import { ShadeLayer } from "./shading";
+import { Xray } from "./xray";
 import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
@@ -140,6 +141,7 @@ export class SpatialScene {
   private plan: Plan | null = null;
   private planG: SVGGElement | null = null;
   private shade = new ShadeLayer();
+  private xray = new Xray({ walls: () => this.wallMesh, box: this.box, planes: () => this.targets.map((t) => t.p), root: this.scene });
 
   constructor(private host: HTMLElement, private overlay: HTMLElement, private svg: SVGSVGElement, private opts: SceneOpts) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
@@ -468,6 +470,8 @@ export class SpatialScene {
   }
 
   setShading(d: Shading | null, on: boolean, at: ShadeAt) { this.shade.set(d, on, at); }
+  // Heat pump step: envelope x-ray (xray.ts); null fades it out.
+  setXray(env: Envelope | null): Label[] { return this.xray.set(env); }
 
   setTint(mode: "off" | "yield" | "sun") {
     this.tintMode = mode;
@@ -825,6 +829,7 @@ export class SpatialScene {
 
     if (this.plan) this.drawPlan();
     this.shade.frame(this.camera, this.mode, (v) => this.project(v), this.host.clientWidth);
+    this.xray.frame(dt);
     if (this.opts.compass) {
       // Screen direction of north (local -z in three).
       const a = this.project(this.centre), b = this.project(this.centre.clone().add(new THREE.Vector3(0, 0, -5)));
@@ -846,6 +851,7 @@ export class SpatialScene {
     Object.values(this.flowPaths).forEach((el) => el.remove());
     this.planG?.remove();
     this.shade.dispose();
+    this.xray.dispose();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();

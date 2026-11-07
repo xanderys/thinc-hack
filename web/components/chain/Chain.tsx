@@ -17,6 +17,7 @@ import Why from "@/components/stage/Why";
 import s from "./chain.module.css";
 import { OfferValue, SiteVisitNote, useCardQualification } from "@/components/qualify/Verdict";
 import ShadingPanel from "@/components/spatial/ShadingScrubber";
+import { HeatPumpStep } from "@/components/spatial/EnvelopeBar";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
 
@@ -142,9 +143,9 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
   }
 
   const model: RoofModel | null = layers ? (Array.isArray(layers.planes) ? null : layers.planes) : null;
-  const hasEnv = !!model?.envelope?.faces?.length, hasPlan = !!model?.plan?.outline?.length;
   // A flat in an apartment block: the roof and the envelope are the building's, not the household's.
   const building = model ? isMultiUnit(model, inputs) : null, multi = !!building?.multi;
+  const hasEnv = !multi && !!model?.envelope?.faces?.length, hasPlan = !!model?.plan?.outline?.length;
   useEffect(() => {
     if (!building) return;
     dispatchEvent(new CustomEvent("marquee:building", { detail: { leadId: leadId ?? null, multi: building.multi, reason: building.reason } }));
@@ -298,7 +299,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
               {FIVE && open && n === N && layers?.checks && <CheckRow checks={layers.checks} />}
               {FIVE && open && n === 1 && multi && <p className={s.shared}>Shared roof, apartment building: single-family design does not apply<span>{building!.reason}</span></p>}
               {FIVE && open && n === 4 && multi && <p className={s.shared}>The walls and roof here are the whole apartment building&apos;s, so no heat load or heat pump size for one flat.</p>}
-              {built && bar && !(FIVE && n === 3 && !d.wallbox_kw && !layers?.ev) && !(FIVE && n === 4 && multi) && (open ? <BarView bar={FIVE && n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} /> : <BarStrip bar={bar} />)}
+              {built && bar && !(FIVE && n === 3 && !d.wallbox_kw && !layers?.ev) && !(FIVE && n === 4 && (multi || (open && hasEnv))) && (open ? <BarView bar={FIVE && n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} /> : <BarStrip bar={bar} />)}
               {FIVE && open && n === 1 && (
                 <>
                   <BarView bar={useBar} />
@@ -324,6 +325,7 @@ export default function Chain({ res, prev, inputs, leadId, variants, onVariant, 
               )}
               {FIVE && open && n === 4 && (
                 <div className={s.facts}>
+                  <HeatPumpStep res={res} inputs={inputs} env={hasEnv ? model!.envelope! : null} multi={multi} variants={variants} onVariant={onVariant} />
                   {ruleText("hp") && <p className={s.ruleS}>{ruleText("hp")}</p>}
                 </div>
               )}
