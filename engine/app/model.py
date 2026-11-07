@@ -99,6 +99,8 @@ def fmt(x, unit):
     return f"{s} {unit}"
 
 
+MIN_PV_FOR_BATTERY = 2.0  # kWp; below it a planner would not sign a battery (engine guard over the rules)
+
 R5_DESIGN = {"pv": ("pv_kwp", "kWp"), "battery": ("battery_kwh", "kWh"), "bat_kwp": ("battery_kwh", "kWh"),
              "bat_day": ("battery_kwh", "kWh"), "inv": ("inverter_kw", "kW"), "hp": ("heatpump_kw", "kW"), "wb": ("wallbox_kw", "kW"),
              "cap": ("pv_kwp", "kWp")}
@@ -315,6 +317,13 @@ class Engine:
             if rc.get("derivation"):
                 d["derivation"] = rc["derivation"]
             comps[c] = d
+        if (design.get("battery_kwh") and (design.get("pv_kwp") or 0) < MIN_PV_FOR_BATTERY and "battery_kwh" not in ov):
+            was = design["battery_kwh"]
+            design["battery_kwh"] = None
+            comps["battery"].update(decision="none", size=None, confidence=1.0,
+                                    reason=f"No battery: {design.get('pv_kwp') or 0:g} kWp is under {MIN_PV_FOR_BATTERY:g} kWp, too little "
+                                           f"PV to fill one (the rule gave {was:g} kWh; only 6 of 1,256 signed designs are under "
+                                           f"{MIN_PV_FOR_BATTERY:g} kWp). The planner can still add one.")
         phys_inp = {**inp, **(r.get("sim_inputs") or {})}  # the planes and yields rules-2 swept, so economics match its pick
         econ, plaus, opt = self._physics(phys_inp, design, inst, t, full, extras)
         out = {"design": design, "explanation": list(r.get("explanation") or [])[:6], "components": comps, "plausibility": plaus,
