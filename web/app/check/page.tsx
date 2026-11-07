@@ -106,7 +106,9 @@ export default function Check() {
               <div>
                 <dl className="figures">
                   <div><dt>Whole design matches</dt><dd className="num big">{fmt.pct(ev.overall.design_match_share)}</dd></div>
-                  <div><dt>Rule-of-thumb baseline</dt><dd className="num big" style={{ color: "var(--ink-3)" }}>{fmt.pct(ev.overall.baseline_design_match_share)}</dd></div>
+                  {ev.overall.ceiling_design_match_share != null && <div><dt>Ceiling</dt><dd className="num big">{fmt.pct(ev.overall.ceiling_design_match_share)}</dd></div>}
+                  <div><dt>{ev.overall.textbook_design_match_share != null ? "Textbook rule" : "Rule-of-thumb baseline"}</dt><dd className="num big" style={{ color: "var(--ink-3)" }}>{fmt.pct(ev.overall.textbook_design_match_share ?? ev.overall.baseline_design_match_share)}</dd></div>
+                  {ev.overall.floor_slope_design_match_share != null && <div><dt>Floor plus slope</dt><dd className="num big" style={{ color: "var(--ink-3)" }}>{fmt.pct(ev.overall.floor_slope_design_match_share)}</dd></div>}
                 </dl>
                 <p className="note">{ev.overall.definition}</p>
               </div>
@@ -120,6 +122,39 @@ export default function Check() {
                 </table>
               </div>
             </div>
+
+            {ev.ceiling && (
+              <div className="section">
+                <h2>How often planners agree with themselves</h2>
+                <dl className="figures">
+                  <div><dt>PV</dt><dd className="num">{fmt.pct(ev.ceiling.pv_agreement_share)}</dd></div>
+                  <div><dt>Battery</dt><dd className="num">{fmt.pct(ev.ceiling.battery_agreement_share)}</dd></div>
+                </dl>
+                <p className="note">{ev.ceiling.method}</p>
+              </div>
+            )}
+
+            {KEYS.some((k) => ev.components[k].ceiling_within_tolerance_share != null || ev.components[k].textbook_within_tolerance_share != null || ev.components[k].floor_slope_within_tolerance_share != null) && (
+              <div className="section scroll">
+                <h2>Within tolerance</h2>
+                <table className="data">
+                  <thead><tr><th>Component</th><th className="num">Ours</th><th className="num">Ceiling</th><th className="num">Textbook</th><th className="num">Floor plus slope</th></tr></thead>
+                  <tbody>{KEYS.map((k) => {
+                    const c = ev.components[k];
+                    const v = (x: number | null | undefined) => x == null ? "n/a" : fmt.pct(x);
+                    return (
+                      <tr key={k}>
+                        <td>{COMPONENT_NAME[k]}</td>
+                        <td className="num">{v(c.within_tolerance_share)}</td>
+                        <td className="num">{v(c.ceiling_within_tolerance_share)}</td>
+                        <td className="num" style={{ color: "var(--ink-3)" }}>{v(c.textbook_within_tolerance_share ?? c.baseline_within_tolerance_share)}</td>
+                        <td className="num" style={{ color: "var(--ink-3)" }}>{v(c.floor_slope_within_tolerance_share)}</td>
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+            )}
 
             <div className="section scroll">
               <h2>By component</h2>
