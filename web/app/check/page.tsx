@@ -29,6 +29,8 @@ export default function Check() {
   const [ev, setEv] = useState<Eval | null>(null);
   const [evErr, setEvErr] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [facts, setFacts] = useState<{ label: string; text: string }[]>([]);
+  useEffect(() => { call<{ facts: { label: string; text: string }[] }>("/api/insights").then((r) => { if (r.ok) setFacts(r.data.facts); }); }, []);
 
   useEffect(() => {
     call<ProjectSummary[]>("/api/projects?split=test&limit=50").then((r) => {
@@ -95,7 +97,7 @@ export default function Check() {
           </tbody>
         </table>
       </div>
-      {detail && <ul className="explain">{detail.ours.components.pv.reason && KEYS.map((k) => <li key={k}><strong>{COMPONENT_NAME[k]}.</strong> {detail.ours.components[k].reason}</li>)}</ul>}
+      {detail && <ul className="explain">{detail.ours.components.pv.reason && KEYS.map((k) => <li key={k} className="row"><span className="lbl">{COMPONENT_NAME[k]}</span><span>{detail.ours.components[k].reason}</span></li>)}</ul>}
 
       <div className="section">
         <div className="sheet-head"><h1>Scoreboard</h1>{ev && <span className="meta">{ev.split.test} held-out projects, {ev.split.method}</span>}</div>
@@ -176,6 +178,19 @@ export default function Check() {
               </table>
               <p className="note">Lower line in each cell: textbook rule.</p>
             </div>
+
+            {facts.length > 0 && (
+              <div className="section">
+                <h2>Where we differ from experts</h2>
+                <ul className="facts">
+                  {facts.map((f) => <li key={f.label}><span className="lbl">{f.label}</span><span>{f.text}</span></li>)}
+                  {ev.ceiling && ev.components.pv.within_tolerance_share != null && (
+                    <li><span className="lbl">Live scoreboard</span><span>PV within tolerance: ours <span className="num">{fmt.pct(ev.components.pv.within_tolerance_share)}</span>, planners against their own similar homes <span className="num">{fmt.pct(ev.ceiling.pv_agreement_share)}</span>.</span></li>
+                  )}
+                </ul>
+                <p className="note">Source: docs/data-insights.md and /api/eval.</p>
+              </div>
+            )}
 
             <div className="section scroll">
               <h2>Largest deviations</h2>

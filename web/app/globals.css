@@ -177,3 +177,8 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .comp.val.implausible .body p:first-child { color: var(--accent); }
 .mode { display: inline-flex; margin: 14px 0 0; }
 @media (min-width: 901px) { .comp.val { grid-template-columns: 150px 240px minmax(0, 1fr); } }
+.facts { margin: 0; padding: 0; list-style: none; max-width: 75ch; }
+.facts li { padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 15px; }
+.facts li, .explain li.row { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 4px 16px; }
+.facts .lbl, .explain .lbl { font-family: var(--font-sans), sans-serif; font-size: 13px; color: var(--ink-3); padding-top: 3px; }
+@media (max-width: 640px) { .facts li, .explain li.row { grid-template-columns: 1fr; } }
