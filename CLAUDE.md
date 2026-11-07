@@ -1,34 +1,42 @@
-# <Project name>
+# Reonic planner (thinc! hack MUC, 7 to 8 Nov 2026)
 
-<One line: what it is, who it is for, the one job of the demo.>
+From a few facts about a home, propose PV, battery and heat pump the way an experienced planner would, let the planner refine it, and prove it against real expert designs. Judges: Reonic (technical depth, user fit, business impact, demo) then a VC jury (creativity, realisability, usability, pitch).
 
 ## Run it
-- Install: `<command>`
-- Dev: `<command>` (opens <url or app>)
-- Check the demo path: `<command, or the 3 clicks>`
-- Deploy a preview: `<command>` (for example `vercel`)
+- Engine: `cd engine && uv sync && REONIC_DATA_DIR="/path/to/Project Data" uv run uvicorn app.main:app --port 8000`
+- Web: `cd web && npm install && npm run dev` (http://localhost:3000, needs `ENGINE_URL` and `ANTHROPIC_API_KEY` in `web/.env.local`)
+- Demo path: PLAN.md. Contract between engine and web: `docs/api.md`.
+- Deploy: `cd web && vercel` (engine stays on the mini behind Tailscale Funnel).
 
 ## Map
-- `<folder>/` : <what lives here, one line>
-- `<folder>/` : <...>
-- Entry point: `<file>`
-- Plan and status: `PLAN.md` (pitch, demo path, done, next, risks)
+- `engine/` : Python, uv. Parses the data pack, trains the chained model, evaluates on held-out projects, serves FastAPI.
+- `web/` : Next.js App Router, TypeScript. Planner UI. Talks only to the engine via `ENGINE_URL`.
+- `docs/` : `api.md` (contract), `domain.md` (sizing rules with sources), `briefs/` (agent briefs).
+- `deck/` : pitch slides (PDF goes here before submission).
+- Plan and status: `PLAN.md`.
 
 ## How we work
-- The main session orchestrates and writes no code. Each subagent owns one folder or set of files; never edit another agent's files.
-- Work in a branch or worktree per unit. Merge to main every 30 to 45 minutes when the demo path still works.
-- Verify by running it and looking at the real output, never "it compiles". One quick check per unit, no test suites unless a bug keeps coming back.
-- Report as built, checked, deployed: say which, and never claim more.
+- The main session orchestrates and writes no code. Each agent owns one folder; never edit another agent's files. `docs/api.md` changes only via the orchestrator.
+- Branch per unit (`engine`, `web`, `deck`). Push often. Merge to main every 30 to 45 minutes when the demo path still works.
+- Verify by running it and looking at real output. One quick check per unit, no test suites unless a bug keeps coming back.
+- Report as built, checked, deployed: say which, never claim more.
 
 ## Product rules
-- Truth: never fake state. Errors show the source's own words, with a way to retry.
+- Never fake state. Errors show the source's own words, with a way to retry.
 - A button does what it says, or shows why it can't.
+- No LLM inside the engine. The LLM only turns a planner's sentence into input changes (in `web/`). The engine is statistics plus physics.
+- "None" is a valid answer for battery, heat pump and wallbox. Every design must be physically and economically plausible.
 - Nothing sent in Xander's name, no money spent, no secrets in code or chat (keys in `.env.local`, gitignored).
 
+## Data rules (hard)
+- The Reonic data pack lives outside the repo (`.handoff/data/`, git-excluded) and is read via `REONIC_DATA_DIR`. Never copy rows, CSVs, derived tables with project rows, or model artefacts containing rows into the repo. Aggregates (counts, medians, metrics) are fine.
+- Units in the pack: `energy_demand_wh` is Wh (4,500,000 = 4,500 kWh). Battery and heat pump sizes in the parts file mostly live in `component_name` text ("Battery 7kWh", "Hybrid Inverter 6kW", "Complete Package 2 Sigenergy 10.8kWp + 9kWh"); the numeric size columns are mostly empty.
+
 ## Look and copy
-- No AI-look UI: no purple gradients, sparkle icons, three feature cards, emoji, Inter or Space Grotesk, drop shadows everywhere. Take the look from the subject's own world.
+- No AI-look UI: no purple gradients, sparkle icons, three feature cards, emoji, Inter or Space Grotesk, drop shadows everywhere. Take the look from the installer's world: offer documents, data sheets, roof plans. One accent colour.
 - Motion confirms an action or shows where something went; springs with no bounce; respect Reduce Motion.
 - Copy: British English, no em dashes, no taglines, no filler. Include only absolutely essential text.
 
 ## Gotchas
-- <a trap you hit once, so nobody hits it twice>
+- Installer `2a8ba8e2` has almost no `Module` rows; PV size must be derived (mounting area in SquareMeter rows, inverter kW, package names). Say how you derived it in `engine/README.md`.
+- About a third of projects have no parts at all; exclude them from training and say so.
