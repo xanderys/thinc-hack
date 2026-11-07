@@ -5,7 +5,7 @@ Most sources are installer or comparison blogs (marked "blog"). Treat figures as
 ## 1. Installer rules of thumb
 
 PV size per annual demand (kWp per 1,000 kWh):
-- 1.0 minimum, 1.2 to 1.5 in practice, 2.0 to 2.5 if heat pump or EV expected: [enter.de? no, reduco.ai](https://reduco.ai/blog/solar/pv-anlage-planen-dimensionieren) (blog, 2026)
+- 1.0 minimum, 1.2 to 1.5 in practice, 2.0 to 2.5 if heat pump or EV expected: [reduco](https://reduco.ai/blog/solar/pv-anlage-planen-dimensionieren) (blog, 2026)
 - About 2.0: [photovoltaik.info](https://www.photovoltaik.info/pv-speicher-waermepumpe-richtig-dimensionieren/) (2026)
 - 1.0 (kWp = MWh/year): [photovoltaik.info](https://www.photovoltaik.info/pv-anlage-dimensionieren-10kwp-10kwh-speicher/) (2026)
 - 2.5 (aggressive): [enter.de](https://www.enter.de/blog/pv-anlage-groesse-berechnen) (blog, 2026)
@@ -65,7 +65,7 @@ Wallbox:
 
 - No public kNN or installer-design-dataset study found for PV, battery or heat pump choice. Closest:
 - Feed-forward neural net sizing PV, wind, battery for homes with fast-charging EV; evaluated by electricity-cost reduction (10.1% vs slow charging, 19.6% vs uncontrolled) and ten uncertainty scenarios ([Chalmers / IEEE TSE](https://research.chalmers.se/publication/533977), 2023).
-- Supervised models trained on simulator-generated PV and battery size labels, 40,000x speedup over optimisation ([Gschwendtner/Cambridge-ETH poster](https://juliagsch.github.io/E-Energy_Poster.pdf), year not shown; PDF unreadable here).
+- Supervised models trained on simulator-generated PV and battery size labels, 40,000x speedup over optimisation ([Cambridge-ETH poster](https://juliagsch.github.io/E-Energy_Poster.pdf), year not shown; PDF unreadable here).
 - Household type by rho and rule-based simulation with SC and SS metrics on 300 Ausgrid homes ([arXiv 2506.17268](https://arxiv.org/html/2506.17268v1), 2025).
 - No source gave tolerance bands. We should define our own, for example PV within +/- 1 kWp or 15%, battery within one size step, heat pump yes/no accuracy plus kW within +/- 2 kW.
 
