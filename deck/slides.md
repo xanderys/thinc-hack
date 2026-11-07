@@ -34,17 +34,15 @@ footer: Marquee
 
 ## Which leads deserve a visit.
 
-<div class="data"><b>Visit</b>  Katrin Huber, Unterhaching: 10.35 kWp fits, payback 10 years, 7 of 9 facts stated. <b>14,600 EUR</b> estimate<br><b>Call first</b>  Sabine Wagner, postcode only: roof not measured, ask the address<br><b>Decline</b>  Theresa Moser, München: the roof fits under 3 kWp, no offer</div>
+<div class="data">The installer can see which leads deserve a visit before they spend a planner’s afternoon on one. And the planner arrives already knowing the likely answer, so the scan confirms the design instead of starting it.<br>replayed on 258 held-out signed sales: Visit <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b></div>
 
-[UNCONFIRMED: Decline story; the live address is a 3.8 m² shed in LoD2, and the card says 0.45 kWp while its sentence says 0.6]
+[UNCONFIRMED: desktop screenshot of the production board, Visit, Call first and Decline in one frame, from THINC HACK MASTER]
 
-<div class="data">The installer can see which leads deserve a visit before they spend a planner’s afternoon on one. And the planner arrives already knowing the likely answer, so the scan confirms the design instead of starting it.<br>installer B makes <b>34</b> offers a month: every Decline and Call first is a planner afternoon not spent on a site visit<br>replayed on 258 held-out signed sales: Visit <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b><br>illustrative: [UNCONFIRMED: Decline plus Call first count from the board, times hours a visit costs] planner hours a month</div>
+[UNCONFIRMED: which Decline lead stays, Xander's pick]
 
 [UNCONFIRMED: replay shares, engine/lab/qualification_backtest.md 1186795]
 
-[UNCONFIRMED: screenshot of the board grouped Visit, Call first, Decline, from THINC HACK MASTER about 01:30 Munich]
-
-<p class="brief">Estimates until the site visit; offer values from stated cost assumptions, not quotes. Installer B, 342 projects in about 10 months, from the pack.</p>
+<p class="brief">Estimates until the site visit; offer values from stated cost assumptions, not quotes.</p>
 
 ---
 
