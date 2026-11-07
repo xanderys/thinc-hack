@@ -69,13 +69,17 @@ async function make(lead: Lead, design: Design): Promise<string | null> {
   const model = Array.isArray(pl) ? { address: x.address, planes: pl } : pl?.planes ? pl : null;
   if (!model || !(model as { planes: { is_target?: boolean }[] }).planes.some((p) => p.is_target)) return null;
   const { renderThumb } = await import("@/components/spatial/thumb");
-  return renderThumb(model as Parameters<typeof renderThumb>[0], `/spatial-demo/glb?address=${encodeURIComponent(x.address)}`, W, H);
+  // A render that never finishes must not hold up every other card.
+  return Promise.race([
+    renderThumb(model as Parameters<typeof renderThumb>[0], `/spatial-demo/glb?address=${encodeURIComponent(x.address)}`, W, H),
+    new Promise<never>((_, no) => setTimeout(() => no(new Error("render timed out")), 30000)),
+  ]);
 }
 
 export default function ModelThumb({ lead, design }: { lead?: Lead; design: Design }) {
   const [url, setUrl] = useState<string | null>(null);
   const [on, setOn] = useState(false);
-  const key = lead ? `v5:${lead.lead_id}:${hash(JSON.stringify([design, lead.facts, lead.address_or_postcode]))}` : "";
+  const key = lead ? `v6:${lead.lead_id}:${hash(JSON.stringify([design, lead.facts, lead.address_or_postcode]))}` : "";
   useEffect(() => {
     if (!lead || !key) return;
     let dead = false;
