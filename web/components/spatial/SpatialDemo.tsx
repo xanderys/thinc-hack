@@ -138,9 +138,8 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const ids = [1, 2, 3, 4, 5, 6, ...(envelope ? [7] : []), ...(plan ? [8] : [])];
   const nSteps = ids.length;
   const L = ids.includes(layer) ? layer : 1;
-  // Photo: Google 3D Tiles under the layout (PhotoView.tsx); only in 3D, never on the plan layer.
+  // In 3D the Google mesh replaces the LoD2 house when it loads (PhotoView.tsx); never on the plan layer.
   const photo = usePhoto(address, ready ? scene.current : null, view === "3d" && L !== 8);
-  const photoTool = photo.available ? { on: photo.on && L !== 8 && view === "3d", set: (on: boolean) => { photo.setOn(on); if (on) { setView("3d"); if (L === 8) setLayer(3); } } } : undefined;
 
   // Panels change with the design: re-place them (animated only when the panels layer is showing).
   const panelKey = panelList.length + ":" + JSON.stringify(Object.values(counts));
@@ -350,13 +349,12 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
           </div>
         )}
 
-        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { photo.setOn(false); setView(v); if (v === "3d" && L === 8) setLayer(3); }, photo: photoTool })}
+        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { setView(v); if (v === "3d" && L === 8) setLayer(3); } })}
         {bare && <div className={`${s.tools} ${s.toolsBare}`}><div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div></div>}
         {!bare && <div className={s.tools}>
           <div className={s.toggle} role="group" aria-label="View">
-            <button type="button" aria-pressed={L !== 8 && view === "3d" && !photoTool?.on} onClick={() => { photo.setOn(false); setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
-            <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => { photo.setOn(false); setView("2d"); }}>2D</button>
-            {photoTool && <button type="button" aria-pressed={photoTool.on} onClick={() => photoTool.set(true)}>Photo</button>}
+            <button type="button" aria-pressed={L !== 8 && view === "3d"} onClick={() => { setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
+            <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => setView("2d")}>2D</button>
           </div>
           <div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div>
         </div>}
