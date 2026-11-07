@@ -1,4 +1,4 @@
-# Engine API contract (v1.9)
+# Engine API contract (v2.0)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -155,6 +155,12 @@ State lives in the engine (in-memory plus JSON under `engine/.cache/leads/`). Th
 - `GET /api/leads/{lead_id}` → `{ lead_id, status: "draft" | "in_call" | "done", customer_name, address_or_postcode, facts, draft: DesignResponse, history: { step, field, answer, changed, at }[], next_question, questions_asked: number, created_at, updated_at }`.
 - `GET /api/leads?limit=20` → the latest leads, newest first, with status and a one-line title.
 - `GET /api/intake/priors` → `{ n_steps_logged, order: { field, mean_swing, times_asked }[] }`: question priors re-ranked from the step log ("it learns which questions matter"); /api/ask uses them as tie-breakers only.
+
+## v2.0: transparent recommender (shapes unchanged)
+- `GET /health` adds `recommender: "rules" | "ml"` and `rules_version`.
+- `DesignResponse.explanation[]` are the rule sentences that fired; `components.<k>.derivation.axiom` is the rule, `adjustment.label` names the fitted constant and its source, `final` the result.
+- `DesignResponse.rules?: { name, sentence, constants: { name, value, unit, source, fitted_on }[] }[]` lists every rule applied.
+- `Eval.recommenders?: Record<"formula" | "blackbox" | "textbook", { design_match_share: number; pv_within: number; battery_within: number; wallbox_decision: number }>` on the same test homes; `Eval.deviation_quality?: { n_differ: number; ours_better_payback: number; expert_better_payback: number; ours_better_autarky: number; expert_better_autarky: number; method: string }`.
 
 Natural-language refinement ("the family buys an EV next year") is handled in `web/` (`POST /api/interpret` → `{ changes: { field, from, to, note }[], inputs: HomeInputs }`) with the Claude API, then `web/` calls `/api/refine`. The engine has no LLM.
 
