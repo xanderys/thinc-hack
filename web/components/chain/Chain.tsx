@@ -312,7 +312,7 @@ const isFail = (c: Check) => !c.pass && !isRef(c) && !isInfo(c);
 const refOut = (c: Check) => isRef(c) && (c.inside_band != null ? !c.inside_band : !c.pass);
 
 function Checks({ checks }: { checks: Check[] }) {
-  const val = (c: Check) => typeof c.value !== "number" ? String(c.value) : c.unit === "share" ? pc(c.value) : c.unit === "%" ? `${n0(c.value)} %` : `${c.value >= 100 ? n0(c.value) : n2(c.value)}${c.unit ? ` ${c.unit}` : ""}`;
+  const val = (c: Check) => c.value == null ? "" : typeof c.value !== "number" ? String(c.value) : c.unit === "share" ? pc(c.value) : c.unit === "%" ? `${n0(c.value)} %` : `${c.value >= 100 ? n0(c.value) : n2(c.value)}${c.unit ? ` ${c.unit}` : ""}`;
   const dcac = checks.find((c) => /dc\/ac/i.test(c.name));
   const dc = dcac && typeof dcac.value === "number" ? dcac.value : null;
   return (
@@ -363,7 +363,7 @@ function Offer({ res }: { res: DesignResponse }) {
         <div><span>Autarky</span><b>{pc(e.autarky_share)}</b></div>
       </div>
       <Sankey f={flows} pv={a.pv_yield_kwh} demand={a.load_kwh} />
-      {cash?.length ? <Cash v={cash} /> : null}
+      {cash?.length ? <div><Cash v={cash} /><p className={s.cashL}><span>{eur(Math.min(...cash))} at the start</span><span>{eur(cash[cash.length - 1])} after {Math.min(cash.length, 20)} years</span></p></div> : null}
     </div>
   );
 }
@@ -407,8 +407,6 @@ function Cash({ v }: { v: number[] }) {
     <svg className={s.cash} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Cumulative cash flow over 20 years">
       <line x1="0" x2={W} y1={zero} y2={zero} stroke="#d4d4d8" />
       {v.map((x, i) => <rect key={i} x={i * bw + 1} width={bw - 2} y={x >= 0 ? zero - (x / max) * (H / 2 - 4) : zero} height={(Math.abs(x) / max) * (H / 2 - 4)} fill={x >= 0 ? "#071b71" : "#ffc043"} rx="1.5" />)}
-      <text x="2" y={H - 2} fontSize="9" fill="#71717b">{eur(Math.min(...v))}</text>
-      <text x={W - 2} y="10" fontSize="9" fill="#71717b" textAnchor="end">{eur(v[v.length - 1])} after {v.length - (v.length > 20 ? 1 : 0)} years</text>
     </svg>
   );
 }

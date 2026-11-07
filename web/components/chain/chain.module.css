@@ -146,6 +146,10 @@
   .say :global(.s-refine > div) { flex-wrap: nowrap; }
   .say :global(.s-say) { min-width: 0; }
   .say :global(.s-listen .btn) { white-space: nowrap; }
+  /* Phone: the bar holds the sentence and the mic only; chips and notes are on the chain's Moved marks. */
+  .say :global(.s-chips), .say :global(.s-quiet) { display: none; }
+  .say :global(.s-refine > div) { flex-wrap: wrap; }
+  .say :global(.s-refine .error) { flex-basis: 100%; order: -1; }
 }
 /* v2.7: Reonic guides shown amber, info ticks neutral, rule-of-thumb line, optimiser caption */
 .checks li.refRow { background: #fff7e6; }
@@ -155,3 +159,4 @@
 .passS { grid-column: 1 / -1; margin: 4px 0 0; font-size: 12.5px; color: #1b7a39; line-height: 1.4; }
 .rot { margin: 8px 0 0; font-size: 13px; line-height: 1.4; color: var(--ink-2); border-left: 0; padding: 8px 10px; background: #fff7e6; border-radius: 8px; }
 .varC { margin: -4px 0 8px; font-size: 11.5px; color: var(--ink-3); }
+.cashL { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-3); margin: 4px 2px 0; }
