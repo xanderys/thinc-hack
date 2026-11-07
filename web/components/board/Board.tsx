@@ -8,6 +8,7 @@ import { HERO_LEAD } from "@/lib/demo";
 import House from "@/components/stage/House";
 import type { Live, Seed } from "@/components/stage/Stage";
 import AddSheet from "./AddSheet";
+import HousePhoto from "./HousePhoto";
 
 const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
@@ -179,6 +180,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
           <h1>{openCard?.name ?? seed?.read.inputs.address ?? "House"}</h1>
           <p>{[openCard?.place, calling ? STATUS.in_call : openCard && (DECIDED.has(openCard.status) ? `${STATUS[openCard.status]} ${hm(openCard.decision?.decided_at)}` : approved[openCard.id] ? STATUS.approved : STATUS[openCard.status])].filter(Boolean).join(" · ")}</p>
         </div>
+        <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
       </div>
       {seedErr && <div className="error" role="alert"><span><span className="src">Engine said</span>{seedErr}</span><button className="btn ghost" onClick={() => { const id = openId; setOpenId(null); setTimeout(() => setOpenId(id), 0); }}>Retry</button></div>}
       {!seed && !seedErr && <p className="s-quiet s-wait">Opening the house</p>}
@@ -206,7 +208,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
                 <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{STATUS[st]}</span></span>
                 <span className="b-name">{c.name}</span>
                 <span className="b-place">{c.place}</span>
-                {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /></span>}
+                {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><HousePhoto address={c.place} /></span>}
                 <span className="b-line num">{c.line}</span>
                 {dec && <span className={`b-dec ${c.status}`}>{STATUS[c.status]} {hm(dec.decided_at)}{c.status === "signed" && span(c.created, dec.decided_at) ? `, ${span(c.created, dec.decided_at)} from enquiry` : ""}</span>}
                 {dec && c.status === "signed" && <span className="b-today">Today: 8 days to an offer, 29 more to a signature</span>}

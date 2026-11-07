@@ -703,3 +703,12 @@ input, select, textarea { border-radius: 8px; }
 .b-open-h > .b-close { position: absolute; top: 0; right: 0; width: 44px; height: 44px; min-height: 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); display: grid; place-items: center; border-radius: 999px; }
 .b-close:hover { color: var(--ink); background: var(--sheet-2); }
 .b-open-h.live .b-close { color: var(--paper); }
+/* Front-of-house photo: fills the card's house box over the drawing, or sits beside the open card's title.
+   Hidden until loaded, then fades in (opacity only; a cut under Reduce Motion). */
+.b-house { position: relative; height: 124px; }
+.h-photo { opacity: 0; transition: opacity 0.35s cubic-bezier(0.25, 0.1, 0.25, 1); object-fit: cover; display: block; }
+.h-photo.on { opacity: 1; }
+.b-house .h-photo { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 8px; }
+.b-head-photo { width: 132px; height: 88px; border-radius: 8px; flex: none; margin-left: auto; }
+@media (max-width: 640px) { .b-house { height: 96px; } .b-head-photo { width: 96px; height: 64px; } }
+@media (prefers-reduced-motion: reduce) { .h-photo { transition: none; } }
