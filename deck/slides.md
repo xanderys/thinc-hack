@@ -36,12 +36,9 @@ footer: Marquee
 
 # “The family buys an EV next year.”
 
-<div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>10.35 kWp</b>, <b>10 kWh</b>, payback <b>11.7 years</b>, autarky <b>76%</b><br>after one sentence <b>13.05 kWp</b>, <b>15 kWh</b>, <b>11 kW</b> wallbox, <b>11.0 years</b></div>
-
-[UNCONFIRMED: v3 hero numbers from the rules engine; variants line dropped until re-checked]
+<div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>[UNCONFIRMED: kWp]</b>, <b>[UNCONFIRMED: kWh]</b>, payback <b>[UNCONFIRMED: years]</b><br>after one sentence <b>[UNCONFIRMED: kWp, kWh, wallbox, payback]</b></div>
 
 <p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
-
 
 ---
 
@@ -61,13 +58,13 @@ footer: Marquee
 
 <!-- _class: ink -->
 
-<p class="label">Design: rules a planner can read</p>
+<p class="label">Design: physics first, then the planner</p>
 
-## The rules the experts follow, written down.
+## Where each extra euro stops earning.
 
-<div class="data"><b>PV</b> a base of <b>4.95 kWp</b>, plus <b>0.95</b> times the kWp<br>that covers the year’s use at this roof’s yield<br><b>battery</b> <b>0.8 kWh</b> per kWp of array, snapped up to the package on sale<br><b>heat pump</b> only for an old gas or oil boiler<br><b>wallbox</b> 11 kW when an EV is real or planned</div>
+<div class="data">the physics knee gives this home <b>[UNCONFIRMED: kWp]</b> and <b>[UNCONFIRMED: kWh]</b><br>planners here would sell <b>[UNCONFIRMED: kWp]</b> and <b>[UNCONFIRMED: kWh]</b><br>the frontier shows what each extra euro earns</div>
 
-[UNCONFIRMED: v3 rule lines for installer A (B: battery 0.85), check against docs/rules.md once on main; heat pump and wallbox lines from docs/briefs/pivot.md]
+[UNCONFIRMED: story slide for the first-principles engine; numbers from the 08:00 note]
 
 ---
 
@@ -79,18 +76,13 @@ footer: Marquee
 
 ---
 
-<p class="label">The exam: 126 homes neither engine saw</p>
+<p class="label">The exam: homes no engine saw</p>
 
-<div class="stat">23.8%</div>
+## [UNCONFIRMED: scoreboard headline]
 
-## A transparent engine a planner can read beats a black box trained on the same data.
-
-<div class="data">all four right: rules <b>23.8%</b>, black box <b>19.0%</b>, textbook <b>6.3%</b><br>PV within 1 kWp or 15%: <b>38.9%</b>, <b>34.9%</b>, <b>18.3%</b><br>where we differ from the expert: we pay back sooner on <b>52</b> of 92 homes, the expert on <b>38</b></div>
-
-[UNCONFIRMED: v3 scoreboard; about ±4 points on 126 homes; payback on our 2026 cost averages]
+<div class="data">all four right: physics <b>[UNCONFIRMED]</b>, calibrated rules <b>[UNCONFIRMED]</b>, black box <b>[UNCONFIRMED]</b>, textbook <b>[UNCONFIRMED]</b><br>PV within 1 kWp or 15%: <b>[UNCONFIRMED]</b></div>
 
 <p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
-
 
 ---
 
