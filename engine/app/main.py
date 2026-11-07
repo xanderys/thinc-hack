@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import data
+from . import data, roofs
 from .model import MODEL_VERSION, Engine, row_design, row_inputs
 
 log = logging.getLogger("engine")
@@ -30,6 +30,7 @@ def startup():
         path = CACHE / f"engine-{key}.pkl"
         if path.exists():
             STATE["engine"], STATE["eval"] = pickle.loads(path.read_bytes())
+            STATE["engine"].restore_globals()
             log.warning("loaded cached model %s in %.1fs", key, time.time() - t)
         else:
             df, stats = data.load()
@@ -51,6 +52,7 @@ def startup():
     except Exception:
         log.exception("hourly warm-up failed")
     threading.Thread(target=warm_inbox, daemon=True).start()
+    threading.Thread(target=roofs.warm, daemon=True).start()
 
 
 INBOX_MAX = 60
@@ -104,7 +106,10 @@ class HomeInputs(BaseModel):
     roof_azimuth_deg: Optional[float] = None
     roof_tilt_deg: Optional[float] = None
     roof_orientation: Optional[str] = None
-    offer_date: Optional[str] = None  # ISO date; picks the installer catalogue of that time. Default: latest.
+    offer_date: Optional[str] = None
+    preference: Optional[Literal["independence", "payback", "upfront"]] = None  # v1.7: reorders variants only
+    address: Optional[str] = None   # v1.6: the engine looks the roof up
+    roof: Optional[dict] = None     # v1.6: or a prior /api/roof result  # ISO date; picks the installer catalogue of that time. Default: latest.
 
 
 class Design(BaseModel):
@@ -155,7 +160,7 @@ async def bad_request(_: Request, exc: RequestValidationError):
     return err(422, " ".join(parts) or "Invalid request.")
 
 
-RANGES = {"annual_demand_kwh": (300, 100_000, "kWh a year"), "num_inhabitants": (1, 20, "people"),
+RANGES = {"annual_demand_kwh": (500, 30_000, "kWh a year (single-family homes; the training data covers this range)"), "num_inhabitants": (1, 20, "people"),
           "house_size_sqm": (20, 1_000, "m2"), "house_built_year": (1800, 2027, ""), "ev_annual_km": (0, 100_000, "km a year"),
           "heating_cost_per_year_eur": (0, 20_000, "EUR a year"), "heating_demand_kwh": (0, 100_000, "kWh a year"),
           "electricity_price_ct_kwh": (5, 100, "ct/kWh"), "existing_solar_kwp": (0, 100, "kWp"), "existing_storage_kwh": (0, 100, "kWh")}
@@ -163,6 +168,15 @@ DESIGN_RANGES = {"pv_kwp": (0, 100), "inverter_kw": (0, 100), "battery_kwh": (0,
 
 
 def check_inputs(inp: dict):
+    """Range checks, then resolve the roof (v1.6) into inp['roof'] when an address is given."""
+    if not inp.get("has_ev"):
+        inp["ev_annual_km"] = None  # a mileage without an EV is stale; it must never move the design
+    if inp.get("address") and not inp.get("roof"):
+        try:
+            r = roofs.lookup(inp["address"])
+            inp["roof"] = r if r.get("source") != "none" else None
+        except Exception as e:
+            log.warning("roof lookup failed: %s", e)
     bad = []
     for k, (lo, hi, unit) in RANGES.items():
         v = inp.get(k)
@@ -335,6 +349,13 @@ def project(project_id: str):
     return err(404, f"No project with id {project_id}")
 
 
+@app.get("/api/roof")
+def roof(address: str = ""):
+    if not address.strip():
+        return err(422, "address is missing.")
+    return roofs.lookup(address)
+
+
 class AskReq(BaseModel):
     inputs: HomeInputs
     unknown: Optional[list[str]] = None  # fields the lead did not state; only these are asked
@@ -360,4 +381,19 @@ def inbox(limit: int = 20):
 @app.get("/api/eval")
 def evaluation():
     engine()
-    return STATE["eval"]
+    out = dict(STATE["eval"])
+    out["synthetic"] = synthetic_report()  # v1.4: null until the suite has written a report
+    return out
+
+
+def synthetic_report():
+    """eval.synthetic (v1.4) from engine/synthetic when that package and its report exist; absent otherwise."""
+    try:
+        from synthetic import load_report  # engine/ is the working directory
+    except ImportError:
+        return None
+    try:
+        return load_report()
+    except Exception as e:
+        log.warning("synthetic report unavailable: %s", e)
+        return None

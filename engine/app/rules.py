@@ -152,8 +152,11 @@ def hard_rules(inp, design):
         out["pv"] = f"{pv:g} kWp is {pv / (total / 1000):.1f} kWp per 1,000 kWh of demand; above 5 almost all of it is exported."
     if pv > 40:
         out["pv"] = f"{pv:g} kWp is beyond a single-family roof (about {pv * 5.5:.0f} m2 needed)."
-    if pv and inp.get("house_size_sqm") and pv * 5.5 > inp["house_size_sqm"] * 0.9:
+    roof = inp.get("roof") or {}
+    if pv and not roof.get("max_kwp") and inp.get("house_size_sqm") and pv * 5.5 > inp["house_size_sqm"] * 0.9:
         out["pv"] = f"{pv:g} kWp needs about {pv * 5.5:.0f} m2 of roof; the house has {inp['house_size_sqm']:.0f} m2."
+    if pv and roof.get("max_kwp") and pv > roof["max_kwp"] + 0.01:
+        out["pv"] = f"{pv:g} kWp needs about {pv * 5.5:.0f} m2; the roof has about {roof['usable_area_m2']:.0f} m2 usable ({roof['max_panels']} modules)."
     if pv and inv and not (0.6 <= inv / pv <= 1.5):
         out["pv"] = f"Inverter {inv:g} kW on {pv:g} kWp is a DC/AC ratio of {pv / inv:.2f}; usual is 0.8 to 1.3."
     if bat and not pv and not inp.get("has_solar"):
@@ -181,12 +184,18 @@ def plausibility(inp, design, econ):
         r = pv / (demand / 1000)
         msgs.append({"level": "ok" if 0.8 <= r <= 3.5 else "warn",
                      "message": f"{pv:g} kWp for {demand:,.0f} kWh is {r:.1f} kWp per 1,000 kWh (typical 1 to 2.5)."})
-        msgs.append({"level": "ok", "message": f"Roof needed about {pv * 5.5:.0f} m2 at 5.5 m2 per kWp."})
+        from .roofs import describe
+        roof_line = describe(inp.get("roof"))
+        msgs.append({"level": "ok", "message": roof_line or f"Roof needed about {pv * 5.5:.0f} m2 at 5.5 m2 per kWp."})
     if pv and inv:
         msgs.append({"level": "ok" if 0.8 <= pv / inv <= 1.3 else "warn", "message": f"DC/AC ratio {pv / inv:.2f} ({inv:g} kW inverter)."})
     if bat and pv:
         r = bat / pv
         msgs.append({"level": "ok" if 0.5 <= r <= 1.5 else "warn", "message": f"Battery {r:.1f} kWh per kWp (typical about 1)."})
+    if inp.get("existing_solar_kwp") and not inp.get("has_solar"):
+        msgs.append({"level": "warn", "message": f"Existing PV of {inp['existing_solar_kwp']:g} kWp is given but has_solar is false; it was ignored. Confirm whether the home has PV."})
+    if inp.get("existing_storage_kwh") and not inp.get("has_storage"):
+        msgs.append({"level": "warn", "message": f"Existing storage of {inp['existing_storage_kwh']:g} kWh is given but has_storage is false; it was ignored."})
     if wb and not inp.get("has_ev"):
         msgs.append({"level": "warn", "message": "Wallbox with no EV recorded: confirm a car is planned."})
     if inp.get("has_ev") and not wb and not inp.get("has_wallbox"):
