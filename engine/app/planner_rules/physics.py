@@ -19,7 +19,7 @@ WALLBOX_KW = 11.0
 INVERTER_SIZES = [3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30]
 HP_SIZES = [5.5, 7.5, 10.5, 12.5]
 FOSSIL = ("Gas", "Oil", "OtherNonRenewable")
-WTP_EUR_KWH = 0.29  # Kaps, Marinesi, Netessine 2024: median non-market value of not buying a kWh from the grid
+WTP_EUR_KWH = 0.29  # Kaps and Netessine, Operations Research (doi 10.1287/opre.2024.1104): median non-market value of not buying a kWh from the grid
 PREMIUM_SCALE = {None: 1.0, "independence": 2.0, "payback": 0.0, "upfront": 0.0}
 
 
@@ -34,7 +34,7 @@ PARAMS = {
     "feed_in": (f"{S.FEEDIN_LOW} / {S.FEEDIN_HIGH}", "ct/kWh", "EEG feed-in for systems from 1 Aug 2026, up to 10 kWp / 10 to 40 kWp, fixed 20 years (docs/domain.md)", None),
     "negative_hours": (S.NEG_PRICE_HOURS, "h", "no feed-in pay in negative-price hours (EEG 51, Solarspitzengesetz); 573 negative hours in 2025 (SMARD)", "https://www.smard.de/page/en/topic-article/5892/219038"),
     "pv_cost": (f"{S.PV_FIXED_EUR:,.0f} + {S.PV_EUR_KWP:,.0f} per kWp", "EUR", "line through 1,350 EUR/kWp at 5 kWp and 1,000 at 20 kWp, midpoints of the 2026 size table (reduco); Fraunhofer ISE average 1,015 EUR/kWp at 10 kWp, March 2026", "https://reduco.ai/blog/solar/solaranlage-kosten-nach-groesse-kwp"),
-    "battery_cost": (S.BAT_EUR_KWH, "EUR/kWh", "BSW Solar 2026 market average, installed, 270 to 420 EUR per kWh (via reduco 2026); Verbraucherzentrale gives 300 to 700", "https://reduco.ai/blog/stromspeicher-kosten-vergleich-2026"),
+    "battery_cost": (S.BAT_EUR_KWH, "EUR/kWh", "second-hand: BSW Solar 2026 market average of 315 EUR per kWh installed (range 270 to 420) as quoted by reduco 2026; the BSW primary was not found; Verbraucherzentrale gives 300 to 700", "https://reduco.ai/blog/stromspeicher-kosten-vergleich-2026"),
     "battery_life": (f"{S.BAT_LIFE_YEARS} years or {S.BAT_LIFE_CYCLES:,} cycles", "", "Verbraucherzentrale 10 to 15 years; LFP 6,000 full cycles to 80% capacity; replaced at today's price", "https://42watt.de/magazin/lebensdauer-stromspeicher"),
     "battery_physics": (f"{S.BAT_USABLE:.0%} usable, {S.BAT_RTE:.0%} round trip", "", "HTW Berlin Stromspeicher-Inspektion 2025 and Unabhaengigkeitsrechner FAQ", "https://solar.htw-berlin.de/studien/stromspeicher-inspektion-2025/"),
     "htw_cap": (HTW_KWH_PER_MWH, "kWh per MWh", "HTW Berlin rule: usable storage at most 1.5 kWh per 1,000 kWh of use; flagged, not a hard cap", "https://www.finanztip.de/daily/stromspeicher-zur-pv-anlage-so-gross-darf-er-hoechstens-sein/"),
@@ -42,7 +42,7 @@ PARAMS = {
     "degradation": (S.DEGRADATION * 100, "% a year", "median PV degradation 0.5% a year (Jordan and Kurtz, NREL, Prog. Photovolt. 2013)", "https://doi.org/10.1002/pip.1182"),
     "discount": (S.DISCOUNT * 100, "% a year", "a homeowner's opportunity cost, about the 10-year Bund yield in 2026 plus margin", "https://www.bundesbank.de/en/statistics/money-and-capital-markets/interest-rates-and-yields"),
     "knee": ("value per euro >= 1", "", "marginal analysis: add a step while its discounted 20-year value exceeds its cost, which is a marginal return above the discount rate (Brealey, Myers and Allen, Principles of Corporate Finance, NPV rule); the knee of the cost-to-value frontier (Satopaa et al., Kneedle, ICDCS 2011)", "https://doi.org/10.1109/ICDCSW.2011.20"),
-    "independence_premium": (WTP_EUR_KWH * 100, "ct per kWh not bought from the grid", "per kWh of household and EV use the home supplies itself instead of buying it: median non-market value of avoided grid purchases among German home-storage households, revealed by adoption (Kaps, Marinesi and Netessine, Residential Battery Storage: Reshaping the Way We Do Electricity, Operations Research 2024; mean 53 ct); counted in the 20-year value, not in the money NPV; x2 for independence, 0 for payback and upfront", "https://doi.org/10.1287/opre.2024.1104"),
+    "independence_premium": (WTP_EUR_KWH * 100, "ct per kWh not bought from the grid", "per kWh of household and EV use the home supplies itself instead of buying it: median non-market value of avoided grid purchases among German home-storage households, revealed by adoption (Kaps and Netessine, Residential Battery Storage: Reshaping the Way We Do Electricity, Operations Research, doi 10.1287/opre.2024.1104, data from 3,200 Solarwatt households 2018 to 2020; mean 53 ct); counted in the 20-year value, not in the money NPV; x2 for independence, 0 for payback and upfront", "https://doi.org/10.1287/opre.2024.1104"),
     "dcac": (f"{DCAC_LO} to {DCAC_HI}", "", "DC/AC sizing range for German roofs (HTW Berlin; SMA Sunny Design guidance)", None),
     "heat_pump_cost": (f"{S.HP_GROSS_EUR:,} less {S.HP_SUBSIDY:.0%} of up to {S.HP_ELIGIBLE_CAP:,}", "EUR", "air-water in an existing home 27,000 to 40,000 EUR (reduco 2026), midpoint; BEG base subsidy 30% (KfW 458)", "https://reduco.ai/blog/waermepumpe-kosten-foerderung"),
     "boiler_avoided": (S.BOILER_AVOIDED_EUR, "EUR", "a new gas boiler the home would otherwise buy, 8,000 to 12,000 EUR (docs/domain.md 3)", None),
@@ -82,7 +82,7 @@ def _plane_yield(tilt, az):
     return float(S.pv_per_kwp("Munich", float(tilt), float(az)).sum())
 
 
-FLAT_TILT = 15.0  # flat roofs: modules on 15 degree south racks (common ballasted mounting)
+FLAT_TILT = 15.0  # assumption: flat roofs carry modules on 15 degree south racks
 
 
 def _model_planes(inputs, roof):
@@ -108,7 +108,7 @@ def planes(inputs, roof=None):
                         "max_kwp": int(p["max_panels"]) * MODULE_KWP, "yield_kwh_kwp": round(y),
                         "scale": y / _plane_yield(tilt, az),
                         "source": "LoD2 face (Bayerische Vermessungsverwaltung)" + (", shaded yield from the bDOM surface model" if shaded else ", unshaded yield")
-                        + (", flat: 15 deg south racks" if flat else ""), "assumed": False})
+                        + (", flat: 15 deg south racks (assumption)" if flat else ""), "assumed": False})
     else:
         segs = [x for x in roof.get("segments") or [] if x.get("azimuth") is not None and (x.get("area_m2") or 0) > 0]
         if segs and roof.get("max_kwp"):
@@ -121,7 +121,7 @@ def planes(inputs, roof=None):
             for t, a, sh in [o[:3] for o in S.orientation(inputs)]:
                 out.append({"id": None, "tilt": t, "azimuth": a, "area_m2": None, "max_kwp": NO_ROOF_MAX_KWP * sh,
                             "yield_kwh_kwp": round(_plane_yield(t, a)), "scale": 1.0,
-                            "source": "no roof: typical-year default, south 35 deg, up to 30 kWp (zero-VAT limit, UStG 12(3))", "assumed": True})
+                            "source": "no roof: typical-year default, south 35 deg (assumption), up to 30 kWp (assumption, set at the 30 kWp limit of the zero-VAT rule for homes, UStG 12(3))", "assumed": True})
     return sorted(out, key=lambda p: -p["yield_kwh_kwp"])
 
 
