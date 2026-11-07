@@ -155,12 +155,15 @@ export class SpatialScene {
   }
 
   private setOrtho(a: number) {
-    const half = (this.span / 2) * 1.15;
+    // Top-down on the house itself with a margin of street around it.
+    const c = this.box.isEmpty() ? this.centre : this.box.getCenter(new THREE.Vector3());
+    const sz = this.box.isEmpty() ? new THREE.Vector3(this.span, 0, this.span) : this.box.getSize(new THREE.Vector3());
+    const half = Math.max(sz.x, sz.z) * 1.1 + 4;
     const hh = a >= 1 ? half : half / a, hw = hh * a;
     Object.assign(this.ortho, { left: -hw, right: hw, top: hh, bottom: -hh });
-    this.ortho.position.set(this.centre.x, 120, this.centre.z);
+    this.ortho.position.set(c.x, 120, c.z);
     this.ortho.up.set(0, 0, -1); // north up
-    this.ortho.lookAt(this.centre.x, 0, this.centre.z);
+    this.ortho.lookAt(c.x, 0, c.z);
     this.ortho.updateProjectionMatrix();
   }
 
@@ -526,7 +529,7 @@ export class SpatialScene {
       if (!el) return;
       if (x.key.startsWith("node-") && el.innerHTML !== x.html) el.innerHTML = x.html;
       const p = this.project(x.at);
-      el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`;
+      el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) ${x.key === "node-batt" ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
       el.style.visibility = p.ok ? "visible" : "hidden";
     });
 

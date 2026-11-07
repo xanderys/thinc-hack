@@ -190,10 +190,12 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         };
       case 3: {
         const per = target.filter((p) => counts[p.id]).map((p) => `${counts[p.id]} ${facing(p.azimuth)}`);
-        const kw = kwp ?? (modKwp ? nPanels * modKwp : null);
+        const kw = modKwp ? nPanels * modKwp : kwp;
+        const short = kwp != null && kw != null && kwp - kw > 0.05 ? `; the design asks for ${n2(kwp)} kWp, the usable roof takes ${n2(kw)}` : "";
+        const yieldOk = model?.layout && model.layout.panels === nPanels;
         return {
           sentence: "Modules go where the roof pays back best.",
-          eq: `${nPanels} modules${modKwp ? ` × ${n2(modKwp)} kWp` : ""} = ${kw != null ? n2(kw) : "?"} kWp` + (per.length > 1 ? ` (${per.join(" + ")})` : "") + (e?.annual ? `; ${n0(e.annual.pv_yield_kwh)} kWh a year` : model?.layout?.kwh_per_year ? `; ${n0(model.layout.kwh_per_year)} kWh a year` : ""),
+          eq: `${nPanels} modules${modKwp ? ` × ${n2(modKwp)} kWp` : ""} = ${kw != null ? n2(kw) : "?"} kWp` + (per.length > 1 ? ` (${per.join(" + ")})` : "") + (e?.annual ? `; ${n0(e.annual.pv_yield_kwh)} kWh a year` : yieldOk ? `; ${n0(model!.layout!.kwh_per_year)} kWh a year` : "") + short,
           sources: src(["pvgis", "pvlib", "lod2", "yield", "module_kwp"]),
         };
       }
