@@ -46,11 +46,18 @@ def load_rules(stub_eng=None):
             return stub_eng.baseline(inp)
         return calibrate, recommend, True
     try:
-        from app.planner_rules import recommend  # type: ignore
+        import app
+        extra = os.environ.get("PLANNER_RULES_ENGINE")  # engine/ dir of a checkout holding app/planner_rules (not committed here)
+        if extra:
+            app.__path__.append(str(Path(extra) / "app"))
+        from app.planner_rules import recommend as _rec  # type: ignore
         from app.planner_rules.calibrate import calibrate  # type: ignore
     except ImportError as e:
-        raise SystemExit(f"app.planner_rules is not available yet ({e}). REONIC PHYSICS has not pushed recommend() and "
-                         f"calibrate(); run with --stub to check the harness, or fetch origin/engine and retry.")
+        raise SystemExit(f"app.planner_rules is not available ({e}). Set PLANNER_RULES_ENGINE to an engine/ dir that has it "
+                         f"(origin/physics), or run with --stub to check the harness.")
+
+    def recommend(inp, constants=None):
+        return _rec(inp, constants=constants)["design"]
     return calibrate, recommend, False
 
 
@@ -128,7 +135,7 @@ def table(lines: list) -> str:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stub", action="store_true", help="wrap the textbook rule as recommend(); harness check only")
-    ap.add_argument("--max-sim", type=int, default=150, help="cap on hourly simulations per population")
+    ap.add_argument("--max-sim", type=int, default=100000, help="cap on hourly simulations per population")
     ap.add_argument("--no-sim", action="store_true")
     a = ap.parse_args()
     check_load("start")
@@ -149,6 +156,11 @@ def main():
     consts = calibrate(fit_df)                     # fit half only
 
     unseen = test_df[~test_df.project_id.isin(set(eng.train.project_id.astype(str)))].reset_index(drop=True)
+    inter = board[board.project_id.isin(set(test_df.project_id))].reset_index(drop=True)
+    print("fitted constants:")
+    for k, v in consts.items():
+        if k != "_meta":
+            print(" ", k, v)
     lines, preds = [], {}
     for label, frame in (("test half", test_df), ("258 board", board)):
         preds[(label, "formula")] = formula_frame(recommend, consts, frame)
@@ -159,8 +171,11 @@ def main():
     lines.append(("black box (chain)", "258 board", score(board, predict_frame(eng, board))))
     for label, frame in (("test half", test_df), ("258 board", board)):
         lines.append(("textbook", f"{label} (new-system)", score(frame, preds[(label, "textbook")])))
+    lines.append(("formula (rules)", "board and test half", score(inter, formula_frame(recommend, consts, inter))))
+    lines.append(("black box (chain)", "board and test half", score(inter, predict_frame(eng, inter))))
+    lines.append(("textbook", "board and test half", score(inter, textbook_frame(eng, inter))))
     order = {"formula": 0, "black": 1, "textbook": 2}
-    lines.sort(key=lambda x: (x[1].startswith("258"), order[x[0].split()[0]]))
+    lines.sort(key=lambda x: (x[1].startswith("258") + 2 * x[1].startswith("board"), order[x[0].split()[0]]))
 
     md = [f"# Rules scoreboard{' (STUB RUN, harness check, not a result)' if stub else ''}", ""]
     if stub:
@@ -177,6 +192,11 @@ def main():
             md.append(f"| {label} | {d['differs']} | {d['simulated']} | {d['payback_ours']} | {d['payback_expert']} | {d['payback_tie']} | "
                       f"{d['autarky_ours']} | {d['autarky_expert']} | {d['autarky_tie']} |")
         md.append("")
+    md += ["", "Fitted constants (fit half only):", ""]
+    for k, v in consts.items():
+        if k != "_meta":
+            md.append(f"- {k}: {v}")
+    md.append("")
     md.append(f"Black box on the test half is scored only on {len(unseen)} homes it did not train on; the rest are in its train split.")
     out = "\n".join(md)
     print(out)

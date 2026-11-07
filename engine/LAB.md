@@ -122,3 +122,7 @@ The lab ran five measured changes on 5-fold cross-validation inside the training
 1. Done in iteration 2 (kept lowest option).
 2. Done in iteration 3 (not merged). Grey-box (approved by Xander via THINC HACK MASTER): base = physics optimum (`app.hourly.optimum`, installer catalogue), gradient boosting learns the expert's deviation per component, chained as today. Merge candidate only if it beats the current board.
 3. Done in iteration 4 (rejected). 4. Done in iteration 5 (merged). Closed after 19:30 Berlin 7 Nov: documentation only until the Sunday 08:00 stop.
+
+## Rules scoreboard (8 Nov, origin/physics 1329cd2)
+
+`python -m lab.score_rules` with `PLANNER_RULES_ENGINE` pointing at a physics checkout (planner_rules not copied in). Formula calibrated on the fit half, scored on the 633 new-system test homes, the 258 board and the 126 in both. All four: formula 17.9% / 20.9% / 23.8%, black box 19.0% (126 unseen) / 17.1% (board), textbook 6.8% / 6.6% / 6.3%. Matches PHYSICS' self-score to the digit. Deviation (all differing homes simulated): test half 519 differ, payback better for ours in 277 and the expert in 233, autarky ours 315 and expert 200; board 204 differ, payback 124 vs 77, autarky 111 vs 90. Report: `lab/reports/rules_scoreboard.md`.
