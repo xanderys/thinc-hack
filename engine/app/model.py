@@ -276,6 +276,8 @@ class Engine:
     def rules_inputs(self, inp: dict) -> dict:
         """What the rules read: the inputs, the roof as the simulation sees it, and the built house model when cached."""
         rec_in = roof_to_sim({k: v for k, v in inp.items() if k != "_estimated"})
+        if "floor area" in (inp.get("_estimated") or []):  # an address estimate is not something the lead said
+            rec_in.pop("house_size_sqm", None)
         if inp.get("address") and inp.get("roof"):
             m = __import__("app.roofs", fromlist=["model_json_cached"]).model_json_cached(inp["address"], inp.get("house_built_year"))
             if m:
