@@ -1,32 +1,36 @@
 # Pitch script (4:00)
 
-Draft v1. Figures on slide 4 are provisional until the engine's final eval; slide 6 waits on Jamon. Demo steps to be checked against the restyled build.
+Draft v2, against the north star (enquiry to signed install, faster). Slides 3 and 6 carry engine numbers that are final by 21:00 Munich. Speakers: Zi Yuan tells the planner's story, Xander runs the demo and the score, Jamon the roadmap. [UNCONFIRMED: speaker split carried over from v1; roadmap moved to Jamon]
 
-## 0:00 to 0:30, slide 1, Zi Yuan
-"Reonic's own brief says it: planners spend hours on every single design. Annual demand, heating, an electric car, the budget. Each one changes the system, and the knowledge to balance them lives in the heads of senior planners."
+## 0:00 to 0:20, slide 1, Zi Yuan
+"At one installer on Reonic, the median time from enquiry to offer is 8 days, across 260 projects. And the first credible offer often wins. Marquee takes the design and the draft from days to seconds."
 
-## 0:30 to 0:55, slide 2, Zi Yuan
-"So we built Marquee. A planner enters a few facts about a home and gets the design an experienced planner would draw: PV, battery, heat pump and wallbox, or none of them, each with the reason. The decisions are coupled, so the model is a chain: PV first, then the battery given that PV, then heat pump, then wallbox. Change one and the rest re-size. Xander will show you."
+## 0:20 to 0:50, slide 2, Zi Yuan
+"Tuesday, 8:40. A planner has six new enquiries and two site visits this afternoon. Frau Weber writes: family of four, detached house, want solar, maybe a battery, bill attached. Now the planner has to decide panel size, battery, heat pump and charger, and every one depends on the others. A senior planner does it from gut feel. Everyone else redoes it when the homeowner asks: what if we skip the battery?"
+[UNCONFIRMED: slide 2 wording]
 
-## 0:55 to 2:00, slide 3 (live), Xander
-Four steps, in the order and words of Reonic's demo moment. Read figures off the screen; say none we have not seen live.
+## 0:50 to 1:50, slide 3 (live), Xander
+Read figures off the screen; say none we have not seen live.
 
-1. **A home is described.** "A planner enters a few basic facts about a project: [read the inputs on screen]."
-2. **A complete system appears.** "PV, battery and heat pump as appropriate, with a short explanation of why: [read the design and its reasons]. Here are the homes like this one it learned from."
-3. **The design is refined.** "The planner types: the family is buying an electric car next year. The design adapts: [read what moved and why]."
-4. **It is checked against reality.** "A home the model has never seen: our proposal next to the expert design for the same project. And across many projects, the next slide."
+1. "I paste Frau Weber's email. Marquee reads it and quotes back every fact it found."
+2. "One thing is missing that would change the design most: how much electricity they use a year. So it asks one question instead of a call back." [answer on screen]
+3. "Here is the offer a senior planner at this installer would write, with the roof measured from open data, no site visit: [read the design and payback]. Every number opens its proof: the homes like this one, the year hour by hour, and the cheapest version. The variants are ready too: [read lowest upfront and best payback]."
+4. "The family buys an EV next year." [type it] "One sentence, and the design re-sizes around the car: [read what moved]. Approve. That is an offer ready to send."
 
-## 2:00 to 2:30, slide 4, Xander
-"Across every home we held back, our PV size lands within 1 kWp or 15% of the expert 38.5% of the time. That sounds low until you ask how often two planners agree on identical homes: 40.3%. We are at the level of a second planner. The textbook rule gets 14.6%. On the whole design, all four components, we reach 19.1% against a planner ceiling of 22.7%."
+## 1:50 to 2:20, slide 4, Xander
+"Why only one question? The usual intake explains just 15% of PV size. Reonic's own rule is: when in doubt, ask the user. So the agent asks for the one fact that would move the design most, and stays silent when nothing would."
+[UNCONFIRMED: slide 4 wording]
 
-## 2:30 to 3:00, slide 5, Xander
-"The data taught us the rules nobody wrote down. Planners size PV as a floor plus a slope, 6.5 kWp plus 0.58 per megawatt hour; the textbook under-sizes 82% of real designs. A battery goes with 95% of PV designs, about one kilowatt hour per kWp. And 91% of wallboxes go to homes flagged without an EV: the flag is missing, not the car."
+## 2:20 to 2:50, slide 5, Xander
+"It makes every planner as consistent as your best one. Planners here install 2 kWp per megawatt hour; the textbook rule under-sizes 82% of real designs. And 91% of wallboxes went to homes with no EV on record. The habits are real; nobody wrote them down. Now they are on every offer."
+[UNCONFIRMED: slide 5 wording]
 
-## 3:00 to 3:25, slide 6, Jamon
-"[UNCONFIRMED: value per installer, built from the Reonic experts' figures]"
+## 2:50 to 3:25, slide 6, Xander
+"Does it match the experts? We held back 258 signed projects the model never saw. [UNCONFIRMED: final scoreboard after 21:00, all four components ours vs textbook vs near-identical homes, then PV.] Near-identical homes at the same installer only agree that often, so this is a planner's level of agreement, drafted in seconds."
 
 ## 3:25 to 3:50, slide 7, Jamon
-"Inside Reonic, this goes from first draft to checked offer. It learns each installer's catalogue and defaults. Two intake fields, roof area and household size, lift the ceiling on PV. A validation view flags a design that is unusual for homes like this one. And the homeowner can switch the battery and see the bill change."
+"Today, every design replays through Munich's real 2025: real weather and real day-ahead prices, including the 576 hours when prices went negative. Next, only Reonic can do this: the installed systems' meter and inverter data flows back through Reonic and teaches the next design what actually worked. Every install makes the next offer better."
 
 ## 3:50 to 4:00, slide 8, Zi Yuan
-"Reonic wrote: every home is different; the expertise to design for it should not be the bottleneck. Marquee is how it stops being one. Thank you."
+"Planners sign off the exceptions. The machine drafts the rest. And every number has a source. Thank you."
+[UNCONFIRMED: close wording]
