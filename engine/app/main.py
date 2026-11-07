@@ -319,6 +319,25 @@ def project(project_id: str):
     return err(404, f"No project with id {project_id}")
 
 
+class AskReq(BaseModel):
+    inputs: HomeInputs
+
+
+@app.post("/api/ask")
+def ask(req: AskReq):
+    inp = req.inputs.model_dump()
+    check_inputs(inp)
+    return {"questions": engine().ask(inp)}
+
+
+@app.get("/api/inbox")
+def inbox(limit: int = 20):
+    rows = engine().inbox(max(1, min(limit, 100)))
+    for x in rows:
+        x["label"] = label(x.pop("_row"))
+    return [{k: x[k] for k in ("project_id", "installer_id", "label", "inputs", "draft", "confidence", "expert", "within", "note")} for x in rows]
+
+
 @app.get("/api/eval")
 def evaluation():
     engine()

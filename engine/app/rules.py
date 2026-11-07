@@ -7,6 +7,23 @@ FEEDIN_LOW, FEEDIN_HIGH = 7.70, 6.66  # ct/kWh, up to 10 kWp / 10 to 40 kWp port
 EV_KWH_PER_KM = 0.2
 HP_COST = 36_400  # mean of 160 real offers, before subsidy
 WALLBOX_COST = 1_200
+HP_SUBSIDY = 0.30            # BEG base subsidy; bonuses up to 70% exist but depend on the household (docs/domain.md 3)
+BOILER_AVOIDED_EUR = 10_000  # a new gas or oil boiler the homeowner would otherwise buy (8,000 to 12,000)
+
+
+def hp_net_capex(inp) -> float:
+    """Heat pump cost after the 30% base subsidy, minus the boiler replacement it avoids when it replaces gas or oil."""
+    net = HP_COST * (1 - HP_SUBSIDY)
+    if inp.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable"):
+        net -= BOILER_AVOIDED_EUR
+    return net
+
+
+def hp_capex_note(inp) -> str:
+    s = f"Heat pump EUR {HP_COST:,} less the {HP_SUBSIDY:.0%} base subsidy"
+    if inp.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable"):
+        s += f", less EUR {BOILER_AVOIDED_EUR:,} for the boiler replacement it avoids"
+    return s + f": EUR {hp_net_capex(inp):,.0f} counted."
 INVERTER_SIZES = np.array([3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30], float)
 
 TOL_LABEL = {"pv": "±1 kWp or ±15%, whichever is larger", "battery": "±2 kWh", "heatpump": "decision exact",
@@ -16,7 +33,7 @@ ASSUMPTIONS = [
     f"Yield {YIELD} kWh per kWp per year.",
     "PV EUR 1,400 per kWp at 5 kWp falling to EUR 1,000 at 20 kWp, excl. battery.",
     "Battery EUR 450 per kWh installed.",
-    f"Heat pump EUR {HP_COST:,} before subsidy; replaces heating at seasonal COP 3.5.",
+    "Heat pump replaces heating at seasonal COP 3.5.",
     f"Wallbox EUR {WALLBOX_COST:,} installed; EV charging cost not counted as saving.",
     f"Feed-in {FEEDIN_LOW} ct/kWh up to 10 kWp, {FEEDIN_HIGH} ct above (EEG, Aug 2026).",
     "Self-consumption and autarky from a simple ratio model, not a simulation.",
@@ -107,12 +124,14 @@ def economics(inp, design):
     exported = gen - used
     feed = (FEEDIN_LOW * min(pv, 10) + FEEDIN_HIGH * max(pv - 10, 0)) / max(pv, 1e-9) / 100 if pv else 0
     saving = used * price + exported * feed
-    capex = pv * pv_cost_per_kwp(pv) + bat * 450 + (HP_COST if hp else 0) + (WALLBOX_COST if wb else 0)
+    capex = pv * pv_cost_per_kwp(pv) + bat * 450 + (hp_net_capex(inp) if hp else 0) + (WALLBOX_COST if wb else 0)
     if hp:
         heat_cost = inp.get("heating_cost_per_year_eur") or (inp.get("heating_demand_kwh") or hp * 2000) * 0.12
         saving += heat_cost - hp_el * price
     a = list(ASSUMPTIONS)
     a.insert(0, f"Electricity {price * 100:.0f} ct/kWh" + ("" if inp.get("electricity_price_ct_kwh") else " (default)") + ".")
+    if hp:
+        a.append(hp_capex_note(inp))
     if inp.get("has_ev"):
         a.append(f"EV adds {ev_kwh(inp):,.0f} kWh a year at {EV_KWH_PER_KM} kWh/km.")
     if hp and not inp.get("heating_cost_per_year_eur"):

@@ -238,6 +238,129 @@ class Engine:
             out["optimum"] = opt
         return out
 
+    def sizes_batch(self, inps: list[dict]) -> list[dict]:
+        """Sizes only, no overrides, for many homes in one pass per model; same logic as predict()."""
+        if not inps:
+            return []
+        F = [base_features(i, i["installer_id"]) for i in inps]
+        X = pd.DataFrame(F)[self.cols]
+        n = len(inps)
+        insts = [i["installer_id"] for i in inps]
+        p_pv = self.models["pv_dec"].predict_proba(X)[:, 1]
+        pv_raw = self.models["pv_size"].predict(X)
+        pv_alt = np.array([snap(float(pv_raw[k]), self.catalogue[insts[k]]["pv"]) for k in range(n)])
+        pv = np.where(p_pv >= 0.5, pv_alt, 0.0)
+        X1 = X.assign(pv=pv)
+        p_b = self.models["bat_dec"].predict_proba(X1)[:, 1]
+        b_raw = self.models["bat_size"].predict(pd.concat([X1, X.assign(pv=pv_alt)], ignore_index=True))
+        out = []
+        X2 = X1.copy()
+        bats = np.zeros(n)
+        for k in range(n):
+            cat_b = self.battery_catalogue(insts[k], F[k]["t"])
+            b = snap(float(b_raw[k]), cat_b) if p_b[k] >= 0.5 else 0.0
+            if b and not pv[k] and not inps[k].get("has_solar"):
+                if NO_PV_RULE == "pv":
+                    pv[k] = pv_alt[k]
+                    b = snap(float(b_raw[n + k]), cat_b)
+                else:
+                    b = 0.0
+            bats[k] = b
+        X2 = X.assign(pv=pv, battery=bats)
+        p_h = self.models["hp_dec"].predict_proba(X2)[:, 1] if self.models.get("hp_dec") else np.zeros(n)
+        p_22 = self.models["wb_size"].predict_proba(X2)[:, 1]
+        for k, i in enumerate(inps):
+            cat = self.catalogue[insts[k]]
+            hp = snap_up(rules.heatpump_kw(i), cat["heatpump"]) if p_h[k] >= 0.5 and i.get("heating_type") != "Heatpump" else 0.0
+            wb = (22.0 if p_22[k] >= 0.5 else 11.0) if i.get("has_ev") else 0.0
+            out.append({"pv_kwp": float(pv[k]) or None, "inverter_kw": rules.inverter_kw(pv[k]) if pv[k] else None,
+                        "battery_kwh": float(bats[k]) or None, "heatpump_kw": hp or None, "wallbox_kw": wb or None})
+        return out
+
+    ASK_TOL = {"pv_kwp": 1.0, "battery_kwh": 2.0, "heatpump_kw": 2.0, "wallbox_kw": 2.0}
+
+    def ask(self, inp: dict) -> list:
+        """Value of information: which missing or default input would move the design most."""
+        cands = []
+        if inp.get("heating_type", "Unknown") == "Unknown":
+            cands.append(("heating_type", inp.get("heating_type", "Unknown"),
+                          [("Gas", "Gas", {"heating_type": "Gas"}), ("Heatpump", "Heat pump", {"heating_type": "Heatpump"})]))
+        if not inp.get("has_ev"):
+            cands.append(("has_ev", False, [(True, "Yes, about 12,000 km a year", {"has_ev": True, "ev_annual_km": 12000})]))
+        if not inp.get("annual_demand_kwh") or inp.get("annual_demand_kwh") == 4500:
+            cands.append(("annual_demand_kwh", inp.get("annual_demand_kwh"),
+                          [(3000, "3,000 kWh", {"annual_demand_kwh": 3000}), (6500, "6,500 kWh", {"annual_demand_kwh": 6500})]))
+        if inp.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable") and not inp.get("heating_demand_kwh"):
+            cands.append(("heating_demand_kwh", None,
+                          [(12000, "12,000 kWh", {"heating_demand_kwh": 12000}), (20000, "20,000 kWh", {"heating_demand_kwh": 20000})]))
+        if not inp.get("has_solar"):
+            cands.append(("has_solar", False, [(True, "Yes, about 6 kWp", {"has_solar": True, "existing_solar_kwp": 6.0})]))
+        variants = [inp] + [{**inp, **ch} for _, _, opts in cands for _, _, ch in opts]
+        designs = self.sizes_batch(variants)
+        base, rest = designs[0], designs[1:]
+        qs, k = [], 0
+        for field_, cur, opts in cands:
+            options, spread = [], 0.0
+            for val, label, _ in opts:
+                d = rest[k]
+                k += 1
+                sp = 0.0
+                for key, tol in self.ASK_TOL.items():
+                    a, b = base[key] or 0.0, d[key] or 0.0
+                    sp += abs(a - b) / tol + (1.0 if (a > 0) != (b > 0) else 0.0)
+                spread = max(spread, sp)
+                options.append({"value": val, "label": label, "design": d})
+            if spread > 0:
+                qs.append({"field": field_, "current": cur, "options": options, "spread": round(spread, 2)})
+        return sorted(qs, key=lambda q: -q["spread"])[:3]
+
+    def inbox(self, limit: int = 20) -> list:
+        """Held-out new-system jobs in demo order: a PV and battery hit first, then varied installers and kinds."""
+        if getattr(self, "_inbox", None) is None:
+            te = self.test
+            te = te[(te.pv_kwp > 0) | te.has_solar].reset_index(drop=True)
+            rows = te.to_dict("records")
+            drafts = self.sizes_batch([row_inputs(r) for r in rows])
+            items = []
+            for r, d in zip(rows, drafts):
+                w = {c: bool(rules.within(c, [d[TARGET[c]] or 0.0], [r[TARGET[c]]])[0]) for c in COMPONENTS}
+                w["all"] = all(w.values())
+                items.append((r, d, w))
+            first = [x for x in items if x[2]["all"] and x[0]["installer_id"] == "2a8ba8e2" and x[0]["battery_kwh"] > 0
+                     and (x[0]["heating_type"] in ("Gas", "Oil") or x[0]["has_ev"])]
+            first = first or [x for x in items if x[2]["pv"] and x[2]["battery"] and x[0]["battery_kwh"] > 0]
+            def kind(r):
+                if r["heatpump_kw"] > 0 or r["heating_type"] != "Unknown":
+                    return "heating"
+                if r["has_ev"] or r["wallbox_kw"] > 0:
+                    return "ev"
+                return "battery" if r["battery_kwh"] > 0 else "pv_only"
+            buckets = {}
+            for x in items:
+                if first and x is first[0]:
+                    continue
+                buckets.setdefault((kind(x[0]), x[0]["installer_id"], x[2]["all"]), []).append(x)
+            keys = sorted(buckets, key=lambda k: (["battery", "ev", "heating", "pv_only"].index(k[0]), k[1], not k[2]))
+            ordered = first[:1]
+            while any(buckets[k] for k in keys):
+                for k in keys:
+                    if buckets[k]:
+                        ordered.append(buckets[k].pop(0))
+            self._inbox = ordered
+        out = []
+        for r, d, w in self._inbox[:limit]:
+            inp = row_inputs(r)
+            full = self.predict(inp, full=False)
+            inc = [c for c in full["components"].values() if c["decision"] == "include"]
+            note = ""
+            if not w["all"]:
+                c = next(c for c in ("pv", "battery", "wallbox", "heatpump") if not w[c])
+                note = self._deviation_note(c, r, d[TARGET[c]] or 0.0, float(r[TARGET[c]]))
+            out.append({"project_id": r["project_id"], "installer_id": r["installer_id"], "inputs": inp,
+                        "draft": full["design"], "confidence": round(float(np.mean([c["confidence"] for c in inc])), 2) if inc else 0.0,
+                        "expert": row_design(r), "within": w, "note": note, "_row": r})
+        return out
+
     def _physics(self, inp, design, inst, t, full):
         """Hourly simulation (app/hourly) when it runs; the annual ratio model otherwise. Economics.method says which."""
         lookup = rules.economics(inp, design)
