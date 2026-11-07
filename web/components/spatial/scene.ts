@@ -160,7 +160,7 @@ export class SpatialScene {
     // Top-down on the house itself with a margin of street around it.
     const c = this.box.isEmpty() ? this.centre : this.box.getCenter(new THREE.Vector3());
     const sz = this.box.isEmpty() ? new THREE.Vector3(this.span, 0, this.span) : this.box.getSize(new THREE.Vector3());
-    const half = Math.max(sz.x, sz.z) * 1.1 + 4;
+    const half = this.plan ? Math.max(sz.x, sz.z) * 0.62 + 4 : Math.max(sz.x, sz.z) * 1.1 + 4;
     const hh = a >= 1 ? half : half / a, hw = hh * a;
     Object.assign(this.ortho, { left: -hw, right: hw, top: hh, bottom: -hh });
     this.ortho.position.set(c.x, 120, c.z);
@@ -403,6 +403,7 @@ export class SpatialScene {
   // Plan layer: dimensioned footprint, equipment, clearances and cable run, drawn in SVG over the 2D view.
   setPlan(plan: Plan | null) {
     this.plan = plan;
+    this.setOrtho(this.persp.aspect);
     if (!plan) { this.planG?.remove(); this.planG = null; return; }
     if (!this.planG) { this.planG = document.createElementNS("http://www.w3.org/2000/svg", "g"); this.planG.setAttribute("class", "sp-plan"); this.svg.appendChild(this.planG); }
   }
@@ -440,19 +441,26 @@ export class SpatialScene {
     const rp = (run ?? []).map(p2).filter(Boolean) as [number, number][];
     if (rp.length > 1) out.push(`<polyline class="pl-cable" points="${rp.map((q) => pr(q)).map((p) => `${f(p.x)},${f(p.y)}`).join(" ")}"/>`);
     (plan.clearances ?? []).forEach((c) => {
-      const at = p2(c.at ?? c.center ?? c.centre), r = c.r_m ?? c.radius_m;
+      const at = p2(c.at ?? c.center ?? c.centre ?? (c.x != null && c.y != null ? [c.x, c.y] : null)), r = c.r_m ?? c.radius_m;
       if (!at || !r) return;
       const C = pr(at), E = pr([at[0] + r, at[1]]);
       out.push(`<circle class="pl-clear" cx="${f(C.x)}" cy="${f(C.y)}" r="${f(Math.hypot(E.x - C.x, E.y - C.y))}"/>`);
     });
+    const placed: { x: number; y: number }[] = [];
+    const cxAll = pts.length ? pts.reduce((a, q) => a + q[0], 0) / pts.length : 0, cyAll = pts.length ? pts.reduce((a, q) => a + q[1], 0) / pts.length : 0;
     [...(plan.equipment ?? []), ...(plan.markers ?? [])].forEach((m) => {
       const at = p2(m.at ?? m.position ?? (m.x != null && m.y != null ? [m.x, m.y] : null));
       if (!at) return;
       const P = pr(at), r = m.clearance_m ?? m.radius_m;
       if (r) { const E = pr([at[0] + r, at[1]]); out.push(`<circle class="pl-clear" cx="${f(P.x)}" cy="${f(P.y)}" r="${f(Math.hypot(E.x - P.x, E.y - P.y))}"/>`); }
       out.push(`<rect class="pl-mark" x="${f(P.x - 5)}" y="${f(P.y - 5)}" width="10" height="10"/>`);
-      out.push(`<text class="pl-label" x="${f(P.x + 9)}" y="${f(P.y - 1)}">${esc(m.label ?? m.kind ?? "")}</text>`);
-      if (m.note) out.push(`<text class="pl-note" x="${f(P.x + 9)}" y="${f(P.y + 11)}">${esc(m.note)}</text>`);
+      // Labels only on the drawing (notes go in the caption); markers close together stack their labels.
+      // Markers on the east half label to the left, so labels stay over the house and off the dimension lines.
+      const C = pr([cxAll, cyAll]), left = P.x > C.x, lx = left ? P.x - 9 : P.x + 9;
+      let ly = P.y + 4;
+      while (placed.some((q) => Math.abs(q.y - ly) < 14 && Math.abs(q.x - lx) < 90)) ly += 14;
+      placed.push({ x: lx, y: ly });
+      out.push(`<text class="pl-label" x="${f(lx)}" y="${f(ly)}" text-anchor="${left ? "end" : "start"}">${esc(m.label ?? m.kind ?? "")}</text>`);
     });
     const html = out.join("");
     if (g.innerHTML !== html) g.innerHTML = html;

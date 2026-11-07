@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Design, DesignResponse, HomeInputs } from "@/lib/api";
 import { call } from "@/lib/client";
 import type { Envelope, Layers, PanelRect, RoofModel, RoofPlane } from "./types";
-import { labelOf, planesOf } from "./types";
+import { labelOf, p2, planesOf } from "./types";
 import type { SpatialScene } from "./scene";
 import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
@@ -258,14 +258,20 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
       }
       case 8: {
         if (!plan) return null;
-        const notes = [plan.note, ...(Array.isArray(plan.notes) ? plan.notes : plan.notes ? [plan.notes] : [])].filter(Boolean) as string[];
-        const facts = [plan.floor_area_m2 != null ? `${n0(plan.floor_area_m2)} m² floor area` : "", plan.storeys != null ? `${plan.storeys} storeys` : "", plan.orientation != null ? `ridge ${typeof plan.orientation === "number" ? `${Math.round(plan.orientation)}°` : plan.orientation}` : ""].filter(Boolean);
-        const run = !Array.isArray(plan.cable_run) && plan.cable_run?.length_m ? `; cable run ${n1(plan.cable_run.length_m)} m` : "";
+        // The note's plain sentences for the planner; coordinate-frame sentences are for developers.
+        const raw = [plan.note, ...(Array.isArray(plan.notes) ? plan.notes : plan.notes ? [plan.notes] : [])].filter(Boolean).join(" ");
+        const notes = raw.split(/(?<=\.)\s+/).filter((x) => x && !/local metres|x east|_m2|north arrow/i.test(x)).map((x) => x.charAt(0).toUpperCase() + x.slice(1)).map((x) => (/[.]$/.test(x) ? x : `${x}.`));
+        const facts = [plan.floor_area_m2 != null ? `${n1(plan.floor_area_m2)} m² footprint` : "", plan.storeys != null ? `${plan.storeys} storeys` : "", plan.net_floor_area_m2 != null ? `about ${n0(plan.net_floor_area_m2)} m² living area` : ""].filter(Boolean);
+        const pts = (Array.isArray(plan.cable_run) ? plan.cable_run : plan.cable_run?.points ?? plan.cable_run?.path ?? []).map(p2).filter(Boolean) as [number, number][];
+        const runLen = !Array.isArray(plan.cable_run) && plan.cable_run?.length_m ? plan.cable_run.length_m : pts.slice(1).reduce((a, q, i) => a + Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]), 0);
+        const run = runLen ? `; cable run about ${n1(runLen)} m in plan` : "";
+        const clr = (plan.clearances ?? []).filter((c) => c.source).map((c, i) => ({ key: `c${i}`, citation: c.source as string, url: undefined as string | undefined }));
         return {
           sentence: "The footprint with where the equipment goes.",
           second: notes.length ? notes.join(" ") : null,
           eq: facts.join(", ") + run,
-          sources: Array.isArray(plan.sources) ? (plan.sources as (string | { key?: string; citation: string; url?: string })[]).map((x, i) => typeof x === "string" ? { key: `p${i}`, citation: x } : { key: x.key ?? `p${i}`, citation: x.citation, url: x.url }) : [{ key: "lod2", citation: "LoD2 footprint, Bayerische Vermessungsverwaltung", url: "https://www.geodaten.bayern.de" }],
+          items: [...(plan.equipment ?? []), ...(plan.markers ?? [])].filter((m) => m.note).map((m) => `${m.label ?? m.kind}: ${m.note}`),
+          sources: [...(Array.isArray(plan.sources) ? (plan.sources as (string | { key?: string; citation: string; url?: string })[]).map((x, i) => typeof x === "string" ? { key: `p${i}`, citation: x } : { key: x.key ?? `p${i}`, citation: x.citation, url: x.url }) : [{ key: "lod2", citation: "LoD2 footprint, Bayerische Vermessungsverwaltung", url: "https://www.geodaten.bayern.de" }]), ...clr],
         };
       }
     }
@@ -349,6 +355,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         )}
         {chart && <div className={s.below}>{L === 5 ? <BatteryChart layers={layers!} battery={design.battery_kwh} reduce={reduce} /> : <FrontierChart frontier={layers!.frontier} />}</div>}
         {content && <p className={s.eq}>{content.eq}</p>}
+        {content && "items" in content && content.items && content.items.length > 0 && <ul className={s.items}>{content.items.map((x) => <li key={x}>{x}</li>)}</ul>}
         {content && content.sources.length > 0 && (
           <p className={s.sources}>Sources: {content.sources.map((x, i) => <span key={x.key}>{i ? "; " : ""}{x.url ? <a href={x.url} target="_blank" rel="noreferrer">{x.citation}</a> : x.citation}</span>)}</p>
         )}
