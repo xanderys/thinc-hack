@@ -166,9 +166,10 @@ export function factsFromVariables(d: Record<string, unknown>): Partial<IntakeFa
   const g = (k: string) => (typeof d[k] === "string" && d[k] !== NOT_GIVEN ? (d[k] as string) : undefined);
   const heating = g("heating");
   const f: Partial<IntakeFacts> = {
-    first_name: g("first_name"),
-    address: g("address") ?? g("postcode"),
-    property_type: g("house_type") as IntakeFacts["property_type"],
+    first_name: g("customer_name") ?? g("first_name"),
+    address: g("address_or_postcode") ?? g("address") ?? g("postcode"),
+    house_size_sqm: g("floor_area_m2") ? Number(g("floor_area_m2")) : undefined,
+    property_type: (g("house_type") ?? (g("multi_unit") === "true" ? "apartment" : undefined)) as IntakeFacts["property_type"],
     num_inhabitants: g("people") ? Number(g("people")) : undefined,
     monthly_bill_eur: g("monthly_bill_eur") ? Number(g("monthly_bill_eur")) : undefined,
     annual_demand_kwh: g("kwh_estimate") ? Number(g("kwh_estimate")) : undefined,
