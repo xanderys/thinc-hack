@@ -55,11 +55,12 @@ function transition(fn: () => void) {
 function seedOf(l: LeadT): Seed {
   let stored: { read: ReadResponse; text: string } | null = null;
   try { stored = JSON.parse(sessionStorage.getItem(`marquee.read.${l.lead_id}`) ?? "null"); } catch { /* storage blocked */ }
-  if (stored) return { leadId: l.lead_id, read: stored.read, text: stored.text, draft: l.draft };
+  // The lead's own facts win over the read stored at creation: they carry every change made since.
+  if (stored) return { leadId: l.lead_id, read: { ...stored.read, inputs: { ...stored.read.inputs, ...l.facts } }, text: stored.text, draft: l.draft, version: l.version ?? null };
   const place = l.address_or_postcode, pc = /^\d{5}$/.test(place.trim()) ? place.trim() : undefined;
   const inputs = { ...l.facts, ...(pc ? {} : { address: l.facts.address ?? place }) };
   const unknown = l.status === "draft" && l.next_question ? [l.next_question.field as keyof LeadT["facts"]] : [];
-  return { leadId: l.lead_id, draft: l.draft, read: { inputs, found: [], unknown, postcode: pc, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
+  return { leadId: l.lead_id, draft: l.draft, version: l.version ?? null, read: { inputs, found: [], unknown, postcode: pc, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
 }
 
 export default function Board({ openId: initial }: { openId?: string }) {
@@ -73,6 +74,8 @@ export default function Board({ openId: initial }: { openId?: string }) {
   const [seed, setSeed] = useState<Seed | null>(null);
   const [seedErr, setSeedErr] = useState<string | null>(null);
   const [liveLead, setLiveLead] = useState<LeadT | null>(null);
+  const [reload, setReload] = useState(0);
+  const [staleNote, setStaleNote] = useState(false);
   const [adding, setAdding] = useState(false);
   const fetching = useRef(new Set<string>());
   const designsRef = useRef<Record<string, Got>>({});
@@ -157,7 +160,14 @@ export default function Board({ openId: initial }: { openId?: string }) {
     let stop = false;
     call<LeadT>(`/api/leads/${openId}`).then((r) => { if (stop) return; if (r.ok) { setSeed(seedOf(r.data)); setLiveLead(r.data); } else setSeedErr(r.error); });
     return () => { stop = true; };
+  }, [openId, reload]);
+
+  // A write answered 409: the lead changed elsewhere. Reload it into the card and say so.
+  useEffect(() => {
+    const on = (e: Event) => { if ((e as CustomEvent).detail === openId) { setReload((n) => n + 1); setStaleNote(true); } };
+    addEventListener("marquee:lead-stale", on); return () => removeEventListener("marquee:lead-stale", on);
   }, [openId]);
+  useEffect(() => { if (!staleNote) return; const t = setTimeout(() => setStaleNote(false), 8000); return () => clearTimeout(t); }, [staleNote]);
 
   // While the call runs, the open card keeps converging: poll the lead every 2.5 s until it is done.
   const calling = liveLead?.lead_id === openId && liveLead?.status === "in_call";
@@ -167,7 +177,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
     return () => clearInterval(t);
   }, [openId, calling]);
   const liveFeed: Live | null = useMemo(() => !liveLead || liveLead.lead_id !== openId || !liveLead.history.length && liveLead.status !== "in_call" ? null : {
-    step: liveLead.history.length, facts: liveLead.facts, changed: liveLead.history.at(-1)?.changed ?? [],
+    version: liveLead.version ?? null, step: liveLead.history.length, facts: liveLead.facts, changed: liveLead.history.at(-1)?.changed ?? [],
     asking: liveLead.status === "in_call" ? liveLead.next_question?.question ?? null : null,
   }, [liveLead, openId]);
 
@@ -228,7 +238,8 @@ export default function Board({ openId: initial }: { openId?: string }) {
       </div>
       {seedErr && <div className="error" role="alert"><span><span className="src">Engine said</span>{seedErr}</span><button className="btn ghost" onClick={() => { const id = openId; setOpenId(null); setTimeout(() => setOpenId(id), 0); }}>Retry</button></div>}
       {!seed && !seedErr && <p className="s-quiet s-wait">Opening the house</p>}
-      {seed && <Stage key={seed.leadId} seed={seed} onApproved={onApproved} live={liveFeed} />}
+      {staleNote && <p className="b-shared" role="status">This lead changed elsewhere, reloaded.</p>}
+      {seed && <Stage key={`${seed.leadId}:${reload}`} seed={seed} onApproved={onApproved} live={liveFeed} />}
     </div>
   );
 

@@ -191,6 +191,7 @@ export interface Lead {
   facts: HomeInputs; draft: DesignResponse;
   history: { step: number; field: string; answer: unknown; changed: LeadChange[]; at: string }[];
   next_question: NextQuestion | null; questions_asked: number; created_at: string; updated_at: string;
+  version?: number;   // optimistic concurrency: writes carry it back as base_version
   proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | null; decision?: LeadDecision | null;   // v2.5
 }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).

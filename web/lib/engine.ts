@@ -38,7 +38,7 @@ function mockLeads(method: string, path: string, search: URLSearchParams, body: 
   return null;
 }
 
-export async function callEngine(method: string, path: string, search: URLSearchParams, body?: unknown): Promise<Out> {
+export async function callEngine(method: string, path: string, search: URLSearchParams, body?: unknown, extra?: Record<string, string>): Promise<Out> {
   if (isMock || leadsMock) { const m = mockLeads(method, path, search, body); if (m) return m; }
   if (isMock) return mock(method, path, search, body);
   const qs = search.toString();
@@ -47,6 +47,7 @@ export async function callEngine(method: string, path: string, search: URLSearch
       method,
       headers: {
         ...(body ? { "content-type": "application/json" } : {}),
+        ...(extra ?? {}),
         // v1.9: reading leads needs the intake secret; server-side only, never sent to the browser.
         // v2.5: approve also needs it; the homeowner's decision POST goes through without it.
         ...(((method === "GET" && path.startsWith("/api/leads")) || (method === "POST" && path === "/api/intake/step") || (method === "PUT" && /^\/api\/leads\/[^/]+\/approve$/.test(path))) && process.env.INTAKE_SECRET ? { "X-Intake-Secret": process.env.INTAKE_SECRET } : {}),

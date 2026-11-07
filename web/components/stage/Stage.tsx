@@ -10,7 +10,7 @@ import Chain from "@/components/chain/Chain";
 import Refine, { type Moved } from "@/components/stage/Refine";
 import TopBar, { Decide } from "@/components/stage/TopBar";
 import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
-import { call } from "@/lib/client";
+import { call, send } from "@/lib/client";
 import { approveLead } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
 import { buildFacts, DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
@@ -23,9 +23,9 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const COMPONENT_FIELD_SET: Record<string, true> = { pv_kwp: true, inverter_kw: true, battery_kwh: true, heatpump_kw: true, wallbox_kw: true };
 
 // A house opened from the board: the lead's id (refinements write back to it) and what was read.
-export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null };   // draft: shown at once, before the first design call returns
+export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null };   // draft: shown at once, before the first design call returns
 // While Rina's call runs: the lead's facts so far, the step count, what the last answer changed and what she is asking.
-export type Live = { step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null };
+export type Live = { version?: number | null; step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null };
 
 export default function Stage({ seed, onApproved, live }: { seed?: Seed; onApproved?: (id: string) => void; live?: Live | null }) {
   const [lead, setLead] = useState(HERO_LEAD);
@@ -73,11 +73,24 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     return out;
   }, [read, installer, question, answer, changed, roof]);
   const ready = !!read && question !== undefined && (question === null || answer !== undefined);
-  // The planner's answer to the one question goes back to the lead, so its card shows the same design.
-  useEffect(() => {
-    if (!leadRef.current || !question || answer === undefined) return;
-    call("/api/intake/step", { lead_id: leadRef.current, facts_so_far: { [question.field]: answer } });
-  }, [question, answer]);
+  // Writes to the lead happen only on an explicit action (an answer tap, Apply, a fact chip, Listening, Approve), never
+  // from an effect or a view change. Each carries the lead version the card was showing; a 409 means the lead changed
+  // elsewhere, and the board reloads it.
+  const baseVersion = useRef<number | null>(seed?.version ?? null);
+  async function writeLead(route: string, facts: Partial<HomeInputs>): Promise<{ ok: boolean; error?: string }> {
+    const id = leadRef.current;
+    if (!id) return { ok: true };
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return { ok: false, error: "The tab is hidden; nothing was sent." };
+    const r = await send<{ version?: number }>("/api/intake/step", { lead_id: id, facts_so_far: facts, ...(baseVersion.current != null ? { base_version: baseVersion.current } : {}) }, route);
+    if (r.status === 409) { stale(id); return { ok: false }; }
+    if (r.ok && r.data?.version != null) baseVersion.current = r.data.version;
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  }
+  const stale = (id: string) => window.dispatchEvent(new CustomEvent("marquee:lead-stale", { detail: id }));
+  const onAnswer = (v: unknown) => {
+    setAnswer(v);
+    if (question && v !== undefined) void writeLead("question-answer", { [question.field]: v } as Partial<HomeInputs>);
+  };
 
   // Shortcut d loads the hero lead.
   useEffect(() => {
@@ -126,6 +139,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     // moved stages, the card still lands on Offer). Only answers arriving while the card is open redraft in place.
     const replay = !liveSeen.current && live.asking == null;
     liveSeen.current = true;
+    if (live.version != null) baseVersion.current = live.version;
     const { installer_id: _i, ...facts } = live.facts as Partial<HomeInputs> & { installer_id?: string }; void _i;
     if (Object.entries(facts).every(([k, v]) => JSON.stringify((read.inputs as Record<string, unknown>)[k]) === JSON.stringify(v))) return;
     cause.current = replay ? null : "From the call:"; liveWhy.current = replay ? null : live.changed;
@@ -170,7 +184,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       setBusy(true);
       try {
         const fixed = Object.keys(overrides).length > 0;
-        const r = fixed ? await call<RefineResponse>("/api/refine", { inputs, overrides }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
+        const lid = leadRef.current;
+        const r = fixed ? await call<RefineResponse>("/api/refine", { inputs, overrides, ...(lid && baseVersion.current != null ? { lead_id: lid, base_version: baseVersion.current } : {}) }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
         if (r.ok) {
           const before = last.current;
           if (before && cause.current) {
@@ -187,7 +202,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
           cause.current = null; liveWhy.current = null;
           setPrev(before); last.current = r.data; setRes(r.data); setErr(null);
           if (!fixed) setDrafted(r.data);
-        } else setErr(r.error);
+        } else if (r.status === 409 && lid && fixed) stale(lid); else setErr(r.error);
         setBusy(false);
       } catch { /* superseded */ }
     }, 150);
@@ -259,7 +274,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   const snap = (): Snap => ({ changed, overrides, chips, ovChips });
   const remember = (why: string) => { setHistory((h) => [...h, snap()]); cause.current = why; setApprovedAt(null); };
 
-  async function onSay(sentence: string, quiet = false): Promise<boolean> {
+  async function onSay(sentence: string, quiet = false, route = "sentence-apply"): Promise<boolean> {
     if (!res) return false;
     setSayBusy(true); setSayErr(null);
     const typical = Object.fromEntries(KEYS.map((k) => [COMPONENT_DESIGN_FIELD[k], res.components[k].neighbours.median_size]));
@@ -278,7 +293,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     // In the open card the offer variants are the second beat: bring them into view once the new design lands.
     if (seed) setTimeout(() => document.querySelector(".s-variants")?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" }), 1400);
     // Tell the homeowner's lead, so their phone shows the updated design.
-    if (leadRef.current && r.data.changes.length) call("/api/intake/step", { lead_id: leadRef.current, facts_so_far: add }).then((x) => { if (!x.ok) setSayErr(`Applied here; the homeowner's copy did not update: ${x.error}`); });
+    if (leadRef.current && r.data.changes.length) writeLead(route, add).then((x) => { if (!x.ok && x.error) setSayErr(`Applied here; the homeowner's copy did not update: ${x.error}`); });
     return true;
   }
 
@@ -286,7 +301,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   function onFact(f: keyof HomeInputs, v: unknown, label: string) {
     remember(`${label} changed:`);
     setChanged((c) => ({ ...c, [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) }));
-    if (leadRef.current) call("/api/intake/step", { lead_id: leadRef.current, facts_so_far: { [f]: v } });
+    void writeLead("hand-change", { [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) } as Partial<HomeInputs>);
   }
 
   function onUnchip(c: InterpretChange | InterpretOverride) {
@@ -323,7 +338,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!id) { done(); return; }
     // v2.5: release the proposal to the homeowner; the variant on screen is the one they sign.
     const key = (res.variants ?? drafted?.variants ?? []).find((v) => same(v.design, res.design))?.key;
-    approveLead(id, key).then((r) => { if (r.ok) { setErr(null); done(); } else setErr(r.error); });
+    approveLead(id, key, baseVersion.current).then((r) => { if (r.status === 409) stale(id); else if (r.ok) { const v = (r.data as { version?: number }).version; if (v != null) baseVersion.current = v; setErr(null); done(); } else setErr(r.error); });
   }
 
   const onVariant = useCallback((v: Variant) => {
@@ -336,7 +351,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   if (seed && read) return (
     <div className="st b-card-in">
       <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} setInstaller={setInstaller}
-        question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} asking={question === undefined} liveAsking={live?.asking ?? null}
+        question={question ?? null} answer={answer} onAnswer={onAnswer} askError={askErr} asking={question === undefined} liveAsking={live?.asking ?? null}
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
         canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
@@ -353,7 +368,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       <div className="s-stage">
         <Lead lead={lead} setLead={setLead} read={read} busy={readBusy} error={readErr} onRead={doRead} onEdit={() => setRead(null)}
           inputs={inputs} changed={changed} setInstaller={setInstaller} roof={roof}
-          question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} pref={pref} setPref={setPref} asking={!!read && question === undefined}
+          question={question ?? null} answer={answer} onAnswer={onAnswer} askError={askErr} pref={pref} setPref={setPref} asking={!!read && question === undefined}
           call={VOICE && !read && !seed ? <Calls installer={installer} onLead={onCall} /> : null} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
