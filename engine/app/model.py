@@ -388,7 +388,10 @@ class Engine:
         """Held-out new-system jobs in demo order: a PV and battery hit first, then varied installers and kinds."""
         if getattr(self, "_inbox", None) is None:
             te = self.test
-            te = te[(te.pv_kwp > 0) | te.has_solar].reset_index(drop=True)
+            te = te[(te.pv_kwp > 0) | te.has_solar]
+            # show real new-system homes with real inputs: no sub-2 kWp leftovers, no untouched 4,500 kWh defaults
+            te = te[~((te.pv_kwp < 2) & ~te.has_solar) & ~((te.annual_demand_kwh == 4500) & (te.heating_type == "Unknown"))]
+            te = te.reset_index(drop=True)
             rows = te.to_dict("records")
             drafts = self.sizes_batch([row_inputs(r) for r in rows])
             items = []
