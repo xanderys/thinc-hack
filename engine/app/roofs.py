@@ -8,7 +8,7 @@ from pathlib import Path
 
 log = logging.getLogger("engine")
 ROOT = Path(__file__).resolve().parents[2]
-CACHE = Path(__file__).resolve().parent.parent / ".cache" / "roof"
+CACHE = Path(__file__).resolve().parent.parent / ".cache" / "roof2"  # v2: with floor area and Zensus fields
 SOURCE = {"bayern_lod2": "lod2", "google_solar": "google-solar", "osm": "osm", "none": "none"}
 WHERE = {"lod2": "measured from Bavarian LoD2 data (Bayerische Vermessungsverwaltung, CC BY 4.0)",
          "google-solar": "measured by the Google Solar API", "osm": "estimated from the OpenStreetMap footprint"}
@@ -20,6 +20,8 @@ _mod = None
 def _roof():
     global _mod
     if _mod is None:
+        if str(ROOT / "roof") not in sys.path:
+            sys.path.append(str(ROOT / "roof"))  # roof.py imports its sibling zensus.py
         spec = importlib.util.spec_from_file_location("roof_lookup", ROOT / "roof" / "roof.py")
         mod = importlib.util.module_from_spec(spec)
         sys.modules["roof_lookup"] = mod  # dataclasses look their module up here
@@ -36,7 +38,12 @@ def to_contract(d: dict) -> dict:
             "footprint_m2": d.get("footprint_m2"), "roof_area_m2": d.get("roof_area_m2"), "usable_area_m2": usable,
             "segments": [{"azimuth": s.get("azimuth"), "pitch": s.get("pitch"), "area_m2": s.get("area_m2")} for s in d.get("segments") or []],
             "max_panels": d.get("max_panels"), "max_kwp": round(usable / M2_PER_KWP, 2) if usable else None,
-            "confidence": d.get("confidence", "none") if src != "none" else "none", "notes": notes}
+            "confidence": d.get("confidence", "none") if src != "none" else "none", "notes": notes,
+            # v1.6.1 / v1.7.1 estimates: floor area from LoD2 footprint x storeys; build year and heating system from Zensus 2022
+            "floor_area_m2": d.get("floor_area_m2"), "storeys": d.get("storeys"),
+            "floor_area_confidence": "estimate" if d.get("floor_area_m2") else None,
+            "build_year_class": d.get("build_year_class"), "build_year_estimate": d.get("build_year_estimate"),
+            "heating_class": d.get("heating_class"), "zensus_confidence": d.get("zensus_confidence")}
 
 
 def lookup(address: str) -> dict:

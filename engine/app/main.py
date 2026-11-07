@@ -181,6 +181,16 @@ def check_inputs(inp: dict):
             inp["roof"] = r if r.get("source") != "none" else None
         except Exception as e:
             log.warning("roof lookup failed: %s", e)
+    r = inp.get("roof") or {}
+    est = []
+    if not inp.get("house_built_year") and r.get("build_year_estimate"):
+        inp["house_built_year"] = float(r["build_year_estimate"])
+        est.append("build year")
+    if not inp.get("house_size_sqm") and r.get("floor_area_m2"):
+        inp["house_size_sqm"] = float(r["floor_area_m2"])
+        est.append("floor area")
+    if est:  # heating_type is never set from heating_class: the cell says the system, not the fuel
+        inp["_estimated"] = est
     bad = []
     for k, (lo, hi, unit) in RANGES.items():
         v = inp.get(k)
