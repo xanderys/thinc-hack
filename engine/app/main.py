@@ -219,7 +219,7 @@ def refine(req: RefineReq):
         if a != b:
             if ov.get(k) == "include":
                 r = after["components"][comp]["reason"]
-                why = r if r.startswith(("Included", "Replaces")) else f"Included by the planner; sized by the engine. {r}"
+                why = r if r.startswith(("Included", "Replaces", "Replacement")) else f"Included by the planner; sized by the engine. {r}"
             elif k in ov:
                 why = "Set by the planner."
             elif comp == "inverter":

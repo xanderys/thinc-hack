@@ -65,9 +65,9 @@ The test split (20%, stratified by installer, seed 42) is never used for fitting
 
 ## Scoreboard
 
-Scored on 258 new-system test jobs: the expert fitted PV, or PV is recorded. The other 56 test jobs are add-ons (battery extensions, wallboxes) to PV the status quo does not record; a design tool proposing for a home without PV cannot reproduce them, so they are reported separately. Ceiling: each test home against the median design of 5 or more training homes with identical installer, demand, EV flag and heating type (covers 72% of test homes), i.e. how often near-identical homes agree.
+Scored on 258 new-system test jobs: the expert fitted PV, or PV is recorded. The other 56 test jobs are add-ons (battery extensions, wallboxes) to PV the status quo does not record; a design tool proposing for a home without PV cannot reproduce them, so they are reported separately. About 200 battery-only add-ons to homes recorded without PV are excluded from the main board; on all 314 test jobs we score 14.6% vs 5.4%. "Near-identical homes" is the agreement between near-identical training homes: each test home against the median design of 5 or more training homes with identical installer, demand, EV flag and heating type (covers 72% of test homes).
 
-| Within tolerance | Ours | Textbook | Floor-slope | Ceiling |
+| Within tolerance | Ours | Textbook | Floor-slope | Near-identical homes |
 |---|---|---|---|---|
 | PV ±1 kWp or 15% | 36.8% | 17.8% | 31.0% | 31.7% |
 | Battery ±2 kWh | 49.6% | 47.7% | 47.7% | 53.2% |
@@ -83,7 +83,7 @@ All 314 test jobs, add-ons included: all four 14.6% (textbook 5.4%), PV 30.6%, b
 
 ## Known limits
 
-- PV size has hit the ceiling of the inputs: we agree with the expert more often than near-identical homes agree with each other. In 5-fold CV on train, GBM, kNN medians (k 15 and 30), kWp-per-MWh models and a blend are all within 0.1 kWp MAE (about 2.5 kWp on PV jobs). Many homes carry the 4,500 kWh default demand and nothing else; roof, orientation and budget are not in the data.
+- PV size is limited by the inputs: we agree with the expert slightly more often than near-identical homes agree with each other. In 5-fold CV on train, GBM, kNN medians (k 15 and 30), kWp-per-MWh models and a blend are all within 0.1 kWp MAE (about 2.5 kWp on PV jobs). Many homes carry the 4,500 kWh default demand and nothing else; roof, orientation and budget are not in the data.
 - Wallbox: 297 of 319 wallboxes at 2a8ba8e2 went to homes with no EV recorded. A learned classifier scored 75.2% on test against 76.1% for the EV rule, so the engine uses the rule. The data does not say who will buy a car.
 - Heat pump: 13 sold in the whole pack, 5 in test. The model ties the always-none baseline; size is physics, not learned.
 - Economics are rough and labelled: ratio model for autarky (no battery about 30% at PV equal to demand; 10 kWp with 10 kWh on 4,500 kWh about 66%), cost per kWp and per kWh from 2026 German averages. Every assumption is returned in `economics.assumptions`.

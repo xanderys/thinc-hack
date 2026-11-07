@@ -260,8 +260,11 @@ class Engine:
         if src == "planner":
             return f"Set by the planner; {k} of {n} similar homes had {NAMES[comp]}."
         if src == "include" and comp == "heatpump":
-            what = "Replaces the existing heat pump" if inp.get("_hp_replacement") else "Included by the planner"
-            return f"{what}; {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
+            if inp.get("_hp_replacement"):
+                return f"Replacement heat pump sized from the heating demand: {fmt(size, unit)} ({rules.heat_load_note(inp)})."
+            if inp.get("heating_type") in ("Gas", "Oil"):
+                return f"Replaces the {inp['heating_type'].lower()} boiler: {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
+            return f"Included by the planner: {fmt(size, unit)} from the heat load ({rules.heat_load_note(inp)})."
         if src == "include" and comp != "pv" and comp != "battery":
             return f"Included by the planner at {fmt(size, unit)}, the size this installer fits most for homes like this."
         if comp == "pv":
@@ -320,6 +323,10 @@ class Engine:
                 if share < 0.2:
                     level = "unusual"
                     msg = f"Only {round(share * st['n'])} of {st['n']} similar homes " + (f"got {NAMES[comp]}." if inc else f"went without {NAMES[comp]}.")
+            elif comp == "wallbox" and inc and v > 11 and not inp.get("has_ev"):
+                none, w11 = int((s == 0).sum()), int((s == 11).sum())
+                level = "unusual"
+                msg = f"{fmt(v, UNITS[comp])} with no EV recorded: {none} of {len(s)} similar homes got no wallbox and {w11} got 11 kW."
             elif inc and (s > 0).sum() >= 4:
                 lo, hi = np.percentile(s[s > 0], [10, 90])
                 if v < lo * 0.9 or v > hi * 1.1:
@@ -495,8 +502,9 @@ class Engine:
                 "components": {c: round(float(h.mean()), 3) for c, h in hits.items()},
                 "design_match_share": round(float(allc.mean()), 3),
                 "covered_test_share": round(float(len(t) / len(te)), 3),
-                "method": "Each test home against the median design of 5 or more training homes with identical installer, "
-                          "demand, EV flag and heating type; same tolerance bands as the scoreboard. Covers the test homes that have such a group."}
+                "method": "Agreement between near-identical training homes: each test home against the median design of 5 or more "
+                          "training homes with identical installer, demand, EV flag and heating type, same tolerance bands as the scoreboard. "
+                          "Covers the test homes that have such a group."}
 
 
 def row_inputs(r: dict) -> dict:
