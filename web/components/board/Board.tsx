@@ -174,7 +174,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
       <div className={calling ? "b-open-h live" : "b-open-h"}>
         {calling && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
-        <button type="button" className="b-close" onClick={close} aria-label="Close, back to the board">Close</button>
+        <button type="button" className="b-close" onClick={close} aria-label="Close, back to the board"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 3l12 12M15 3L3 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></button>
         <div>
           <h1>{openCard?.name ?? seed?.read.inputs.address ?? "House"}</h1>
           <p>{[openCard?.place, calling ? STATUS.in_call : openCard && (DECIDED.has(openCard.status) ? `${STATUS[openCard.status]} ${hm(openCard.decision?.decided_at)}` : approved[openCard.id] ? STATUS.approved : STATUS[openCard.status])].filter(Boolean).join(" · ")}</p>
