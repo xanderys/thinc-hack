@@ -50,9 +50,25 @@ def main():
         rows.append(("Heat pump: share of homes with one", inst, len(g), "0%", f"{(g.heatpump_kw > 0).mean() * 100:.1f}%", "n/a"))
         n, m, lo, hi = q((pvg.pv_kwp / pvg.inverter_kw.replace(0, np.nan)))
         rows.append(("DC/AC ratio (PV kWp over inverter kW)", inst, n, "1.20", fmt(m), f"{fmt(lo)} to {fmt(hi)}"))
+    import argparse, json
+    from lab.score_rules import CACHE, git
+    ap = argparse.ArgumentParser(); ap.add_argument("--reonic-ref"); a = ap.parse_args()
+    if a.reonic_ref:
+        tbd = json.load(open(CACHE / f"iter_rules5_{git('rev-parse', a.reonic_ref)}_tb.json"))["reonic"]
+        T = lambda g, k: g.project_id.map(lambda p: tbd[p].get(k) or 0.0)
+        for inst, g in sorted(fit.groupby("installer_id"), key=lambda kv: kv[0]):
+            pv_tb, bat_tb, wb_tb, hp_tb = T(g, "pv_kwp"), T(g, "battery_kwh"), T(g, "wallbox_kw"), T(g, "heatpump_kw")
+            n, m, lo, hi = q((g.pv_kwp / pv_tb.replace(0, np.nan))[g.pv_kwp > 0])
+            rows.append(("Reonic textbook PV: planners' kWp over the textbook kWp (1.0 per MWh)", inst, n, "1.00", fmt(m), f"{fmt(lo)} to {fmt(hi)}"))
+            both = g[(g.battery_kwh > 0) & (bat_tb > 0)]
+            n, m, lo, hi = q(both.battery_kwh / bat_tb[both.index])
+            rows.append(("Reonic textbook battery: planners' kWh over the textbook kWh (1.25 per MWh, clipped 0.2 to 0.6 per daily kWh)", inst, n, "1.00", fmt(m), f"{fmt(lo)} to {fmt(hi)}"))
+            rows.append(("Reonic textbook battery: share of homes offered one", inst, len(g), f"{(bat_tb > 0).mean() * 100:.0f}%", f"{(g.battery_kwh > 0).mean() * 100:.0f}%", "n/a"))
+            rows.append(("Reonic textbook wallbox: share of homes offered one", inst, len(g), f"{(wb_tb > 0).mean() * 100:.1f}%", f"{(g.wallbox_kw > 0).mean() * 100:.1f}%", "n/a"))
+            rows.append(("Reonic textbook heat pump: share of homes offered one", inst, len(g), f"{(hp_tb > 0).mean() * 100:.1f}%", f"{(g.heatpump_kw > 0).mean() * 100:.1f}%", "n/a"))
     md = ["# Textbook against practice", "",
           f"Fit half, {len(fit)} new-system jobs, by installer, aggregates only. Textbook = the engine's rule of thumb (1.3 kWp per MWh + 2.5 kWp with an EV, battery at the installer's median, 11 kW wallbox with an EV, no heat pump) "
-          "and DC/AC 1.2. Planners' median and IQR (25th to 75th percentile) are over the installer's own jobs. The pure Reonic textbook rows are added when the rules-5 module exposes it.", "",
+          "and DC/AC 1.2. Planners' median and IQR (25th to 75th percentile) are over the installer's own jobs. The Reonic textbook rows (rules5.textbook, no corrections) are ratios of the planners' size to the textbook size.", "",
           "| Rule | Installer | n | Textbook | Planners' median | IQR |", "|---|---|---|---|---|---|"]
     md += [f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} |" for r in rows]
     out = "\n".join(md)

@@ -36,6 +36,9 @@ for pid in df.project_id:
     res["full"][pid] = {"design": d, "fired": r.get("rules_fired")}
 if req.get("textbook"):  # "module:function" in the same worktree, called with inputs, returns a design dict
     mod, fn = req["textbook"].split(":")
-    tb = getattr(importlib.import_module("app.planner_rules." + mod), fn)
-    res["reonic"] = {pid: {x: (tb(req["inputs"][pid]) or {}).get(x) for x in KEYS} for pid in df.project_id}
+    tb = getattr(importlib.import_module("app.planner_rules." + mod.split(".")[-1]), fn)
+    def _tb(inp):
+        r = tb(inp) or {}
+        return r.get("design", r)
+    res["reonic"] = {pid: {x: _tb(req["inputs"][pid]).get(x) for x in KEYS} for pid in df.project_id}
 json.dump(res, open(req["out"], "w"), default=str)

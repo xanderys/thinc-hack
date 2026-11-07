@@ -19,6 +19,7 @@ from app import data, rules
 from app.model import TARGET, Engine, row_inputs
 from lab.cv import check_load, predict_frame
 from lab.final_test import hit_arrays
+from lab.cv_rules3 import mcnemar_exact
 from lab.levers import COMPS, options_by_project
 from lab.score_rules import CACHE, NEW_SYSTEM, Worktrees, git
 from lab.split import load_split
@@ -117,6 +118,17 @@ def main():
                 tag = "" if name == ref_col else f"{dlt:+.1f} pp" + (" (noise)" if abs(dlt) < 2.5 else "")
                 md.append(f"| {name} | {pc(h['pv'].mean())} | {pc(h['battery'].mean())} | {pc(h['wallbox'].mean())} | {pc(allf.mean())} | {tag} | {pc(h['heatpump'].mean())} |")
             md.append("")
+            n5 = f"rules-5 ({sha5[:7]})"
+            b_ = int((res[n5][1] & ~res[ref_col][1]).sum()); c_ = int((~res[n5][1] & res[ref_col][1]).sum())
+            rng = np.random.default_rng(0)
+            def ci(x, y):
+                d = x.astype(int) - y.astype(int)
+                lo, hi = np.percentile([d[rng.integers(0, len(d), len(d))].mean() * 100 for _ in range(2000)], [2.5, 97.5])
+                return f"{(d.mean() * 100):+.1f} pp, 95% CI {lo:+.1f} to {hi:+.1f}"
+            h5, h4_ = res[n5][0], res[ref_col][0]
+            b2 = int((h5["pv"] & ~h4_["pv"]).sum()); c2 = int((~h5["pv"] & h4_["pv"]).sum())
+            md += [f"Paired against rules-4, all four: only rules-5 {b_}, only rules-4 {c_}, exact McNemar p = {mcnemar_exact(b_, c_):.3f}; difference {ci(res[n5][1], res[ref_col][1])} (2,000 bootstrap resamples).",
+                   f"PV: only rules-5 {b2}, only rules-4 {c2}, exact McNemar p = {mcnemar_exact(b2, c2):.3f}; difference {ci(h5['pv'], h4_['pv'])}.", ""]
     # per-rule support
     fired = [r5["full"][p]["fired"] for p in fit.project_id]
     sm = [f"# Rule support, rules-5 {sha5[:7]}", ""]
