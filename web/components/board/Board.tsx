@@ -169,6 +169,14 @@ export default function Board({ openId: initial }: { openId?: string }) {
     setApproved(a);
   }, []);
 
+  // The open card's chain reports when the building is an apartment block (lib/building.ts).
+  const [shared, setShared] = useState<{ id: string | null; reason: string } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => { const d = (e as CustomEvent<{ leadId: string | null; multi: boolean; reason: string }>).detail; setShared(d.multi ? { id: d.leadId, reason: d.reason } : null); };
+    addEventListener("marquee:building", on); return () => removeEventListener("marquee:building", on);
+  }, []);
+  useEffect(() => { setShared(null); }, [openId]);
+
   const openCard = cards.find((c) => c.id === openId);
 
   if (openId) return (
@@ -183,6 +191,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
             const st = calling ? "in_call" : openCard && (DECIDED.has(openCard.status) || openCard.status === "approved") ? openCard.status : openCard && approved[openCard.id] ? "approved" : openCard?.status ?? "draft";
             return <span className={`b-st b-chip ${st}`}>{STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${hm(openCard.decision?.decided_at)}` : ""}</span>;
           })()}</p>
+          {shared && <p className="b-shared" title={shared.reason}>Shared roof, apartment building: single-family design does not apply</p>}
         </div>
         <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
       </div>

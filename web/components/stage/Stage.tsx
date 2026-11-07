@@ -67,8 +67,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const base: HomeInputs = { ...DEFAULTS, ...(read?.inputs ?? {}), installer_id: installer };
     if (question && answer !== undefined) (base as unknown as Record<string, unknown>)[question.field] = answer;
     const out: HomeInputs = { ...base, ...changed };
-    // One roof lookup per lead; later calls carry the result instead of the address.
-    if (roof && roof.source !== "none" && !roof.pending) { out.roof = roof; delete out.address; }
+    // With a street address every call carries it, so design, variants and layers come from the same engine run as
+    // the lead's own draft (the roof result alone drops the module layout and its variants). Postcode only: the roof result.
+    if (!out.address && roof && roof.source !== "none" && !roof.pending) out.roof = roof;
     return out;
   }, [read, installer, question, answer, changed, roof]);
   const ready = !!read && question !== undefined && (question === null || answer !== undefined);

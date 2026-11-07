@@ -30,6 +30,7 @@ type Props = {
   bare?: boolean;                     // the reasoning chain draws its own chrome: canvas, labels and compass only
   leadId?: string;                    // sent with the layers call so call facts tag as Rina
   onLayers?: (l: Layers) => void;     // the one layers response, for bars, checks and the energy numbers
+  sunTint?: boolean;                  // tint the roof faces by sun with the modules showing (per-panel shading not in yet)
   tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void; photo?: { on: boolean; set: (on: boolean) => void } }) => ReactNode;
   children?: ReactNode;               // overlays drawn over the canvas
 };
@@ -55,7 +56,7 @@ function useReduce() {
   return r;
 }
 
-export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, leadId, onLayers, tools, children }: Props) {
+export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, leadId, onLayers, tools, sunTint, children }: Props) {
   const reduce = useReduce();
   const [own, setOwn] = useState(1);
   const layer = ctrl ?? own;
@@ -140,6 +141,22 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const L = ids.includes(layer) ? layer : 1;
   // Photo: Google 3D Tiles under the layout (PhotoView.tsx); only in 3D, never on the plan layer.
   const photo = usePhoto(address, ready ? scene.current : null, view === "3d" && L !== 8);
+  // Photo opens first when this address's tiles were already warm on the server, the device has WebGL2 (photo.available)
+  // and it is not a phone; any failure inside usePhoto drops back to the model. Once per address, never over a pick.
+  const [warm, setWarm] = useState(false);
+  const autoPhoto = useRef<string | null>(null);
+  useEffect(() => {
+    setWarm(false);
+    if (window.matchMedia("(max-width: 640px), (pointer: coarse)").matches) return;
+    const ac = new AbortController();
+    fetch(`/api/tiles/status?address=${encodeURIComponent(address)}`, { signal: ac.signal }).then((r) => r.json()).then((x: { warm?: boolean }) => setWarm(!!x.warm)).catch(() => {});
+    return () => ac.abort();
+  }, [address]);
+  useEffect(() => {
+    if (!warm || !photo.available || autoPhoto.current === address || view !== "3d" || L === 8) return;
+    autoPhoto.current = address;
+    photo.setOn(true);
+  }, [warm, photo.available, address, view, L]); // eslint-disable-line react-hooks/exhaustive-deps
   const photoTool = photo.available ? { on: photo.on && L !== 8 && view === "3d", set: (on: boolean) => { photo.setOn(on); if (on) { setView("3d"); if (L === 8) setLayer(3); } } } : undefined;
 
   // Panels change with the design: re-place them (animated only when the panels layer is showing).
@@ -163,7 +180,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     prevLayer.current = L;
     sc.setHeat(null);
     sc.show({ outlines: L <= 3, panels: L >= 3 && L !== 7, kit: L >= 4 && L <= 6, sun: L === 4, battery: L === 5 && !!design.battery_kwh ? "lit" : "plain" });
-    sc.setTint(L === 2 ? "yield" : "off");
+    sc.setTint(L === 2 || (sunTint && L === 3) ? "yield" : "off");
     sc.setWallbox(!!design.wallbox_kw);
     if (L === 3 && prev !== 3 && prev < 3) sc.setPanels(panelList, !reduce);
     if (L === 4 && layers) sc.setDay(layers.day.hours, !reduce); else sc.setDay(null, false);
@@ -173,7 +190,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     else if (L === 7) sc.setLabels(sc.setHeat(envelope));
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw]);
+  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, sunTint]);
 
   // The plan layer is always top-down; the other layers keep the planner's choice.
   useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);
@@ -200,7 +217,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         const area = target.reduce((a, p) => a + p.area_m2, 0), fit = target.reduce((a, p) => a + (p.fits_panels ?? p.max_panels), 0);
         return {
           sentence: "The real roof, measured from the Bavarian 3D building model.",
-          eq: target.map((p) => `${facing(p.azimuth)} ${n1(p.area_m2)} m², ${Math.round(p.pitch)}°, azimuth ${p.azimuth ?? "none"}°`).join("; ") + ` → ${n1(area)} m² fits ${fit} modules`,
+          eq: target.map((p) => `${p.pitch < 3 ? "flat" : `faces ${facing(p.azimuth)}`}, ${n1(p.area_m2)} m², ${Math.round(p.pitch)}° pitch`).join("; ") + ` → ${n1(area)} m² fits ${fit} modules`,
           sources: [{ key: "lod2", citation: "LoD2 CityGML and DOP20 orthophoto, Bayerische Vermessungsverwaltung", url: "https://www.geodaten.bayern.de" }],
         };
       }
@@ -377,6 +394,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {!bare && chart && <div className={s.side}>{chart}</div>}
         {!bare && <ShadingPanel address={address} kwp={kwp} float />}
         {photo.overlay}
+        {glbOk && L !== 8 && view === "3d" && !photo.on && <p className={s.massTag}>Building model</p>}
         {children}
       </div>
 

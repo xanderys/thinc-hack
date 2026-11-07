@@ -17,13 +17,16 @@ const SUN = new THREE.Color("#E8730C");
 const INK = "#0A0C14";
 const NEIGHBOUR = "#B4B1A9";
 const WALL = "#E2DED4";
+const WALL_MASS = "#F6F3EC";
 
 const toV = ([x, y, z]: V3) => new THREE.Vector3(x, z, -y);
 const OMEGA = (2 * Math.PI) / 0.5; // spring duration 0.5 s, bounce 0 (critically damped)
 const springOut = (t: number) => (t <= 0 ? 0 : 1 - (1 + OMEGA * t) * Math.exp(-OMEGA * t));
 const DAY_SECONDS = 12;
 
-export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string };
+// prio: when two labels come within 24 px the lesser hides. tap: a roof plane's label that shows only once that plane is tapped.
+export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string; prio?: number; tap?: string };
+const GAP = 24;
 
 
 
@@ -86,6 +89,11 @@ export class SpatialScene {
   private controls: OrbitControls;
   private controls2d: OrbitControls;   // 2D plan: pan and pinch zoom, no rotation
   private tap = { t: 0, x: 0, y: 0 };
+  private down = { x: 0, y: 0 };
+  private tapped: string | null = null;
+  private labelSize = new Map<string, { w: number; h: number }>();
+  private wallGeo: THREE.BufferGeometry | null = null;
+  private wallEdges: THREE.LineSegments | null = null;
   private glbRoot: THREE.Object3D | null = null;
   private flattened = false;
   private ro: ResizeObserver;
@@ -169,6 +177,7 @@ export class SpatialScene {
     this.controls2d.addEventListener("start", () => { this.fly = null; this.pose = null; });
     // Double tap or double click puts the house back in frame.
     this.renderer.domElement.addEventListener("pointerup", this.onTap);
+    this.renderer.domElement.addEventListener("pointerdown", this.onDown);
     this.shade.mount(overlay, this.renderer.domElement);
 
     this.ro = new ResizeObserver(() => this.resize());
@@ -365,7 +374,7 @@ export class SpatialScene {
       });
       // The target footprint comes with the roof model; until it is in, flatten later.
       this.glbRoot = gltf.scene; this.flattened = false;
-      if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene);
+      if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene); else this.massing();
       this.scene.add(gltf.scene);
       this.placeholder.visible = false;
       if (this.heat) this.setHeat(this.heat);
@@ -398,6 +407,34 @@ export class SpatialScene {
       pos.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
       m.geometry = g;
     });
+    this.massing();
+  }
+
+  // The walls as an architectural massing model: off-white, one flat shade per face, darker towards the ground
+  // (baked ambient occlusion per vertex) and thin edge lines. No invented windows.
+  private massing() {
+    const wm = this.wallMesh;
+    if (!wm) return;
+    const g = wm.geometry.index ? wm.geometry.toNonIndexed() : wm.geometry.clone();
+    g.computeVertexNormals();
+    wm.updateWorldMatrix(true, false);
+    const pos = g.getAttribute("position") as THREE.BufferAttribute, v = new THREE.Vector3();
+    let ground = Infinity;
+    for (let i = 0; i < pos.count; i++) ground = Math.min(ground, v.fromBufferAttribute(pos, i).applyMatrix4(wm.matrixWorld).y);
+    const base = new THREE.Color(WALL_MASS), col = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const h = v.fromBufferAttribute(pos, i).applyMatrix4(wm.matrixWorld).y - ground;
+      const s = Math.min(1, Math.max(0, h / 2.5)), ao = 0.66 + 0.34 * s * s * (3 - 2 * s);
+      col.set([base.r * ao, base.g * ao, base.b * ao], i * 3);
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    wm.geometry = g;
+    this.wallGeo = g;
+    this.wallMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true });
+    if (!this.heat) wm.material = this.wallMat;
+    if (this.wallEdges) { this.wallEdges.removeFromParent(); this.wallEdges.geometry.dispose(); }
+    this.wallEdges = new THREE.LineSegments(new THREE.EdgesGeometry(g, 25), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.32 }));
+    wm.add(this.wallEdges);
   }
 
   setPanels(list: { p: RoofPlane; r: PanelRect }[], animate: boolean) {
@@ -463,7 +500,7 @@ export class SpatialScene {
     this.heat = env;
     const wm = this.wallMesh;
     if (!env) {
-      if (wm && this.wallMat) wm.material = this.wallMat;
+      if (wm && this.wallMat) { if (this.wallGeo) wm.geometry = this.wallGeo; wm.material = this.wallMat; }
       this.targets.forEach(({ tint }) => ((tint.material as THREE.MeshBasicMaterial).opacity = 0));
       return [] as Label[];
     }
@@ -595,19 +632,24 @@ export class SpatialScene {
       let el = this.labelEls.get(x.key);
       if (!el) { el = document.createElement("div"); this.overlay.appendChild(el); this.labelEls.set(x.key, el); }
       el.className = `sp-label ${x.cls ?? ""}`;
-      el.innerHTML = x.html;
+      if (el.innerHTML !== x.html) { el.innerHTML = x.html; this.labelSize.delete(x.key); }
     });
   }
 
+  // Only the faces that carry modules are labelled; any other face shows its label when tapped.
   planeLabels(kind: "roof" | "sun" | "panels", counts?: Record<string, number>): Label[] {
+    const own: Record<string, number> = {};
+    this.panels.children.forEach((g) => { const id = g.userData?.plane; if (id) own[id] = (own[id] ?? 0) + 1; });
+    const cnt = (id: string) => counts?.[id] ?? own[id] ?? 0;
     return this.targets.map(({ p, c, n }) => {
-      const at = c.clone().addScaledVector(n, 0.4);
+      const at = c.clone().addScaledVector(n, 0.4), k = cnt(p.id);
+      const face = p.pitch < 3 ? "flat roof" : `${facing(p.azimuth)} face, ${Math.round(p.pitch)}° pitch`;
       const html = kind === "roof"
-        ? `<b>${facing(p.pitch < 3 ? null : p.azimuth)}, ${Math.round(p.pitch)}°</b><br/><span>azimuth ${p.azimuth == null ? "none" : `${Math.round(p.azimuth)}°`}</span>`
+        ? `<b>${face}</b>`
         : kind === "sun"
           ? sunHtml(p)
-          : (counts?.[p.id] ?? 0) > 0 || !skipOf(p) ? `<b>${counts?.[p.id] ?? 0}</b> modules` : `No modules<br/><span>${skipOf(p)}</span>`;
-      return { key: `${kind}-${p.id}`, at, html };
+          : k > 0 || !skipOf(p) ? `<b>${k}</b> modules` : `No modules<br/><span>${skipOf(p)}</span>`;
+      return { key: `${kind}-${p.id}`, at, html, prio: k * 1000 + p.area_m2, ...(k > 0 ? {} : { tap: p.id }) };
     });
   }
 
@@ -642,10 +684,19 @@ export class SpatialScene {
     return { x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h, ok: p.z < 1 };
   }
 
+  private onDown = (e: PointerEvent) => { this.down = { x: e.clientX, y: e.clientY }; };
   private onTap = (e: PointerEvent) => {
     const now = performance.now(), near = Math.hypot(e.clientX - this.tap.x, e.clientY - this.tap.y) < 30;
     if (now - this.tap.t < 320 && near) { this.tap.t = 0; this.refit(); return; }
     this.tap = { t: now, x: e.clientX, y: e.clientY };
+    // A tap (not a drag) on a roof face shows that face's label; a tap elsewhere hides it.
+    if (Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 6) return;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+    const hit = ray.intersectObjects(this.targets.map((x) => x.tint), false)[0];
+    const id = hit ? this.targets.find((x) => x.tint === hit.object)?.p.id ?? null : null;
+    this.tapped = id && id !== this.tapped ? id : null;
   };
 
   // Back to the stage's pose, or the opening view, on the same spring; the plan resets its pan and zoom.
@@ -749,14 +800,28 @@ export class SpatialScene {
     } else {
       this.labelEls.forEach((el, k) => { if (k.startsWith("node-")) { el.remove(); this.labelEls.delete(k); } });
     }
-    all.forEach((x) => {
-      const el = this.labelEls.get(x.key);
-      if (!el) return;
-      if (x.key.startsWith("node-") && el.innerHTML !== x.html) el.innerHTML = x.html;
-      const p = this.project(x.at);
-      el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) ${x.key === "node-batt" ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
-      el.style.visibility = p.ok ? "visible" : "hidden";
-    });
+    // Never two labels within 24 px: the tapped face first, then by priority (modules, then area); the lesser hides.
+    const NODE: Record<string, number> = { "node-roof": 4e6, "node-home": 3e6, "node-batt": 2e6, "node-grid": 1e6 };
+    const shown: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    all.map((x) => ({ x, pr: x.tap && x.tap === this.tapped ? 1e9 : NODE[x.key] ?? x.prio ?? 0 }))
+      .sort((a, b) => b.pr - a.pr)
+      .forEach(({ x }) => {
+        const el = this.labelEls.get(x.key);
+        if (!el) return;
+        if (x.key.startsWith("node-") && el.innerHTML !== x.html) { el.innerHTML = x.html; this.labelSize.delete(x.key); }
+        const p = this.project(x.at);
+        const batt = x.key === "node-batt";
+        el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) ${batt ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
+        let ok = p.ok && (!x.tap || x.tap === this.tapped);
+        if (ok) {
+          let sz = this.labelSize.get(x.key);
+          if (!sz || !sz.w) { sz = { w: el.offsetWidth, h: el.offsetHeight }; this.labelSize.set(x.key, sz); }
+          const r = { x0: p.x - sz.w / 2, x1: p.x + sz.w / 2, y0: batt ? p.y + 10 : p.y - sz.h, y1: batt ? p.y + 10 + sz.h : p.y };
+          if (shown.some((q) => r.x0 < q.x1 + GAP && q.x0 < r.x1 + GAP && r.y0 < q.y1 + GAP && q.y0 < r.y1 + GAP)) ok = false;
+          else shown.push(r);
+        }
+        el.style.visibility = ok ? "visible" : "hidden";
+      });
 
     if (this.plan) this.drawPlan();
     this.shade.frame(this.camera, this.mode, (v) => this.project(v), this.host.clientWidth);
@@ -776,6 +841,7 @@ export class SpatialScene {
     this.controls.dispose();
     this.controls2d.dispose();
     this.renderer.domElement.removeEventListener("pointerup", this.onTap);
+    this.renderer.domElement.removeEventListener("pointerdown", this.onDown);
     this.labelEls.forEach((el) => el.remove());
     Object.values(this.flowPaths).forEach((el) => el.remove());
     this.planG?.remove();

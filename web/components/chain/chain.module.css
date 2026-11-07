@@ -216,3 +216,12 @@
   .tickRow li { padding: 6px 10px 6px 6px; min-height: 32px; }
 }
 @media (max-width: 760px) { .scrub button { min-height: 44px; } }
+.shared { margin: 8px 12px 0; padding: 8px 10px; border-radius: 8px; background: #fff4dc; border: 1px solid #f2d79a; color: #6b4500; font-size: 13px; font-weight: 600; line-height: 1.4; }
+.shared span { display: block; font-weight: 400; font-size: 12px; color: #7a5a1a; margin-top: 2px; }
+.flatTag { margin-left: 6px; font-size: 11px; font-weight: 600; color: #8a5a00; background: #fff4dc; border-radius: 999px; padding: 1px 8px; }
+/* Per-panel shading on Panels: in the model's simulation box on desktop, under the model on a phone. */
+.shadeUnder { display: none; }
+@media (max-width: 760px) {
+  .shadeOver { display: none; }
+  .shadeUnder { display: block; order: -1; min-width: 0; margin-bottom: 8px; }
+}
