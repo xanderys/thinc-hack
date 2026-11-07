@@ -724,9 +724,14 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     step = lead["questions_asked"] + 1
     t = leads.now()
     field_asked = asked if asked in ans else (next(iter(ans)) if ans else None)
-    was_done = lead.get("status") == "done"  # a planner refinement after the call keeps the lead done
+    was_done = lead.get("status") in ("done", "approved", "signed", "declined", "question")  # refinement after the call
+    prev_status = lead.get("status")
     lead.update(inputs=inp, unknown=unknown, draft=draft, next_question=nq, questions_asked=step, updated_at=t,
                 status="done" if (nq is None or was_done) else "in_call")
+    if prev_status in ("approved", "signed", "declined", "question") and not changed:
+        lead["status"] = prev_status  # nothing moved: the approval and any decision stand
+    elif prev_status in ("approved", "signed") and changed:
+        lead["approved_at"] = None  # the design changed after the planner released it: release it again
     if not lead.get("customer_name") and meta.get("customer_name"):
         lead["customer_name"] = meta["customer_name"]
     if not lead.get("address_or_postcode") and (ans.get("address") or ans.get("postcode")):
@@ -778,8 +783,34 @@ def refresh_all_leads():
         refresh_lead(lead)
 
 
+def proposal_of(lead: dict, variant: Optional[str] = None) -> tuple[dict, str, float]:
+    """(design, variant key, investment) of what the homeowner is offered: the approved variant, else the planners' design."""
+    key = variant or lead.get("approved_variant") or "expert"
+    draft = lead.get("draft") or {}
+    v = next((x for x in draft.get("variants") or [] if x.get("key") == key), None)
+    d = (v or {}).get("design") or draft.get("design") or {}
+    capex = ((v or {}).get("economics") or draft.get("economics") or {}).get("capex_eur") or 0.0
+    return {k: d.get(k) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}, (key if v or key == "expert" else "expert"), float(capex)
+
+
+def proposal_hash(design: dict, variant: str, investment: float) -> str:
+    """sha256 over {"design": the five sizes, "variant": key, "investment_eur": capex}, keys sorted, compact JSON."""
+    body = json.dumps({"design": design, "variant": variant, "investment_eur": round(float(investment), 2)},
+                      sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def current_hash(lead: dict) -> str:
+    return proposal_hash(*proposal_of(lead))
+
+
 def _lead_out(lead: dict) -> dict:
+    dec = lead.get("decision")
+    if dec:
+        dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(lead)}
     return {"lead_id": lead["lead_id"], "status": lead["status"], "customer_name": lead["customer_name"],
+            "approved_at": lead.get("approved_at"), "approved_variant": lead.get("approved_variant"),
+            "proposal_hash": current_hash(lead), "decision": dec,
             "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
             "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"],
             "created_at": lead["created_at"], "updated_at": lead["updated_at"]}
@@ -815,9 +846,99 @@ def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
     rows = sorted(leads.LEADS.values(), key=lambda l: l["updated_at"], reverse=True)[: max(1, min(limit, 200))]
     for l in rows:
         refresh_lead(l)
-    return [{"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
-             "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
-             "updated_at": l["updated_at"]} for l in rows]
+    out = []
+    for l in rows:
+        dec = l.get("decision")
+        if dec:
+            dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(l)}
+        out.append({"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
+                    "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
+                    "approved_at": l.get("approved_at"), "decision": dec, "updated_at": l["updated_at"]})
+    return out
+
+
+class ApproveReq(BaseModel):
+    variant: Optional[Literal["expert", "value", "payback", "independence", "upfront"]] = None
+
+
+@app.put("/api/leads/{lead_id}/approve")
+def approve_lead(lead_id: str, req: Optional[ApproveReq] = None, x_intake_secret: Optional[str] = Header(None)):
+    """The planner releases the proposal: status approved, so the homeowner page can show it and take a decision."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    refresh_lead(lead)
+    variant = (req.variant if req else None) or "expert"
+    if variant != "expert" and not any(v.get("key") == variant for v in (lead.get("draft") or {}).get("variants") or []):
+        return err(422, f"This lead has no {variant} variant.")
+    lead.update(status="approved", approved_at=leads.now(), approved_variant=variant, updated_at=leads.now())
+    lead["approved_hash"] = current_hash(lead)
+    leads.save(lead)
+    return {"ok": True, "status": "approved", "approved_at": lead["approved_at"], "approved_variant": variant,
+            "proposal_hash": lead["approved_hash"]}
+
+
+class DecisionReq(BaseModel):
+    action: Literal["sign", "decline", "question"]
+    name: Optional[str] = None
+    accepted: Optional[bool] = None
+    signature_png: Optional[str] = None
+    question: Optional[str] = None
+    proposal_hash: str
+
+
+SIG_DIR = leads.DIR / "sig"
+
+
+@app.post("/api/leads/{lead_id}/decision")
+def lead_decision(lead_id: str, req: DecisionReq, request: Request):
+    """v2.5: the homeowner signs, declines or asks (demo acceptance, not a qualified e-signature). Open, rate limited."""
+    if not _rate_ok("decision:" + (request.client.host if request.client else "?"), per_min=10):
+        return err(429, "Too many decisions from this address; try again in a minute.")
+    lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    if req.action == "sign":
+        if lead.get("status") not in ("approved", "signed"):
+            return err(409, "The planner has not released this proposal yet.")
+        if not req.accepted:
+            return err(422, "Signing needs accepted: true.")
+        if not (req.name or "").strip():
+            return err(422, "Signing needs the signer's name.")
+    if req.action == "question" and not (req.question or "").strip():
+        return err(422, "A question needs its text.")
+    has_sig = False
+    if req.signature_png:
+        import base64
+        head, _, b64 = req.signature_png.partition(",")
+        if not head.startswith("data:image/png;base64"):
+            return err(422, "signature_png must be a PNG data URL (data:image/png;base64,...).")
+        try:
+            raw = base64.b64decode(b64, validate=True)
+        except Exception:
+            return err(422, "signature_png is not valid base64.")
+        if len(raw) > 200_000:
+            return err(413, f"The signature image is {len(raw) / 1000:.0f} KB; the limit is 200 KB.")
+        if not raw.startswith(b"\x89PNG"):
+            return err(422, "signature_png is not a PNG image.")
+        SIG_DIR.mkdir(parents=True, exist_ok=True)
+        (SIG_DIR / f"{lead['lead_id']}.png").write_bytes(raw)
+        has_sig = True
+    elif req.action == "sign" and (SIG_DIR / f"{lead['lead_id']}.png").exists():
+        has_sig = True
+    t = leads.now()
+    status = {"sign": "signed", "decline": "declined", "question": "question"}[req.action]
+    dec = {"action": req.action, "name": (req.name or "").strip() or None, "decided_at": t, "proposal_hash": req.proposal_hash,
+           "has_signature": has_sig}
+    if req.action == "question":
+        dec["question"] = req.question.strip()[:2000]
+    lead.update(status=status, decision=dec, updated_at=t)
+    lead.setdefault("history", []).append({"step": None, "field": None, "answer": {}, "changed": [], "note": f"homeowner: {req.action}", "at": t})
+    leads.save(lead)
+    return {"ok": True, "status": status, "decided_at": t, "proposal_hash": req.proposal_hash,
+            "matches_current": req.proposal_hash == current_hash(lead)}
 
 
 @app.get("/api/intake/priors")
