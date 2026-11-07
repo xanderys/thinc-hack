@@ -33,12 +33,12 @@ def base_features(inp: dict, installer: str) -> dict:
         "demand": d,
         "log_demand": math.log1p(d),
         "has_ev": float(bool(inp.get("has_ev"))),
-        "ev_km": inp.get("ev_annual_km") if inp.get("ev_annual_km") is not None else np.nan,
+        "ev_km": inp.get("ev_annual_km") if inp.get("has_ev") and inp.get("ev_annual_km") is not None else np.nan,  # stale mileage never counts
         "has_wallbox": float(bool(inp.get("has_wallbox"))),
         "has_solar": float(bool(inp.get("has_solar"))),
-        "solar_kwp": inp.get("existing_solar_kwp") if inp.get("existing_solar_kwp") is not None else np.nan,
+        "solar_kwp": inp.get("existing_solar_kwp") if inp.get("has_solar") and inp.get("existing_solar_kwp") is not None else np.nan,
         "has_storage": float(bool(inp.get("has_storage"))),
-        "storage_kwh": inp.get("existing_storage_kwh") if inp.get("existing_storage_kwh") is not None else np.nan,
+        "storage_kwh": inp.get("existing_storage_kwh") if inp.get("has_storage") and inp.get("existing_storage_kwh") is not None else np.nan,
         "heat_cost": inp.get("heating_cost_per_year_eur") if inp.get("heating_cost_per_year_eur") is not None else np.nan,
         "heat_demand": inp.get("heating_demand_kwh") if inp.get("heating_demand_kwh") is not None else np.nan,
         "price": inp.get("electricity_price_ct_kwh") if inp.get("electricity_price_ct_kwh") is not None else np.nan,
@@ -435,7 +435,7 @@ class Engine:
                 return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
                         "adjustment": {"label": f"{(s == 0).sum()} of {n} similar homes got no new PV", "value": 0.0, "n_similar": n}, "final": None}
             if inp.get("roof") and inp["roof"].get("max_kwp"):
-                ins.append({"name": "roof holds", "value": inp["roof"]["max_kwp"], "unit": "kWp", "source": "lead"})
+                ins.append({"name": "roof holds", "value": inp["roof"]["max_kwp"], "unit": "kWp", "source": inp["roof"].get("source", "lod2")})
             label = ("set by the planner" if planner else
                      f"planners like this one oversize: learned from {len(self.train[self.train.installer_id == inp['installer_id']])} past designs at this installer{peer}, snapped to a module count")
             return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
