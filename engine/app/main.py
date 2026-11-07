@@ -205,17 +205,22 @@ def refine(req: RefineReq):
     if bad:
         return err(422, f"Unknown override field: {', '.join(bad)}. Allowed: {', '.join(FIELDS)}.")
     ov = {k: v for k, v in (req.overrides or {}).items() if k in FIELDS}
-    nonnum = [k for k, v in ov.items() if v is not None and not isinstance(v, (int, float))]
+    nonnum = [k for k, v in ov.items() if v is not None and v != "include" and not (isinstance(v, (int, float)) and not isinstance(v, bool))]
     if nonnum:
-        return err(422, f"Override {', '.join(nonnum)} must be a number or null.")
-    check_design(ov, "overrides")
+        return err(422, f"Override {', '.join(nonnum)} must be a number, null or \"include\".")
+    if ov.get("inverter_kw") == "include":
+        ov.pop("inverter_kw")
+    check_design({k: v for k, v in ov.items() if v != "include"}, "overrides")
     before = eng.predict(inp)
     after = eng.predict(inp, ov)
     diff = []
     for k, comp in FIELDS.items():
         a, b = before["design"][k], after["design"][k]
         if a != b:
-            if k in ov:
+            if ov.get(k) == "include":
+                r = after["components"][comp]["reason"]
+                why = r if r.startswith(("Included", "Replaces")) else f"Included by the planner; sized by the engine. {r}"
+            elif k in ov:
                 why = "Set by the planner."
             elif comp == "inverter":
                 why = "Follows the PV size at a DC/AC ratio of about 1.15."

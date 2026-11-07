@@ -57,6 +57,12 @@ def knn_vec(f: dict) -> np.ndarray:
                      f["has_solar"], f["has_storage"], 1.0 - f["lp_H0"]])
 
 
+def snap_up(x: float, cat: np.ndarray) -> float:
+    """Smallest catalogue size at or above x; largest if none."""
+    up = cat[cat >= x - 1e-9]
+    return float(up.min()) if len(up) else float(cat.max())
+
+
 def snap(x: float, cat: np.ndarray) -> float:
     if x is None or len(cat) == 0:
         return x
@@ -169,46 +175,39 @@ class Engine:
         nb = self.neighbours(inp, inst)
         comps, design = {}, {}
 
+        def choose(key, p, size_fn):
+            """Planner number/null fixes it; "include" forces it in and the engine sizes it; else the model decides."""
+            if key in ov and ov[key] != "include":
+                return ov[key] or 0.0, "planner"
+            if ov.get(key) == "include":
+                return size_fn(), "include"
+            return (size_fn() if p >= 0.5 else 0.0), "model"
+
         # PV
         p_pv = float(self.models["pv_dec"].predict_proba(X)[0, 1])
-        if "pv_kwp" in ov:
-            pv = ov["pv_kwp"] or 0.0
-            src = "planner"
-        else:
-            pv = snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"]) if p_pv >= 0.5 else 0.0
-            src = "model"
+        pv, src = choose("pv_kwp", p_pv, lambda: snap(float(self.models["pv_size"].predict(X)[0]), cat["pv"]))
         comps["pv"] = self._detail("pv", pv, p_pv, nb, inp, src)
         # battery
         X1 = X.assign(pv=pv)
         p_b = float(self.models["bat_dec"].predict_proba(X1)[0, 1])
-        if "battery_kwh" in ov:
-            bat, src = ov["battery_kwh"] or 0.0, "planner"
-        else:
-            bat = snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"])) if p_b >= 0.5 else 0.0
-            src = "model"
+        bat, src = choose("battery_kwh", p_b, lambda: snap(float(self.models["bat_size"].predict(X1)[0]), self.battery_catalogue(inst, f["t"])))
         comps["battery"] = self._detail("battery", bat, p_b, nb, inp, src, pv=pv)
         X2 = X1.assign(battery=bat)
-        # heat pump
+        # heat pump: never proposed where one exists; a planner "include" there is a replacement job
         p_h = float(self.models["hp_dec"].predict_proba(X2)[0, 1]) if self.models.get("hp_dec") else 0.0
-        if "heatpump_kw" in ov:
-            hp, src = ov["heatpump_kw"] or 0.0, "planner"
-        else:
-            hp = snap(physics.heatpump_kw(inp), cat["heatpump"]) if p_h >= 0.5 else 0.0
-            src = "model"
+        if inp.get("heating_type") == "Heatpump" and "heatpump_kw" not in ov:
+            p_h = 0.0
+        hp, src = choose("heatpump_kw", p_h, lambda: snap_up(physics.heatpump_kw(inp), cat["heatpump"]))
+        if hp and inp.get("heating_type") == "Heatpump":
+            inp = {**inp, "_hp_replacement": True}
         comps["heatpump"] = self._detail("heatpump", hp, p_h, nb, inp, src)
-        # wallbox
+        # wallbox: decision from the EV flag (learned decision lost to this rule on test; README)
         p_w = float(self.models["wb_dec"].predict_proba(X2)[0, 1])
-        if "wallbox_kw" in ov:
-            wb, src = ov["wallbox_kw"] or 0.0, "planner"
-        else:
-            if inp.get("has_ev"):  # learned decision lost to this rule on test; wallbox choice is mostly noise (README)
-                wb = 22.0 if float(self.models["wb_size"].predict_proba(X2)[0, 1]) >= 0.5 else 11.0
-            else:
-                wb = 0.0
-            src = "model"
+        wb, src = choose("wallbox_kw", 1.0 if inp.get("has_ev") else 0.0,
+                         lambda: 22.0 if float(self.models["wb_size"].predict_proba(X2)[0, 1]) >= 0.5 else 11.0)
         comps["wallbox"] = self._detail("wallbox", wb, p_w, nb, inp, src)
 
-        inv = ov.get("inverter_kw") if "inverter_kw" in ov else physics.inverter_kw(pv)
+        inv = ov["inverter_kw"] if isinstance(ov.get("inverter_kw"), (int, float)) else physics.inverter_kw(pv)
         design = {"pv_kwp": pv or None, "inverter_kw": inv if pv else None, "battery_kwh": bat or None,
                   "heatpump_kw": hp or None, "wallbox_kw": wb or None}
         econ = physics.economics(inp, design)
@@ -244,6 +243,11 @@ class Engine:
         d = inp.get("annual_demand_kwh") or 0
         if src == "planner":
             return f"Set by the planner; {k} of {n} similar homes had {NAMES[comp]}."
+        if src == "include" and comp == "heatpump":
+            what = "Replaces the existing heat pump" if inp.get("_hp_replacement") else "Included by the planner"
+            return f"{what}; {fmt(size, unit)} from the heat load ({physics.heat_load_note(inp)})."
+        if src == "include" and comp != "pv" and comp != "battery":
+            return f"Included by the planner at {fmt(size, unit)}, the size this installer fits most for homes like this."
         if comp == "pv":
             if not inc:
                 return f"{n - k} of {n} similar homes got no new PV" + (" (existing system on the roof)." if inp.get("has_solar") else ".")
@@ -355,6 +359,7 @@ class Engine:
                 bc[c] = {"within_tolerance_share": round(float(w.mean()), 3),
                          "size_mae": round(float(np.abs(bdf[k].values[inc] - te[k].values[inc]).mean()), 2) if inc.any() else None}
             baselines[name] = {"rule": self.BASELINES[name], "components": bc, "design_match_share": round(float(mm.mean()), 3)}
+        ceil = self.ceiling()
         comps = {}
         match_o = np.ones(len(te), bool)
         match_b = np.ones(len(te), bool)
@@ -397,16 +402,24 @@ class Engine:
                             "note": f"Expert {fmt(e or None, UNITS[c])}, ours {fmt(o or None, UNITS[c])}; demand {te.annual_demand_kwh.iloc[i]:,.0f} kWh"
                                     + (", EV" if te.has_ev.iloc[i] else "") + "."})
         dev = sorted(dev, key=lambda x: -x.pop("_err"))[:20]
+        for c in COMPONENTS:
+            comps[c]["textbook_within_tolerance_share"] = baselines["textbook"]["components"][c]["within_tolerance_share"]
+            comps[c]["floor_slope_within_tolerance_share"] = baselines["floor_slope"]["components"][c]["within_tolerance_share"]
+            if c in ceil["components"]:
+                comps[c]["ceiling_within_tolerance_share"] = ceil["components"][c]
         return {
             "split": {"train": len(self.train), "test": len(te),
                       "method": f"80/20 stratified by installer, seed {SEED}; {self.excluded['outliers']} outliers dropped ({self.excluded['rule']})"},
             "components": comps,
             "overall": {"design_match_share": round(float(match_o.mean()), 3),
                         "baseline_design_match_share": round(float(match_b.mean()), 3),
+                        "textbook_design_match_share": baselines["textbook"]["design_match_share"],
+                        "floor_slope_design_match_share": baselines["floor_slope"]["design_match_share"],
+                        "ceiling_design_match_share": ceil["design_match_share"],
                         "definition": "PV, battery, heat pump and wallbox all within tolerance at once"},
             "per_installer": per,
             "baselines": baselines,
-            "ceiling": self.ceiling(),
+            "ceiling": {k: ceil[k] for k in ("method", "pv_agreement_share", "battery_agreement_share", "covered_test_share")},
             "deviations": dev,
         }
 
@@ -414,19 +427,20 @@ class Engine:
         """How often near-identical homes got designs within tolerance of each other: the median design of training
         homes with the same installer, demand, EV flag and heating type, scored against each test home."""
         key = ["installer_id", "annual_demand_kwh", "has_ev", "heating_type"]
+        cols = list(TARGET.values())
         g = self.train.groupby(key)
-        med = g[["pv_kwp", "battery_kwh"]].median()
-        size = g.size()
-        med = med[size >= 5]
-        te = self.test.join(med, on=key, rsuffix="_peer")
-        cov = te.pv_kwp_peer.notna()
-        t = te[cov]
-        pv = physics.within("pv", t.pv_kwp_peer.values, t.pv_kwp.values)
-        bat = physics.within("battery", t.battery_kwh_peer.values, t.battery_kwh.values)
-        return {"pv_agreement_share": round(float(pv.mean()), 3), "battery_agreement_share": round(float(bat.mean()), 3),
-                "covered_test_share": round(float(cov.mean()), 3),
+        med = g[cols].median()[g.size() >= 5].add_suffix("_peer")
+        te = self.test.join(med, on=key)
+        t = te[te.pv_kwp_peer.notna()]
+        hits = {c: physics.within(c, t[TARGET[c] + "_peer"].values, t[TARGET[c]].values) for c in COMPONENTS}
+        allc = np.logical_and.reduce(list(hits.values()))
+        return {"pv_agreement_share": round(float(hits["pv"].mean()), 3),
+                "battery_agreement_share": round(float(hits["battery"].mean()), 3),
+                "components": {c: round(float(h.mean()), 3) for c, h in hits.items()},
+                "design_match_share": round(float(allc.mean()), 3),
+                "covered_test_share": round(float(len(t) / len(te)), 3),
                 "method": "Each test home against the median design of 5 or more training homes with identical installer, "
-                          "demand, EV flag and heating type; same tolerance bands as the scoreboard."}
+                          "demand, EV flag and heating type; same tolerance bands as the scoreboard. Covers the test homes that have such a group."}
 
 
 def row_inputs(r: dict) -> dict:
