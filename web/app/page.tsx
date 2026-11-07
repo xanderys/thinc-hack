@@ -4,7 +4,7 @@ import Lead from "@/components/stage/Lead";
 import Plan, { type Variant } from "@/components/stage/Plan";
 import StepHead from "@/components/stage/StepHead";
 import Refine, { type Moved } from "@/components/stage/Refine";
-import type { AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
+import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
 import { call } from "@/lib/client";
 import { HERO_LEAD } from "@/lib/demo";
 import { buildFacts, DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
@@ -22,6 +22,7 @@ export default function Stage() {
   const [readBusy, setReadBusy] = useState(false);
   const [readErr, setReadErr] = useState<string | null>(null);
   const [installer, setInstaller] = useState<InstallerId>("2a8ba8e2");
+  const [roof, setRoof] = useState<RoofResult | null>(null);
   const [question, setQuestion] = useState<AskQuestion | null | undefined>(undefined); // undefined while asking
   const [askErr, setAskErr] = useState<string | null>(null);
   const [answer, setAnswer] = useState<unknown>(undefined);
@@ -50,8 +51,11 @@ export default function Stage() {
   const inputs: HomeInputs = useMemo(() => {
     const base: HomeInputs = { ...DEFAULTS, ...(read?.inputs ?? {}), installer_id: installer };
     if (question && answer !== undefined) (base as unknown as Record<string, unknown>)[question.field] = answer;
-    return { ...base, ...changed };
-  }, [read, installer, question, answer, changed]);
+    const out: HomeInputs = { ...base, ...changed };
+    // One roof lookup per lead; later calls carry the result instead of the address.
+    if (roof && roof.source !== "none") { out.roof = roof; delete out.address; }
+    return out;
+  }, [read, installer, question, answer, changed, roof]);
   const ready = !!read && question !== undefined && (question === null || answer !== undefined);
 
   // Shortcut d loads the hero lead.
@@ -71,14 +75,15 @@ export default function Stage() {
     if (!r.ok) { setReadErr(r.error); return; }
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(null); setPrev(null); last.current = null;
     setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
-    setRead(r.data);
+    setRead(r.data); setRoof(null);
+    if (r.data.inputs.address) call<RoofResult>(`/api/roof?address=${encodeURIComponent(r.data.inputs.address)}`).then((x) => setRoof(x.ok ? x.data : null));
     const base: HomeInputs = { ...DEFAULTS, ...r.data.inputs, installer_id: installer };
     // A restarting engine answers 502 for about 35 s: wait and ask again rather than skip the question.
     for (let k = 0; ; k++) {
       const a = await call<AskResponse>("/api/ask", { inputs: base, unknown: r.data.unknown });
       if (a.ok) { setQuestion(a.data.questions[0] ?? null); setAskErr(null); return; }
       if (/404|not found/i.test(a.error)) { setQuestion(null); setAskErr(null); return; }
-      if (k >= 7) { setQuestion(null); setAskErr(a.error); return; }
+      if (k >= 15) { setQuestion(null); setAskErr(a.error); return; }
       setAskErr(`${a.error} Asking again.`);
       await new Promise((ok) => setTimeout(ok, 6000));
     }
@@ -224,7 +229,7 @@ export default function Stage() {
       <StepHead title={res ? "Plan system" : "Lead"} at={at} />
       <div className="s-stage">
         <Lead lead={lead} setLead={setLead} read={read} busy={readBusy} error={readErr} onRead={doRead} onEdit={() => setRead(null)}
-          inputs={inputs} changed={changed} setInstaller={setInstaller}
+          inputs={inputs} changed={changed} setInstaller={setInstaller} roof={roof}
           question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}

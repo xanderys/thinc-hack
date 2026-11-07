@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 const NUM = ["annual_demand_kwh", "num_inhabitants", "house_size_sqm", "house_built_year", "ev_annual_km", "heating_cost_per_year_eur", "heating_demand_kwh", "electricity_price_ct_kwh", "existing_solar_kwp", "existing_storage_kwh"] as const;
 const BOOL = ["has_ev", "has_wallbox", "has_solar", "has_storage"] as const;
+const TEXT = ["address"] as const;
 const ENUMS: Record<string, readonly string[]> = {
   load_profile: ["H0", "FamilyOfFour", "HomeOfficeOnePerson", "FullTimeOnePerson", "SeniorOnePerson", "PartTimeOnePerson"],
   heating_type: ["Gas", "Oil", "Heatpump", "OtherNonRenewable", "OtherRenewable"],
@@ -22,7 +23,7 @@ const schema = {
       items: {
         type: "object", additionalProperties: false, required: ["field", "value", "quote"],
         properties: {
-          field: { type: "string", enum: [...NUM, ...BOOL, ...Object.keys(ENUMS)] },
+          field: { type: "string", enum: [...NUM, ...BOOL, ...TEXT, ...Object.keys(ENUMS)] },
           value: { anyOf: [{ type: "number" }, { type: "boolean" }, { type: "string" }] },
           quote: { type: "string" },
         },
@@ -32,7 +33,7 @@ const schema = {
 };
 
 const SYSTEM = `You read an email from a homeowner to a German solar installer and extract only the facts it states about the home.
-Fields: annual_demand_kwh (household electricity per year), num_inhabitants, house_size_sqm, house_built_year, has_ev, ev_annual_km, has_wallbox, heating_type (${ENUMS.heating_type.join(", ")}), heating_cost_per_year_eur, heating_demand_kwh, electricity_price_ct_kwh, has_solar, existing_solar_kwp, has_storage, existing_storage_kwh, load_profile (FamilyOfFour for a family of four, otherwise only when the household is described exactly).
+Fields: address (street, number, postcode and town as written), annual_demand_kwh (household electricity per year), num_inhabitants, house_size_sqm, house_built_year, has_ev, ev_annual_km, has_wallbox, heating_type (${ENUMS.heating_type.join(", ")}), heating_cost_per_year_eur, heating_demand_kwh, electricity_price_ct_kwh, has_solar, existing_solar_kwp, has_storage, existing_storage_kwh, load_profile (FamilyOfFour for a family of four, otherwise only when the household is described exactly).
 Rules: quote is the shortest exact span copied character for character from the email that states the fact. A stated absence is a fact ("no electric car yet" sets has_ev false). Never guess or infer a value the email does not state, and never propose system sizes. Euros per kWh become cents (0.37 is 37).`;
 
 const norm = (s: string) => s.toLowerCase().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ").trim();
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
     if ((NUM as readonly string[]).includes(field)) { v = Number(v); if (!Number.isFinite(v as number) || (v as number) < 0) continue; }
     else if ((BOOL as readonly string[]).includes(field)) { if (typeof v === "string") v = v === "true"; if (typeof v !== "boolean") continue; }
     else if (field in ENUMS) { if (!ENUMS[field].includes(String(v))) continue; }
+    else if ((TEXT as readonly string[]).includes(field)) { if (typeof v !== "string" || !v.trim()) continue; v = v.trim(); }
     else continue;
     if (field in inputs) continue;
     (inputs as Record<string, unknown>)[field] = v;

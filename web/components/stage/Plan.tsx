@@ -24,6 +24,8 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
   const e = res.economics, pe = prev?.economics, a = e.annual, pa = pe?.annual;
   const was = (now: number, then: number | undefined | null, f: (x: number) => string) => then != null && f(then) !== f(now) ? f(then) : null;
   const moved = !!prev && JSON.stringify(prev.design) !== JSON.stringify(res.design);
+  const roofMsg = res.plausibility.find((p) => /^The roof fits/.test(p.message))?.message;
+  const roofLine = roofMsg ? { text: roofMsg.replace(/\s*\(([^)]*)\)\.?$/, "."), credit: roofMsg.match(/\(([^)]*)\)\.?$/)?.[1] } : null;
   const prose = write?.grounded ? write.text : !writeBusy ? named(res.explanation.slice(0, 3).join(" ")) : null;
 
   return (
@@ -34,7 +36,10 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
       </p>
 
       <div className="s-top">
-        <div className="s-house"><House design={res.design} /></div>
+        <div className="s-house">
+          <House design={res.design} />
+          {roofLine && <p className="s-roof" title={roofLine.credit}>{roofLine.text}</p>}
+        </div>
         <div>
           <dl className="s-est">
             {a && <Est k="Solar yield a year" v={n0(a.pv_yield_kwh)} u="kWh" was={was(a.pv_yield_kwh, pa?.pv_yield_kwh, n0)} />}

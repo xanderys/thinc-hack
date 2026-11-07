@@ -1,4 +1,4 @@
-// Copied from docs/api.md (v1.3.1). Change only when the contract changes.
+// Copied from docs/api.md (v1.6). Change only when the contract changes.
 
 export type InstallerId = "2a8ba8e2" | "23c108b7";
 export type LoadProfile = "H0" | "FamilyOfFour" | "HomeOfficeOnePerson" | "FullTimeOnePerson" | "SeniorOnePerson" | "PartTimeOnePerson";
@@ -20,6 +20,25 @@ export interface HomeInputs {
   electricity_price_ct_kwh?: number;
   has_solar: boolean; existing_solar_kwp?: number;
   has_storage: boolean; existing_storage_kwh?: number;
+  address?: string;   // v1.6
+  roof?: RoofResult;  // v1.6
+}
+
+export interface RoofResult {
+  source: "lod2" | "google-solar" | "osm" | "none";
+  matched_address: string; lat: number | null; lon: number | null;
+  footprint_m2: number | null; roof_area_m2: number | null; usable_area_m2: number | null;
+  segments: { azimuth: number; pitch: number; area_m2: number }[];
+  max_panels: number | null; max_kwp: number | null;
+  confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
+}
+
+export interface Derivation {   // v1.5
+  axiom: string; equation: string;
+  inputs: { name: string; value: number | string; unit: string; source: string }[];
+  axiom_result: number | null;
+  adjustment: { label: string; value: number; n_similar: number } | null;
+  final: number | null;
 }
 
 export interface Design {
@@ -39,6 +58,7 @@ export interface ComponentDetail {
   reason: string;
   alternatives: { size: number | null; label: string; share: number }[];
   neighbours: Neighbours;
+  derivation?: Derivation; // v1.5
 }
 
 export interface Plausibility { level: "ok" | "warn"; message: string; }
