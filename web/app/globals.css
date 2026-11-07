@@ -480,7 +480,7 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .s-live-mesh i:nth-child(2) { left: 30%; background: radial-gradient(closest-side, rgba(13, 27, 254, 0.9), rgba(13, 27, 254, 0)); }
 .s-live-mesh i:nth-child(3) { left: 60%; background: radial-gradient(closest-side, rgba(243, 239, 230, 0.55), rgba(243, 239, 230, 0)); }
 .s-live-t { position: relative; padding: 0 14px; font-size: 14px; color: var(--paper); display: flex; align-items: center; gap: 8px; }
-.s-live-t .num { font-variant-numeric: tabular-nums; }
+.s-calls-l .s-live-t .num { font-variant-numeric: tabular-nums; color: var(--paper); font-size: 14px; }
 .s-live-t .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--paper); }
 @media (prefers-reduced-motion: no-preference) {
   .s-live-mesh i:nth-child(1) { animation: s-drift-a 8s ease-in-out infinite alternate; }

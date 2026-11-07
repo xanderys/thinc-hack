@@ -160,34 +160,41 @@ export interface HomeAnswers {
 
 const known = <T extends string>(x?: T) => (x && x !== "unknown" ? x : undefined);
 
-/** Dynamic variables for the call: the names the lead route reads back, plus customer_name and address_or_postcode for Rina. */
-export function homeVariables(a: HomeAnswers, installer_id: InstallerId): Record<string, string> {
+/** Dynamic variables for the call (voice/README "Starting a call from another site"): all strings, unknowns left out. */
+export function homeVariables(a: HomeAnswers, installer_id: InstallerId, roof?: RoofInfo | null): Record<string, string> {
   const bill = known(a.bill_band) as keyof typeof BILL_EUR | undefined;
-  return {
-    ...formVariables({ first_name: a.name, address: a.location, people: known(a.people) as FormAnswers["people"], heating: known(a.heating) as FormAnswers["heating"], ev: known(a.ev) as FormAnswers["ev"], bill_band: bill }, installer_id),
+  const eur = bill ? BILL_EUR[bill] : undefined;
+  const multi = !!roof?.footprint_m2 && roof.footprint_m2 > MULTI_UNIT_FOOTPRINT_M2;
+  const v: Record<string, string | undefined> = {
     customer_name: a.name.trim(),
     address_or_postcode: a.location.trim(),
-    roof: known(a.roof) ? HOME_FORM.roof[a.roof!] : NOT_GIVEN,
-    installer_name: INSTALLER_BRAND[installer_id],
+    installer_id,
+    people: known(a.people),
+    monthly_bill_eur: eur ? String(eur) : undefined,
+    kwh_estimate: eur ? String(kwhFromBill(eur)) : undefined,
+    heating: known(a.heating),
+    ev: known(a.ev),
+    floor_area_m2: !multi && roof?.floor_area_m2 ? String(Math.round(roof.floor_area_m2)) : undefined,
+    multi_unit: roof?.footprint_m2 ? String(multi) : undefined,
   };
+  return Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) as Record<string, string>;
 }
 
-/** Rina's first line on the enquiry page: greet by name, confirm where they live. */
-export function homeFirstMessage(a: HomeAnswers, installer_id: InstallerId) {
-  const street = streetOf(a.location), pc = a.location.match(/\b\d{5}\b/)?.[0];
-  const where = street ? `at ${street}` : pc ? `in ${pc.split("").join(" ")}` : "at the address you gave";
-  return `Hi ${a.name.trim().split(/\s+/)[0]}, it's Rina from ${INSTALLER_BRAND[installer_id]}, thanks for your request. Just to check, are you living ${where}?`;
+/** Rina's spoken first line, as the voice contract sets it: greet by name, confirm the address. */
+export function homeFirstMessage(a: HomeAnswers) {
+  return `Hi ${a.name.trim().split(/\s+/)[0]}, it's Rina from Reonic. Just to check, are you living at ${a.location.trim()}?`;
 }
 
-/** Start-of-call note: what the form said and what the lookup found, so Rina never asks it again. */
+/** Sent once the call connects: what the enquiry gave, so Rina never asks it again. Unknown parts are left out. */
 export function homeNote(a: HomeAnswers, installer_id: InstallerId, roof?: RoofInfo | null) {
-  const v = homeVariables(a, installer_id);
-  const found = roof && roof.source !== "none" && roof.footprint_m2;
-  const building = !found ? "Building lookup: not found." : `Building lookup: found, footprint about ${Math.round(roof!.footprint_m2!)} m2` +
-    (roof!.roof_area_m2 ? `, roof about ${Math.round(roof!.roof_area_m2)} m2` : "") + (roof!.floor_area_m2 ? `, living space estimated at about ${Math.round(roof!.floor_area_m2)} m2 (do not ask living space)` : "") + ".";
-  return `Form answers (never ask what is given; ask what is "not given"): name ${v.customer_name}; address or postcode ${v.address_or_postcode}; people ${v.people}; ` +
-    `electricity bill about ${v.monthly_bill_eur} EUR a month${v.kwh_estimate !== NOT_GIVEN ? `, about ${v.kwh_estimate} kWh a year` : ""}; heating ${v.heating}; electric car ${v.ev}; roof ${v.roof}. ` +
-    `${building} You already asked whether they live there. You call on behalf of ${v.installer_name}.`;
+  const v = homeVariables(a, installer_id, roof);
+  const parts = [`name ${v.customer_name}`, `address ${v.address_or_postcode}`,
+    v.people && `people ${v.people}`,
+    v.monthly_bill_eur && `bill about ${v.monthly_bill_eur} EUR a month, about ${v.kwh_estimate} kWh a year`,
+    v.heating && `heating ${v.heating}`, v.ev && `electric car ${v.ev}`,
+    known(a.roof) && `roof faces ${HOME_FORM.roof[a.roof!].toLowerCase()}`,
+    v.floor_area_m2 && `living space ${v.floor_area_m2} m2`, v.multi_unit && `multi-unit building ${v.multi_unit}`].filter(Boolean);
+  return `Enquiry (never ask these again): ${parts.join("; ")}. You have already asked whether they live at the address.`;
 }
 
 /** First line Rina says on a widget call, so she never asks for the address. */
@@ -220,9 +227,10 @@ export function factsFromVariables(d: Record<string, unknown>): Partial<IntakeFa
   const g = (k: string) => (typeof d[k] === "string" && d[k] !== NOT_GIVEN ? (d[k] as string) : undefined);
   const heating = g("heating");
   const f: Partial<IntakeFacts> = {
-    first_name: g("first_name"),
-    address: g("address") ?? g("postcode"),
-    property_type: g("house_type") as IntakeFacts["property_type"],
+    first_name: g("customer_name") ?? g("first_name"),
+    address: g("address_or_postcode") ?? g("address") ?? g("postcode"),
+    house_size_sqm: g("floor_area_m2") ? Number(g("floor_area_m2")) : undefined,
+    property_type: (g("house_type") ?? (g("multi_unit") === "true" ? "apartment" : undefined)) as IntakeFacts["property_type"],
     num_inhabitants: g("people") ? Number(g("people")) : undefined,
     monthly_bill_eur: g("monthly_bill_eur") ? Number(g("monthly_bill_eur")) : undefined,
     annual_demand_kwh: g("kwh_estimate") ? Number(g("kwh_estimate")) : undefined,

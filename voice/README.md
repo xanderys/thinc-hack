@@ -41,3 +41,32 @@ Agent: public, voice Lucy (`lcMyyd2HUfFzxdCaC4Ta`, young British female), LLM `c
 Build year is never asked; infer it from the address.
 
 Bill bands: under 60 = 50 EUR, 60 to 100 = 80, 100 to 150 = 125, over 150 = 180.
+
+## Starting a call from another site (STAGE enquiry page)
+The agent's own first message and prompt use no variables, so the plain talk-to link always works (ElevenLabs placeholders do not apply at runtime: a referenced variable that is not sent closes the call with "Missing required dynamic variables"). The enquiry page passes everything at start:
+```ts
+conversation.startSession({
+  agentId: "agent_4201m6v70wckem7sd6nq4mkt40s4",
+  connectionType: "webrtc",
+  userId: `${customer_name}|${address_or_postcode}`,               // lets /start/leads show the live call by name
+  dynamicVariables: { customer_name, address_or_postcode, installer_id, house_type, people, monthly_bill_eur,
+                      kwh_estimate, heating, ev, interests, floor_area_m2, multi_unit },   // all strings; omit unknowns
+  overrides: { agent: { firstMessage: `Hi ${customer_name}, it's Rina from Reonic. Just to check, are you living at ${address_or_postcode}?` } },
+});
+// in onConnect:
+conversation.sendContextualUpdate(`Enquiry (never ask these again): name ${customer_name}; address ${address_or_postcode}; ` +
+  `house type ${house_type}; people ${people}; bill about ${monthly_bill_eur} EUR a month, about ${kwh_estimate} kWh a year; ` +
+  `heating ${heating}; electric car ${ev}; interested in ${interests}; living space ${floor_area_m2} m2; multi-unit building ${multi_unit}. ` +
+  `You have already asked whether they live at the address.`);   // leave out parts that are unknown
+```
+Values: `house_type` detached, semi_detached, terraced, apartment; `heating` Gas, Oil, Heatpump, Electric, Other; `ev` now, planned, none; `multi_unit` "true" or "false"; `installer_id` 2a8ba8e2 (default) or 23c108b7. Only name and address are required.
+
+Why the first /start test seemed not to start: the call did connect (conv_0901m6v9stsee71a1d1eb0b16wm1, Rina spoke, the transcript shows background speech and "Are you still there?"), so the failure was audio on the phone, not the session. On iPhone, audio output only plays if an audio context is unlocked inside the tap itself, and a ringer switch on silent can mute web audio. On the Accept button, call `navigator.mediaDevices.getUserMedia({ audio: true })` and `new AudioContext().resume()` synchronously in the click handler before `startSession`, keep the call screen visible with a "Speaking / Listening" state, and show any `onError` text with a retry.
+
+## GET /start/leads (live inbox)
+Polled every 3 s; the ElevenLabs list is cached for 2 s and names per call are cached in memory.
+```ts
+{ conversation_id: string; status: "in_progress" | "done" | "failed"; started_at: number | null /* unix s */;
+  call_secs: number | null; customer_name: string | null; address_or_postcode: string | null; title: string | null }[]
+```
+`in_progress` covers the live call and the few seconds of post-call analysis; `done` means `/start/lead/<id>` returns the facts and design. While live, name and address come from `userId`; after the call, from the dynamic variables.

@@ -4,7 +4,7 @@ import type { InstallerId } from "@/lib/api";
 import type { IntakeFacts, Source } from "@/app/start/intake";
 
 export type CallLead = { conversation_id: string; facts: IntakeFacts; sources: Record<string, Source>; inputs: Record<string, unknown> };
-type Row = { conversation_id: string; started_at: number | null; call_secs: number | null; status: string; title: string | null; name?: string | null; location?: string | null };
+type Row = { conversation_id: string; started_at: number | null; call_secs: number | null; status: string; title: string | null; customer_name?: string | null; address_or_postcode?: string | null };
 
 const when = (s: number | null) => s ? new Date(s * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 const live = (s: number | null, now: number) => { const t = s ? Math.max(0, Math.floor(now / 1000 - s)) : 0; return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
@@ -76,7 +76,7 @@ export default function Calls({ installer, onLead }: { installer: InstallerId; o
           {[...rows.filter((r) => r.status === "in_progress"), ...rows.filter((r) => r.status !== "in_progress")].slice(0, 6).map((r) => r.status === "in_progress" ? (
             <li key={`live-${r.conversation_id}`} className="s-live">
               <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>
-              <span className="s-live-t"><span className="dot" aria-hidden />Live call with {[r.name ?? "a homeowner", r.location?.match(/\b\d{5}\b/)?.[0] ?? r.location].filter(Boolean).join(", ")}, <span className="num">{live(r.started_at, now)}</span></span>
+              <span className="s-live-t"><span className="dot" aria-hidden />Live call with {[r.customer_name ?? "a homeowner", r.address_or_postcode?.match(/\b\d{5}\b/)?.[0] ?? r.address_or_postcode].filter(Boolean).join(", ")}, <span className="num">{live(r.started_at, now)}</span></span>
             </li>
           ) : (
             <li key={r.conversation_id} className="s-in">

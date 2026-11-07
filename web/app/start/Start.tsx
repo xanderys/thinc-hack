@@ -34,15 +34,23 @@ function Page({ agentId, installerId }: Props) {
   const ring = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameRef = useRef<HTMLInputElement>(null), placeRef = useRef<HTMLInputElement>(null);
 
+  const roof = useRef<RoofInfo | null | undefined>(undefined);
+  const noted = useRef(false);
   const conversation = useConversation({
     onConnect: ({ conversationId }) => {
       connected.current = true; setSince(Date.now());
       // The planner preview embeds this page; it opens the lead when the call ends.
       try { window.parent?.postMessage({ type: "marquee:lead", conversation_id: conversationId }, location.origin); } catch {}
     },
-    onDisconnect: () => setStep(connected.current ? "thanks" : "form"),
-    onError: (m) => { setError(String(m)); if (!connected.current) setStep("form"); },
+    onDisconnect: () => { if (connected.current) setStep("thanks"); },
+    onError: (m) => setError(String(m)),   // stays on the call screen with the words and a retry
   });
+  // The enquiry note goes in once the call is up, with the address lookup if it has arrived.
+  useEffect(() => {
+    if (conversation.status !== "connected" || noted.current) return;
+    noted.current = true;
+    conversation.sendContextualUpdate(homeNote(a, installerId, roof.current));
+  }, [conversation.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (since == null) return;
@@ -55,27 +63,31 @@ function Page({ agentId, installerId }: Props) {
     if (!a.name.trim()) { setMiss("name"); nameRef.current?.focus(); return; }
     if (!locationOk(a.location)) { setMiss("location"); placeRef.current?.focus(); return; }
     setMiss(null); setError(null);
+    // Look the address up while the phone rings, so the call starts with it.
+    roof.current = undefined;
+    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 8000);
+    fetch(`/start/roof?address=${encodeURIComponent(a.location)}`, { signal: ctl.signal })
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null).then((r: RoofInfo | null) => { roof.current = r; });
     // The call back arrives a moment later, the way a phone call would.
     ring.current = setTimeout(() => { setStep("ringing"); try { navigator.vibrate?.([400, 200, 400]); } catch {} }, 1400);
     setStep("waiting");
   };
 
-  // Accept is the user gesture: the microphone permission and the call start here, not on submit.
+  // Accept is the user gesture. iPhone plays call audio only if the microphone and an audio context are unlocked
+  // inside the tap itself, so both happen here, synchronously, before the session starts.
   const accept = () => {
-    connected.current = false; setSince(null); setStep("call"); setError(null);
-    let roof: RoofInfo | null | undefined;
-    const send = () => { if (connected.current && roof !== undefined) conversation.sendContextualUpdate(homeNote(a, installerId, roof)); };
-    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 8000);
-    fetch(`/start/roof?address=${encodeURIComponent(a.location)}`, { signal: ctl.signal })
-      .then((r) => (r.ok ? r.json() : null)).catch(() => null).then((r: RoofInfo | null) => { roof = r; send(); });
-    const wait = setInterval(() => { if (connected.current) { clearInterval(wait); send(); } }, 300);
-    setTimeout(() => clearInterval(wait), 20000);
+    connected.current = false; noted.current = false; setSince(null); setStep("call"); setError(null);
+    const mic = navigator.mediaDevices?.getUserMedia({ audio: true });
+    try { const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext; void new Ctx().resume(); } catch {}
     setTimeout(() => { if (!connected.current) setError((e) => e ?? "No connection to the call service after 20 seconds."); }, 20000);
-    conversation.startSession({
+    const go = () => conversation.startSession({
       agentId, connectionType: "webrtc",
-      dynamicVariables: homeVariables(a, installerId),
-      overrides: { agent: { firstMessage: homeFirstMessage(a, installerId) } },
+      userId: `${a.name.trim()}|${a.location.trim()}`,
+      dynamicVariables: homeVariables(a, installerId, roof.current),
+      overrides: { agent: { firstMessage: homeFirstMessage(a) } },
     });
+    if (mic) mic.then((st) => { st.getTracks().forEach((t) => t.stop()); go(); }, (e) => setError(`Microphone: ${e?.message ?? e}`));
+    else go();
   };
 
   const end = () => { if (connected.current) conversation.endSession(); else { conversation.endSession(); setStep("form"); } };
@@ -154,6 +166,7 @@ function Page({ agentId, installerId }: Props) {
             <h2>Rina</h2>
             <p>{brand}</p>
             <p className="ios-time" aria-live="polite">{live ? clock(secs) : "Connecting"}</p>
+            {live && <p className="ios-mode">{conversation.isSpeaking ? "Rina is speaking" : "Listening"}</p>}
           </div>
           <div className="ios-keys">
             <button type="button" className={conversation.isMuted ? "ios-key on" : "ios-key"} aria-pressed={conversation.isMuted} onClick={() => conversation.setMuted(!conversation.isMuted)}>
@@ -164,7 +177,7 @@ function Page({ agentId, installerId }: Props) {
             </button>
           </div>
           <button type="button" className="ios-end" aria-label="End call" onClick={end}><Phone down /></button>
-          {error && <p className="ios-err" role="alert">ElevenLabs said: {error}</p>}
+          {error && <p className="ios-err" role="alert">{error} <button type="button" className="ios-retry" onClick={accept}>Try again</button></p>}
         </div>
       )}
     </div>
