@@ -33,13 +33,13 @@ export function toEcef(lat: number, lon: number, h: number): [number, number, nu
 // The client refines the ground height by ray-casting the tiles beside the house.
 const GEOID_M = 47.5;
 
-export type Anchor = { lat: number; lon: number; height: number; beta: number }; // radians, metres, radians
+export type Anchor = { lat: number; lon: number; height: number; beta: number; geoid: number }; // radians, metres (ellipsoidal), radians, metres
 export function anchorOf(origin: [number, number, number]): Anchor {
   const [e, n, z] = origin;
   const a = utm32ToLatLon(e, n), b = utm32ToLatLon(e, n + 100);
   // Bearing of grid north from true north, clockwise positive.
   const dN = (b.lat - a.lat), dE = (b.lon - a.lon) * Math.cos(a.lat);
-  return { lat: a.lat, lon: a.lon, height: z + GEOID_M, beta: Math.atan2(dE, dN) };
+  return { lat: a.lat, lon: a.lon, height: z + GEOID_M, beta: Math.atan2(dE, dN), geoid: GEOID_M };
 }
 
 // ---------- the proxy ----------

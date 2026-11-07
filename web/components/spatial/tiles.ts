@@ -17,8 +17,32 @@ import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import type { SpatialScene } from "./scene";
 import type { RoofPlane } from "./types";
 
-export type Anchor = { lat: number; lon: number; height: number; beta: number };
+export type Anchor = { lat: number; lon: number; height: number; beta: number; geoid?: number };
 export type Fit = { dx: number; dy: number; dz: number; spread: number; samples: number; draped: number; skipped: number };
+
+// The aligned frame of the mesh, for other layers (the white context mask): one object, updated in place.
+// Scene frame: three.js metres, x east, y up, z south (engine local (x, y, z) → (x, z, -y)), origin = the engine's
+// origin_utm32. footprint: the house outline in engine local metres [x east, y north] (hull of its roof planes).
+export type MeshFrame = {
+  anchor: Anchor | null;          // lat, lon (radians), ellipsoidal height (m), beta (UTM grid convergence), geoid (m)
+  rotationY: number;              // holder rotation about +Y: pi + beta
+  offset: [number, number, number]; // holder translation after the fit (scene metres), i.e. -(dx, dy, dz)
+  fit: Fit | null;
+  footprint: [number, number][];
+  holder: THREE.Group | null;     // the group the tiles live in; its matrixWorld maps tile-local to scene
+  version: number;                // bumps whenever any of the above changes
+};
+export const meshFrame: MeshFrame = { anchor: null, rotationY: 0, offset: [0, 0, 0], fit: null, footprint: [], holder: null, version: 0 };
+
+function hull(pts: [number, number][]) {
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cross = (o: number[], a: number[], b: number[]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo: [number, number][] = [], up: [number, number][] = [];
+  for (const q of p) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (const q of [...p].reverse()) { while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
 type Inner = {
   scene: THREE.Scene; renderer: THREE.WebGLRenderer; camera: THREE.Camera;
   placeholder: THREE.Object3D; glbRoot?: THREE.Object3D | null; box: THREE.Box3; panels: THREE.Group;
@@ -75,6 +99,7 @@ export class PhotoLayer {
   private holder = new THREE.Group();
   private raf = 0;
   private timer: ReturnType<typeof setTimeout>;
+  private early: ReturnType<typeof setTimeout> | undefined;
   private ready = false;
   private dead = false;
   private cam: THREE.Camera | null = null;
@@ -94,16 +119,25 @@ export class PhotoLayer {
     const tiles = new TilesRenderer(new URL(o.root, window.location.href).href);
     this.tiles = tiles;
     tiles.errorTarget = o.phone ? 24 : 12;
-    tiles.lruCache.minBytesSize = (o.phone ? 40 : 80) * 2 ** 20;
-    tiles.lruCache.maxBytesSize = (o.phone ? 70 : 140) * 2 ** 20;
+    tiles.lruCache.minBytesSize = (o.phone ? 120 : 200) * 2 ** 20;
+    tiles.lruCache.maxBytesSize = (o.phone ? 180 : 300) * 2 ** 20;
     tiles.registerPlugin(new ReorientationPlugin({ lat: anchor.lat, lon: anchor.lon, height: anchor.height, recenter: true }));
     tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: this.draco }));
     const centre = WGS84_ELLIPSOID.getCartographicToPosition(anchor.lat, anchor.lon, anchor.height, new THREE.Vector3());
     const region = new LoadRegionPlugin();
     region.addRegion(new SphereRegion({ sphere: new THREE.Sphere(centre, RADIUS), mask: true, errorTarget: 1e9 }));
     tiles.registerPlugin(region);
+    // The house itself loads at full detail whatever the camera sees, so the fit and the drape have the whole roof.
+    tiles.addEventListener("load-root-tileset", () => {
+      this.holder.updateMatrixWorld(true); this.collect();
+      const b = this.inner.box.isEmpty() ? new THREE.Box3(new THREE.Vector3(-8, 0, -8), new THREE.Vector3(8, 9, 8)) : this.inner.box;
+      const c = b.getCenter(new THREE.Vector3()), r = b.getSize(new THREE.Vector3()).length() / 2 + 6;
+      const toEcef = tiles.group.matrixWorld.clone().invert();
+      region.addRegion(new SphereRegion({ sphere: new THREE.Sphere(c.applyMatrix4(toEcef), r), errorTarget: 1.5 }));
+    });
 
     this.holder.rotation.y = Math.PI + anchor.beta;
+    this.publish();
     this.holder.add(tiles.group);
     this.holder.visible = false;
     this.inner.scene.add(this.holder);
@@ -122,16 +156,30 @@ export class PhotoLayer {
     });
 
     this.timer = setTimeout(() => { if (!this.ready) this.fail("The photo mesh took too long."); }, READY_MS);
+    // Do not wait for every detail tile: fit with what is in at 3.5 s, and again as the rest lands.
+    this.early = setTimeout(() => { if (!this.ready) void this.align(); }, 3500);
     if (typeof window !== "undefined") (window as unknown as { __mesh?: PhotoLayer }).__mesh = this;
     this.loop();
   }
 
+  private publish() {
+    const pts = this.inner.targets.flatMap((t) => t.p.polygon.map(([x, y]) => [x, y] as [number, number]));
+    const p = this.holder.position;
+    Object.assign(meshFrame, {
+      anchor: this.o.anchor, rotationY: this.holder.rotation.y, offset: [p.x, p.y, p.z], fit: this.fit,
+      footprint: hull(pts), holder: this.holder, version: meshFrame.version + 1,
+    });
+  }
+
   private meshCount() { let n = 0; this.tiles.group.traverse((m) => { if ((m as THREE.Mesh).isMesh) n++; }); return n; }
 
+  private meshList: THREE.Object3D[] = [];
+  private collect() { this.meshList = []; this.tiles.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) this.meshList.push(o); }); }
   private down(x: number, z: number, from = 200): number | null {
     this.ray.set(new THREE.Vector3(x, from, z), new THREE.Vector3(0, -1, 0));
     this.ray.far = from + 100;
-    const h = this.ray.intersectObject(this.tiles.group, true)[0];
+    // Plain mesh raycast: the tiles group's own raycast skipped whole tiles under our rotated holder.
+    const h = this.ray.intersectObjects(this.meshList, false)[0];
     return h ? h.point.y : null;
   }
 
@@ -142,9 +190,9 @@ export class PhotoLayer {
     this.fitting = true;
     try {
       const box = this.inner.box.isEmpty() ? new THREE.Box3(new THREE.Vector3(-8, 0, -8), new THREE.Vector3(8, 9, 8)) : this.inner.box;
-      const S = 6, step = 0.5;
+      const S = 5, step = 1;
       const x0 = box.min.x - S, z0 = box.min.z - S, nx = Math.ceil((box.max.x - box.min.x + 2 * S) / step) + 1, nz = Math.ceil((box.max.z - box.min.z + 2 * S) / step) + 1;
-      this.holder.updateMatrixWorld(true);
+      this.holder.updateMatrixWorld(true); this.collect();
       const H = new Float32Array(nx * nz).fill(NaN);
       for (let j = 0; j < nz; j++) {
         for (let i = 0; i < nx; i++) { const y = this.down(x0 + i * step, z0 + j * step); if (y != null) H[j * nx + i] = y; }
@@ -180,8 +228,9 @@ export class PhotoLayer {
         const prev = this.fit;
         this.fit = { dx: (prev?.dx ?? 0) + best.dx, dy: (prev?.dy ?? 0) + best.dy, dz: (prev?.dz ?? 0) + best.dz, spread: best.s, samples: best.n, draped: 0, skipped: 0 };
         this.fits++;
+        this.publish();
       }
-      this.drape(true);
+      this.drape(true); this.publish();
       this.show();
     } finally { this.fitting = false; }
   }
@@ -194,7 +243,7 @@ export class PhotoLayer {
     this.panelsSeen = [...kids];
     if (!this.fit) return;
     let draped = 0, skipped = 0;
-    this.holder.updateMatrixWorld(true);
+    this.holder.updateMatrixWorld(true); this.collect();
     for (const g of kids) {
       const cs = (g.userData?.cs as THREE.Vector3[] | undefined) ?? [];
       if (cs.length < 3) continue;
@@ -211,7 +260,7 @@ export class PhotoLayer {
   private show() {
     if (this.dead || this.ready) return;
     this.ready = true;
-    clearTimeout(this.timer);
+    clearTimeout(this.timer); clearTimeout(this.early);
     for (const x of [glbOf(this.inner), this.inner.placeholder]) if (x) { this.hidden.push({ o: x, v: x.visible }); x.visible = false; }
     this.holder.visible = true;
     this.o.onReady();
@@ -242,12 +291,13 @@ export class PhotoLayer {
     if (this.dead) return;
     this.dead = true;
     cancelAnimationFrame(this.raf);
-    clearTimeout(this.timer);
+    clearTimeout(this.timer); clearTimeout(this.early);
     const glb = glbOf(this.inner);
     this.hidden.forEach(({ o, v }) => { o.visible = o === this.inner.placeholder ? !glb : v; });
     if (glb) glb.visible = true;
     this.inner.panels.children.forEach((g) => g.children.forEach((ch) => { ch.position.y = 0; }));
     this.inner.scene.remove(this.holder);
+    if (meshFrame.holder === this.holder) Object.assign(meshFrame, { anchor: null, fit: null, holder: null, offset: [0, 0, 0], version: meshFrame.version + 1 });
     this.tiles.dispose();
     this.draco.dispose();
   }
