@@ -241,6 +241,12 @@ class Engine:
         design = {"pv_kwp": pv or None, "inverter_kw": inv if pv else None, "battery_kwh": bat or None,
                   "heatpump_kw": hp or None, "wallbox_kw": wb or None}
         econ, plaus, opt = self._physics(inp, design, inst, f["t"], full)
+        if full:
+            try:
+                for c in COMPONENTS:
+                    comps[c]["derivation"] = self._derivation(c, inp, design, comps[c], nb)
+            except Exception as e:
+                log.warning("derivation failed: %s", e)
         out = {"design": design, "explanation": self._explain(inp, design, comps, nb, econ),
                "components": comps, "plausibility": plaus, "economics": econ, "model_version": MODEL_VERSION}
         if opt:
@@ -397,6 +403,109 @@ class Engine:
                         "draft": full["design"], "confidence": round(float(np.mean([c["confidence"] for c in inc])), 2) if inc else 0.0,
                         "expert": row_design(r), "within": w, "note": note, "_row": r})
         return out
+
+    def _derivation(self, comp, inp, design, detail, nb) -> dict:
+        """Why this number (v1.5): one physical axiom with this home's numbers, then the learned adjustment that
+        closes the gap to the engine's value. The axiom is never the whole story: the adjustment says what the data adds."""
+        key = TARGET[comp]
+        final = design.get(key)
+        n = len(nb)
+        src_of = lambda k: "lead" if inp.get(k) not in (None, False, "Unknown") else "default"
+        planner = detail["reason"].startswith(("Set by the planner", "Included by the planner"))
+        s = nb[key].values
+        sim_in = roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")})
+
+        if comp == "pv":
+            yld = float(hourly.sim.pv_profile(sim_in, "Munich").sum())
+            d = float(inp.get("annual_demand_kwh") or 0)
+            ev = rules.ev_kwh(inp)
+            use = d + ev
+            ax = round(use / yld, 2) if yld else None
+            ins = [{"name": "household use", "value": d, "unit": "kWh a year", "source": src_of("annual_demand_kwh")},
+                   {"name": "yield here", "value": round(yld), "unit": "kWh per kWp a year", "source": "pvgis"}]
+            eq = f"{d:,.0f} kWh"
+            if ev:
+                ins.append({"name": "EV charging", "value": round(ev), "unit": "kWh a year", "source": src_of("ev_annual_km")})
+                eq = f"({d:,.0f} + {ev:,.0f} EV) kWh"
+            eq += f" / {yld:,.0f} kWh per kWp = {ax:g} kWp" if ax else ""
+            axiom = "A year of sun on this roof should cover a year of use; planners then oversize."
+            ratios = [x / (r_d / yld) for x, r_d in zip(s, nb.annual_demand_kwh.values) if x > 0 and r_d > 0] if yld else []
+            peer = f"; similar homes' median x{np.median(ratios):.1f}" if ratios else ""
+            if not final:
+                return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                        "adjustment": {"label": f"{(s == 0).sum()} of {n} similar homes got no new PV", "value": 0.0, "n_similar": n}, "final": None}
+            if inp.get("roof") and inp["roof"].get("max_kwp"):
+                ins.append({"name": "roof holds", "value": inp["roof"]["max_kwp"], "unit": "kWp", "source": "lead"})
+            label = ("set by the planner" if planner else
+                     f"planners like this one oversize: learned from {len(self.train[self.train.installer_id == inp['installer_id']])} past designs at this installer{peer}, snapped to a module count")
+            return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                    "adjustment": {"label": label, "value": round(final / ax, 2) if ax else 1.0, "n_similar": n}, "final": final}
+
+        if comp == "battery":
+            prof = hourly.sim.pv_profile(sim_in, "Munich")
+            shape = hourly.sim.household_shape()
+            night = float(shape[prof <= 1e-3].sum() / shape.sum())
+            daily = float(inp.get("annual_demand_kwh") or 0) / 365
+            ax = round(daily * night, 1)
+            ins = [{"name": "household use", "value": round(daily, 1), "unit": "kWh a day", "source": src_of("annual_demand_kwh")},
+                   {"name": "share used after sunset", "value": round(night, 2), "unit": "", "source": "pvgis"}]
+            eq = f"{daily:.1f} kWh a day x {night:.0%} after sunset = {ax:g} kWh"
+            axiom = "A battery should carry the evening and night from the day's sun."
+            if not final:
+                return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                        "adjustment": {"label": detail["reason"], "value": 0.0, "n_similar": n}, "final": None}
+            sold = self.battery_catalogue(inp["installer_id"], base_features(inp, inp["installer_id"])["t"])
+            ins.append({"name": "installer packages", "value": ", ".join(f"{x:g}" for x in sold), "unit": "kWh", "source": "catalogue"})
+            med = float(np.median(s[s > 0])) if (s > 0).any() else None
+            label = ("set by the planner" if planner else
+                     f"sized with the PV and snapped to the installer's package"
+                     + (f"; {int((s > 0).sum())} of {n} similar homes got a battery, median {med:g} kWh" if med else ""))
+            return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                    "adjustment": {"label": label, "value": round(final / ax, 2) if ax else 1.0, "n_similar": n}, "final": final}
+
+        if comp == "heatpump":
+            kw, note = rules.heat_load_kw(inp)
+            heat = inp.get("heating_demand_kwh") or (inp["heating_cost_per_year_eur"] / 0.12 if inp.get("heating_cost_per_year_eur") else None)
+            axiom = "A heat pump runs about 2,300 full-load hours a year, so heat demand over 2,300 hours gives its size."
+            if heat:
+                given = bool(inp.get("heating_demand_kwh"))
+                ins = [{"name": "heat demand", "value": round(heat), "unit": "kWh a year", "source": "lead" if given else "default"},
+                       {"name": "full-load hours", "value": 2300, "unit": "h", "source": "installer history"}]
+                eq = f"{heat:,.0f} kWh / 2,300 h = {heat / 2300:.1f} kW"
+                if not given:
+                    ins.insert(0, {"name": "heating cost", "value": inp["heating_cost_per_year_eur"], "unit": "EUR a year", "source": "lead"})
+                    ins.insert(1, {"name": "heat price", "value": 12, "unit": "ct per kWh of heat", "source": "default"})
+                    eq = f"EUR {inp['heating_cost_per_year_eur']:,.0f} / 12 ct = {heat:,.0f} kWh; " + eq
+                ax = round(heat / 2300, 1)
+            else:
+                ins = [{"name": "basis", "value": note, "unit": "", "source": "default"}]
+                eq = f"{note}: {kw:.1f} kW"
+                ax = round(kw, 1)
+            if inp.get("heating_type") == "Heatpump" and not final:
+                return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": None,
+                        "adjustment": {"label": "the home already heats with a heat pump", "value": 0.0, "n_similar": n}, "final": None}
+            if not final:
+                return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                        "adjustment": {"label": f"{int((s > 0).sum())} of {n} similar homes got a heat pump; this installer sold {self.hp_positive} in its history",
+                                       "value": 0.0, "n_similar": n}, "final": None}
+            sizes = self.catalogue[inp["installer_id"]]["heatpump"]
+            ins.append({"name": "installer sizes", "value": ", ".join(f"{x:g}" for x in sizes), "unit": "kW", "source": "catalogue"})
+            label = "set by the planner" if planner and detail["reason"].startswith("Set") else "rounded up to the next heat pump this installer sells"
+            return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax,
+                    "adjustment": {"label": label, "value": round(final / ax, 2) if ax else 1.0, "n_similar": n}, "final": final}
+
+        # wallbox
+        axiom = "A planned EV gets the installer's standard wallbox."
+        ins = [{"name": "EV planned", "value": "yes" if inp.get("has_ev") else "no", "unit": "", "source": src_of("has_ev")},
+               {"name": "installer standard", "value": self.wallbox_default(inp["installer_id"]), "unit": "kW", "source": "installer history"}]
+        std = self.wallbox_default(inp["installer_id"])
+        ax = std if inp.get("has_ev") else None
+        eq = f"EV planned: {std:g} kW" if inp.get("has_ev") else "No EV planned: none"
+        if final == ax or (not final and ax is None):
+            adj = None
+        else:
+            adj = {"label": "set by the planner" if planner else detail["reason"], "value": (final or 0) / ax if ax else 0.0, "n_similar": n}
+        return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax, "adjustment": adj, "final": final}
 
     def _physics(self, inp, design, inst, t, full):
         """Hourly simulation (app/hourly) when it runs; the annual ratio model otherwise. Economics.method says which."""
