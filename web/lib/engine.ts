@@ -1,5 +1,5 @@
 import "server-only";
-import { mockCreateLead, mockGetLead, mockListLeads, mockPriors } from "./mockLeads";
+import { mockCreateLead, mockGetLead, mockListLeads, mockPriors, mockStep } from "./mockLeads";
 import { mockAsk, mockDesign, mockEval, mockHealth, mockInbox, mockProject, mockProjects, mockRefine, mockValidate } from "./mock";
 
 export const ENGINE_URL = process.env.ENGINE_URL || "http://localhost:8000";
@@ -31,6 +31,7 @@ function mockLeads(method: string, path: string, search: URLSearchParams, body: 
   if (path === "/api/leads") return { status: 200, body: mockListLeads(Number(search.get("limit") ?? 20)) };
   if (path.startsWith("/api/leads/")) { const l = mockGetLead(decodeURIComponent(path.slice("/api/leads/".length))); return l ? { status: 200, body: l } : { status: 404, body: { error: "Lead not found" } }; }
   if (path === "/api/intake/priors") return { status: 200, body: mockPriors() };
+  if (path === "/api/intake/step" && method === "POST") { const r = mockStep(body); return r ? { status: 200, body: r } : { status: 404, body: { error: "Lead not found" } }; }
   return null;
 }
 
@@ -44,7 +45,7 @@ export async function callEngine(method: string, path: string, search: URLSearch
       headers: {
         ...(body ? { "content-type": "application/json" } : {}),
         // v1.9: reading leads needs the intake secret; server-side only, never sent to the browser.
-        ...(method === "GET" && path.startsWith("/api/leads") && process.env.INTAKE_SECRET ? { "X-Intake-Secret": process.env.INTAKE_SECRET } : {}),
+        ...(((method === "GET" && path.startsWith("/api/leads")) || (method === "POST" && path === "/api/intake/step")) && process.env.INTAKE_SECRET ? { "X-Intake-Secret": process.env.INTAKE_SECRET } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",

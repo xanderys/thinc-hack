@@ -6,12 +6,11 @@ import { mockDesign } from "./mock";
 const DEFAULTS: HomeInputs = { installer_id: "2a8ba8e2", annual_demand_kwh: 4500, load_profile: "H0", has_ev: false, has_wallbox: false, heating_type: "Unknown", has_solar: false, has_storage: false };
 const SCRIPT: { field: keyof HomeInputs; value: unknown; question: string; why: string }[] = [
   { field: "annual_demand_kwh", value: 5000, question: "How much electricity does the house use a year?", why: "Sets the solar size most." },
-  { field: "has_ev", value: true, question: "Is an electric car coming?", why: "A car adds about 2,700 kWh a year and a wallbox." },
   { field: "heating_type", value: "Gas", question: "How is the house heated?", why: "Decides whether a heat pump belongs in the offer." },
   { field: "num_inhabitants", value: 4, question: "How many people live there?", why: "Shapes the evening load the battery covers." },
 ];
 const STEP_MS = 5000;
-const leads = new Map<string, { created: number; name: string; place: string; facts: HomeInputs }>();
+const leads = new Map<string, { created: number; name: string; place: string; facts: HomeInputs; extra?: { facts: Partial<HomeInputs>; at: number }[] }>();
 const NAME: Record<string, string> = { pv_kwp: "pv", inverter_kw: "inverter", battery_kwh: "battery", heatpump_kw: "heatpump", wallbox_kw: "wallbox" };
 
 function nq(i: number): NextQuestion | null {
@@ -41,11 +40,19 @@ export function mockGetLead(id: string): Lead | null {
     history.push({ step: k + 1, field: s.field, answer: s.value, changed, at: new Date(l.created + (k + 1) * STEP_MS).toISOString() });
     before = after;
   }
+  for (const x of l.extra ?? []) {
+    facts = { ...facts, ...x.facts };
+    const after = mockDesign(facts).design;
+    const changed: LeadChange[] = (Object.keys(after) as (keyof Design)[]).filter((f) => after[f] !== before[f])
+      .map((f) => ({ component: NAME[f], from: before[f], to: after[f], why: "Changed by the planner." }));
+    history.push({ step: history.length + 1, field: Object.keys(x.facts)[0] ?? "planner", answer: Object.values(x.facts)[0], changed, at: new Date(x.at).toISOString() });
+    before = after;
+  }
   const done = steps >= SCRIPT.length;
   return {
     lead_id: id, status: done ? "done" : "in_call", customer_name: l.name, address_or_postcode: l.place, facts, draft: mockDesign(facts),
     history, next_question: done ? null : nq(steps), questions_asked: steps,
-    created_at: new Date(l.created).toISOString(), updated_at: new Date().toISOString(),
+    created_at: new Date(l.created).toISOString(), updated_at: new Date(Math.max(l.created + steps * STEP_MS, ...(l.extra ?? []).map((x) => x.at))).toISOString(),
   };
 }
 
@@ -63,4 +70,12 @@ export function mockPriors(): Priors {
     { field: "heating_type", mean_swing: 1.3, times_asked: 47 },
     { field: "num_inhabitants", mean_swing: 0.6, times_asked: 48 },
   ] };
+}
+
+export function mockStep(body: { lead_id: string; facts_so_far: Partial<HomeInputs> }) {
+  const l = leads.get(body.lead_id);
+  if (!l) return null;
+  (l.extra ??= []).push({ facts: body.facts_so_far, at: Date.now() });
+  const g = mockGetLead(body.lead_id)!;
+  return { design: g.draft.design, draft: g.draft, changed: g.history.at(-1)?.changed ?? [], next_question: g.next_question, done: g.status === "done", step: g.history.length };
 }

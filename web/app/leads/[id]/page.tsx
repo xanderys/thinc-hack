@@ -1,6 +1,8 @@
 "use client";
 import { use, useEffect, useRef, useState } from "react";
-import type { Design, HomeInputs, Lead, Priors } from "@/lib/api";
+import type { Design, DesignResponse, HomeInputs, InterpretResponse, Lead, LeadChange, Priors } from "@/lib/api";
+import { call } from "@/lib/client";
+import Listen from "@/components/stage/Listen";
 import { HEATING_WORD, n0, n2 } from "@/lib/stage";
 
 const FIELD: Partial<Record<keyof HomeInputs, string>> = {
@@ -44,6 +46,10 @@ export default function LeadPage({ params }: { params: Promise<{ id: string }> }
   const [priors, setPriors] = useState<Priors | null>(null);
   const [retry, setRetry] = useState(0);
   const [approvedAt, setApprovedAt] = useState<string | null>(null);
+  const [say, setSay] = useState("");
+  const [sayBusy, setSayBusy] = useState(false);
+  const [sayErr, setSayErr] = useState<string | null>(null);
+  const [moved, setMoved] = useState<{ cause: string; lines: LeadChange[] } | null>(null);
 
   useEffect(() => {
     let stop = false, done = false;
@@ -67,6 +73,29 @@ export default function LeadPage({ params }: { params: Promise<{ id: string }> }
   const facts = lead ? (Object.keys(FIELD) as (keyof HomeInputs)[]).filter((k) => lead.facts[k] != null && !(k === "existing_solar_kwp" && lead.facts.has_solar) && !((k === "has_wallbox" || k === "has_solar" || k === "has_storage") && lead.facts[k] === false) && !(k === "existing_storage_kwh" && lead.facts.has_storage)) : [];
   const top = priors?.order.filter((o) => o.mean_swing > 0).slice(0, 3).map((o) => (FIELD[o.field as keyof HomeInputs] ?? o.field).toLowerCase());
   const e = lead?.draft.economics;
+
+  // A sentence from the planner (typed, or heard on the call): facts change, the lead updates, the homeowner's phone sees it.
+  async function onSay(sentence: string, quiet = false): Promise<boolean> {
+    if (!lead) return false;
+    setSayBusy(true); setSayErr(null);
+    const typical = Object.fromEntries(ROWS.map((r) => [r.k, lead.draft.components[r.comp as keyof DesignResponse["components"]]?.neighbours.median_size ?? null]));
+    const r = await call<InterpretResponse>("/api/interpret", { sentence, inputs: lead.facts, design: lead.draft.design, overrides: {}, typical });
+    if (!r.ok) { setSayBusy(false); setSayErr(r.error); return false; }
+    if (r.data.changes.length === 0) {
+      setSayBusy(false);
+      if (!quiet) setSayErr(r.data.overrides?.length ? "Sizes are set on the planner stage; here a sentence changes the home's facts." : "Nothing in that sentence changes the home.");
+      return false;
+    }
+    const add: Partial<HomeInputs> = {};
+    for (const c of r.data.changes) (add as Record<string, unknown>)[c.field] = c.to;
+    const st = await call<{ draft: DesignResponse; changed: LeadChange[] }>("/api/intake/step", { lead_id: id, facts_so_far: add });
+    setSayBusy(false);
+    if (!st.ok) { setSayErr(st.error); return false; }
+    setLead((l) => l && { ...l, facts: { ...l.facts, ...add }, draft: st.data.draft, history: [...l.history, { step: l.history.length + 1, field: r.data.changes[0].field, answer: r.data.changes[0].to, changed: st.data.changed, at: new Date().toISOString() }] });
+    setMoved({ cause: `After "${sentence}":`, lines: st.data.changed });
+    setApprovedAt(null);
+    return true;
+  }
 
   function approve() {
     if (!lead) return;
@@ -117,6 +146,23 @@ export default function LeadPage({ params }: { params: Promise<{ id: string }> }
                 <div><dt>Payback</dt><dd className="num">{e.payback_years == null ? "None" : <Spring to={e.payback_years} fmt={(x) => `${(Math.round(x * 10) / 10).toLocaleString("en-GB")} years`} />}</dd></div>
               </dl>
             )}
+            <div className="l-refine">
+              <h3 className="s-h3">Change it in a sentence</h3>
+              <form className="s-say" onSubmit={async (e) => { e.preventDefault(); if (say.trim() && await onSay(say.trim())) setSay(""); }}>
+                <input value={say} onChange={(e) => setSay(e.target.value)} placeholder="The family buys an EV next year" aria-label="Describe a change to the home" disabled={sayBusy} />
+                <button className="btn" type="submit" disabled={sayBusy || !say.trim()}>{sayBusy ? "Reading" : "Apply"}</button>
+              </form>
+              <Listen busy={sayBusy} onSentence={async (t) => { setSay(t); return onSay(t, true); }} />
+              {sayErr && <div className="error" role="alert"><span><span className="src">Interpreter said</span>{sayErr}</span></div>}
+              {moved && (moved.lines.length ? (
+                <div className="s-moved" aria-live="polite">
+                  <p className="cause">{moved.cause}</p>
+                  <ul>{moved.lines.map((l) => { const row = l.component === "inverter" ? { name: "Inverter", u: "kW" } : ROWS.find((r) => r.comp === l.component); return (
+                    <li key={l.component} className="s-mark">{row?.name ?? l.component}: <span className="num">{l.from == null ? "none" : n2(l.from)}</span> <span className="ar">→</span> <span className="num">{l.to == null ? "none" : `${n2(l.to)} ${row?.u ?? "kW"}`}</span>{l.why && <span className="why2">{l.why}</span>}</li>
+                  ); })}</ul>
+                </div>
+              ) : <p className="s-quiet">{moved.cause} Nothing in the design moved.</p>)}
+            </div>
             {lead.status === "done" && (approvedAt
               ? <span className="s-approved s-mark">Approved {approvedAt}<a href="/check">See what really happened</a></span>
               : <button className="btn" onClick={approve}>Approve</button>)}
