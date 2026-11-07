@@ -232,7 +232,7 @@ def health():
 
 @app.post("/api/design")
 def design(req: DesignReq):
-    inp = req.inputs.model_dump()
+    inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
     check_inputs(inp)
     return engine().predict(inp)
 
@@ -243,7 +243,7 @@ FIELDS = {"pv_kwp": "pv", "battery_kwh": "battery", "heatpump_kw": "heatpump", "
 @app.post("/api/refine")
 def refine(req: RefineReq):
     eng = engine()
-    inp = req.inputs.model_dump()
+    inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
     check_inputs(inp)
     bad = [k for k in (req.overrides or {}) if k not in FIELDS]
     if bad:
@@ -276,7 +276,7 @@ def refine(req: RefineReq):
 
 @app.post("/api/validate")
 def validate(req: ValidateReq):
-    inp, d = req.inputs.model_dump(), req.design.model_dump()
+    inp, d = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}, req.design.model_dump()
     check_inputs(inp)
     check_design(d)
     return {"flags": engine().validate(inp, d)}
@@ -367,7 +367,7 @@ class AskReq(BaseModel):
 
 @app.post("/api/ask")
 def ask(req: AskReq):
-    inp = req.inputs.model_dump()
+    inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
     check_inputs(inp)
     return {"questions": engine().ask(inp, req.unknown)}
 
