@@ -38,8 +38,6 @@ footer: Marquee
 
 <div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>7.2 kWp</b>, <b>7 kWh</b>, payback <b>10.8 years</b><br>after one sentence <b>9.45 kWp</b>, <b>10 kWh</b>, <b>11 kW</b> wallbox, <b>10.5 years</b><br>variants ready: lowest upfront <b>4,250 EUR</b>, best payback <b>8.8 years</b></div>
 
-[UNCONFIRMED: v2 hero numbers and variants line replace the confirmed v1 set]
-
 <p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
 
 
@@ -81,7 +79,6 @@ footer: Marquee
 
 <p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
 
-[UNCONFIRMED: scoreboard framing; source engine/README.md]
 
 ---
 
