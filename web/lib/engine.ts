@@ -34,8 +34,9 @@ export async function callEngine(method: string, path: string, search: URLSearch
     });
     const text = await res.text();
     let parsed: unknown;
-    try { parsed = JSON.parse(text); } catch { parsed = { error: text || res.statusText }; }
-    if (!res.ok && !(parsed && typeof parsed === "object" && "error" in parsed)) parsed = { error: text || `${res.status} ${res.statusText}` };
+    const fallback = `Engine answered ${res.status}${res.statusText ? ` ${res.statusText}` : ""}${res.status === 502 ? ", it may be restarting (about 35 s)" : ""}.`;
+    try { parsed = JSON.parse(text); } catch { parsed = { error: text.trim() || fallback }; }
+    if (!res.ok && !(parsed && typeof parsed === "object" && (parsed as { error?: unknown }).error)) parsed = { error: text.trim() || fallback };
     return { status: res.status, body: parsed };
   } catch (e) {
     return { status: 502, body: { error: `Engine unreachable at ${ENGINE_URL}: ${(e as Error).message}` } };

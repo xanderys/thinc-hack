@@ -4,6 +4,10 @@ import HomeForm from "@/components/HomeForm";
 import DesignSheet from "@/components/DesignSheet";
 import type { Design, DesignResponse, HomeInputs, InterpretChange, InterpretResponse, RefineResponse } from "@/lib/api";
 import { call, fmt, COMPONENT_NAME } from "@/lib/client";
+import type { DiffItem } from "@/lib/api";
+
+const DESIGN_KEY: Record<keyof Design, string> = { pv_kwp: "pv", inverter_kw: "inverter", battery_kwh: "battery", heatpump_kw: "heatpump", wallbox_kw: "wallbox" };
+const COMPONENT_FIELD: Record<string, keyof Design> = { pv: "pv_kwp", inverter: "inverter_kw", battery: "battery_kwh", heatpump: "heatpump_kw", wallbox: "wallbox_kw" };
 
 const START: HomeInputs = {
   installer_id: "2a8ba8e2", annual_demand_kwh: 4500, load_profile: "FamilyOfFour", num_inhabitants: 4,
@@ -17,6 +21,11 @@ const FIELD_LABEL: Partial<Record<keyof HomeInputs, string>> = {
   electricity_price_ct_kwh: "Price", has_solar: "Solar", existing_solar_kwp: "Existing solar",
   has_storage: "Battery", existing_storage_kwh: "Existing battery", load_profile: "Load profile", installer_id: "Installer",
 };
+function describe(a: HomeInputs, b: HomeInputs) {
+  const keys = (Object.keys({ ...a, ...b }) as (keyof HomeInputs)[]).filter((k) => a[k] !== b[k]);
+  if (keys.length === 0) return "Recomputed.";
+  return keys.slice(0, 3).map((k) => `${FIELD_LABEL[k] ?? k} ${show(a[k])} to ${show(b[k])}`).join(", ") + ".";
+}
 const show = (x: unknown) => x == null ? "unset" : typeof x === "boolean" ? (x ? "yes" : "no") : typeof x === "number" ? x.toLocaleString("en-GB") : String(x);
 
 export default function Planner() {
@@ -24,6 +33,9 @@ export default function Planner() {
   const [overrides, setOverrides] = useState<Partial<Design>>({});
   const [res, setRes] = useState<DesignResponse | RefineResponse | null>(null);
   const [prev, setPrev] = useState<Design | null>(null);
+  const [moved, setMoved] = useState<DiffItem[]>([]);
+  const cause = useRef<string>("");
+  const lastInputs = useRef<HomeInputs>(START);
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,6 +47,12 @@ export default function Planner() {
   const [llm, setLlm] = useState<boolean | null>(null);
   const [llmBusy, setLlmBusy] = useState(false);
   const [llmError, setLlmError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("home");
+    if (!raw) return;
+    try { const h = JSON.parse(raw) as Partial<HomeInputs>; cause.current = "Loaded a held-out home."; setInputs({ ...START, num_inhabitants: undefined, house_size_sqm: undefined, house_built_year: undefined, ...h }); } catch { /* ignore a malformed link */ }
+  }, []);
 
   useEffect(() => { call<{ available: boolean }>("/api/interpret").then((r) => setLlm(r.ok ? r.data.available : false)); }, []);
 
@@ -48,7 +66,16 @@ export default function Planner() {
           ? await call<RefineResponse>("/api/refine", { inputs, overrides }, ctl.signal)
           : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
         if (r.ok) {
-          setPrev(last.current);
+          const before = last.current;
+          const engineDiff: DiffItem[] = "diff" in r.data ? (r.data as RefineResponse).diff : [];
+          const why = cause.current || describe(lastInputs.current, inputs);
+          const local: DiffItem[] = before ? (Object.keys(DESIGN_KEY) as (keyof Design)[])
+            .filter((k) => before[k] !== r.data.design[k] && !engineDiff.some((d) => d.component === DESIGN_KEY[k]))
+            .map((k) => ({ component: DESIGN_KEY[k], from: before[k], to: r.data.design[k], why })) : [];
+          const fresh = engineDiff.filter((d) => !before || !(d.component in COMPONENT_FIELD) || before[COMPONENT_FIELD[d.component]] !== d.to);
+          if (before) setMoved([...fresh, ...local].filter((d) => d.from !== d.to));
+          cause.current = ""; lastInputs.current = inputs;
+          setPrev(before);
           last.current = r.data.design;
           setRes(r.data);
           setVersion((v) => v + 1);
@@ -61,6 +88,7 @@ export default function Planner() {
   }, [inputs, overrides, retry]);
 
   const setOverride = useCallback((field: keyof Design, value: number | null | undefined) => {
+    cause.current = "Set by the planner.";
     setOverrides((o) => {
       const n = { ...o };
       if (value === undefined) delete n[field]; else n[field] = value;
@@ -74,6 +102,7 @@ export default function Planner() {
     setLlmBusy(false);
     if (!r.ok) { setLlmError(r.error); return; }
     if (r.data.changes.length === 0) { setLlmError("Nothing in that sentence changes the home."); return; }
+    cause.current = `"${sentence.trim()}"`;
     setChips((c) => [...c.filter((x) => !r.data.changes.some((y) => y.field === x.field)), ...r.data.changes]);
     setInputs(r.data.inputs);
     setSentence("");
@@ -88,20 +117,20 @@ export default function Planner() {
     });
   }
 
-  const diff = res && "diff" in res ? res.diff : [];
+  const diff = moved;
+  const reasons = new Set(res ? Object.values(res.components).map((c) => c.reason) : []);
   const e = res?.economics;
 
   return (
     <div className="planner">
       <aside>
-        <h2>The home</h2>
         <HomeForm value={inputs} onChange={setInputs} />
       </aside>
 
       <div>
         <div className="sheet-head">
           <h1>Proposed system</h1>
-          <span className="status" aria-live="polite">{busy ? "Recomputing" : res ? `Model ${res.model_version}` : ""}</span>
+          <span className="status" aria-live="polite">{busy ? "Recomputing" : ""}</span>
         </div>
 
         {error && (
@@ -149,7 +178,7 @@ export default function Planner() {
               {diff.length > 0 && (
                 <div className="scroll">
                   <table className="diff">
-                    <thead><tr><th>Moved</th><th>From</th><th></th><th>To</th><th>Why</th></tr></thead>
+                    <thead><tr><th>What moved</th><th>From</th><th></th><th>To</th><th>Why</th></tr></thead>
                     <tbody>
                       {diff.map((d, k) => (
                         <tr key={k}>
@@ -189,7 +218,7 @@ export default function Planner() {
                     <li key={k} className={p.level}><span className="lvl">{p.level === "ok" ? "OK" : "Check"}</span><span>{p.message}</span></li>
                   ))}
                 </ul>
-                <ul className="explain">{res.explanation.map((x, k) => <li key={k}>{x}</li>)}</ul>
+                <ul className="explain">{res.explanation.filter((x) => !reasons.has(x)).map((x, k) => <li key={k}>{x}</li>)}</ul>
               </div>
             </div>
           </>

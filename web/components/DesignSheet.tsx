@@ -30,14 +30,16 @@ function Value({ value, unit, was, version }: { value: number | null; unit: stri
   );
 }
 
+const clean = (x: number | null | undefined) => x == null ? "" : String(Math.round(x * 100) / 100);
+
 function Fix({ field, current, unit, step, overrides, setOverride }: {
   field: keyof Design; current: number | null; unit: string; step: number;
   overrides: Partial<Design>; setOverride: Props["setOverride"];
 }) {
   const fixed = field in overrides;
   const mode = !fixed ? "auto" : overrides[field] == null ? "none" : "value";
-  const [draft, setDraft] = useState<string>(String(overrides[field] ?? current ?? ""));
-  useEffect(() => { if (mode !== "value") setDraft(String(current ?? "")); }, [current, mode]);
+  const [draft, setDraft] = useState<string>(clean(overrides[field] ?? current));
+  useEffect(() => { if (mode !== "value") setDraft(clean(current)); }, [current, mode]);
   const commit = (s: string) => { const n = Number(s); if (s !== "" && Number.isFinite(n) && n > 0) setOverride(field, n); };
   return (
     <div className="fix">
@@ -47,7 +49,7 @@ function Fix({ field, current, unit, step, overrides, setOverride }: {
         <button type="button" aria-pressed={mode === "none"} onClick={() => setOverride(field, null)}>None</button>
         <button type="button" aria-pressed={mode === "value"} onClick={() => commit(draft || String(current ?? step))}>Fix at</button>
       </span>
-      <input type="number" className="num" aria-label={`Fixed size in ${unit}`} step={step} min={0} value={draft}
+      <input type="number" className="num" aria-label={`Fixed size in ${unit}`} step="any" min={0} value={draft}
         onChange={(e) => { setDraft(e.target.value); if (mode === "value") commit(e.target.value); }} />
       <span className="unit">{unit}</span>
     </div>

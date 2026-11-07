@@ -69,19 +69,20 @@ export interface ValidateResponse { flags: ValidateFlag[]; }
 export interface Health { ok: true; model_version: string; trained_on: { projects: number; installers: number }; data_loaded: boolean; }
 
 export interface ProjectSummary { project_id: string; installer_id: InstallerId; inputs: HomeInputs; expert: Design; }
-export interface ProjectDetail { project_id: string; installer_id: InstallerId; inputs: HomeInputs; expert: Design; ours: DesignResponse; }
+export interface ProjectDetail { project_id: string; installer_id: InstallerId; inputs: HomeInputs; expert: Design; ours: DesignResponse; split?: string; }
 
 export interface EvalComponent {
   decision_accuracy: number | null; baseline_decision_accuracy: number | null;
   size_mae: number | null; baseline_size_mae: number | null; unit: string;
   within_tolerance_share: number | null; tolerance: string;
+  baseline_within_tolerance_share?: number | null; // engine extra
 }
 
 export interface Eval {
   split: { train: number; test: number; method: string };
   components: Record<ComponentKey, EvalComponent>;
   overall: { design_match_share: number; baseline_design_match_share: number; definition: string };
-  per_installer: Record<InstallerId, { test: number; design_match_share: number }>;
+  per_installer: Record<InstallerId, { test: number; design_match_share: number; baseline_design_match_share?: number }>;
   deviations: { project_id: string; component: string; ours: number | null; expert: number | null; note: string }[];
 }
 

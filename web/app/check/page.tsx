@@ -5,15 +5,15 @@ import { call, fmt, COMPONENT_NAME } from "@/lib/client";
 import { HEATING, LOAD_PROFILES } from "@/components/HomeForm";
 
 const KEYS: ComponentKey[] = ["pv", "battery", "heatpump", "wallbox"];
-const DEFAULT_TOL: Record<ComponentKey, string> = { pv: "±1 kWp", battery: "±2.5 kWh", heatpump: "±2 kW", wallbox: "exact" };
 
+// Reads the engine's tolerance text: "decision exact", "±2 kWh", "±1 kWp or ±15%, whichever is larger".
 function within(ours: number | null, expert: number | null, tol: string) {
   if ((ours == null) !== (expert == null)) return false;
-  if (ours == null || expert == null) return true;
-  const m = tol.match(/([\d.]+)\s*(%)?/);
-  if (!m || /exact/i.test(tol)) return ours === expert;
-  const t = Number(m[1]);
-  return Math.abs(ours - expert) <= (m[2] ? (t / 100) * expert : t) + 1e-9;
+  if (ours == null || expert == null || /decision/i.test(tol)) return true;
+  if (/^exact/i.test(tol)) return ours === expert;
+  let t = 0;
+  for (const m of tol.matchAll(/([\d.]+)\s*(%)?/g)) t = Math.max(t, m[2] ? (Number(m[1]) / 100) * expert : Number(m[1]));
+  return Math.abs(ours - expert) <= t + 1e-9;
 }
 
 function ErrorBox({ msg, onRetry }: { msg: string; onRetry: () => void }) {
@@ -43,7 +43,7 @@ export default function Check() {
     call<ProjectDetail>(`/api/projects/${encodeURIComponent(id)}`).then((r) => { if (r.ok) { setDetail(r.data); setDetailErr(null); } else setDetailErr(r.error); });
   }, [id, tick]);
 
-  const tol = (k: ComponentKey) => ev?.components[k]?.tolerance ?? DEFAULT_TOL[k];
+  const tol = (k: ComponentKey) => ev?.components[k]?.tolerance ?? "";
   const inp = detail?.inputs;
 
   return (
@@ -52,6 +52,7 @@ export default function Check() {
         <div className="field">
           <label htmlFor="project">Held-out project</label>
           <select id="project" value={id} onChange={(e) => setId(e.target.value)} disabled={!list}>
+            {id && list && !list.some((p) => p.project_id === id) && <option value={id}>{id}</option>}
             {(list ?? []).map((p) => (
               <option key={p.project_id} value={p.project_id}>
                 {p.project_id}, {p.inputs.annual_demand_kwh.toLocaleString("en-GB")} kWh{p.inputs.has_ev ? ", EV" : ""}, {HEATING[p.inputs.heating_type]}
@@ -67,7 +68,7 @@ export default function Check() {
         <p className="inputs-line">
           Installer {detail!.installer_id}, <span className="num">{inp.annual_demand_kwh.toLocaleString("en-GB")}</span> kWh, {LOAD_PROFILES[inp.load_profile]}
           {inp.num_inhabitants ? <>, {inp.num_inhabitants} people</> : null}, {HEATING[inp.heating_type]} heating
-          {inp.has_ev ? <>, EV {inp.ev_annual_km ? <span className="num">{inp.ev_annual_km.toLocaleString("en-GB")} km</span> : null}</> : null}.
+          {inp.has_ev ? <>, EV {inp.ev_annual_km ? <span className="num">{inp.ev_annual_km.toLocaleString("en-GB")} km</span> : null}</> : null}.{" "}<a className="open" href={`/?home=${encodeURIComponent(JSON.stringify(Object.fromEntries(Object.entries(inp).filter(([, v]) => v != null))))}`}>Open in planner</a>
         </p>
       )}
 
@@ -112,9 +113,9 @@ export default function Check() {
               <div>
                 <h2>Per installer</h2>
                 <table className="data">
-                  <thead><tr><th>Installer</th><th className="num">Projects</th><th className="num">Match</th></tr></thead>
+                  <thead><tr><th>Installer</th><th className="num">Projects</th><th className="num">Match</th><th className="num">Baseline</th></tr></thead>
                   <tbody>{Object.entries(ev.per_installer).map(([k, v]) => (
-                    <tr key={k}><td className="num">{k}</td><td className="num">{v.test}</td><td className="num">{fmt.pct(v.design_match_share)}</td></tr>
+                    <tr key={k}><td className="mono">{k}</td><td className="num">{v.test}</td><td className="num">{fmt.pct(v.design_match_share)}</td><td className="num" style={{ color: "var(--ink-3)" }}>{v.baseline_design_match_share == null ? "n/a" : fmt.pct(v.baseline_design_match_share)}</td></tr>
                   ))}</tbody>
                 </table>
               </div>
@@ -123,21 +124,22 @@ export default function Check() {
             <div className="section scroll">
               <h2>By component</h2>
               <table className="data">
-                <thead><tr><th>Component</th><th className="num">Decision right</th><th className="num">Baseline</th><th className="num">Size error</th><th className="num">Baseline</th><th className="num">Within tolerance</th></tr></thead>
+                <thead><tr><th>Component</th><th className="num">Decision right</th><th className="num">Size error</th><th className="num">Within tolerance</th><th>Tolerance</th></tr></thead>
                 <tbody>{KEYS.map((k) => {
                   const c = ev.components[k];
+                  const size = (x: number | null) => x == null ? "n/a" : `${fmt.n(x)} ${c.unit}`;
                   return (
                     <tr key={k}>
                       <td>{COMPONENT_NAME[k]}</td>
-                      <td className="num">{fmt.pct(c.decision_accuracy)}</td>
-                      <td className="num" style={{ color: "var(--ink-3)" }}>{fmt.pct(c.baseline_decision_accuracy)}</td>
-                      <td className="num">{c.size_mae == null ? "n/a" : `${fmt.n(c.size_mae)} ${c.unit}`}</td>
-                      <td className="num" style={{ color: "var(--ink-3)" }}>{c.baseline_size_mae == null ? "n/a" : `${fmt.n(c.baseline_size_mae)} ${c.unit}`}</td>
-                      <td className="num">{fmt.pct(c.within_tolerance_share)} <span style={{ color: "var(--ink-3)" }}>({c.tolerance})</span></td>
+                      <td className="num">{fmt.pct(c.decision_accuracy)}<span className="base">{fmt.pct(c.baseline_decision_accuracy)}</span></td>
+                      <td className="num">{size(c.size_mae)}<span className="base">{size(c.baseline_size_mae)}</span></td>
+                      <td className="num">{fmt.pct(c.within_tolerance_share)}{c.baseline_within_tolerance_share !== undefined && <span className="base">{fmt.pct(c.baseline_within_tolerance_share)}</span>}</td>
+                      <td className="tol">{c.tolerance}</td>
                     </tr>
                   );
                 })}</tbody>
               </table>
+              <p className="note">Lower line in each cell: rule-of-thumb baseline.</p>
             </div>
 
             <div className="section scroll">
@@ -146,7 +148,7 @@ export default function Check() {
                 <thead><tr><th>Project</th><th>Component</th><th className="num">Ours</th><th className="num">Expert</th><th>Note</th></tr></thead>
                 <tbody>{ev.deviations.map((d, k) => (
                   <tr key={k}>
-                    <td className="num"><button className="btn ghost" style={{ padding: "2px 8px" }} onClick={() => { setId(d.project_id); window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }}>{d.project_id}</button></td>
+                    <td><button className="btn ghost mono" style={{ padding: "2px 8px" }} onClick={() => { setId(d.project_id); window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }}>{d.project_id}</button></td>
                     <td>{COMPONENT_NAME[d.component] ?? d.component}</td>
                     <td className="num">{fmt.n(d.ours)}</td>
                     <td className="num">{fmt.n(d.expert)}</td>

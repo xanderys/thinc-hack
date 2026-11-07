@@ -31,7 +31,8 @@ body {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
-.num, input[type="number"], .mono { font-family: var(--font-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.num { font-variant-numeric: tabular-nums; }
+input[type="number"], .mono, .comp .size, .figures dd, .big, .diff td.num, table.data td.num { font-family: var(--font-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 a { color: inherit; }
 button, input, select { font: inherit; color: inherit; }
 
@@ -52,6 +53,7 @@ main { max-width: 1360px; margin: 0 auto; padding: 0 32px 64px; }
 .planner { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 48px; padding-top: 28px; }
 @media (max-width: 900px) {
   .planner { grid-template-columns: 1fr; gap: 28px; }
+  .planner > aside { order: 2; border-top: 1.5px solid var(--rule-strong); padding-top: 18px; }
   main { padding: 0 16px 48px; }
   .masthead { padding: 14px 16px 10px; gap: 16px; }
   .masthead .engine { margin-left: 0; width: 100%; }
@@ -170,6 +172,9 @@ table.data td.num, table.data th.num { text-align: right; }
 .mark-ok { color: var(--ok); }
 .mark-off { color: var(--accent); }
 .scroll { overflow-x: auto; }
-.big { font-size: 44px; letter-spacing: -0.03em; line-height: 1; }
+.figures dd.big, .big { font-size: 44px; letter-spacing: -0.03em; line-height: 1; }
 .section { margin-top: 40px; }
 .inputs-line { font-size: 13.5px; color: var(--ink-2); margin: 0 0 14px; }
+table.data .base { display: block; color: var(--ink-3); font-size: 12.5px; }
+table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
+.inputs-line .open { color: var(--accent); margin-left: 6px; white-space: nowrap; }
