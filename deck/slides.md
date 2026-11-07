@@ -80,7 +80,7 @@ footer: Marquee
 
 <p class="label">The exam: homes no engine saw</p>
 
-## [UNCONFIRMED: scoreboard headline]
+## [UNCONFIRMED: proposed “Matches the black box, with every rule visible.” and line “physics optimum: better 20-year value on 98% of homes”; never “beats”]
 
 <div class="data">all four right: physics <b>[UNCONFIRMED]</b>, calibrated rules <b>[UNCONFIRMED]</b>, black box <b>[UNCONFIRMED]</b>, textbook <b>[UNCONFIRMED]</b><br>PV within 1 kWp or 15%: <b>[UNCONFIRMED]</b></div>
 

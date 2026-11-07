@@ -45,3 +45,6 @@ No. The 8 days is median calendar time from enquiry to offer at one installer (2
 
 ## Does the agent know which drafts are right?
 Partly. Rows where most similar homes agree are hits twice as often (56% against 33%, 60 held-out rows). That is why the inbox shows "N of 20 drafts need no change" and a one-line reason on every row that needs review, not a confidence score. Never claim that confidence predicts a match.
+
+## Why is "all four right" so low for every engine?
+[UNCONFIRMED: Xander to approve; final digits at 08:00] The inputs in the export carry about 18 to 20% of whole designs. Wallbox alone caps everyone at about 75%: a quarter of homes with no EV on record still got a wallbox, and nothing in the inputs predicts which. Our rules sit within noise of the black box, with every rule on screen.
