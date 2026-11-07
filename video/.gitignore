@@ -1,0 +1,6 @@
+node_modules
+out/
+public/footage/*.mov
+public/footage/*.mp4
+!public/footage/intro.mp4
+!public/footage/demo.mp4
