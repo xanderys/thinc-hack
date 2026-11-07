@@ -11,6 +11,7 @@ import type { SpatialScene } from "./scene";
 import { POSES, type StageView } from "./camera";
 import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
+import { usePhoto } from "./PhotoView";
 import s from "./spatial.module.css";
 
 export type Endpoints = { glb?: string; layers?: string };
@@ -27,7 +28,7 @@ type Props = {
   bare?: boolean;                     // the reasoning chain draws its own chrome: canvas, labels and compass only
   leadId?: string;                    // sent with the layers call so call facts tag as Rina
   onLayers?: (l: Layers) => void;     // the one layers response, for bars, checks and the energy numbers
-  tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void }) => ReactNode;
+  tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void; photo?: { on: boolean; set: (on: boolean) => void } }) => ReactNode;
   children?: ReactNode;               // overlays drawn over the canvas
 };
 
@@ -135,6 +136,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const ids = [1, 2, 3, 4, 5, 6, ...(envelope ? [7] : []), ...(plan ? [8] : [])];
   const nSteps = ids.length;
   const L = ids.includes(layer) ? layer : 1;
+  // Photo: Google 3D Tiles under the layout (PhotoView.tsx); only in 3D, never on the plan layer.
+  const photo = usePhoto(address, ready ? scene.current : null, view === "3d" && L !== 8);
+  const photoTool = photo.available ? { on: photo.on && L !== 8 && view === "3d", set: (on: boolean) => { photo.setOn(on); if (on) { setView("3d"); if (L === 8) setLayer(3); } } } : undefined;
 
   // Panels change with the design: re-place them (animated only when the panels layer is showing).
   const panelKey = panelList.length + ":" + JSON.stringify(Object.values(counts));
@@ -340,12 +344,13 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
           </div>
         )}
 
-        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { setView(v); if (v === "3d" && L === 8) setLayer(3); } })}
+        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { photo.setOn(false); setView(v); if (v === "3d" && L === 8) setLayer(3); }, photo: photoTool })}
         {bare && <div className={`${s.tools} ${s.toolsBare}`}><div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div></div>}
         {!bare && <div className={s.tools}>
           <div className={s.toggle} role="group" aria-label="View">
-            <button type="button" aria-pressed={L !== 8 && view === "3d"} onClick={() => { setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
-            <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => setView("2d")}>2D</button>
+            <button type="button" aria-pressed={L !== 8 && view === "3d" && !photoTool?.on} onClick={() => { photo.setOn(false); setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
+            <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => { photo.setOn(false); setView("2d"); }}>2D</button>
+            {photoTool && <button type="button" aria-pressed={photoTool.on} onClick={() => photoTool.set(true)}>Photo</button>}
           </div>
           <div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div>
         </div>}
@@ -364,6 +369,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         )}
         {!bare && L === 4 && layers && <div className={s.clock} aria-live="off">{hh(hour.h)}</div>}
         {!bare && chart && <div className={s.side}>{chart}</div>}
+        {photo.overlay}
         {children}
       </div>
 
