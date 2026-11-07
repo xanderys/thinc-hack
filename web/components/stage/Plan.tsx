@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import type { Design, DesignResponse, Economics, HomeInputs, Overrides, WriteResponse } from "@/lib/api";
 import House from "./House";
 import Flow from "./Flow";
+import Rules from "./Rules";
 import Why from "./Why";
 import { INSTALLER_NAME } from "@/lib/api";
 import { designLine, evidence, KEYS, n0, n2, NAME, named, pct, size } from "@/lib/stage";
@@ -88,12 +89,13 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
               <span className="say">{line ?? <span className="s-wait">Writing</span>}</span>
               <button className="why" aria-expanded={open === k && !closing} onClick={(ev) => toggle(k, (ev.currentTarget.parentElement?.querySelector(".num-b") as HTMLElement | null) ?? ev.currentTarget)}>Why</button>
               {open === k && (c.derivation
-                ? <Why k={k} d={c.derivation} level={level} onMore={setLevel} answered={answered} installer={installer} closing={closing} ox={ox} evKwh={inputs.has_ev ? res.economics.annual?.ev_charge_kwh : null} />
+                ? <Why k={k} d={c.derivation} level={level} onMore={setLevel} answered={answered} installer={installer} closing={closing} ox={ox} evKwh={inputs.has_ev ? res.economics.annual?.ev_charge_kwh : null} rules={!!res.rules?.length} />
                 : <div className="ev s-in">{evidence(res, k, inputs.installer_id)} {named(c.reason)}</div>)}
             </div>
           );
         })}
       </div>
+      <Rules rules={res.rules} installer={installer} />
 
       {variants.length > 1 && (
         <div className="s-variants">

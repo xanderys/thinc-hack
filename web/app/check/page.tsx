@@ -1,7 +1,8 @@
 "use client";
+import Rules from "@/components/stage/Rules";
 import { useEffect, useMemo, useState } from "react";
 import StepHead from "@/components/stage/StepHead";
-import { COMPONENT_DESIGN_FIELD, INSTALLER_NAME, type ComponentKey, type Design, type Eval, type HomeInputs, type InboxRow, type ProjectDetail, type ProjectSummary, type ValidateFlag, type ValidateResponse } from "@/lib/api";
+import { COMPONENT_DESIGN_FIELD, INSTALLER_NAME, type ComponentKey, type Design, type Eval, type HomeInputs, type InboxRow, type ProjectDetail, type ProjectSummary, type ValidateFlag, type ValidateResponse, type RecommenderScore } from "@/lib/api";
 import { call } from "@/lib/client";
 import { REALITY_MISS, REALITY_PROJECT } from "@/lib/demo";
 import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, named } from "@/lib/stage";
@@ -124,6 +125,7 @@ function Reality({ ev, id, onOther }: { ev: Eval | null; id: string | null; onOt
           <button className="s-link" onClick={onOther}>Another one</button>
         </div>
       </div>
+      <Rules rules={p.ours.rules} installer={INSTALLER_NAME[p.installer_id]} />
     </section>
   );
 }
@@ -201,6 +203,19 @@ function Inbox({ ev }: { ev: Eval | null }) {
   );
 }
 
+// v2.0: the named-rule formula against the learned black box and the textbook, on the same test homes.
+function Recommenders({ r }: { r: NonNullable<Eval["recommenders"]> }) {
+  const cols = (["formula", "blackbox", "textbook"] as const).filter((k) => r[k]);
+  const head = { formula: "Formula", blackbox: "Black box", textbook: "Textbook" };
+  const rows: [string, keyof RecommenderScore][] = [["Whole design", "design_match_share"], ["Solar", "pv_within"], ["Battery", "battery_within"], ["Wallbox decision", "wallbox_decision"]];
+  return (
+    <table className="c-table small c-recs">
+      <thead><tr><th>Within tolerance</th>{cols.map((k) => <th key={k} className="r">{head[k]}</th>)}</tr></thead>
+      <tbody>{rows.map(([n, f]) => <tr key={f}><td>{n}</td>{cols.map((k) => <td key={k} className="r num">{r[k]?.[f] == null ? "n/a" : pct1(r[k]![f])}</td>)}</tr>)}</tbody>
+    </table>
+  );
+}
+
 function Score({ ev }: { ev: Eval | null }) {
   if (!ev) return null;
   const o = ev.overall, pv = ev.components.pv;
@@ -211,6 +226,8 @@ function Score({ ev }: { ev: Eval | null }) {
         {o.ceiling_design_match_share != null && <>, and two planners at the same installer, given near-identical homes, agree {pct1(o.ceiling_design_match_share)} of the time</>}.</p>
       {pv.within_tolerance_share != null && ev.ceiling && <p>On solar alone the draft is within tolerance {pct1(pv.within_tolerance_share)} of the time, against {pct1(ev.ceiling.pv_agreement_share)} for planners agreeing with each other.</p>}
       {ev.synthetic?.headline_short && <p>{ev.synthetic.headline_short}</p>}
+      {ev.recommenders && <Recommenders r={ev.recommenders} />}
+      {ev.deviation_quality && ev.deviation_quality.n_differ > 0 && <p>Where the formula differs from the expert ({n0(ev.deviation_quality.n_differ)} homes), ours pays back sooner in {n0(ev.deviation_quality.ours_better_payback)} and is more independent in {n0(ev.deviation_quality.ours_better_autarky)}.</p>}
       <details>
         <summary>All the numbers</summary>
         <table className="c-table small">
