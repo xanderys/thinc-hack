@@ -1,4 +1,4 @@
-# Engine API contract (v1.6)
+# Engine API contract (v1.7)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -37,6 +37,7 @@ interface RoofResult {                  // v1.6, from GET /api/roof?address=... 
   max_panels: number | null; max_kwp: number | null;      // usable_area_m2 / 5.5
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
 }
+// Preferences (v1.7): HomeInputs.preference?: "independence" | "payback" | "upfront" only reorders `variants` (first = preferred); the learned expert design stays `design`. The export has no preference data, so preference never changes the learned model.
 // Engine behaviour with a roof: pv_kwp = min(model, max_kwp); plausibility gets one line ("the roof fits 57 modules, about 145 m2 at 25 degrees east-west, measured from Bavarian LoD2 data"); components.pv.derivation.inputs cites the roof source.
 
 interface Design {
@@ -86,13 +87,22 @@ interface Optimum {                        // v1.2, from the hourly physics simu
   note: string;                           // one sentence: where the expert habit and the maths disagree
 }
 
+interface Variant {                       // v1.7
+  key: "expert" | "independence" | "payback" | "upfront";
+  label: string;                          // "PV + storage (as planners here design it)", "Most independence", "Best payback", "Lowest upfront cost"
+  design: Design;
+  economics: Economics;
+  note: string;                           // one sentence vs the expert variant
+}
+
 interface DesignResponse {
   design: Design;
   explanation: string[];                // 3 to 5 short sentences
   components: { pv: ComponentDetail; battery: ComponentDetail; heatpump: ComponentDetail; wallbox: ComponentDetail };
   plausibility: Plausibility[];
   economics: Economics;                 // v1.2: from the hourly simulation when available; economics.method says which
-  optimum?: Optimum;
+  optimum?: Optimum;                    // best 20-year NPV
+  variants?: Variant[];                 // v1.7: offer variants the planner can pick by homeowner preference
   model_version: string;
 }
 ```
