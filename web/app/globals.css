@@ -615,3 +615,38 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
   ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 200ms; }
 }
 @media (max-width: 640px) { .b-house svg { max-height: 84px; } .b-house { justify-content: center; } }
+
+/* Open card: inputs and decisions on top, the house and its numbers below. */
+.b-card-in { padding-top: 14px; }
+.t-bar { display: grid; gap: 12px; padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--rule); }
+.t-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 12px; background: var(--sheet-2); border: 1px solid var(--accent); font-size: 15px; }
+.t-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.t-chip { position: relative; }
+.t-chip summary { list-style: none; cursor: pointer; min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--rule); background: var(--sheet-2); font-size: 14px; }
+.t-chip summary::-webkit-details-marker { display: none; }
+.t-chip summary .k { color: var(--ink-3); }
+.t-chip[open] summary { border-color: var(--accent); }
+.t-edit { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; background: var(--paper); border: 1px solid var(--ink); padding: 10px; white-space: nowrap; }
+.t-edit form { display: flex; gap: 8px; align-items: center; }
+.t-edit input { width: 110px; font: inherit; padding: 7px 10px; border: 1px solid var(--ink-3); background: var(--sheet-2); border-radius: 0; }
+.t-edit .u { font-size: 13px; color: var(--ink-3); }
+.t-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.t-pref { display: inline-grid; grid-template-columns: repeat(4, auto); margin: 0; }
+.t-locks summary { cursor: pointer; font-size: 14px; min-height: 36px; display: inline-flex; align-items: center; }
+.t-locks-in { padding-top: 6px; }
+.t-go { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.t-go .btn { min-height: 40px; padding: 0 20px; }
+.t-mail summary { cursor: pointer; font-size: 13.5px; color: var(--ink-2); }
+.t-mail .s-mail { margin-top: 6px; }
+.s-refine.bare { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 640px) {
+  .t-pref { grid-template-columns: 1fr 1fr; width: 100%; }
+  .t-go { margin-left: 0; width: 100%; justify-content: flex-end; }
+  .t-edit { position: static; margin-top: 4px; white-space: normal; }
+}
+@media (max-width: 640px) {
+  .t-chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 0 16px 4px; scrollbar-width: none; }
+  .t-chip summary { white-space: nowrap; }
+  .t-chip[open] { position: static; }
+  .t-go { width: auto; margin-left: auto; }
+}

@@ -7,6 +7,7 @@ const Calls = dynamic(() => import("@/components/stage/Calls"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 import Plan, { type Variant } from "@/components/stage/Plan";
 import Refine, { type Moved } from "@/components/stage/Refine";
+import TopBar from "@/components/stage/TopBar";
 import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
 import { call } from "@/lib/client";
 import { HERO_LEAD } from "@/lib/demo";
@@ -233,9 +234,18 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
     setChips((c) => [...c.filter((x) => !r.data.changes.some((y) => y.field === x.field)), ...r.data.changes]);
     setOvChips((c) => [...c.filter((x) => !ovs.some((y) => y.field === x.field)), ...ovs]);
     if (ovs.length) setOverrides((o) => { const n = { ...o }; for (const v of ovs) n[v.field] = v.to; return n; });
+    // In the open card the offer variants are the second beat: bring them into view once the new design lands.
+    if (seed) setTimeout(() => document.querySelector(".s-variants")?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" }), 1400);
     // Tell the homeowner's lead, so their phone shows the updated design.
     if (leadRef.current && r.data.changes.length) call("/api/intake/step", { lead_id: leadRef.current, facts_so_far: add }).then((x) => { if (!x.ok) setSayErr(`Applied here; the homeowner's copy did not update: ${x.error}`); });
     return true;
+  }
+
+  // A fact chip changed in the open card: same path as a sentence, and the lead hears it.
+  function onFact(f: keyof HomeInputs, v: unknown, label: string) {
+    remember(`${label} changed:`);
+    setChanged((c) => ({ ...c, [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) }));
+    if (leadRef.current) call("/api/intake/step", { lead_id: leadRef.current, facts_so_far: { [f]: v } });
   }
 
   function onUnchip(c: InterpretChange | InterpretOverride) {
@@ -277,6 +287,19 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
     setOverrides(v.overrides);
   }, [changed, overrides, chips, ovChips]);
   const flag = res ? pickFlag(res) : null;
+
+  if (seed && read) return (
+    <div className="st b-card-in">
+      <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} setInstaller={setInstaller}
+        question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} asking={question === undefined}
+        pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
+        canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />
+      {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
+      {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} bare />}
+      {res && <Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
+        moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} bare />}
+    </div>
+  );
 
   return (
     <div className="st">
