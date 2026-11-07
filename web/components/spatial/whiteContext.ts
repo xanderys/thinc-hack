@@ -16,6 +16,7 @@ import * as THREE from "three";
 import type { RoofPlane, V3 } from "./types";
 
 const MAX_EDGES = 128;
+const MAX_NBR = 96;                       // neighbours' footprint edges painted onto the white mesh
 const MARGIN = 1.0;                       // metres of photo kept around the footprint
 const WHITE = new THREE.Color("#fbfaf6"); // a touch warm, so it sits on the paper ground
 const OUTLINE = "#cfcbc2";
@@ -56,13 +57,11 @@ function hull(pts: XZ[]): XZ[] {
   return lo.slice(0, -1).concat(up.slice(0, -1));
 }
 
-// Faint grey footprints of the neighbours, just above the ground. Drawn after the photo layer's depth clear,
-// so they read on the white ground.
-export function outlineMesh(edges: [XZ, XZ][], y = 0.04): THREE.LineSegments {
+// Faint grey footprints of the neighbours, just above the ground and the 0.4 m slabs; buildings hide them.
+export function outlineMesh(edges: [XZ, XZ][], y = 0.42): THREE.LineSegments {
   const g = new THREE.BufferGeometry().setFromPoints(edges.flatMap(([a, b]) => [new THREE.Vector3(a[0], y, a[1]), new THREE.Vector3(b[0], y, b[1])]));
   const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: OUTLINE, transparent: true, opacity: 0.8, depthWrite: false }));
   l.name = "white-outlines";
-  l.renderOrder = -3;
   return l;
 }
 
@@ -79,6 +78,18 @@ uniform float uWcMargin;
 uniform mat4 uWcFrame;
 uniform vec3 uWcWhite;
 uniform float uWcOn;
+uniform vec4 uWcNbr[${MAX_NBR}];
+uniform int uWcNbrCount;
+float wcNbr(vec2 p) {
+  float d = 1e9;
+  for (int i = 0; i < ${MAX_NBR}; i++) {
+    if (i >= uWcNbrCount) break;
+    vec2 a = uWcNbr[i].xy, ab = uWcNbr[i].zw - a;
+    float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+    d = min(d, length(p - a - ab * t));
+  }
+  return d;
+}
 float wcMask(vec2 p) {
   float dmin = 1e9; bool inside = false; bool par = false; float cur = -1.0;
   for (int i = 0; i < ${MAX_EDGES}; i++) {
@@ -100,11 +111,14 @@ const FRAG_BODY = /* glsl */ `
     float m = uWcCount > 0 ? wcMask(wp.xz) : 0.0;
     vec3 n = normalize(cross(dFdx(vWcPos), dFdy(vWcPos)));
     if (dot(n, cameraPosition - vWcPos) < 0.0) n = -n;
-    float up = clamp(n.y, 0.0, 1.0);
-    float key = clamp(dot(n, normalize(vec3(-0.45, 0.8, 0.4))), 0.0, 1.0);
-    float wall = mix(0.78 + 0.12 * key, 1.0, up * up);
-    float ao = mix(0.88, 1.0, smoothstep(0.0, 2.5, wp.y));
-    float shade = mix(wall * ao, wall, up);
+    // Photogrammetry is lumpy: faces within about 30 degrees of level read as flat white (ground, roofs),
+    // steeper faces get a gentle key light and a soft darkening where they meet the ground.
+    float lvl = smoothstep(0.62, 0.85, n.y);
+    float key = clamp(dot(n, normalize(vec3(-0.45, 0.5, 0.75))), 0.0, 1.0);
+    float ao = mix(0.92, 1.0, smoothstep(0.0, 2.5, wp.y));
+    float shade = mix((0.87 + 0.09 * key) * ao, 1.0, lvl);
+    // Neighbours' footprints as faint grey hairlines on the ground, about one pixel wide at any zoom.
+    if (uWcNbrCount > 0) { float dn = wcNbr(wp.xz); float w = max(fwidth(dn), 1e-4); shade *= 1.0 - 0.2 * (1.0 - smoothstep(0.5 * w, 1.5 * w, dn)); }
     diffuseColor.rgb = mix(diffuseColor.rgb, uWcWhite * shade, uWcOn * (1.0 - m));
   }
 `;
@@ -119,12 +133,24 @@ export class WhiteContext {
     uWcFrame: { value: new THREE.Matrix4() },
     uWcWhite: { value: new THREE.Vector3(WHITE.r, WHITE.g, WHITE.b) },
     uWcOn: { value: 1 },
+    uWcNbr: { value: Array.from({ length: MAX_NBR }, () => new THREE.Vector4()) },
+    uWcNbrCount: { value: 0 },
   };
   private mats = new Set<THREE.Material>();
 
-  constructor(footprint: XZ[][], frame?: THREE.Matrix4) {
+  private seen = -1;
+
+  constructor(footprint: XZ[][] = [], frame?: THREE.Matrix4) {
     this.setFootprint(footprint);
     if (frame) this.uniforms.uWcFrame.value.copy(frame);
+  }
+
+  // Follow the photo layer's aligned frame: its footprint is engine local [x east, y north], the tiles already sit
+  // in the scene frame through its holder, so the mask is tested in world space.
+  sync(f: { footprint: [number, number][]; version: number }) {
+    if (f.version === this.seen) return;
+    this.seen = f.version;
+    this.setFootprint(f.footprint.length > 2 ? [f.footprint.map(([x, y]) => [x, -y] as XZ)] : []);
   }
 
   // World → mask frame. Identity while the tiles are aligned into our scene frame.
@@ -142,6 +168,14 @@ export class WhiteContext {
       E[i].set(a[0], a[1], b[0], b[1]); P[i] = j; i++;
     }));
     this.uniforms.uWcCount.value = i;
+  }
+
+  // Neighbours' footprint edges in the three XZ plane; the nearest MAX_NBR to the house are kept.
+  setNeighbours(edges: [XZ, XZ][], house: XZ = [0, 0]) {
+    const d = ([a, b]: [XZ, XZ]) => Math.hypot((a[0] + b[0]) / 2 - house[0], (a[1] + b[1]) / 2 - house[1]);
+    const keep = [...edges].sort((x, y) => d(x) - d(y)).slice(0, MAX_NBR), N = this.uniforms.uWcNbr.value;
+    keep.forEach(([a, b], i) => N[i].set(a[0], a[1], b[0], b[1]));
+    this.uniforms.uWcNbrCount.value = keep.length;
   }
 
   // Patch every mesh of a freshly loaded tile. Google's tiles are unlit; anything else becomes unlit too, so
@@ -170,7 +204,7 @@ export class WhiteContext {
       sh.vertexShader = VERT_DECL + sh.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\n${VERT_BODY}`);
       sh.fragmentShader = FRAG_DECL + sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>\n${FRAG_BODY}`);
     };
-    out.customProgramCacheKey = () => "white-context-v1";
+    out.customProgramCacheKey = () => "white-context-v2";
     out.needsUpdate = true;
     this.mats.add(out);
     return out;

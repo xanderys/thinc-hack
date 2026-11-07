@@ -264,7 +264,9 @@ export class SpatialScene {
   setModel(model: RoofModel) {
     this.targets = [];
     [this.placeholder, this.outlines, this.tints, this.kit, this.sunGroup, this.ctxLines].forEach((g) => g.clear());
-    this.ctxLines.add(outlineMesh(neighbourEdges(model.planes)));
+    const nbr = neighbourEdges(model.planes);
+    this.ctxLines.add(outlineMesh(nbr));
+    this.ctxLines.userData.edges = nbr; // the mesh view paints the same edges in its shader (whiteContext.ts)
     const target = model.planes.filter((p) => p.is_target);
     this.shade.setPlanes(target);
     const ys = model.planes.map((p) => p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp).filter((x) => x > 0);
