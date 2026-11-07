@@ -136,10 +136,11 @@ export class ShadeLayer {
       m.el.style.visibility = p.ok && big ? "visible" : "hidden";
       m.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)`;
     });
-    // Edge lengths never stack: longest first, a tag that would touch one already shown stays hidden.
+    // Edge lengths only on the 2D plan, where they read as a drawing; in 3D the faces carry one chip each.
+    // They never stack: longest first, a tag that would touch one already shown stays hidden.
     const shown: { x0: number; x1: number; y0: number; y1: number }[] = [];
     [...this.edges].sort((a, b) => b.len - a.len).forEach((e) => {
-      const show = this.on && mode === "3d";
+      const show = this.on && mode === "2d";
       if (!show) { if (e.el.style.visibility !== "hidden") e.el.style.visibility = "hidden"; return; }
       const p = project(e.at);
       if (!e.w) { e.w = e.el.offsetWidth || 36; e.h = e.el.offsetHeight || 14; }
