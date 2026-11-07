@@ -39,9 +39,9 @@ function terms(d: Derivation, answered: boolean): Term[] {
   return out;
 }
 
-type Props = { k: ComponentKey; d: Derivation; level: number; onMore: (n: number) => void; answered: boolean; installer: string; closing: boolean; ox: number };
+type Props = { k: ComponentKey; d: Derivation; level: number; onMore: (n: number) => void; answered: boolean; installer: string; closing: boolean; ox: number; evKwh?: number | null };
 
-export default function Why({ k, d, level, onMore, answered, installer, closing, ox }: Props) {
+export default function Why({ k, d, level, onMore, answered, installer, closing, ox, evKwh }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   // Grow out of the tapped number: transform origin sits under it.
   useLayoutEffect(() => { const el = ref.current; if (el) el.style.setProperty("--ox", `${ox - el.getBoundingClientRect().left}px`); }, [ox]);
@@ -69,13 +69,14 @@ export default function Why({ k, d, level, onMore, answered, installer, closing,
             ];
           })}
           {level >= 3 && adj && (adj.value > 0 && d.final != null ? <>
-            <span className="op adj s-step">×</span><span key={`a${adj.value}`} className="v adj s-mark">{fmt(adj.value)}</span><span className="u" /><span className="w s-step">{label}<span className="src">{adj.n_similar} similar homes, {installer}</span></span>
+            <span className="op adj s-step">×</span><span key={`a${adj.value}`} className="v adj s-mark">{fmt(adj.value)}</span><span className="u" /><span className="w s-step">{label}<span className="src">; {adj.n_similar} similar homes, {installer}</span></span>
             <span className="op fin">=</span><span key={`f${d.final}`} className="v fin s-mark">{fmt(d.final)}</span><span className="u fin">{rows[last]?.u}</span><span className="w fin">{snapped ?? "the design"}</span>
           </> : <>
-            <span className="op fin" /><span className="v fin">none</span><span className="u fin" /><span className="w fin s-step">Left out. {label}<span className="src">{adj.n_similar} similar homes, {installer}</span></span>
+            <span className="op fin" /><span className="v fin">none</span><span className="u fin" /><span className="w fin s-step">Left out. {label}<span className="src">; {adj.n_similar} similar homes, {installer}</span></span>
           </>)}
         </div>
       )}
+      {level >= 2 && k === "pv" && evKwh != null && <p className="evn s-step">The car needs <span className="num">{n2(Math.round(evKwh))} kWh</span> a year.</p>}
       {level >= 2 && rows.length === 0 && <p className="eq s-step">{d.equation}</p>}
       {level >= 4 && (
         <dl className="srcs s-step">
