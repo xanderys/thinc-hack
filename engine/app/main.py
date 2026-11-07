@@ -93,7 +93,16 @@ def warm_rules_eval():
         return
     try:
         t = time.time()
+        h = hashlib.sha256(cache_key().encode())
+        for f in sorted((Path(__file__).parent / "planner_rules").glob("*.py")) + [Path(__file__).parent / "planner_rules" / "constants.json"]:
+            h.update(f.read_bytes() if f.exists() else b"")
+        p = CACHE / f"rules_eval-{h.hexdigest()[:12]}.json"
+        if p.exists():
+            STATE["rules_eval"] = json.loads(p.read_text())
+            return
         STATE["rules_eval"] = STATE["engine"].recommenders_eval()
+        CACHE.mkdir(exist_ok=True)
+        p.write_text(json.dumps(STATE["rules_eval"], default=float))
         log.warning("recommenders eval ready in %.1fs", time.time() - t)
     except Exception as e:
         log.exception("recommenders eval failed")

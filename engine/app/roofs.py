@@ -184,6 +184,18 @@ def model_info(address: str) -> dict:
     return info
 
 
+def model_json_cached(address: str):
+    """The built model's planes JSON for this address, or None; never builds one."""
+    key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
+    path = MODEL_CACHE / f"{key}.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(Path(json.loads(path.read_text())["planes_json_path"]).read_text())
+    except Exception:
+        return None
+
+
 def envelope_cached(address: str):
     """envelope block (per-face heat loss, design heat load) from an already built model; never builds one."""
     key = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:16]
