@@ -557,3 +557,61 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .s-top.solo { grid-template-columns: minmax(0, 1fr); }
 .s-top.solo .s-house:empty { display: none; }
 .s-spatial { margin: 6px 0 18px; }
+
+/* Board: one card per house. */
+.masthead a.title { color: var(--paper); text-decoration: none; }
+.b-board { padding-top: 24px; }
+.b-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.b-card { position: relative; overflow: hidden; width: 100%; min-height: 236px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px 16px 16px; background: var(--sheet-2); border: 1px solid var(--rule); border-radius: 0; text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.b-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.b-card > * { position: relative; }
+.b-card.live { background: var(--accent); color: var(--paper); border-color: var(--accent); }
+.b-top { display: flex; width: 100%; justify-content: space-between; }
+.b-st { font-size: 12.5px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 6px; }
+.b-st.done { color: var(--accent); }
+.b-st.approved { color: var(--ink); font-weight: 600; }
+.b-card.live .b-st { color: var(--paper); }
+.b-st .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.b-name { font-family: var(--font-serif), serif; font-size: 24px; line-height: 1.15; margin-top: 4px; }
+.b-place { font-size: 13.5px; color: var(--ink-2); }
+.b-card.live .b-place { color: rgba(244, 241, 234, 0.8); }
+.b-house { width: 100%; margin: 4px 0 0; flex: 1; display: flex; align-items: flex-end; }
+.b-house svg { width: 100%; height: auto; max-height: 120px; }
+.b-house .h-tag, .b-house .h-lead { display: none; }
+.b-line { margin-top: auto; font-size: 15px; }
+.b-add { align-items: center; justify-content: center; gap: 8px; border-style: dashed; background: transparent; color: var(--ink-2); }
+.b-plus { font-size: 40px; line-height: 1; color: var(--accent); font-weight: 300; }
+.b-empty { padding: 20px 0; }
+@media (hover: hover) { .b-card:not(.live):hover { border-color: var(--ink-3); } }
+@media (max-width: 640px) { .b-grid { grid-template-columns: 1fr; } .b-card { min-height: 0; } .b-add { min-height: 72px; flex-direction: row; } }
+
+/* "+": the add sheet. */
+.b-sheet-bg { position: fixed; inset: 0; z-index: 40; background: rgba(10, 12, 20, 0.32); display: flex; justify-content: center; align-items: flex-start; padding: 64px 16px 16px; overflow: auto; }
+.b-sheet { width: min(640px, 100%); background: var(--paper); border: 1px solid var(--ink); padding: 18px 20px 20px; }
+.b-sheet-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.b-sheet-h h2 { font-family: var(--font-serif), serif; font-weight: 400; font-size: 26px; margin: 0; }
+.b-paste { width: 100%; font: inherit; font-size: 15px; line-height: 1.5; padding: 10px 12px; border: 1px solid var(--ink-3); background: var(--sheet-2); border-radius: 0; resize: vertical; }
+.b-row { display: flex; gap: 14px; align-items: center; margin-top: 10px; }
+.b-facts { margin: 0 0 12px; }
+.b-facts div { display: grid; grid-template-columns: 130px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
+.b-facts dt { color: var(--ink-3); }
+.b-facts dd { margin: 0; }
+.b-facts .src { display: block; font-size: 12.5px; color: var(--ink-3); }
+.b-name-f { display: grid; gap: 4px; font-size: 13px; color: var(--ink-2); margin-top: 8px; }
+.b-name-f input { font: inherit; font-size: 15px; padding: 9px 12px; border: 1px solid var(--ink-3); background: var(--sheet-2); border-radius: 0; color: var(--ink); }
+@media (prefers-reduced-motion: no-preference) { .b-sheet { animation: s-fade 300ms var(--spring-smooth) both; } }
+
+/* Open card: full width, the planner's whole view of one house. */
+.b-open { padding-top: 18px; background: var(--paper); }
+.b-open-h { display: flex; gap: 16px; align-items: flex-start; padding-bottom: 12px; border-bottom: 1.5px solid var(--ink); }
+.b-open-h h1 { font-family: var(--font-serif), serif; font-weight: 400; font-size: 30px; line-height: 1.1; margin: 0; }
+.b-open-h p { margin: 4px 0 0; font-size: 14px; color: var(--ink-2); }
+.b-close { min-height: 40px; padding: 0 14px; border: 1px solid var(--ink); background: transparent; font: inherit; cursor: pointer; border-radius: 0; color: var(--ink); }
+
+/* The card grows into the open view: one smooth spring, no bounce; a crossfade under Reduce Motion. */
+::view-transition-group(*) { animation-duration: 500ms; animation-timing-function: var(--spring-smooth); }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*) { animation: none; }
+  ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 200ms; }
+}
+@media (max-width: 640px) { .b-house svg { max-height: 84px; } .b-house { justify-content: center; } }

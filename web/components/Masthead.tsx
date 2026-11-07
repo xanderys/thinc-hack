@@ -20,11 +20,7 @@ export default function Masthead() {
   const mock = health.h?.model_version.startsWith("mock");
   return (
     <header className="masthead">
-      <span className="title">Planner</span>
-      <nav>
-        <Link href="/" aria-current={path === "/" ? "page" : undefined}>Plan</Link>
-        <Link href="/check" aria-current={path === "/check" ? "page" : undefined}>Check</Link>
-      </nav>
+      <Link href="/" className="title">Planner</Link>
       <span className={`engine${mock || health.err ? " mock" : ""}`}>
         {health.err ? health.err : !health.h ? "" : mock ? "Mock engine: fixtures, not the model" :
           `Physics engine, measured against ${health.h.trained_on.projects.toLocaleString("en-GB")} signed offers`}
