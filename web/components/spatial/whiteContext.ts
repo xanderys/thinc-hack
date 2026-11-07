@@ -66,7 +66,23 @@ export function outlineMesh(edges: [XZ, XZ][], y = 0.42): THREE.LineSegments {
   return l;
 }
 
-const VERT_DECL = /* glsl */ `varying vec3 vWcPos;\n`;
+const VERT_DECL = /* glsl */ `varying vec3 vWcPos;
+uniform sampler2D uWcFlat;
+uniform vec4 uWcFlatBox;
+uniform float uWcFlatY;
+`;
+// Photo layer hook (tiles.ts): inside the neighbours' footprints (a top-down mask, uWcFlatBox = x0, z0, size in
+// metres) the mesh is pressed down to uWcFlatY, about 0.5 m above the ground, so neighbours never hide the facade.
+const FLAT_PRE = /* glsl */ `
+  if (uWcFlatBox.z > 0.0) {
+    vec4 wcW = modelMatrix * vec4(transformed, 1.0);
+    vec2 wcUv = (wcW.xz - uWcFlatBox.xy) / uWcFlatBox.z;
+    if (wcW.y > uWcFlatY && all(greaterThan(wcUv, vec2(0.0))) && all(lessThan(wcUv, vec2(1.0))) && texture(uWcFlat, wcUv).r > 0.5) {
+      wcW.y = uWcFlatY;
+      transformed = (inverse(modelMatrix) * wcW).xyz;
+    }
+  }
+`;
 const VERT_BODY = /* glsl */ `
   vWcPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
 `;
@@ -79,6 +95,7 @@ uniform float uWcMargin;
 uniform mat4 uWcFrame;
 uniform vec3 uWcWhite;
 uniform float uWcOn;
+uniform float uWcKeep;
 uniform float uWcClip;
 uniform float uWcGround;
 uniform vec4 uWcNbr[${MAX_NBR}];
@@ -112,7 +129,7 @@ const FRAG_BODY = /* glsl */ `
   {
     vec3 wp = (uWcFrame * vec4(vWcPos, 1.0)).xyz;
     float m = uWcCount > 0 ? wcMask(wp.xz) : 0.0;
-    if (uWcOn < 0.5 && m < 0.5) discard;
+    if (uWcOn < 0.5 && m < 0.5 && uWcKeep < 0.5) discard; // uWcKeep: the photo layer keeps the real surroundings
     vec3 n = normalize(cross(dFdx(vWcPos), dFdy(vWcPos)));
     if (dot(n, cameraPosition - vWcPos) < 0.0) n = -n;
     // Photogrammetry is lumpy: faces within about 30 degrees of level read as flat white (ground, roofs),
@@ -141,6 +158,10 @@ const U = {
   uWcFrame: { value: new THREE.Matrix4() },
   uWcWhite: { value: new THREE.Vector3(WHITE.r, WHITE.g, WHITE.b) },
   uWcOn: { value: whiteOn() ? 1 : 0 },
+  uWcKeep: { value: 0 },
+  uWcFlat: { value: new THREE.DataTexture(new Uint8Array(4), 1, 1) as THREE.Texture },
+  uWcFlatBox: { value: new THREE.Vector4(0, 0, 0, 0) },
+  uWcFlatY: { value: 0 },
   uWcClip: { value: 0 },
   uWcGround: { value: 0 },
   uWcNbr: { value: Array.from({ length: MAX_NBR }, () => new THREE.Vector4()) },
@@ -153,7 +174,8 @@ function patchShader(mat: THREE.Material, body: string, key: string) {
   mat.userData.whiteCtx = key;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
-    sh.vertexShader = VERT_DECL + sh.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\n${VERT_BODY}`);
+    const pre = body === FRAG_BODY ? FLAT_PRE : ""; // only the photo tiles are flattened, never our glb walls
+    sh.vertexShader = VERT_DECL + sh.vertexShader.replace("#include <project_vertex>", `${pre}#include <project_vertex>\n${VERT_BODY}`);
     sh.fragmentShader = FRAG_DECL + sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>\n${body}`);
   };
   mat.customProgramCacheKey = () => key;
@@ -218,7 +240,7 @@ export class WhiteContext {
           out = new THREE.MeshBasicMaterial({ map: src.map ?? null, color: src.color ?? 0xffffff, side: src.side, transparent: src.transparent, opacity: src.opacity });
           mat.dispose();
         }
-        patchShader(out, FRAG_BODY, "white-context-v3");
+        patchShader(out, FRAG_BODY, "white-context-v4");
         return out;
       });
       m.material = Array.isArray(m.material) ? next : next[0];

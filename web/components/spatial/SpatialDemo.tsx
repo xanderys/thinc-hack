@@ -12,6 +12,7 @@ import { POSES, type StageView } from "./camera";
 import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
 import { usePhoto } from "./PhotoView";
+import { snapKey } from "./snapshot";
 import LayersMenu from "./LayersMenu";
 import { isOrigin } from "@/lib/tilesGeo";
 import { setImagery, useViewOpts, type Imagery } from "./whiteMode";
@@ -150,7 +151,10 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
   const vo = useViewOpts();
   const credit = vo.google && vo.ground === "google" && vo.credit ? ` · Ground: ${vo.credit}` : "";
-  const photo = usePhoto((model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32, ready ? scene.current : null, view === "3d" && L !== 8, { creditBottom: bare ? 22 : 104 });
+  const photo = usePhoto((model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32, ready ? scene.current : null, view === "3d" && L !== 8, {
+    creditBottom: bare ? 22 : 104, planes,
+    snapKey: snapKey(leadId ?? "demo", layersKey, typeof window === "undefined" ? 1.6 : (host.current?.clientWidth ?? 16) / Math.max(1, host.current?.clientHeight ?? 10)),
+  });
 
   // Panels change with the design: re-place them (animated only when the panels layer is showing).
   const panelKey = panelList.length + ":" + JSON.stringify(Object.values(counts));
@@ -344,6 +348,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         <div ref={host} className={s.host} />
         <svg ref={svg} className={s.flows} aria-hidden="true" />
         <div ref={overlay} className={s.overlay} aria-hidden="true" />
+        {photo.under}
         {!ready && !absent && !layersErr && <div className={s.wait}>Loading the house</div>}
         {ready && busy && <div className={s.wait}>Updating for this design</div>}
         {ready && !glbOk && !glbErr && <div className={s.wait}>Loading the aerial photo</div>}
