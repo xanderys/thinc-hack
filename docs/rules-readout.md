@@ -90,7 +90,7 @@ Module `engine/app/planner_rules/rules5.py` (`rules-5-textbook-corrected`; `rule
 | Textbook plus corrections (rules-5) | 41.9% | 50.9% | 17.9% |
 | rules-4-readout (production) | 39.6% | 48.3% | 17.6% |
 
-The dimensions were chosen on the same folds, so the rules-5 figure is slightly optimistic. Gains under about 2.5 points are noise.
+The dimensions were chosen on the same folds, so the rules-5 row is optimistic. The lab's nested CV (selection inside each training fold) gives rules-5 PV 36.9% vs rules-4 40.7% (p 0.06) and all four 15.9% vs 17.4% (p 0.38). On the sealed test half, scored once more as a second look (engine-lab 54cf480, reports/final_test_v2.md), rules-5 gets PV 41.4% vs 40.9% and all four 19.6% vs 18.6% (p 0.60); the textbook alone gets 3.9%. rules-5 does not beat rules-4 beyond noise, so production stays on rules-4 and rules-5 supplies the textbook-vs-planners wording. Gains under about 2.5 points are noise.
 
 Tested and dropped (no CV gain): EV, heating type, load profile, electricity price and household size, for both PV and battery; use band for the battery. The battery correction needs the offer date; without it, battery falls to 45.4%.
 
