@@ -32,3 +32,7 @@ CV per installer, new-system: 2a8ba8e2 15.5% all four (769 jobs), 23c108b7 24.2%
 | Kept | `lab/cv.py` harness; `Engine.fit_on` split out of `Engine.fit` (behaviour unchanged, test reproduces the README). |
 
 Next candidates: (a) option rule, scoring lowest, last and most common component set per installer on CV and counting changed labels (Reonic shows options as side-by-side variants, so the lowest may not be the signed one; reported as a label choice, not a metric win). If this signal returns, it should be a battery-stage feature ("inverter package present"), not a PV label.
+
+## Queue
+1. Label choice (offer variants): lowest vs last vs installer's most common component set, compared on CV.
+2. Grey-box (approved by Xander via THINC HACK MASTER): base = physics optimum (`app.hourly.optimum`, installer catalogue), gradient boosting learns the expert's deviation per component, chained as today. Merge candidate only if it beats the current board.
