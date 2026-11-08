@@ -13,6 +13,7 @@ type Row4 = { population: string; ground_truth: string; band: string; engine: st
 type EvalX = Eval & {
   baselines?: Record<string, { rule: string }>;
   ceiling?: Eval["ceiling"] & { covered_test_share?: number };
+  qualification_backtest?: { priority: number; call_first: number; decline: number; n: number; priority_share: number; call_first_share: number; decline_share: number; population: string; method: string; source: string; recomputed_live: boolean };
   final_test?: { source: string; significance: string; production: string; rows: Row4[] };
   recommenders_labels?: Record<string, string>;
   recommenders_note?: string;
@@ -405,6 +406,20 @@ function Synthetic({ ev }: { ev: EvalX }) {
   );
 }
 
+// The verifier's recorded qualification result, as the engine serves it; nothing here is typed in.
+function Backtest({ ev }: { ev: EvalX }) {
+  const q = ev.qualification_backtest;
+  if (!q) return null;
+  const pc = (x: number) => Math.round(x * 100);
+  return (
+    <section className={s.sec}>
+      <h2>Priority / Call first / Decline: {pc(q.priority_share)} / {pc(q.call_first_share)} / {pc(q.decline_share)} % on {n0(q.n)} unseen homes</h2>
+      <p className={s.src}>{q.population}. {q.source}</p>
+      <Src><Api path="/api/eval" /> (<code>qualification_backtest</code>)</Src>
+    </section>
+  );
+}
+
 function ResetDemo() {
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState<{ ok: boolean; line: string }[] | null>(null);
@@ -437,6 +452,7 @@ export default function Check() {
       <Validation />
       <Reality ev={ev} id={real} onOther={() => setReal((x) => x === REALITY_PROJECT ? REALITY_MISS : REALITY_PROJECT)} />
       <Replay ev={ev} />
+      {ev && <Backtest ev={ev} />}
       {ev && <>
         <ByComponent ev={ev} />
         <Recommenders ev={ev} />
