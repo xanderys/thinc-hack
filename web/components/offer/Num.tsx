@@ -38,7 +38,9 @@ export default function Num({ v, className, lit }: { v: string; className?: stri
       const k = (t - t0) / 1000, p = 1 - (1 + W * k) * Math.exp(-W * k);
       if (p > 0.9995) { node.nodeValue = v; now.current = to; return; }
       const x = from + (to - from) * p;
-      now.current = x; node.nodeValue = fmt(b, x, dec);
+      // In flight the figure moves in steps a real offer could show (€10, 0.05 kWp), so no in-between reads as a price.
+      const q = /€/.test(b.pre) ? 10 : /kWp/.test(b.post) ? 0.05 : 0;
+      now.current = x; node.nodeValue = fmt(b, q ? Math.round(x / q) * q : x, dec);
       raf.current = requestAnimationFrame(step);
     };
     node.nodeValue = fmt(b, from, dec);   // before paint: the old figure stays on screen, then moves
