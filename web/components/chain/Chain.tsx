@@ -230,13 +230,19 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     const f = t?.split(/(?<=\.)\s/)[0]?.trim();
     return f && f.length <= 150 && !/installer|signed|similar|tolerance|source|rule of thumb/i.test(f) ? f : null;
   };
-  const heatingKnown = !!inputs.heating_type && !/unknown|not_known|none/i.test(String(inputs.heating_type));
+  // Heat pump info block: the engine's reason only when it says why there is none; a reason about unknown sizing
+  // inputs (boiler age, demand) does not explain the absence.
+  const hpWhy = (() => {
+    const r = res.components.heatpump?.reason?.replace(/^No heat pump[:,]\s*/i, "").trim();
+    if (!r || /not known|unknown|age|siz|estimat|demand|bill/i.test(r)) return null;
+    return plain(r.replace(/^./, (x) => x.toUpperCase()));
+  })();
   const faces = bars[1] ? bars[1].segments.filter((g) => g.unit === "kWp").length : 0;
   const line2: Record<number, string | null> = {
     1: a ? `About ${n0(a.pv_yield_kwh)} kWh a year${faces ? ` from ${faces} face${faces === 1 ? "" : "s"}` : ""}, for a home using ${n0((inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0))} kWh${layers?.ev ? " including the car" : ""}.${res.roof?.stated_direction_conflict ? ` ${res.roof.note ?? res.explanation.find((x) => /^Roof measured from the building model/.test(x)) ?? "Roof measured from the building model; the stated direction was not found."}` : ""}` : null,
     2: d.battery_kwh ? plain(bars[2]?.sentence) ?? "Carries the midday surplus into the evening." : "No battery in this design.",
     3: d.wallbox_kw ? plain(bars[3]?.sentence) ?? `Charges the car at home, ${n0(layers?.ev?.annual_kwh ?? 0)} kWh a year.` : inputs.has_ev ? "No wallbox in this design." : "No electric car, so no wallbox.",
-    4: d.heatpump_kw ? "Sized from the heating bill." : !SYS ? "Not asked for." : plain(res.components.heatpump?.reason?.replace(/^No heat pump[:,]\s*/i, "").replace(/^./, (x) => x.toUpperCase())) ?? (heatingKnown ? "The lead did not ask for one." : "Heating facts not asked yet."),
+    4: d.heatpump_kw ? "Sized from the heating bill." : !SYS ? "Not asked for." : hpWhy ?? "Heating facts not asked yet.",
   };
 
 

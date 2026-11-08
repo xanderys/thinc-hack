@@ -88,7 +88,8 @@
   .st-open:has(.sys-on) .t-chip summary { min-height: 28px; font-size: 12px; padding: 0 8px; gap: 4px; white-space: nowrap; max-width: 100%; }
   .st-open:has(.sys-on) .t-mail { display: none; }
 
-  .sys-on { padding-bottom: 150px; margin-top: 0; }
+  /* The last info block scrolls clear of the tucked pass and the sentence bar. */
+  .sys-on { padding-bottom: calc(var(--say-h, 64px) + var(--pc-peek, 76px) + 24px); margin-top: 0; }
   .sys-on [class*="chain_hero__"] { position: relative; top: auto; order: 1; height: 36vh; min-height: 250px; margin-bottom: 0; }
   /* The chip row sits right under the model and never goes under the tucked pass. */
   .sys-on .sys-under {
