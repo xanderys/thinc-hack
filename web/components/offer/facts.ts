@@ -19,16 +19,28 @@ export function scrub(x: string | null | undefined): string | null {
 const MODULE_KWP = 0.45;
 const modulesOf = (kwp: number | null | undefined) => (kwp ? Math.round(kwp / MODULE_KWP) : 0);
 
-// The one thing a variant changes against the planners' pick, battery first, then modules, then the loads.
+// Rough euros per unit, only to rank changes when more than two differ (never shown).
+const WEIGHT = { module: 560, kwh: 450, wallbox: 1100, heatpump: 32000 };
+const plural = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+
+// Every component that differs from the planners' pick, in Angebot order (modules, storage, wallbox, heat pump),
+// capped at the two with the largest price effect; the first word of each later item in lower case.
 export function differs(d: Partial<Design>, ref: Partial<Design> | null): string | null {
   if (!ref) return null;
-  const b = d.battery_kwh ?? 0, rb = ref.battery_kwh ?? 0;
-  if (Math.abs(b - rb) >= 0.5) return !b ? "No battery" : !rb ? `+${n1(b)} kWh battery` : b > rb ? `+${n1(b - rb)} kWh battery` : `${n1(rb - b)} kWh less battery`;
+  const out: { text: string; cost: number }[] = [];
   const m = modulesOf(d.pv_kwp) - modulesOf(ref.pv_kwp);
-  if (m) { const k = Math.abs(m), u = k === 1 ? "module" : "modules"; return !d.pv_kwp ? "No solar" : m > 0 ? `${k} more ${u}` : `${k} fewer ${u}`; }
-  if (!!d.wallbox_kw !== !!ref.wallbox_kw) return d.wallbox_kw ? "Adds a wallbox" : "No wallbox";
-  if (!!d.heatpump_kw !== !!ref.heatpump_kw) return d.heatpump_kw ? "Adds a heat pump" : "No heat pump";
-  return "Same kit";
+  if (m) out.push({ cost: Math.abs(m) * WEIGHT.module, text: !d.pv_kwp ? "No solar" : !ref.pv_kwp ? `+${plural(m, "module", "modules")}` : m > 0 ? `${plural(m, "more module", "more modules")}` : `${plural(-m, "fewer module", "fewer modules")}` });
+  const b = d.battery_kwh ?? 0, rb = ref.battery_kwh ?? 0;
+  if (Math.abs(b - rb) >= 0.5) out.push({ cost: Math.abs(b - rb) * WEIGHT.kwh, text: !b ? "No battery" : !rb ? `+${n1(b)} kWh battery` : b > rb ? `+${n1(b - rb)} kWh battery` : `${n1(rb - b)} kWh less battery` });
+  const w = d.wallbox_kw ?? 0, rw = ref.wallbox_kw ?? 0;
+  if (!!w !== !!rw) out.push({ cost: WEIGHT.wallbox, text: w ? "Adds a wallbox" : "No wallbox" });
+  else if (w && Math.abs(w - rw) >= 0.5) out.push({ cost: WEIGHT.wallbox / 4, text: w > rw ? `${n1(w)} kW wallbox, up from ${n1(rw)}` : `${n1(w)} kW wallbox, down from ${n1(rw)}` });
+  const h = d.heatpump_kw ?? 0, rh = ref.heatpump_kw ?? 0;
+  if (!!h !== !!rh) out.push({ cost: WEIGHT.heatpump, text: h ? "Adds a heat pump" : "No heat pump" });
+  else if (h && Math.abs(h - rh) >= 0.5) out.push({ cost: Math.abs(h - rh) * 1500, text: h > rh ? `+${n1(h - rh)} kW heat pump` : `${n1(rh - h)} kW smaller heat pump` });
+  if (!out.length) return "Same kit";
+  const keep = out.length > 2 ? new Set([...out].sort((x, y) => y.cost - x.cost).slice(0, 2)) : new Set(out);
+  return out.filter((x) => keep.has(x)).map((x, i) => (i ? x.text.charAt(0).toLowerCase() + x.text.slice(1) : x.text)).join(", ");
 }
 
 export const breakEvenOf = (e: Economics | null | undefined): number | null =>
