@@ -6,13 +6,13 @@ import { eur, n0, n1 } from "./format";
 export const sentence = (x: string) => { const t = x.trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
 
 // Evaluation language belongs on the Check page only.
-const CASE = /\b(inside |outside |above |below |within )?(reonic'?s? (guide|band|rule)|textbook|rule of thumb|senior planners?|experts?'?|bands?)\b/i;
+const CASE = /\b(reonic\b[^,.;]*\b(guide|band|rule)s?|guide|textbook|rule of thumb|senior planners?|experts?'?|bands?)\b/i;
 export const hasCaseWords = (x: string | null | undefined) => !!x && CASE.test(x);
 // Drops any clause carrying case words; null when nothing useful is left.
 export function scrub(x: string | null | undefined): string | null {
   if (!x) return null;
   const kept = x.split(/(?<=[.;])\s+|,\s+|:\s+/).filter((c) => c.trim() && !hasCaseWords(c));
-  const out = kept.join(", ").replace(/[,;:]\s*$/, "").trim();
+  const out = kept.join(", ").replace(/[,;:.]\s*$/, "").trim();
   return out ? sentence(out) : null;
 }
 
