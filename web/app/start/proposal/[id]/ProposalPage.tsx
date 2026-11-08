@@ -33,7 +33,7 @@ export default function ProposalPage({ id }: { id: string }) {
       </div>
     );
   if (!lead) return <div className="h-prop"><ProposalSkeleton /></div>;
-  if (lead.approved_at || lead.decision || ["approved", "signed", "declined", "question"].includes(lead.status)) released.current = true;
+  if (lead.approved_at || lead.decision || ["approved", "sent", "signed", "declined", "question"].includes(lead.status)) released.current = true;
   const brand = INSTALLER_BRAND[lead.facts.installer_id] ?? INSTALLER_BRAND["2a8ba8e2"];
   if (lead.status === "draft" || lead.status === "in_call" || !released.current)
     return (

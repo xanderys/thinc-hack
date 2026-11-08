@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { HeatingType, HomeInputs, RoofResult } from "@/lib/api";
 import { n0 } from "@/lib/stage";
 import { maskPhone } from "@/lib/phone";
@@ -119,6 +119,16 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
 /** The facts row. An explicit edit calls onFact (the existing intake-step path); opening a chip never writes. slot: room for a button at the row's end. */
 export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phone, onPhone, sources }: { sources?: Record<string, string>; phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
   const [open, setOpen] = useState<Field | "phone" | null>(null);
+  // The one-line row (Systems layout) always opens at its start: the facts first, the WhatsApp control last; a control
+  // portalled in later (or a restored scroll) must never leave the row showing only its last item.
+  const rowRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const r = rowRef.current; if (!r) return;
+    r.scrollLeft = 0;
+    const mo = new MutationObserver(() => { if (r.scrollLeft > 0 && !r.matches(":focus-within")) r.scrollLeft = 0; });
+    mo.observe(r, { childList: true });
+    return () => mo.disconnect();
+  }, []);
   // A fact the planner sets here is stated from then on, whatever the lead said before.
   const [edited, setEdited] = useState<Set<string>>(new Set());
   const specs = SPECS.filter((s) => s.f !== hidden);
@@ -130,7 +140,7 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
   }, [open]);
   return (
     <div className="fc-wrap">
-      <div className="fc-row" data-facts-row="">
+      <div ref={rowRef} className="fc-row" data-facts-row="">
         {specs.map((s) => {
           const base = s.state(inputs, roof);
           // The engine's own word for each fact (lead.sources) sets the tone; a missing value stays missing.

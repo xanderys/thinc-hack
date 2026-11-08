@@ -135,3 +135,6 @@ body:has(.start-root) main { max-width: none; padding: 0; }
 /* Blank skeleton bars (no placeholder text): the shimmer comes from the .h-sk parent rules above. */
 .h-bar { display: inline-block; max-width: 100%; }
 .h-roofnote { margin: 2px 0 0; font-size: 13px; color: var(--h-ink-2); }
+/* A sending button: its label turns into a shimmer bar, no "Sending" text. */
+.h-go .h-bar { color: transparent; border-radius: 6px; background: linear-gradient(90deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0.18) 100%) 0 0 / 200% 100%; }
+@media (prefers-reduced-motion: no-preference) { .h-go .h-bar { animation: h-shimmer 1.4s linear infinite; } }

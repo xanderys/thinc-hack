@@ -346,7 +346,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
           </button>
         </li>
         {rows && rows.length === 0 && <li className="s-quiet b-empty">No houses yet.</li>}
-        {!rows && !err && <li className="s-quiet s-wait b-empty">Loading houses</li>}
+        {!rows && !err && [0, 1, 2].map((k) => <li key={k} aria-hidden="true"><span className="b-card b-skel" style={{ height: 120 }} /></li>)}
       </ul>
       {([...VERDICT_ORDER, null] as (Verdict | null)[]).map((v) => {
         const group = cards.filter((c) => (c.q?.verdict ?? null) === v);

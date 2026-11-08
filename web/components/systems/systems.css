@@ -383,3 +383,12 @@
 @media (min-width: 761px) { .sc-extra [class*="ShadingScrubber_whenC__"] { display: block; white-space: normal; overflow-wrap: anywhere; } }
 /* An absent part: the engine's reason, one short line under the title. */
 .sc-why { margin: 0; font-size: 12.5px; line-height: 1.35; color: var(--ink-2); }
+
+/* Facts row, one line: the WhatsApp control keeps its own width and comes last; it never takes the row (facts.css
+   gives it 100 % on a phone for the wrapping row, which in a scroller would push every fact out of view). */
+.st-open:has(.sys-on) .fc-row > .fc-slot { width: auto; margin-left: 0; order: 99; flex: none; }
+
+/* Loading is a shimmer on the figure, never a word: the card title's size while a unit is being sized, and the
+   on-model pill (EditLayer's pending pill, aria-live) the same way. */
+.sc-skel-fig { display: inline-block; vertical-align: -2px; width: 52px; height: 14px; border-radius: 4px; margin-left: 4px; }
+.b-skel-pill > .b-skel { display: inline-block; width: 44px; height: 12px; vertical-align: middle; }

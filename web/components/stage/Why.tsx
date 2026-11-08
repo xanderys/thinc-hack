@@ -42,9 +42,10 @@ function terms(d: Derivation, answered: boolean, installer: string): Term[] {
   return out;
 }
 
-type Props = { k: ComponentKey; d: Derivation; level: number; onMore: (n: number) => void; answered: boolean; installer: string; closing: boolean; ox: number; evKwh?: number | null; rules?: boolean };
+type Sku = { size?: number | null; unit?: string | null; modules?: number | null } | null | undefined;
+type Props = { k: ComponentKey; d: Derivation; level: number; onMore: (n: number) => void; answered: boolean; installer: string; closing: boolean; ox: number; evKwh?: number | null; rules?: boolean; sku?: Sku };
 
-export default function Why({ k, d, level, onMore, answered, installer, closing, ox, evKwh, rules }: Props) {
+export default function Why({ k, d, level, onMore, answered, installer, closing, ox, evKwh, rules, sku }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   // Grow out of the tapped number: transform origin sits under it.
   useLayoutEffect(() => { const el = ref.current; if (el) el.style.setProperty("--ox", `${ox - el.getBoundingClientRect().left}px`); }, [ox]);
@@ -56,7 +57,11 @@ export default function Why({ k, d, level, onMore, answered, installer, closing,
   // v2.0: the label names the fitted constant, then its source after ";". Earlier engines give the similar-homes count instead.
   const after = adj ? adj.label.split(";").slice(1).join(";").trim() : "";
   const src = rules && after ? `; ${after}` : adj?.n_similar != null ? `; ${adj.n_similar} similar homes, ${installer}` : after ? `; ${after}` : "";
-  const snapped = adj && d.final != null && d.axiom_result != null && Math.abs(d.axiom_result * adj.value - d.final) > 0.01 ? SNAP[k] : undefined;
+  // The catalogue snap, named from the payload (sku.modules x sku.size for modules, the package size otherwise).
+  const snapTo = sku?.size ? (k === "pv" && sku.modules ? `snapped to ${sku.modules} × ${fmt(sku.size)} ${sku.unit ?? "W"}` : `snapped to ${fmt(sku.size)} ${sku.unit ?? ""}`.trim()) : SNAP[k];
+  const snapped = adj && d.final != null && d.axiom_result != null && Math.abs(d.axiom_result * adj.value - d.final) > 0.01 ? snapTo : undefined;
+  // No planner adjustment, yet the design differs from the rule's result: the chain shows the rule result, then the snap.
+  const snapRow = !adj && !lands && d.final != null && d.axiom_result != null;
   const more = level === 1 ? "Show the sum" : level === 2 && adj ? "Show what planners do" : level < 4 ? "Show the sources" : null;
   const next = level === 2 && !adj ? 4 : level + 1;
 
@@ -71,9 +76,12 @@ export default function Why({ k, d, level, onMore, answered, installer, closing,
               <span key={`o${i}`} className="op">{t.op}</span>,
               <span key={`v${i}${t.v}`} className={`v s-mark${sub ? " sub" : ""}`}>{t.v}</span>,
               <span key={`u${i}`} className="u">{t.u}</span>,
-              <span key={`w${i}`} className={sub ? "w sub" : "w"}>{t.name ?? (t.op === "=" ? (i === last ? "what the physics alone asks for" : "what the rule gives") : "")}{t.src && <span className="src">{t.src}</span>}</span>,
+              <span key={`w${i}`} className={sub ? "w sub" : "w"}>{t.name ?? (t.op === "=" ? (i === last ? (snapRow ? "rule result" : "what the physics alone asks for") : "what the rule gives") : "")}{t.src && <span className="src">{t.src}</span>}</span>,
             ];
           })}
+          {snapRow && <>
+            <span className="op fin">→</span><span key={`s${d.final}`} className="v fin s-mark">{fmt(d.final!)}</span><span className="u fin">{rows[last]?.u}</span><span className="w fin">{snapTo ?? "the design"}</span>
+          </>}
           {level >= 3 && adj && (adj.value > 0 && d.final != null ? <>
             <span className="op adj s-step">×</span><span key={`a${adj.value}`} className="v adj s-mark">{fmt(adj.value)}</span><span className="u" /><span className="w s-step">{label}<span className="src">{src}</span></span>
             <span className="op fin">=</span><span key={`f${d.final}`} className="v fin s-mark">{fmt(d.final)}</span><span className="u fin">{rows[last]?.u}</span><span className="w fin">{snapped ?? "the design"}</span>
