@@ -13,7 +13,7 @@ export default function RateCard({ design, total, assumptions, modules }: { desi
       <p className={s.rateH}>Market estimate, not the installer&rsquo;s price list</p>
       <dl className={s.rate}>
         {card.lines.map((l) => (
-          <div key={l.label}><dt>{l.label}<span>{l.calc}</span></dt><dd>{eur(l.eur)}</dd></div>
+          <div key={l.label}><dt>{l.label}{l.calc && <span>{l.calc}</span>}</dt><dd>{eur(l.eur)}</dd></div>
         ))}
         <div className={s.rateT}><dt>Total</dt><dd>{eur(card.total)} <em>estimate</em></dd></div>
       </dl>

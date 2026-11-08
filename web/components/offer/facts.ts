@@ -87,12 +87,12 @@ export function rateCard(d: Partial<Design>, total: number, assumptions: string[
   if (d.pv_kwp && pv) {
     const fixed = euros(pv[1]), per = euros(pv[2]), n = modules && modules > 0 ? modules : Math.round(d.pv_kwp / 0.45);
     lines.push({ label: "Solar modules and inverter", calc: `${n} modules, ${n2(d.pv_kwp)} kWp × €${n0(per)}/kWp`, eur: Math.round(d.pv_kwp * per) });
-    lines.push({ label: "Fixed cost per system", calc: "the price model's base for any solar system", eur: fixed });
+    lines.push({ label: "Fixed cost per system", calc: "", eur: fixed });
   }
   if (d.battery_kwh && bat) { const per = euros(bat[1]); lines.push({ label: "Battery storage", calc: `${n1(d.battery_kwh)} kWh × €${n0(per)}/kWh`, eur: Math.round(d.battery_kwh * per) }); }
   const rest = Math.round(total - lines.reduce((x, l) => x + l.eur, 0));
   const loads = [d.wallbox_kw ? `Wallbox ${n1(d.wallbox_kw)} kW` : null, d.heatpump_kw ? `Heat pump ${n1(d.heatpump_kw)} kW` : null].filter((x): x is string => !!x);
-  if (loads.length && rest > 0) lines.push({ label: loads.join(" and "), calc: "effective rate (the engine's total less the parts above)", eur: rest });
+  if (loads.length && rest > 0) lines.push({ label: loads.join(" and "), calc: "", eur: rest });
   else if (rest !== 0) lines.push({ label: "Rounding", calc: "to the nearest €10", eur: rest });
   return { lines, total };
 }
