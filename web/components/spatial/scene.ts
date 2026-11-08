@@ -154,7 +154,7 @@ export class SpatialScene {
   private ctxOff: (() => void)[] = [];   // the white-context and ground subscriptions of this glb
 
   constructor(private host: HTMLElement, private overlay: HTMLElement, private svg: SVGSVGElement, private opts: SceneOpts) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
+    this.renderer = takeRenderer();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setClearColor(PAPER, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -960,7 +960,26 @@ export class SpatialScene {
       const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
       mats.forEach((x) => { (x as THREE.MeshLambertMaterial).map?.dispose(); x.dispose(); });
     });
-    this.renderer.dispose();
-    this.renderer.domElement.remove();
+    giveRenderer(this.renderer);
   }
+}
+
+// One WebGL context per live view for the life of the page. Safari caps live contexts and a context that is
+// thrown away is not freed at once, so a view rebuilt on a data reload drew into a context that never painted
+// (blank white canvas). A disposed view hands its renderer back here and the next view takes the same canvas.
+const spare: THREE.WebGLRenderer[] = [];
+function takeRenderer(): THREE.WebGLRenderer {
+  const r = spare.pop();
+  if (r && !r.getContext().isContextLost()) return r;
+  r?.dispose();
+  return new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
+}
+function giveRenderer(r: THREE.WebGLRenderer) {
+  r.setRenderTarget(null);
+  r.renderLists.dispose();
+  const c = r.domElement;
+  c.remove();
+  c.removeAttribute("style");
+  if (spare.length < 2 && !r.getContext().isContextLost()) spare.push(r);
+  else { r.dispose(); r.forceContextLoss(); }
 }

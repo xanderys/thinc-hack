@@ -81,9 +81,7 @@ export async function renderThumb(model: RoofModel, glbUrl: string, w: number, h
     await tick();
     return capture(i, w, h);
   } finally {
-    const r = (sc as unknown as Inner).renderer;
-    sc.dispose();
-    r.forceContextLoss();
+    sc.dispose(); // hands the renderer back for the next view: no new WebGL context per card
     host.remove();
   }
 }
