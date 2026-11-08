@@ -13,7 +13,7 @@ import { neighbourEdges, outlineMesh, registerGlb } from "./whiteContext";
 import { Xray } from "./xray";
 import { Systems, type System } from "./systems";
 import { googleGround, sharpen } from "./satGround";
-import { HEATPUMP, INVERTER, battery, heatPump, inverter, wallbox, withEdges } from "./kitMeshes";
+import { BATTERY, HEATPUMP, INVERTER, battery, heatPump, inverter, wallbox, withEdges } from "./kitMeshes";
 import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
@@ -363,8 +363,9 @@ export class SpatialScene {
     this.box.copy(box);
     if (this.glbRoot && !this.box.isEmpty()) this.flattenNeighbours(this.glbRoot);
     const size = box.getSize(new THREE.Vector3());
-    // Battery: a block beside the house on the east side; grid: a pole at the edge of the plot.
-    const bx = box.min.x + 1.2, bz = box.max.z + 1.1; // in front of the south-west corner, where the camera sees it
+    // Battery: indoors against the south wall, seen through the glass walls (snapUnits puts it on the wall's inner
+    // face once the building model is in); grid: a pole at the edge of the plot.
+    const bx = box.min.x + 1.6, bz = box.max.z - 1.2;
     // The parts come from kitMeshes.ts, the same objects the parts list shows as icons.
     this.batteryBox = withEdges(battery() as THREE.Mesh, INK);
     this.batteryBox.position.set(bx, 0.75, bz);
@@ -396,10 +397,10 @@ export class SpatialScene {
     this.wallbox.position.set(box.max.x + 0.12, 1.3, box.max.z - 1.5);
     this.wallbox.visible = false;
     this.kit.add(this.wallbox);
-    // Inverter: on the south wall beside the battery, at head height. Heat pump: the outdoor unit on the
+    // Inverter: indoors on the south wall beside the battery, at head height. Heat pump: the outdoor unit on the
     // ground by the west wall, its fan facing out. Each shows only when the design has one (setUnits).
     this.inverterUnit = withEdges(inverter(), INK);
-    this.inverterUnit.position.set(bx + 1.1, 1.0, box.max.z + 0.1);
+    this.inverterUnit.position.set(bx + 1.1, 1.0, bz);
     this.inverterUnit.visible = false;
     this.kit.add(this.inverterUnit);
     const hp = withEdges(heatPump(), INK);
@@ -593,19 +594,28 @@ export class SpatialScene {
   }
 
   setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on || this.systems.sys === "wallbox"; }
-  // The roof box includes the eaves, so a unit placed from it floats in front of the wall: once the building
-  // model is in, move the inverter back onto the south wall and the heat pump to a hand's width from the west wall.
+  // The roof box includes the eaves, so a unit placed from it misses the wall: once the building model is in,
+  // move the battery and inverter onto the inner face of the south wall (the ray starts inside the house) and the
+  // heat pump to a hand's width outside the west wall. The glass shell stands in for the house's own walls.
   private snapUnits() {
     const w = this.wallMesh;
     if (!w) return;
     w.updateWorldMatrix(true, false);
+    const walls = [w, this.xray.shellMesh()].filter((m): m is THREE.Mesh => !!m);
     const ray = new THREE.Raycaster();
-    const inv = this.inverterUnit;
-    if (inv) {
-      ray.set(new THREE.Vector3(inv.position.x, inv.position.y + INVERTER.h / 2, this.box.max.z + 10), new THREE.Vector3(0, 0, -1));
-      const hit = ray.intersectObject(w, false)[0];
-      if (hit && hit.point.z <= this.box.max.z + 0.5) inv.position.z = hit.point.z + INVERTER.d / 2 + 0.02;
+    const inner = (o: THREE.Object3D, y: number, d: number) => {
+      ray.set(new THREE.Vector3(o.position.x, y, (this.box.min.z + this.box.max.z) / 2), new THREE.Vector3(0, 0, 1));
+      const hit = ray.intersectObjects(walls, false)[0];
+      if (hit && hit.point.z <= this.box.max.z + 0.5) o.position.z = hit.point.z - d / 2 - 0.05;
+    };
+    if (this.batteryBox) {
+      inner(this.batteryBox, 0.75, BATTERY.d);
+      const b = this.batteryBox.position;
+      this.anchors.batt.set(b.x, 1.5, b.z);
+      this.focusPts.battery.set(this.focusPts.battery.x, this.focusPts.battery.y, b.z - 1);
     }
+    const inv = this.inverterUnit;
+    if (inv) inner(inv, inv.position.y + INVERTER.h / 2, INVERTER.d);
     const hp = this.hpUnit;
     if (hp) {
       ray.set(new THREE.Vector3(this.box.min.x - 10, 0.5, hp.position.z), new THREE.Vector3(1, 0, 0));

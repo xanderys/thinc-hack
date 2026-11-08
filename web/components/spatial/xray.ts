@@ -24,7 +24,7 @@ const FROST = new THREE.Color("#F3F1EC");
 const INK = "#2A2C33";
 const OMEGA = (2 * Math.PI) / 0.5;
 const BREATH_S = 5;
-const SHELL_K = 0.58, EDGE_K = 0.38;
+const SHELL_K = 0.4, EDGE_K = 0.38;
 // The four shares on the card, in this order; roof falls back to the top ceiling when the roof space is unheated.
 const CARD: ElementKey[] = ["roof", "wall", "window", "floor"];
 
@@ -36,7 +36,7 @@ type Facade = { n: THREE.Vector3; pts: THREE.Vector3[]; area: number };
 // The glass shell: the house's triangles, taken out of the shared wall mesh while it shows.
 type Shell = {
   mesh: THREE.Mesh; orig: THREE.BufferGeometry; key: string; mine: THREE.Vector3[]; facades: Facade[]; box: THREE.Box3;
-  glass: THREE.MeshLambertMaterial; edge: THREE.LineBasicMaterial;
+  glass: THREE.MeshLambertMaterial; edge: THREE.LineBasicMaterial; depth: THREE.MeshBasicMaterial;
 };
 
 // One step of a critically damped spring towards goal.
@@ -65,6 +65,9 @@ export class Xray {
 
   constructor(private host: XrayHost) { this.g.visible = false; this.sg.visible = false; host.root.add(this.g, this.sg); }
 
+  // The glass shell's mesh (world coordinates), for raycasts against the house's own walls while it stands in.
+  shellMesh(): THREE.Mesh | null { return this.shell ? (this.sg.children[1] as THREE.Mesh) : null; }
+
   // env null: fade the x-ray out (the glass shell stays). Returns no on-model labels: the shares live in the card.
   set(env: Envelope | null): never[] {
     if (!env || !env.faces?.length) { this.goal = 0; return []; }
@@ -90,7 +93,7 @@ export class Xray {
     if (!s) return;
     s.mesh.geometry = s.orig;
     this.sg.children.forEach((o) => (o as THREE.Mesh).geometry?.dispose());
-    this.sg.clear(); s.glass.dispose(); s.edge.dispose();
+    this.sg.clear(); s.glass.dispose(); s.edge.dispose(); s.depth.dispose();
     this.shell = null; this.sg.visible = false;
   }
 
@@ -172,8 +175,14 @@ export class Xray {
     wm.geometry = rest;
 
     // Lit glass keeps the facets readable; the emissive share keeps it from going grey in shade.
-    const glass = new THREE.MeshLambertMaterial({ color: FROST.clone(), emissive: FROST.clone().multiplyScalar(0.45), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+    // One layer of glass from every angle: a depth-only pass first, so only the wall nearest the camera takes the
+    // tint (two blended layers read as nearly opaque). The kit inside is opaque, drawn before both, so it shows
+    // through. Both passes sit a hair behind the true surface, so the edge lines stay on top.
+    const off = { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 };
+    const depth = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true, side: THREE.DoubleSide, ...off });
+    const glass = new THREE.MeshLambertMaterial({ color: FROST.clone(), emissive: FROST.clone().multiplyScalar(0.45), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, ...off });
     const geo = new THREE.BufferGeometry().setFromPoints(mine); geo.computeVertexNormals();
+    const pre = new THREE.Mesh(geo, depth); pre.renderOrder = 3.5; this.sg.add(pre);
     const shell = new THREE.Mesh(geo, glass); shell.renderOrder = 4; this.sg.add(shell);
     const edge = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0, depthWrite: false });
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), edge);
@@ -194,7 +203,7 @@ export class Xray {
       const gq = groups.get(k) ?? { n, pts: [], area: 0 };
       gq.pts.push(p, q, r); gq.area += area; groups.set(k, gq);
     }
-    this.shell = { mesh: wm, orig, key, mine, facades: [...groups.values()], box: new THREE.Box3().setFromPoints(mine), glass, edge };
+    this.shell = { mesh: wm, orig, key, mine, facades: [...groups.values()], box: new THREE.Box3().setFromPoints(mine), glass, edge, depth };
   }
 
   // The x-ray's wall and floor sheets, on the shell's geometry.
