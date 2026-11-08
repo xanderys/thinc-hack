@@ -411,7 +411,7 @@ export class SpatialScene {
     // Inverter: indoors on the south wall beside the battery, at head height. Heat pump: the outdoor unit on the
     // ground by the west wall, its fan facing out. Each shows only when the design has one (setUnits).
     this.inverterUnit = withEdges(inverter(), INK);
-    this.inverterUnit.position.set(bx + 1.1, 1.0, bz);
+    this.inverterUnit.position.set(bx + BATTERY.w / 2 + 0.2 + INVERTER.w / 2, 1.0, bz);
     this.inverterUnit.visible = false;
     this.kit.add(this.inverterUnit);
     const hp = withEdges(heatPump(), INK);
