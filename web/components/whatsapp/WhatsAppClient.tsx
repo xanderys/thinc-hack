@@ -12,7 +12,7 @@ const POLL_MS = 5000;
 const LABEL: Record<string, string> = {
   annual_demand_kwh: "Household use", heating_type: "Heating", electricity_price_ct_kwh: "Price", has_ev: "Electric car", ev_annual_km: "Km a year",
   num_inhabitants: "Household", house_size_sqm: "Floor area", house_built_year: "Built", heating_cost_per_year_eur: "Heating cost", heating_demand_kwh: "Heating demand",
-  has_wallbox: "Wallbox", has_solar: "Existing solar", existing_solar_kwp: "Existing solar", has_storage: "Existing battery", existing_storage_kwh: "Existing battery",
+  has_wallbox: "Existing wallbox", has_solar: "Existing solar", existing_solar_kwp: "Existing solar", has_storage: "Existing battery", existing_storage_kwh: "Existing battery",
 };
 const hm = (ts: string) => berlinTime(ts);
 

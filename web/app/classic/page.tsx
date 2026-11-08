@@ -19,7 +19,7 @@ const START: HomeInputs = {
 
 const FIELD_LABEL: Partial<Record<keyof HomeInputs, string>> = {
   annual_demand_kwh: "Demand", num_inhabitants: "Inhabitants", has_ev: "EV", ev_annual_km: "EV distance",
-  has_wallbox: "Wallbox", heating_type: "Heating", house_size_sqm: "Floor area", house_built_year: "Year built",
+  has_wallbox: "Existing wallbox", heating_type: "Heating", house_size_sqm: "Floor area", house_built_year: "Year built",
   electricity_price_ct_kwh: "Price", has_solar: "Solar", existing_solar_kwp: "Existing solar",
   has_storage: "Battery", existing_storage_kwh: "Existing battery", load_profile: "Load profile", installer_id: "Installer",
 };
