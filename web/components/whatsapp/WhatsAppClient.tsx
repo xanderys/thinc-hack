@@ -85,7 +85,7 @@ export default function WhatsAppClient({ leadId, phone }: { leadId: string | nul
     chip = (
       <span className={s.wrap} title={noPhone ? "No phone number on this lead" : undefined}>
         <button type="button" className={s.chip} aria-disabled={noPhone || busy} aria-busy={busy} onClick={ask}>
-          <Glyph />{busy ? "Sending" : "WhatsApp client"}
+          <Glyph />{busy ? <span className="b-skel" aria-label="Sending" style={{ display: "inline-block", width: 96, height: 12 }} /> : "WhatsApp client"}
         </button>
       </span>
     );

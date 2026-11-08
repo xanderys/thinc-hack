@@ -20,7 +20,7 @@ export function decide(id: string, body: DecisionBody, base?: number | null) {
 }
 
 /** Statuses after the planner released the proposal. */
-export const RELEASED = new Set(["approved", "signed", "declined", "question"]);
+export const RELEASED = new Set(["approved", "sent", "signed", "declined", "question"]);
 
 const SIZES = ["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw", "inverter_kw"] as const;
 /** Same components and the same price to the euro. */

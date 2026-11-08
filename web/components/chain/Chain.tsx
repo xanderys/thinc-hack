@@ -412,7 +412,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
                       {n === 4 && <>
                         <HeatPumpStep res={res} inputs={inputs} env={null} multi={multi} variants={variants} onVariant={onVariant} />
                       </>}
-                      {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />}
+                      {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} sku={(res.components[why.k] as { sku?: { size?: number | null; unit?: string | null; modules?: number | null } }).sku ?? null} />}
                     </div>
                   )}
                 </div>
@@ -427,7 +427,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
               )}
               {!(FIVE && n <= 4) && open && why && why.k === WHY_AT[n] && (
                 <div className={s.whyPanel}>
-                  <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />
+                  <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} sku={(res.components[why.k] as { sku?: { size?: number | null; unit?: string | null; modules?: number | null } }).sku ?? null} />
                 </div>
               )}
             </li>
@@ -443,7 +443,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const whyBlock = (n: number) => WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation ? (
     <>
       <div className={s.whyrow}><button type="button" className={s.whyb} aria-expanded={why?.k === WHY_AT[n]} onClick={() => setWhy((w) => (w?.k === WHY_AT[n] ? null : { k: WHY_AT[n]!, level: 1 }))}>Why</button></div>
-      {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />}
+      {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} sku={(res.components[why.k] as { sku?: { size?: number | null; unit?: string | null; modules?: number | null } }).sku ?? null} />}
     </>
   ) : null;
   // The Checks figures, moved from the Proposed Design card: each sits behind the i of the card it belongs to.
@@ -477,7 +477,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       const day = bars[2], roof = seg(day, /solar|roof/i), fromB = seg(day, /from the battery/i) ?? seg(day, /^battery$/i), grid = seg(day, /grid/i);
       const kwh = d.battery_kwh;
       return {
-        head: adding?.part === "battery" ? <Head main="Battery" sub="pending" /> : kwh ? <Head main={`Battery ${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
+        head: adding?.part === "battery" ? <Head main="Battery" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : kwh ? <Head main={`Battery ${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
         label: kwh ? `${n1(kwh)} kWh battery` : "No battery",
         body: !kwh && adding?.part !== "battery" ? <>{why0("battery")}{day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null}</> : day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null,
         info: <>
@@ -496,7 +496,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       const night = segOf(/typical night/i)?.value ?? (ch && /night/i.test(ch.unit) ? ch.total : null) ?? layers?.ev?.kwh_per_night_typical;
       const wb = d.wallbox_kw;
       return {
-        head: adding?.part === "wallbox" ? <Head main="Wallbox" sub="pending" /> : wb ? <Head main={`Wallbox ${n1(wb)} kW`} /> : <Head main="No wallbox" />,
+        head: adding?.part === "wallbox" ? <Head main="Wallbox" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : wb ? <Head main={`Wallbox ${n1(wb)} kW`} /> : <Head main="No wallbox" />,
         label: wb ? `${n1(wb)} kW wallbox` : "No wallbox",
         body: !wb && adding?.part !== "wallbox" ? why0("wallbox") : wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
         info: <>
@@ -516,7 +516,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       const hp = d.heatpump_kw;
       const hpBound = (res.components.heatpump as unknown as { heat_load_upper_bound_kw?: number | null }).heat_load_upper_bound_kw ?? null;
       return {
-        head: multi ? <Head main="No heat load" sub="for flats" /> : adding?.part === "heatpump" ? <Head main="Heat pump" sub="pending" /> : hp ? <Head main={`Heat pump ${n1(hp)} kW`} /> : <Head main="No heat pump" />,
+        head: multi ? <Head main="No heat load" sub="for flats" /> : adding?.part === "heatpump" ? <Head main="Heat pump" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : hp ? <Head main={`Heat pump ${n1(hp)} kW`} /> : <Head main="No heat pump" />,
         label: multi ? "Heat load not estimated for flats" : hp ? `${n1(hp)} kW heat pump` : "No heat pump",
         body: multi ? null : <>
           {!hp && adding?.part !== "heatpump" && why0("heatpump")}

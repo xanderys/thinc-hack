@@ -70,7 +70,7 @@ export default function Calls({ installer, onLead }: { installer: InstallerId; o
       </div>
       {calling && <iframe className="s-call-frame" src={`/start?installer=${installer}`} allow="microphone" title="Call the homeowner" />}
       {err && <div className="error" role="alert"><span><span className="src">Calls said</span>{err}</span><button className="btn ghost" onClick={() => setTick((t) => t + 1)}>Retry</button></div>}
-      {opening && <p className="s-quiet s-wait">Reading the call</p>}
+      {opening && <span className="b-skel b-skel-line" aria-hidden="true" style={{ width: "60%", height: 14 }} />}
       {rows && rows.length === 0 && <p className="s-quiet">No calls yet.</p>}
       {rows && rows.length > 0 && (
         <ul className="s-calls-l">

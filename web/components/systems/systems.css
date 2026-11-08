@@ -394,3 +394,12 @@
 .pc-has-tiles .pc-pass { row-gap: 6px; }
 /* The homeowner's open body repeats those three as its first tiles: the pass already shows them. */
 .pc-has-tiles .pc-body .pp-open > dl:first-child > div:nth-child(-n+3) { display: none; }
+
+/* Facts row, one line: the WhatsApp control keeps its own width and comes last; it never takes the row (facts.css
+   gives it 100 % on a phone for the wrapping row, which in a scroller would push every fact out of view). */
+.st-open:has(.sys-on) .fc-row > .fc-slot { width: auto; margin-left: 0; order: 99; flex: none; }
+
+/* Loading is a shimmer on the figure, never a word: the card title's size while a unit is being sized, and the
+   on-model pill (EditLayer's pending pill, aria-live) the same way. */
+.sc-skel-fig { display: inline-block; vertical-align: -2px; width: 52px; height: 14px; border-radius: 4px; margin-left: 4px; }
+.b-skel-pill > .b-skel { display: inline-block; width: 44px; height: 12px; vertical-align: middle; }

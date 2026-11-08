@@ -8,7 +8,7 @@ const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
 export const SPLIT = ["#6f7ff0", "#2a3bc4", "#0a1450"];   // light to dark; dataviz validator: CVD 17.1, normal 20.3, contrast >= 3:1
 
 // The card's title: the figure that matters bold, its unit or second figure lighter, one line.
-export function Head({ main, sub }: { main: string; sub?: string | null }) {
+export function Head({ main, sub }: { main: string; sub?: ReactNode }) {
   return <><b>{main}</b>{sub ? <span className="sc-sub"> {sub}</span> : null}</>;
 }
 
