@@ -158,7 +158,7 @@ export class SpatialScene {
   private panelFx: Fx[] = [];
   private fades = new Map<THREE.Object3D, Fade>();
   private geoKey = "";
-  private wbOn = false; private battOn = true;
+  wbOn = false; private battOn = true; // wbOn: the design has a wallbox (systems.ts reads it)
   private tintMode: "off" | "yield" | "sun" = "off";
   private yieldScale: [number, number] = [500, 1110];
   private day: DayHour[] | null = null;
