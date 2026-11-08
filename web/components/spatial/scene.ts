@@ -29,6 +29,11 @@ const WALL_MASS = "#F6F3EC";
 const toV = ([x, y, z]: V3) => new THREE.Vector3(x, z, -y);
 const OMEGA = (2 * Math.PI) / 0.5; // spring duration 0.5 s, bounce 0 (critically damped)
 const springOut = (t: number) => (t <= 0 ? 0 : 1 - (1 + OMEGA * t) * Math.exp(-OMEGA * t));
+// Variant switches: modules and units come and go on a 0.25 s spring, bounce 0 (critically damped).
+const OMEGA_Q = (2 * Math.PI) / 0.25;
+const springQ = (t: number) => (t <= 0 ? 0 : 1 - (1 + OMEGA_Q * t) * Math.exp(-OMEGA_Q * t));
+type Fx = { g: THREE.Object3D; t: number; dir: 1 | -1; mats: { m: THREE.Material; base: number }[]; c: THREE.Vector3 };
+type Fade = { a: number; v: number; goal: number };
 const DAY_SECONDS = 12;
 
 // prio: when two labels come within 24 px the lesser hides. tap: a roof plane's label that shows only once that plane is tapped.
@@ -140,6 +145,11 @@ export class SpatialScene {
   private labelEls = new Map<string, HTMLDivElement>();
   private panelAnim: { g: THREE.Object3D; from: THREE.Vector3; delay: number; mats: THREE.Material[] }[] = [];
   private panelT = -1;
+  private panelsOut = new THREE.Group();   // modules leaving after a variant switch, fading out
+  private panelFx: Fx[] = [];
+  private fades = new Map<THREE.Object3D, Fade>();
+  private geoKey = "";
+  private wbOn = false; private battOn = true;
   private tintMode: "off" | "yield" | "sun" = "off";
   private yieldScale: [number, number] = [500, 1110];
   private day: DayHour[] | null = null;
@@ -177,7 +187,7 @@ export class SpatialScene {
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xd6d1c5, 1.9));
     this.sunLight.position.set(-20, 30, 25);
     this.scene.add(this.sunLight);
-    this.scene.add(this.ctxLines, this.placeholder, this.outlines, this.tints, this.panels, this.kit, this.hpGroup, this.sunGroup);
+    this.scene.add(this.ctxLines, this.placeholder, this.outlines, this.tints, this.panels, this.panelsOut, this.kit, this.hpGroup, this.sunGroup);
 
     // Touch moves the model, never the page.
     this.renderer.domElement.style.touchAction = "none";
@@ -335,7 +345,22 @@ export class SpatialScene {
     this.fly = { pos, tgt, top: !!p.topDown };
   }
 
-  setModel(model: RoofModel) {
+  // Returns true when the house itself changed (a new address or roof model): everything is rebuilt and the camera
+  // frames it. A new design on the same house only refreshes the planes' numbers: no rebuild, no camera move.
+  setModel(model: RoofModel): boolean {
+    const target0 = model.planes.filter((p) => p.is_target);
+    const geo = JSON.stringify([model.planes.length, target0.map((p) => [p.id, p.polygon.map((v) => v.map((x) => Math.round(x * 100)))])]);
+    if (this.modelSet && geo === this.geoKey) {
+      const byId = new Map(target0.map((p) => [p.id, p]));
+      this.targets.forEach((t) => { const q = byId.get(t.p.id); if (q) t.p = q; });
+      this.shade.setPlanes(target0);
+      const ys0 = model.planes.map((p) => p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp).filter((x) => x > 0);
+      this.yieldScale = [Math.min(...ys0), Math.max(...ys0)];
+      this.setTint(this.tintMode);
+      return false;
+    }
+    this.geoKey = geo;
+    this.fades.clear();
     this.targets = [];
     [this.placeholder, this.outlines, this.tints, this.kit, this.hpGroup, this.sunGroup, this.ctxLines].forEach((g) => g.clear());
     const nbr = neighbourEdges(model.planes);
@@ -434,6 +459,9 @@ export class SpatialScene {
     this.setOrtho(this.persp.aspect);
     this.systems.rebuild();
     this.systems.override();
+    this.fadeTo(this.batteryBox, this.battOn);
+    this.setWallbox(this.wbOn);
+    return true;
   }
   private modelSet = false;
 
@@ -524,7 +552,27 @@ export class SpatialScene {
     wm.add(this.wallEdges);
   }
 
-  setPanels(list: { p: RoofPlane; r: PanelRect }[], animate: boolean) {
+  // diff: a design change on screen. Modules that stay keep their mesh; new ones fade and grow in, gone ones fade
+  // and shrink out (Reduce Motion: fade only). Without diff, or with nothing placed yet, the layout is rebuilt.
+  setPanels(list: { p: RoofPlane; r: PanelRect }[], animate: boolean, diff = false) {
+    const keyOf = (p: RoofPlane, r: PanelRect) => `${p.id}|${JSON.stringify(r)}`;
+    if (diff && this.panels.children.length) {
+      const old = new Map<string, THREE.Object3D>(this.panels.children.map((g) => [g.userData.key as string, g]));
+      const per: Record<string, number> = {}, next: THREE.Object3D[] = [];
+      list.forEach(({ p, r }) => {
+        const k = keyOf(p, r);
+        let g = old.get(k);
+        if (g) old.delete(k);
+        else { g = this.panelMesh(p, r, true); this.fxStart(g, 1); }
+        g.userData.plane = p.id; g.userData.idx = (per[p.id] = (per[p.id] ?? -1) + 1);
+        next.push(g);
+      });
+      old.forEach((g) => { this.panelsOut.add(g); this.fxStart(g, -1); });
+      this.panels.clear(); next.forEach((g) => this.panels.add(g));
+      this.shade.setPanels(this.panels);
+      return;
+    }
+    this.panelsOut.clear(); this.panelFx = [];
     this.panels.clear();
     this.panelAnim = [];
     const fill = new THREE.MeshBasicMaterial({ color: "#151826", side: THREE.DoubleSide });
@@ -541,7 +589,7 @@ export class SpatialScene {
       quad.renderOrder = 3;
       const ln = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(cs), mats[1]);
       grp.add(quad, ln);
-      grp.userData = { plane: p.id, idx: (per[p.id] = (per[p.id] ?? -1) + 1), cs, n: f.n }; // shading.ts reads these
+      grp.userData = { plane: p.id, idx: (per[p.id] = (per[p.id] ?? -1) + 1), cs, n: f.n, key: keyOf(p, r) }; // shading.ts reads these
       this.panels.add(grp);
       if (animate) {
         mats.forEach((m) => { m.transparent = true; m.opacity = 0; });
@@ -553,6 +601,85 @@ export class SpatialScene {
     this.panelT = animate ? 0 : -1;
     this.shade.setPanels(this.panels);
   }
+
+  // One module as the layout draws it, with its own materials (a variant switch fades it alone).
+  private panelMesh(p: RoofPlane, r: PanelRect, own: boolean): THREE.Group {
+    const f = planeFrame(p);
+    const cs = panelCorners(p, r).map((q) => q.addScaledVector(f.n, 0.09));
+    const g = new THREE.BufferGeometry().setFromPoints(cs);
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    const fill = new THREE.MeshBasicMaterial({ color: "#151826", side: THREE.DoubleSide, transparent: own, opacity: own ? 0 : 1 });
+    const edge = new THREE.LineBasicMaterial({ color: "#F4F1EA", transparent: true, opacity: own ? 0 : 0.85 });
+    const quad = new THREE.Mesh(g, fill); quad.renderOrder = 3;
+    const grp = new THREE.Group();
+    grp.add(quad, new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(cs), edge));
+    grp.userData = { plane: p.id, idx: 0, cs, n: f.n, key: `${p.id}|${JSON.stringify(r)}` };
+    return grp;
+  }
+
+  // Starts a module fading in (dir 1) or out (dir -1) from where it is now.
+  private fxStart(g: THREE.Object3D, dir: 1 | -1) {
+    const was = this.panelFx.find((x) => x.g === g);
+    if (was) {
+      // Reversed mid-flight: carry on from the opacity on screen, no jump.
+      const a = was.dir > 0 ? springQ(was.t) : 1 - springQ(was.t), k = dir > 0 ? a : 1 - a;
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (springQ(mid) < k) lo = mid; else hi = mid; }
+      was.dir = dir; was.t = lo; return;
+    }
+    const mats: Fx["mats"] = [];
+    g.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+      if (!m || Array.isArray(m)) return;
+      const own = m.clone(); own.transparent = true; (o as THREE.Mesh).material = own;
+      mats.push({ m: own, base: dir > 0 ? (o instanceof THREE.LineLoop ? 0.85 : 1) : (m as THREE.Material & { opacity: number }).opacity });
+    });
+    const cs = g.userData.cs as THREE.Vector3[] | undefined;
+    const c = cs?.length ? cs.reduce((a, q) => a.add(q), new THREE.Vector3()).multiplyScalar(1 / cs.length) : new THREE.Vector3();
+    this.panelFx.push({ g, t: 0, dir, mats, c });
+  }
+
+  private stepFx(dt: number) {
+    if (!this.panelFx.length) return;
+    const still = this.opts.reduce;
+    this.panelFx = this.panelFx.filter((f) => {
+      f.t += dt;
+      const k = springQ(f.t), a = f.dir > 0 ? k : 1 - k;
+      f.mats.forEach(({ m, base }) => { (m as THREE.Material & { opacity: number }).opacity = base * a; });
+      const sc = still ? 1 : 0.6 + 0.4 * a;
+      f.g.scale.setScalar(sc); f.g.position.copy(f.c).multiplyScalar(1 - sc);
+      if (k < 0.999) return true;
+      if (f.dir < 0) { f.g.removeFromParent(); f.g.traverse((o) => { (o as THREE.Mesh).geometry?.dispose(); ((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose?.(); }); }
+      else f.mats.forEach(({ m }) => { if (m instanceof THREE.MeshBasicMaterial) { m.transparent = false; m.needsUpdate = true; } });
+      return false;
+    });
+  }
+
+  // Battery and wallbox: present or not in this design. The first call sets it outright; later ones fade over the
+  // 0.25 s spring (Reduce Motion: the same fade). Works on the materials, so the Systems chips keep .visible.
+  private fadeTo(o: THREE.Object3D | null, on: boolean) {
+    if (!o) return;
+    const goal = on ? 1 : 0, f = this.fades.get(o);
+    if (!f) { this.fades.set(o, { a: goal, v: 0, goal }); this.applyFade(o, goal); return; }
+    f.goal = goal;
+  }
+  private applyFade(o: THREE.Object3D, a: number) {
+    o.traverse((x) => {
+      const m = (x as THREE.Mesh).material as (THREE.Material & { opacity: number }) | undefined;
+      if (!m || Array.isArray(m)) return;
+      if (m.userData.base == null) m.userData.base = m.opacity;
+      m.transparent = a < 1 || m.userData.base < 1; m.opacity = m.userData.base * a; m.visible = a > 0.003;
+    });
+  }
+  private stepFades(dt: number) {
+    this.fades.forEach((f, o) => {
+      if (Math.abs(f.a - f.goal) < 0.002 && Math.abs(f.v) < 0.01) { if (f.a !== f.goal) { f.a = f.goal; f.v = 0; this.applyFade(o, f.a); } return; }
+      const acc = -OMEGA_Q * OMEGA_Q * (f.a - f.goal) - 2 * OMEGA_Q * f.v;
+      f.v += acc * dt; f.a = Math.max(0, Math.min(1, f.a + f.v * dt));
+      this.applyFade(o, f.a);
+    });
+  }
+  setBattery(on: boolean) { this.battOn = on; this.fadeTo(this.batteryBox ?? null, on); }
 
   setShading(d: Shading | null, on: boolean, at: ShadeAt) { this.shade.set(d, on, at); }
   // Heat pump step: envelope x-ray (xray.ts); null fades it out.
@@ -566,6 +693,7 @@ export class SpatialScene {
     this.systems.set(s);
     if (!s) this.show(this.lastShow);
     this.applyUnits();
+    this.setWallbox(this.wbOn);
   }
   // The envelope for the Heat pump system's x-ray, kept whatever layer is showing.
   setEnvelope(env: Envelope | null) { this.systems.setEnvelope(env); }
@@ -602,7 +730,12 @@ export class SpatialScene {
     this.groundOff = googleGround(this.glbRoot, this.renderer, o);
   }
 
-  setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on || this.systems.sys === "wallbox"; }
+  setWallbox(on: boolean) {
+    this.wbOn = on;
+    if (!this.wallbox) return;
+    this.wallbox.visible = true;
+    this.fadeTo(this.wallbox, on || this.systems.sys === "wallbox");
+  }
   // The roof box includes the eaves, so a unit placed from it misses the wall: once the building model is in,
   // move the battery and inverter onto the inner face of the south wall (the ray starts inside the house) and the
   // heat pump to a hand's width outside the west wall. The glass shell stands in for the house's own walls.
@@ -1121,6 +1254,8 @@ export class SpatialScene {
     if (this.plan) this.drawPlan();
     this.shade.frame(this.camera, this.mode, (v) => this.project(v), this.host.clientWidth);
     this.xray.frame(dt);
+    this.stepFx(dt); this.stepFades(dt);
+    this.panelsOut.visible = this.panels.visible;
     if (this.opts.compass) {
       // Screen direction of north (local -z in three).
       const a = this.project(this.centre), b = this.project(this.centre.clone().add(new THREE.Vector3(0, 0, -5)));

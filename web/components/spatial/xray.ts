@@ -74,7 +74,8 @@ export class Xray {
   // env null: fade the x-ray out (the glass shell stays). Returns no on-model labels: the shares live in the card.
   set(env: Envelope | null): never[] {
     if (!env || !env.faces?.length) { this.goal = 0; return []; }
-    const same = this.env === env && this.g.children.length > 0;
+    // A variant switch hands in an equal envelope as a new object: keep what is drawn.
+    const same = (this.env === env || (!!this.env && JSON.stringify(this.env) === JSON.stringify(env))) && this.g.children.length > 0;
     this.env = env; this.goal = 1;
     if (!same) this.build();
     return [];
