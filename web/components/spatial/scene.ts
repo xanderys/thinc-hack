@@ -138,7 +138,6 @@ export class SpatialScene {
   // when snapUnits moves it onto the wall after the building model loads.
   private wbAt = new THREE.Vector3();
   private battAt = new THREE.Vector3();
-  private occluders: THREE.Mesh[] = []; // the house's roof and walls, for hiding a pill whose part is behind them
   private occRay = new THREE.Raycaster();
   private gridPole = new THREE.Group(); // the grid connection, shown only with the day flow's "Grid" label
   private inverterUnit: THREE.Object3D | null = null;
@@ -533,8 +532,6 @@ export class SpatialScene {
       });
       // The target footprint comes with the roof model; until it is in, flatten later.
       this.glbRoot = gltf.scene; this.flattened = false;
-      this.occluders = [];
-      gltf.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && /^(roof|walls)/.test((m.name || m.parent?.name || "").toLowerCase())) this.occluders.push(m); });
       if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene);
       sharpen(gltf.scene, this.renderer);
       this.ctxOff.push(registerGlb(gltf.scene, this.ctxLines));
@@ -1058,11 +1055,14 @@ export class SpatialScene {
   // The roof or a wall stands between the camera and this point, more than 0.6 m in front of it (so the glass wall a
   // part is mounted on, or stands behind, does not count). 3D only: the plan view looks straight down.
   private behindHouse(pt: THREE.Vector3) {
-    if (this.camera !== this.persp || !this.occluders.length) return false;
+    // What is drawn for the house: the roof model's planes and the glass shell (the glb's own roof and walls do not
+    // take the ray here).
+    const occ = [...this.tints.children, this.xray.shellMesh()].filter((m): m is THREE.Mesh => !!m && (m as THREE.Mesh).isMesh);
+    if (this.camera !== this.persp || !occ.length) return false;
     const from = this.persp.position, d = from.distanceTo(pt);
     this.occRay.set(from, pt.clone().sub(from).normalize());
     this.occRay.far = d - 0.6;
-    return this.occRay.intersectObjects(this.occluders, false).length > 0;
+    return this.occRay.intersectObjects(occ, false).length > 0;
   }
 
   private project(v: THREE.Vector3) {
