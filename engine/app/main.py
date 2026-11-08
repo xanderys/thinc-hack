@@ -1270,6 +1270,37 @@ async def transcribe_audio(request: Request, x_intake_secret: Optional[str] = He
     return {"text": text}
 
 
+_DAY: dict = {}
+
+
+@app.get("/api/leads/{lead_id}/day")
+def lead_day(lead_id: str, day: Literal["summer", "winter"] = "summer", battery_kwh: Optional[float] = None,
+             wallbox_kw: Optional[float] = None, heatpump_kw: Optional[float] = None, x_intake_secret: Optional[str] = Header(None)):
+    """v2.18: one typical day, hour by hour, from the simulation behind the economics (battery, wallbox, heat pump views)."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = _find_lead(lead_id)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    sizes = {"battery_kwh": battery_kwh, "wallbox_kw": wallbox_kw, "heatpump_kw": heatpump_kw}
+    key = (lead["lead_id"], int(lead.get("version") or 0), day, tuple(sorted(sizes.items())))
+    if key in _DAY:
+        return _DAY[key]
+    from . import layout as L
+    from .hourly import day as D
+    design = ((lead.get("draft") or {}).get("design")) or {}
+    inp = {k: v for k, v in (lead.get("inputs") or {}).items() if not k.startswith("_")}
+    try:
+        si = L.sim_inputs(inp, design) if inp.get("address") else model_mod.roof_to_sim(inp)
+        out = D.view(si, design, day, sizes)
+    except Exception as e:
+        log.exception("day view")
+        return err(500, f"Day view failed: {e}")
+    out.update(lead_id=lead["lead_id"], version=int(lead.get("version") or 0))
+    _DAY[key] = out
+    return out
+
+
 @app.post("/api/leads/hide-unpinned")
 def hide_unpinned(x_intake_secret: Optional[str] = Header(None)):
     """Board tidy for the demo: every lead that is not pinned and not already a test lead is marked test (hidden from the
