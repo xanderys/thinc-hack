@@ -12,7 +12,11 @@ const num = (x: number | null | undefined, d = 2) => (x == null ? "" : (Math.rou
 const signed = (x: number) => `${x > 0 ? "+" : x < 0 ? "-" : ""}${Math.abs(Math.round(x)).toLocaleString("en-GB")}`;
 
 /** The copilot's thread and its field. Fills whatever container it is put in (flex column, 100 % height). */
-export default function Thread({ trailing, onLead }: { trailing?: ReactNode; onLead?: (id: string) => void }) {
+// Where the reader left the thread, kept across closes and remounts.
+let kept: number | null = null;
+
+/** `fieldTrailing` (or `trailing`) sits in the field between the text and the mic, for the shell's own button. */
+export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?: ReactNode; fieldTrailing?: ReactNode; onLead?: (id: string) => void }) {
   const ctx = useCopilotContext();
   const { items, busy } = useThread();
   const [text, setText] = useState("");
@@ -23,7 +27,11 @@ export default function Thread({ trailing, onLead }: { trailing?: ReactNode; onL
   const media = useRef<{ r: MediaRecorder; chunks: Blob[]; stream: MediaStream } | null>(null);
   const go = onLead ?? openLead;
   useEffect(() => () => { media.current?.stream.getTracks().forEach((t) => t.stop()); }, []);
-  useEffect(() => { const el = thread.current; if (el) el.scrollTop = el.scrollHeight; }, [items]);
+  // Reopened: back where the reader was. New content: follow it only when the reader is at the bottom.
+  const atEnd = useRef(true);
+  useEffect(() => { const el = thread.current; if (!el) return; el.scrollTop = kept ?? el.scrollHeight; }, []);
+  useEffect(() => { const el = thread.current; if (el && atEnd.current) el.scrollTop = el.scrollHeight; }, [items]);
+  const onScroll = () => { const el = thread.current; if (!el) return; kept = el.scrollTop; atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; };
 
   const submit = () => { const t = text.trim(); if (!t || busy) return; setText(""); void ask(t, ctx); };
   async function startRec() {
@@ -47,7 +55,7 @@ export default function Thread({ trailing, onLead }: { trailing?: ReactNode; onL
 
   return (
     <div className={s.shell}>
-      <div className={s.thread} ref={thread}>
+      <div className={s.thread} ref={thread} onScroll={onScroll}>
         {items.map((it) => it.who === "you"
           ? <div key={it.id} className={s.you}>{it.text}</div>
           : <div key={it.id} className={s.agent}>
@@ -60,7 +68,7 @@ export default function Thread({ trailing, onLead }: { trailing?: ReactNode; onL
       </div>
       <div className={s.fieldWrap}>
         <ComposerField value={text} onChange={setText} onSend={submit} onAttach={pick} onMicStart={() => void startRec()} onMicStop={() => void stopRec()}
-          busy={busy || voicing} recording={rec} trailing={trailing} fieldRef={field} />
+          busy={busy || voicing} recording={rec} trailing={fieldTrailing ?? trailing} fieldRef={field} />
       </div>
     </div>
   );
@@ -73,7 +81,7 @@ function ProposalCard({ p, onLead, onApply, onUndo }: { p: Proposal; onLead: (id
   return (
     <div className={s.prop}>
       <div className={s.propHead}>{p.title}</div>
-      {one ? (
+      {p.rows.length === 0 ? null : one ? (
         // One lead: before and after, figure by figure.
         <div className={s.tableWrap}><table className={s.table}>
           <thead><tr><th><button type="button" className={s.chip} onClick={() => onLead(one.lead_id)}>{one.name}</button></th><th className={s.num}>Now</th><th className={s.num}>After</th></tr></thead>
@@ -103,10 +111,11 @@ function ProposalCard({ p, onLead, onApply, onUndo }: { p: Proposal; onLead: (id
         </table></div>
       )}
       {one && <p className={s.p}>{one.what}</p>}
+      {p.unchanged?.map((x, i) => <p key={`u${i}`} className={s.p}>{x}</p>)}
       {p.refused.map((x, i) => <p key={i} className={s.p}>{inline(`[[warn: ${x}]]`, onLead)}</p>)}
-      {p.results.length > 0 && <ul className={s.results}>{p.results.map((r, i) => <li key={i}>{inline(r.ok ? `[[ok: ${r.name}]]` : `[[fail: ${r.name}]] ${r.msg ?? ""}`, onLead)}</li>)}</ul>}
+      {p.results.length > 0 && <ul className={s.results}>{p.results.map((r, i) => <li key={i}>{inline(r.ok ? `[[ok: ${r.name}]] ${r.what ?? ""}` : `[[fail: ${r.name}]] ${r.msg ?? ""}`, onLead)}</li>)}</ul>}
       <div className={s.actions}>
-        {(p.state === "open" || p.state === "applying") && <button type="button" className={`${s.apply} ${busy ? s.busyBtn : ""}`} disabled={busy || !p.ops.length} onClick={onApply}>Apply</button>}
+        {(p.state === "open" || p.state === "applying") && p.ops.length > 0 && <button type="button" className={`${s.apply} ${busy ? s.busyBtn : ""}`} disabled={busy || !p.ops.length} onClick={onApply}>Apply</button>}
         {(canUndo || p.state === "undoing") && <button type="button" className={`${s.undo} ${busy ? s.busyBtn : ""}`} disabled={busy} onClick={onUndo}>Undo</button>}
         {p.state === "undone" && <span className={s.unit}>Undone</span>}
       </div>
