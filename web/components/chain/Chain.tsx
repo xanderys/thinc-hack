@@ -242,6 +242,32 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     return o as unknown as typeof res.design;
   }, [res.design, pending, ovKey, opt]); // eslint-disable-line react-hooks/exhaustive-deps
   const waiting = !!pending || !!opt;   // prices and yields shimmer until the engine answers
+  // A "+" on a heat pump, wallbox or battery outline: the card reads "<part> pending" at once and the pill "sizing";
+  // the next design that lands either carries the part (its size shows) or not (the engine's reason shows).
+  type UnitPart = "heatpump" | "wallbox" | "battery";
+  const UNIT_FIELD = { heatpump: "heatpump_kw", wallbox: "wallbox_kw", battery: "battery_kwh" } as const;
+  const [adding, setAdding] = useState<{ part: UnitPart; res: unknown } | null>(null);
+  const [refused, setRefused] = useState<UnitPart | null>(null);
+  useEffect(() => {
+    if (!adding || pending || res === adding.res) return;
+    const got = Number((res.design as unknown as Record<string, unknown>)[UNIT_FIELD[adding.part]]) || 0;
+    setRefused(got > 0 ? null : adding.part); setAdding(null);
+  }, [res, pending, adding]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!adding) return; const t = setTimeout(() => setAdding(null), 20000); return () => clearTimeout(t); }, [adding]);
+  const markAdd = (f: string, v: unknown) => {
+    const part = (Object.keys(UNIT_FIELD) as UnitPart[]).find((k) => UNIT_FIELD[k] === f);
+    if (!part) return;
+    const was = Number((res.design as unknown as Record<string, unknown>)[f]) || 0;
+    if (!was && (v === "include" || (typeof v === "number" && v > 0))) { setRefused(null); setAdding({ part, res }); }
+  };
+  // The engine's reason for an absent part (components.<part>.none_reason, api v2.16: a phrase when the part is out,
+  // null when it is in); nothing when the engine does not send it.
+  const reasonOf = (k: ComponentKey) => {
+    const r = (res.components[k] as { none_reason?: string | null } | undefined)?.none_reason;
+    const f = scrub(r?.split(/(?<=\.)\s/)[0]?.trim() ?? null);
+    return f ? f.replace(/^./, (x) => x.toUpperCase()) : null;
+  };
+  const why0 = (k: ComponentKey) => { const r = reasonOf(k); return r ? <p className="sc-why">{r}</p> : null; };
   const resShown = useMemo(() => (d === res.design ? res : { ...res, design: d }), [res, d]);   // kit rows read the same sizes
   const rot = rotLine(findRot(res.components.pv?.derivation, layers, res));
 
@@ -450,9 +476,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       const day = bars[2], roof = seg(day, /solar|roof/i), fromB = seg(day, /from the battery/i) ?? seg(day, /^battery$/i), grid = seg(day, /grid/i);
       const kwh = d.battery_kwh;
       return {
-        head: kwh ? <Head main={`${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
+        head: adding?.part === "battery" ? <Head main="Battery" sub="pending" /> : kwh ? <Head main={`Battery ${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
         label: kwh ? `${n1(kwh)} kWh battery` : "No battery",
-        body: day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null,
+        body: !kwh && adding?.part !== "battery" ? <>{why0("battery")}{day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null}</> : day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null,
         info: <>
           {day && roof != null && <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p>}
           {kwh && ratio != null ? <p>{n1(kwh)} kWh is {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0 kWh per kWp for {n2(d.pv_kwp ?? 0)} kWp.</p> : !kwh ? <p>No battery in this design.</p> : null}
@@ -469,9 +495,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       const night = segOf(/typical night/i)?.value ?? (ch && /night/i.test(ch.unit) ? ch.total : null) ?? layers?.ev?.kwh_per_night_typical;
       const wb = d.wallbox_kw;
       return {
-        head: wb ? <Head main={`${n1(wb)} kW`} sub="wallbox" /> : <Head main="No wallbox" />,
+        head: adding?.part === "wallbox" ? <Head main="Wallbox" sub="pending" /> : wb ? <Head main={`Wallbox ${n1(wb)} kW`} /> : <Head main="No wallbox" />,
         label: wb ? `${n1(wb)} kW wallbox` : "No wallbox",
-        body: wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
+        body: !wb && adding?.part !== "wallbox" ? why0("wallbox") : wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
         info: <>
           {wb && km && kwh ? <p>{n0(km)} km a year takes about {n0(kwh)} kWh{homeShare ?? (homeKwh && kwh ? homeKwh / kwh : null) ? `; ${pc((homeShare ?? homeKwh! / kwh)!)} of it is charged at home, ${n0(homeKwh ?? homeShare! * kwh)} kWh` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p> : <p>{line2[3]}</p>}
           {ch && (wb || layers?.ev) && <BarView bar={ch} />}{whyBlock(3)}
@@ -489,9 +515,10 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       const hp = d.heatpump_kw;
       const hpBound = (res.components.heatpump as unknown as { heat_load_upper_bound_kw?: number | null }).heat_load_upper_bound_kw ?? null;
       return {
-        head: multi ? <Head main="No heat load" sub="for flats" /> : hp ? <Head main={`${n1(hp)} kW`} sub="heat pump" /> : <Head main="No heat pump" />,
+        head: multi ? <Head main="No heat load" sub="for flats" /> : adding?.part === "heatpump" ? <Head main="Heat pump" sub="pending" /> : hp ? <Head main={`Heat pump ${n1(hp)} kW`} /> : <Head main="No heat pump" />,
         label: multi ? "Heat load not estimated for flats" : hp ? `${n1(hp)} kW heat pump` : "No heat pump",
         body: multi ? null : <>
+          {!hp && adding?.part !== "heatpump" && why0("heatpump")}
           {shares.length > 0 && <SplitBar label="Heat loss" unit="" total={100} parts={shares.map((x) => ({ k: x.name, v: Math.round(x.share * 100), c: x.colour }))} />}
           {/* Sizing: the bill decides, the envelope is an upper bound (engine: components.heatpump.heat_load_upper_bound_kw). */}
           {hp && hpBound != null ? <div className="fg-size"><p className="fg-fig"><span>Sized from the bill</span> <b>{n1(hp)} kW</b></p><p className="fg-fig"><span>Envelope upper bound</span> <b className="fg-light">{n1(hpBound)} kW</b></p></div>
@@ -549,7 +576,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         {address && spatial !== false ? (
           <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatLayer ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && panelHeat}
-            edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); stayChip.current = Date.now() + 60000; setOpt({ [f]: v }); dp.setOverride?.(f, v); }, setKit: setKit ? (p) => { holdOffer(); stayChip.current = Date.now() + 60000; setOpt(p); setKit(p); } : undefined,
+            edit={dp?.setOverride ? { adding: adding?.part ?? null, setOverride: (f, v) => { holdOffer(); stayChip.current = Date.now() + 60000; markAdd(f, v); setOpt({ [f]: v }); dp.setOverride?.(f, v); }, setKit: setKit ? (p) => { holdOffer(); stayChip.current = Date.now() + 60000; setOpt(p); setKit(p); } : undefined,
               slots: Array.isArray((ovNow as { layout_slots?: unknown }).layout_slots) ? (ovNow as { layout_slots: string[] }).layout_slots : null } : undefined}>
             {overlays}
           </SpatialDemo>

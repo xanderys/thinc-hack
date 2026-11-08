@@ -7,7 +7,15 @@
 // load. The lead is the only source: nothing about the layout is kept in the browser.
 import type { PanelRect, RoofPlane, V3 } from "./types";
 
-export const MODULE_WP = 450;
+export const MODULE_WP = 450;   // fallback only: the engine's module SKU (moduleWpOf) wins whenever the design carries one
+
+// The module's wattage as the engine priced it (SKU catalogue, e.g. Sunpro 463 W): draft.components.pv.sku when its unit
+// is W, else draft.skus.module; 450 only when the engine sent neither. Every slot-count to kWp conversion uses this.
+export function moduleWpOf(res: unknown): number {
+  const r = res as { components?: { pv?: { sku?: { size?: number; unit?: string } } }; skus?: { module?: { size?: number; unit?: string } } } | null | undefined;
+  for (const s of [r?.components?.pv?.sku, r?.skus?.module]) if (s && s.size && s.size > 100 && s.size < 1000 && (!s.unit || /^w$/i.test(s.unit))) return s.size;
+  return MODULE_WP;
+}
 const MOD_U = 1.134, MOD_V = 1.762, GAP = 0.02, EDGE = 0.3, LIFT = 0.08, SLACK = 0.06;
 
 type Vec = [number, number, number];

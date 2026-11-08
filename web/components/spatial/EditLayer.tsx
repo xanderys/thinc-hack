@@ -27,9 +27,10 @@ type Props = {
   scene: SpatialScene; sys: Sys | null; faces: FaceSlots[]; design: Design;
   onToggle: (plane: string, i: number) => void;
   onSet: (f: keyof Design, v: OverrideValue) => void;
+  sizing?: Unit | null;   // a "+" on its way to the engine: the pill reads "sizing" until the design lands
 };
 
-export default function EditLayer({ scene, sys, faces, design, onToggle, onSet }: Props) {
+export default function EditLayer({ scene, sys, faces, design, onToggle, onSet, sizing }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const unit: Unit | null = sys === "battery" || sys === "wallbox" || sys === "heatpump" ? sys : null;
@@ -129,7 +130,9 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet }
       {slots.filter((sl) => !sl.placed).map((sl) => (
         <span key={sl.id} className={s.mark} data-at={JSON.stringify(sl.c)} data-n={JSON.stringify(sl.n)} aria-hidden="true"><span>+</span></span>
       ))}
-      {unit && (has ? (
+      {unit && sizing === unit && !has ? (
+        <span data-unit="" className={s.unit} aria-live="polite"><span>sizing</span></span>
+      ) : unit && (has ? (
         <button type="button" data-unit="" className={s.unit} aria-haspopup="true" aria-expanded={open} aria-label={`Change the ${NAME[unit]} size`} onClick={() => setOpen((x) => !x)}>
           <span>{fmt(v)} {UNIT[unit]}</span>
         </button>

@@ -1,4 +1,4 @@
-# Engine API contract (v2.7)
+# Engine API contract (v2.16)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -263,3 +263,17 @@ v2.14 additions (engine, restart C: heat loss on the heated rooms)
 - Config on the engine host only (`~/.config/marquee/engine.env`, loaded by `run.sh`; never in the repo): `MARQUEE_DEMO_PHONE` (the number set on pinned demo leads at start; unset, none is set) and `WA_BRIDGE_TO` (the bridge's pinned number; unset, every WhatsApp send fails with the reason).
 - WhatsApp expiry: a conversation with no reply for 2 hours shows `state: "expired"`. For 24 hours after its last activity it still reads replies (the newest such conversation per phone, when none is open on that phone). A late reply reopens it (`reopened_at`) and is parsed as usual. A new ask on any lead is allowed once the old one is expired, and supersedes it.
 - `GET /api/roof/model` takes `lead_id` (lays out that lead's own design kWp at its address and build year) and, when a kWp is known, returns `planes[].slots` exactly as layers does: `placed` marks the design's modules only (hero: 23 of 40). `layout_kwp` says which kWp the `chosen_panels` show; null means the model's own default fill (27 on the hero), which is not a design.
+
+## v2.15 (engine 1d0266a, additive): SKU catalogue
+- One catalogue for every installer, built from the parts file into aggregates only (brand, name, size, unit, share; no project rows): `GET /api/catalogue` → `{modules, inverters, batteries, wallboxes, heatpumps: {brand, name, size, unit, share}[]}`.
+- Lead designs, variants and refines snap to the ladder the catalogue holds (battery 5 / 7 / 9 / 10 / 18 kWh, inverter 5 / 10 / 20 kW, heat pump 5.5 / 7.5 / 10.5 / 12.5 kW, modules in 463 W steps). The sealed exam, the live eval and the replay stay unsnapped.
+- `design.components.<c>.sku: {brand, name, size, unit, share, brands: string[], modules?: number}`; `variants[].skus` and `lead.approved.skus` the same shape; `rates.lines[].sku`. Overrides accept `sku_<part>: "<brand>"` (inverter, battery, wallbox, heatpump, modules), stored on the lead like the other overrides.
+- `variants[].layout: {modules_per_face: Record<face, number>, modules}`.
+- Frozen drafts (completed, sent, decided) and approvals drafted before the catalogue get `skus` attached on read at their own sizes. `variants[].skus` is filled on every variant, with or without an address.
+
+## v2.16 (engine, additive): why a part is left out
+- `design.components.<battery | heatpump | wallbox>.none_reason: string | null`: a short phrase in product voice when the design leaves that part out, null when it is in. The sentence in `components.<c>.reason` is unchanged. `variants[].none_reasons: {battery, heatpump, wallbox}` carries the same phrases.
+- Battery: "No PV to charge a battery" | "<x> kWp is too little PV for a battery" | "Planners here sign homes like this without one" | "Removed by the planner" | (variants) "Left out for the lowest upfront cost".
+- Heat pump: "Already heats with a heat pump" | "Heating facts not asked yet" | "<District | Electric | ...> heating, no boiler to replace" | "No gas or oil boiler to replace" | "Boiler age not asked yet" | "<Gas | Oil> boiler from <year> still has years left" | "Removed by the planner" | "Not in this design".
+- Wallbox: "Wallbox already installed" | "No electric car now or planned" | "Removed by the planner" | "Not in this design".
+- A forced include never comes back none silently: an included heat pump is sized from the bill, the given heat or the default heat estimate, an included wallbox at 11 kW; if one still ends up none, `none_reason` says why. The web shows `none_reason` as the first line of a "No <part>" card, and nothing when the field is absent.
