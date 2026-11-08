@@ -62,7 +62,7 @@ type Props = {
 };
 
 export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
-  const { design, economics: e } = offered(lead);
+  const { key, design, economics: e } = offered(lead);
   if (!design || !e) return <ProposalSkeleton />;   // a lead whose design is not in yet
   const variants = lead.draft.variants ?? [];
   const address = lead.address_or_postcode ?? "";
