@@ -196,9 +196,7 @@ export interface Lead {
   next_question: NextQuestion | null; questions_asked: number; created_at: string; updated_at: string;
   version?: number;   // optimistic concurrency: writes carry it back as base_version
   proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | "edit" | null; decision?: LeadDecision | null;   // v2.5
-  status_label?: string;   // engine fe8b790: the chip text ("Complete" for approved, "Sent")
-  sent?: { channel: string; at: string; text: string; link: string } | null;
-  phone?: string | null;
+  sent?: { channel: string; at: string; text: string; link: string } | null;   // engine fe8b790: the last Send
   approved?: { variant: Variant["key"] | "edit"; design: Design; economics?: Economics; investment_eur: number; design_hash: string; overrides?: Overrides } | null;   // v2.11
   overrides?: Overrides;   // the planner's kit choices, written on each edit (intake step `overrides`)
   phone?: string | null;   // v2.14, E.164; no phone, no WhatsApp

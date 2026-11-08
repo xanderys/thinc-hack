@@ -3,6 +3,7 @@
 // SMS has no provider. Copy link copies the link and tells the engine too, so the lead reads Sent. Opens with a spring, crossfades under Reduce Motion.
 import { useEffect, useRef, useState } from "react";
 import { call, send } from "@/lib/client";
+import { useDry } from "@/lib/dry";
 import s from "./offer.module.css";
 
 type Channel = "whatsapp" | "email" | "copy" | "sms";
@@ -23,6 +24,7 @@ export default function SendSheet({ leadId, name, brand, link, version, onClose,
 }) {
   const [ch, setCh] = useState<Channel>("whatsapp");
   const [state, setState] = useState<"idle" | "busy" | "sent" | "copied">("idle");
+  const dry = useDry();   // ?dry=1: the engine composes and logs the message, sends nothing, the lead stays Complete
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const msg = rinaMessage(name, brand, link);
@@ -44,9 +46,10 @@ export default function SendSheet({ leadId, name, brand, link, version, onClose,
     // The version as the lead holds it now (saving Complete moved it), so base_version never trails a fresh save.
     const cur = await call<{ version?: number }>(`/api/leads/${encodeURIComponent(leadId)}`);
     const base = cur.ok && cur.data.version != null ? cur.data.version : version;
-    const r = await send<{ version?: number; status?: string }>(`/api/leads/${encodeURIComponent(leadId)}/send`, { channel: ch, ...(base != null ? { base_version: base } : {}) }, `send-${ch}`);
+    const r = await send<{ version?: number; status?: string }>(`/api/leads/${encodeURIComponent(leadId)}/send`, { channel: ch, ...(base != null ? { base_version: base } : {}), ...(dry ? { dry: true } : {}) }, `send-${ch}`);
     if (!r.ok) { setState(ch === "copy" ? "copied" : "idle"); setErr(r.error); return; }
-    setState(ch === "copy" ? "copied" : "sent"); onSent(r.data?.version);
+    setState(ch === "copy" ? "copied" : "sent");
+    if (!dry) onSent(r.data?.version);
   };
   return (
     <div className={s.sheetWrap} data-esc-first>
@@ -55,7 +58,7 @@ export default function SendSheet({ leadId, name, brand, link, version, onClose,
         <h2 className={s.sheetH}>Send the proposal</h2>
         <p className={s.sheetTo}><b>{name || "Homeowner"}</b> <a href={link} target="_blank" rel="noreferrer">{link.replace(/^https?:\/\//, "")}</a></p>
         {state === "sent" ? (
-          <p className={s.sheetDone} role="status">Sent, waiting for the homeowner</p>
+          <p className={s.sheetDone} role="status">{dry ? "Dry run, not sent" : "Sent, waiting for the homeowner"}</p>
         ) : (
           <>
             <div className={s.sheetCh} role="radiogroup" aria-label="Channel">
@@ -64,7 +67,7 @@ export default function SendSheet({ leadId, name, brand, link, version, onClose,
               ))}
             </div>
             <p className={s.sheetMsg}>{msg}</p>
-            {state === "copied" && <p className={s.sheetDone} role="status">Link copied{err ? "" : ", waiting for the homeowner"}</p>}
+            {state === "copied" && <p className={s.sheetDone} role="status">Link copied{err ? "" : dry ? ", dry run, not sent" : ", waiting for the homeowner"}</p>}
             {err && <p className={s.failS} role="alert">{err}</p>}
           </>
         )}
