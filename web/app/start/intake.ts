@@ -151,6 +151,7 @@ export const HOME_FORM = {
 export interface HomeAnswers {
   name: string;
   location: string; // address, or postcode alone
+  phone?: string;   // optional, E.164
   people?: keyof typeof HOME_FORM.people;
   heating?: keyof typeof HOME_FORM.heating;
   ev?: keyof typeof HOME_FORM.ev;

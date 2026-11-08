@@ -1,0 +1,48 @@
+/* The facts row: one chip per fact, one control panel under the row for the open chip. Own file, own classes (fc-). */
+.fc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fc-slot { margin-left: auto; display: inline-flex; align-items: center; min-width: 0; }
+.fc { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; max-width: 100%; padding: 0 12px 0 10px; font: inherit; font-size: 14px; color: var(--ink); background: var(--sheet-2); border: 1px solid var(--rule); border-radius: 18px; cursor: pointer; transition: border-color 180ms, background-color 180ms; }
+.fc svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-3); }
+.fc .k { color: var(--ink-3); white-space: nowrap; }
+.fc .v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc .via { font-size: 11px; color: var(--ink-3); border-left: 1px solid var(--rule-2); padding-left: 7px; white-space: nowrap; }
+.fc:hover { border-color: var(--rule-2); }
+.fc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fc[aria-expanded="true"] { border-color: var(--accent); background: var(--paper); }
+.fc[aria-expanded="true"] svg { color: var(--accent); }
+.fc[data-state="estimated"] .v { color: var(--ink-3); font-style: italic; }
+.fc[data-state="missing"] { background: transparent; border: 1px dotted var(--ink-4); }
+.fc[data-state="missing"] .k { color: var(--ink-2); }
+.fc-panel { margin-top: 8px; padding: 12px 14px; background: var(--paper); border: 1px solid var(--rule-2); border-radius: 12px; display: grid; gap: 12px; max-width: 520px; }
+.fc-panel .fc-h { font-size: 12.5px; color: var(--ink-3); }
+.fc-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.fc-seg button { font: inherit; font-size: 14px; min-height: 36px; padding: 0 14px; border: 1px solid var(--rule-2); background: var(--sheet); color: var(--ink); border-radius: 18px; cursor: pointer; transition: background-color 160ms, color 160ms, border-color 160ms; }
+.fc-seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+.fc-seg button:focus-visible, .fc-step button:focus-visible, .fc-set:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fc-num { display: flex; align-items: baseline; gap: 8px; }
+.fc-num input[type="number"] { width: 112px; font: inherit; font-size: 18px; font-variant-numeric: tabular-nums; padding: 6px 10px; border: 1px solid var(--ink-3); border-radius: 8px; background: var(--sheet); color: var(--ink); -moz-appearance: textfield; }
+.fc-num input[type="number"]::-webkit-outer-spin-button, .fc-num input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.fc-num .u { font-size: 14px; color: var(--ink-3); }
+.fc-range { width: 100%; accent-color: var(--accent); margin: 0; }
+.fc-step { display: inline-flex; align-items: center; gap: 14px; }
+.fc-step button { width: 40px; height: 40px; border-radius: 20px; border: 1px solid var(--rule-2); background: var(--sheet); font: inherit; font-size: 20px; line-height: 1; color: var(--ink); cursor: pointer; }
+.fc-step button:disabled { opacity: 0.35; cursor: default; }
+.fc-step output { min-width: 3ch; text-align: center; font-size: 22px; font-variant-numeric: tabular-nums; }
+.fc-set { justify-self: start; font: inherit; font-size: 14px; min-height: 36px; padding: 0 18px; border: 0; border-radius: 18px; background: var(--ink); color: var(--paper); cursor: pointer; }
+.fc-set:disabled { opacity: 0.35; cursor: default; }
+@media (prefers-reduced-motion: no-preference) {
+  .fc-panel { animation: fc-in 320ms var(--spring-smooth) both; }
+}
+@media (prefers-reduced-motion: reduce) { .fc-panel { animation: fc-fade 160ms linear both; } }
+@keyframes fc-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes fc-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 760px) {
+  .fc { min-height: 34px; font-size: 13px; padding: 0 10px 0 8px; gap: 6px; }
+  .fc-panel { max-width: none; }
+  .fc-slot { margin-left: 0; width: 100%; }
+}
+
+.fc-phone { display: grid; gap: 10px; }
+.fc-phone input { width: 100%; max-width: 280px; font: inherit; font-size: 18px; font-variant-numeric: tabular-nums; padding: 6px 10px; border: 1px solid var(--ink-3); border-radius: 8px; background: var(--sheet); color: var(--ink); }
+.fc-phone input[aria-invalid="true"] { border-color: var(--bad); }
+.fc-phone .u { font-size: 13px; color: var(--ink-3); }

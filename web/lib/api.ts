@@ -180,7 +180,7 @@ export interface InboxRow {
 
 // LLM edge, web only
 export interface ReadFact { field: keyof HomeInputs | "wants" | "monthly_bill_eur" | "postcode"; value: unknown; quote: string; }
-export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; source?: "call"; origin?: Record<string, "form" | "call" | "estimated">; postcode?: string; }
+export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; source?: "call"; origin?: Record<string, "form" | "call" | "estimated" | "whatsapp">; postcode?: string; }
 export interface WriteResponse { text: string; grounded: boolean; lines: Partial<Record<ComponentKey, string | null>>; cached?: boolean; }
 
 export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Installer A", "23c108b7": "Installer B" };
@@ -192,13 +192,20 @@ export interface LeadCreated { lead_id: string; draft: DesignResponse; facts: Ho
 export interface Lead {
   lead_id: string; status: LeadStatus; customer_name: string; address_or_postcode: string;
   facts: HomeInputs; draft: DesignResponse;
-  history: { step: number; field: string; answer: unknown; changed: LeadChange[]; at: string }[];
+  history: { step: number; field: string; answer: unknown; changed: LeadChange[]; at: string; source?: string }[];
   next_question: NextQuestion | null; questions_asked: number; created_at: string; updated_at: string;
   version?: number;   // optimistic concurrency: writes carry it back as base_version
   proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | "edit" | null; decision?: LeadDecision | null;   // v2.5
   approved?: { variant: Variant["key"] | "edit"; design: Design; economics?: Economics; investment_eur: number; design_hash: string; overrides?: Overrides } | null;   // v2.11
   overrides?: Overrides;   // the planner's kit choices, written on each edit (intake step `overrides`)
+  phone?: string | null;   // v2.14, E.164; no phone, no WhatsApp
+  whatsapp?: LeadWhatsApp | null;   // v2.14
+  sources?: Record<string, string>;   // where each fact came from ("form", "call", "whatsapp", ...)
 }
+// v2.14 WhatsApp copilot: one conversation per lead, both directions logged.
+export interface WhatsAppMessage { dir: "out" | "in"; text: string; ts: string }
+export interface LeadWhatsApp { state: "open" | "closed" | "none"; conversation_id?: string | null; messages: WhatsAppMessage[] }
+export interface WhatsAppAsk { conversation_id: string; sent: string | WhatsAppMessage | boolean; open_facts: { field: string; label?: string; unit?: string }[] }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).
 export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "signed" | "declined" | "question";
 export type DecisionAction = "sign" | "decline" | "question";
