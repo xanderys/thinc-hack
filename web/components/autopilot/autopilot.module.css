@@ -29,7 +29,7 @@
 .skelG { width: 16px; height: 16px; border-radius: 4px; align-self: center; }
 .skelT { grid-column: 2 / -1; height: 14px; width: 60%; align-self: center; }
 .seed { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
-@media (max-width: 640px) { .line { grid-template-columns: 18px minmax(0, 1fr) auto; } .who { grid-column: 2; } .text { grid-column: 2 / -1; grid-row: 2; } .at { grid-column: 3; grid-row: 1; } }
+@media (max-width: 640px) { .line { grid-template-columns: 18px minmax(0, 1fr) auto; } .who { grid-column: 2; } .text { grid-column: 2 / -1; grid-row: 2; } .at { grid-column: 3; grid-row: 1; } .sum .text { grid-column: 2; grid-row: 1; } }
 
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 /* Smooth spring, bounce 0 (globals --spring-smooth); a crossfade under Reduce Motion. */

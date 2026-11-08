@@ -5,8 +5,11 @@ import { berlinTime } from "@/lib/time";
 import { closeLog, startRun, useRun, type ApEvent } from "./store";
 import s from "./autopilot.module.css";
 
-// ?dry=1 runs without sending; ?mock=1 plays the scripted run (off production only).
-const flags = () => { const q = new URLSearchParams(location.search); return { dry: q.get("dry") === "1", mock: q.get("mock") === "1" }; };
+// ?dry=1 runs without sending; ?mock=1 plays the scripted run (off production only); ?leads=a,b and ?wait=s narrow a check run.
+const flags = () => {
+  const q = new URLSearchParams(location.search), ids = q.get("leads")?.split(",").filter(Boolean), w = q.get("wait");
+  return { ...(q.get("dry") === "1" ? { dry: true } : {}), ...(q.get("mock") === "1" ? { mock: true } : {}), ...(ids?.length ? { lead_ids: ids } : {}), ...(w != null && /^\d+$/.test(w) ? { wait_s: Number(w) } : {}) };
+};
 
 export function RunButton() {
   const run = useRun();
@@ -16,8 +19,7 @@ export function RunButton() {
   }, [run.phase]);
   const busy = run.phase === "running";
   const go = () => {
-    const f = flags();
-    startRun({ ...(f.dry ? { dry: true } : {}), ...(f.mock ? { mock: true } : {}) });
+    startRun(flags());
   };
   return (
     <div className={s.bar}>
@@ -75,7 +77,7 @@ export function AgentLog() {
       </ol>
       {run.error && (
         <div className="error" role="alert"><span><span className="src">Engine said</span>{run.error}</span>
-          {run.phase !== "running" && <button className="btn ghost" onClick={() => { const f = flags(); startRun({ ...(f.dry ? { dry: true } : {}), ...(f.mock ? { mock: true } : {}) }); }}>Retry</button>}
+          {run.phase !== "running" && <button className="btn ghost" onClick={() => startRun(flags())}>Retry</button>}
         </div>
       )}
     </section>

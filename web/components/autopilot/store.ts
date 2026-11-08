@@ -26,7 +26,7 @@ async function refetch(id: string) {
 }
 
 let ctl: AbortController | null = null;
-export async function startRun(body: { lead_ids?: string[]; dry?: boolean; mock?: boolean }) {
+export async function startRun(body: { lead_ids?: string[]; dry?: boolean; mock?: boolean; wait_s?: number }) {
   if (run.phase === "running") return;
   ctl = new AbortController();
   set({ phase: "running", events: [], error: null, open: true });
