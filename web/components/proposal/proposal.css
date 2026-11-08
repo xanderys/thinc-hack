@@ -134,7 +134,7 @@
 /* Homeowner pages: no loading captions over the house ("Fetching the aerial photo"); the house skeleton is enough. */
 .pp-spatial [class*="wait"] { display: none; }
 
-.pp-mark{position:absolute;top:18px;right:16px;margin:0;padding:3px 10px;border:1px solid currentColor;font-size:13px;font-weight:600;letter-spacing:.02em}
+.pp-mark{position:absolute;top:16px;right:16px;margin:0;padding:4px 12px;border:1px solid currentColor;font-size:13px;font-weight:600;letter-spacing:.02em;line-height:1.3;max-width:calc(100% - 140px);text-align:right}
 
 .pp-vars li { grid-template-areas: "name" "facts"; grid-template-columns: 1fr; }
 .pp-vars .pp-facts { grid-area: facts; margin: 0; }
