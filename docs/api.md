@@ -213,3 +213,8 @@ Every lead carries `version`, an integer that only goes up. It is bumped on ever
 
 ## v2.12 (engine eb69e14, additive): stated roof direction versus the measured roof
 When the inputs state a roof direction (`roof_azimuth_deg`, or `roof_orientation` as a compass word) and the address has a LoD2 model, `DesignResponse` carries `roof { stated_azimuth_deg, measured_azimuths_deg, stated_direction_conflict, source, note? }`. The conflict is true when the stated direction is more than 45 degrees from every measured face. The design always follows the measured faces, and on conflict the explanation begins with "Roof measured from the building model; your stated <direction> face was not found." Without a building model there is no roof block, and the stated direction drives the yield.
+
+## v2.13 (engine, additive): kit overrides kept on the lead
+- `POST /api/intake/step` takes `overrides?: Partial<Record<"pv_kwp" | "battery_kwh" | "heatpump_kw" | "wallbox_kw" | "inverter_kw", number | null | "include">>`, validated as `/api/refine` (unknown key, non-number or out-of-range value is 422). It is stored on the lead and bumps `version`; `{}` clears it; `base_version` still gives 409. Unknown `lead_id` with overrides is 404.
+- Overrides alone (no `facts_so_far`, no `answers`) return `{ version, overrides, status }` with no redraft and no history step. An unchanged value writes nothing. A change on an approved or signed lead drops `approved` and sets status `done`, as a fact change does.
+- `GET /api/leads/{id}` returns `overrides` (`{}` when none). The web applies them through `/api/refine` to show the kit.

@@ -46,13 +46,14 @@ export function springStep(x: THREE.Vector3, v: THREE.Vector3, goal: THREE.Vecto
   return et.length() < 0.01 && v.length() < 0.02;
 }
 
-// Orbit momentum after a flick. The release velocity is kept (no jump, no bounce) and then decays with friction:
-// below FLICK nothing happens, up to REVOLVE it stops in about 1.5 s, above REVOLVE it eases into a slow turntable
-// (one turn in 12 s, the flick's direction). Reduce Motion: never the turntable, only the decay.
-export const FLICK = 0.6;                   // rad/s
-export const REVOLVE = 1.2;                 // rad/s
+// Orbit momentum after a flick. The release velocity is kept (no jump, no bounce, capped at MAX) and then decays with
+// friction: below FLICK nothing happens, up to REVOLVE it coasts to a stop in about 1.5 s, above REVOLVE it eases into a
+// slow turntable (one turn in 12 s, the flick's direction). Reduce Motion: never the turntable, only the decay.
+export const FLICK = 1.2;                   // rad/s
+export const REVOLVE = 4;                   // rad/s
+export const MAX = 15;                      // rad/s: a hard flick turns about one more time before the turntable
 export const TURN = (2 * Math.PI) / 12;     // rad/s, turntable
-const TAU = 0.4;                            // s, friction time constant: 1.2 rad/s falls below 0.03 in about 1.5 s
+const TAU = 0.4;                            // s, friction time constant: 4 rad/s falls below 0.03 in about 2 s
 const STOP = 0.03;                          // rad/s
 export type Coast = { w: number; revolve: boolean };
 export type Sample = { t: number; x: number };
@@ -72,7 +73,7 @@ export function releaseRate(s: Sample[], now: number, height: number): number {
 
 export function startCoast(w: number, reduce: boolean): Coast | null {
   if (!Number.isFinite(w) || Math.abs(w) < FLICK) return null;
-  return { w, revolve: !reduce && Math.abs(w) > REVOLVE };
+  return { w: Math.sign(w) * Math.min(Math.abs(w), MAX), revolve: !reduce && Math.abs(w) > REVOLVE };
 }
 
 // Exact exponential step towards 0, or towards the turntable rate; false once it has stopped.

@@ -21,6 +21,8 @@ import ShadingPanel from "@/components/spatial/ShadingScrubber";
 import { EnvelopeBar, HeatPumpStep } from "@/components/spatial/EnvelopeBar";
 import SystemsChips from "@/components/systems/SystemsChips";
 import ProposedCard from "@/components/systems/ProposedCard";
+import SystemCard from "@/components/systems/SystemCard";
+import { elementsOf } from "@/lib/envelope";
 import { setSystem, stageOf, systemOf, type SystemName } from "@/components/systems/system";
 
 // While the 3D code loads, the hero shows the same house shimmer the view shows until its first frame.
@@ -113,10 +115,20 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   useLayoutEffect(() => {
     const el = rootRef.current;
     if (!el) return;
-    const fit = () => { const top = el.getBoundingClientRect().top + window.scrollY; el.style.setProperty("--chain-top", `${Math.round(top + 12)}px`); };
+    const fit = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY; el.style.setProperty("--chain-top", `${Math.round(top + 12)}px`);
+      // Systems on a phone: the model runs from its own top to the tucked pass, measured, never under it.
+      const h = heroRef.current;
+      if (h) {
+        const peek = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pc-peek")) || 76;
+        el.style.setProperty("--sys-hero-h", `${Math.round(window.innerHeight - (h.getBoundingClientRect().top + window.scrollY) - peek)}px`);
+      }
+    };
     fit();
     const ro = new ResizeObserver(fit); ro.observe(document.body);
-    return () => ro.disconnect();
+    addEventListener("resize", fit);
+    const mo = new MutationObserver(fit); mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });   // --pc-peek lands later
+    return () => { ro.disconnect(); mo.disconnect(); removeEventListener("resize", fit); };
   }, []);
   const address = inputs.address ?? inputs.roof?.matched_address;
   const installer = INSTALLER_NAME[inputs.installer_id as keyof typeof INSTALLER_NAME] ?? "this installer";
@@ -204,7 +216,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     `${n2(d.pv_kwp ?? 0)} kWp${mods}${multi ? ", shared roof" : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh` : "None",
     d.wallbox_kw ? `${n1(d.wallbox_kw)} kW` : inputs.has_ev ? "None" : "None, no EV",
-    multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : SYS ? "No heat pump in this design" : "None, not asked",
+    multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : SYS ? "No heat pump in this design" : "None",
     `${eur(e.capex_eur)}${breakEven ? `, break-even in ${breakEven} years` : ""}`,
   ];
   const head8: string[] = [
@@ -265,12 +277,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   const tools = ({ view: v, setView, recentre, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
     <div className={s.toolbar} role="toolbar" aria-label="Model" data-cover>
-      <Inert label="Select"><path d="M5 3l12 7-5 1.5L9.5 17z" /></Inert>
-      <Inert label="Pan"><path d="M7 11V5.5a1.5 1.5 0 013 0V10m0-1.5V4a1.5 1.5 0 013 0v5m0-3a1.5 1.5 0 013 0v6c0 3.5-2.5 6-6 6s-5-1.5-6.5-4L3 11.5a1.5 1.5 0 012.5-1.5L7 12" /></Inert>
-      <Inert label="Measure"><path d="M3 14L14 3l3 3L6 17zM6 11l1.5 1.5M8.5 8.5L10 10M11 6l1.5 1.5" /></Inert>
-      <span className={s.sep} />
-      <button type="button" className={s.tb} onClick={() => { holdOffer(); onUndo(); }} disabled={!canUndo} title="Undo" aria-label="Undo"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
-      <span className={s.sep} />
       <LayersMenu className={s.tb} up heatmap={{ on: heatmap, set: setHeatmap }} />
       <button type="button" className={s.tb} onClick={recentre} title="Re-centre" aria-label="Re-centre"><Ico><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4" /></Ico></button>
       <button type="button" className={s.tb} aria-pressed={expanded} title="Reasoning" aria-label="Reasoning" onClick={() => { setAuto(false); setExpanded((x) => !x); }}>
@@ -281,7 +287,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         <button type="button" aria-pressed={v === "3d" && !photo?.on} onClick={() => setView("3d")}>3D</button>
         {photo && <button type="button" aria-pressed={photo.on} onClick={() => photo.set(true)}>Photo</button>}
       </div>
-      <button type="button" className={s.save} aria-disabled="true" title="Saved with Approve">Save</button>
     </div>
   );
 
@@ -292,7 +297,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const offer = (docked: boolean) => (
     <OfferPanel docked={docked} res={res} economics={e} breakEven={breakEven} cause={cause} pending={!!pending}
       variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={roofFitKnown(layers?.checks ?? null, inputs.address)} checksFresh={fresh} model={model} leadId={leadId} inputs={inputs}
-      overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
+      undo={{ can: canUndo, run: () => { holdOffer(); onUndo(); } }} overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
   );
   // The step cards; with the Systems hero only the chosen system's card shows, as its info block.
   const rail = expanded && (
@@ -359,14 +364,100 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       </ol>
   );
   const sysChips = <SystemsChips active={systemOf(stage)} onPick={(k: SystemName) => go(stageOf(k))} moved={new Set([...moved].map(systemOf).filter((x): x is SystemName => !!x))} />;
-  // Desktop: one info block over the model, the chosen system's card; on Panels the shading strip folds into it.
-  const sysInfo = <div className="sys-info" data-cover>{rail}{address && spatial !== false && onPanels && <div className="sys-shade"><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}</div>;
-  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending}>{offer(false)}</ProposedCard>;
+  // Systems: one glass card inside the canvas per chip, with that system's calculation in flowing copy; the bars,
+  // equations and Why wait behind its "i". The on-model labels (face kWp, battery kWh, wallbox kW) stay the scene's.
+  const sysNow = systemOf(stage);
+  const seg = (b: Bar | undefined, re: RegExp) => b?.segments.find((g) => re.test(g.name))?.value;
+  const whyBlock = (n: number) => WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation ? (
+    <>
+      <div className={s.whyrow}><button type="button" className={s.whyb} aria-expanded={why?.k === WHY_AT[n]} onClick={() => setWhy((w) => (w?.k === WHY_AT[n] ? null : { k: WHY_AT[n]!, level: 1 }))}>Why</button></div>
+      {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />}
+    </>
+  ) : null;
+  const roofBar = bars[1] && shading ? { ...bars[1], segments: [...bars[1].segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address" as const, citation: shading.source }] } : bars[1];
+  const useKwh = (inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0);
+  const sysBody: Record<SystemName, { head: string; body: ReactNode; info: ReactNode }> = {
+    panels: {
+      head: head5[0],
+      body: multi ? <p>Shared roof, apartment building: the single-family design does not apply.</p> : a ? (
+        <p>About {n0(a.pv_yield_kwh)} kWh a year{faces ? ` from ${faces} face${faces === 1 ? "" : "s"}` : ""}, for a home using {n0(useKwh)} kWh{layers?.ev ? " including the car" : ""}.{e.autarky_share != null ? ` ${pc(e.autarky_share)} of that comes from the roof${d.battery_kwh ? ", with the battery" : ""}.` : ""}</p>
+      ) : <p>Working out the yield for this roof.</p>,
+      info: <>
+        {roofBar && <BarView bar={roofBar} bare />}
+        <BarView bar={useBar} bare />
+        <p>{n2(d.pv_kwp ?? 0)} kWp{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}.</p>
+        {shading?.source && <p>Shading: {shading.source}</p>}
+        {res.roof?.stated_direction_conflict && <p>{res.roof.note ?? "Roof measured from the building model; the stated direction was not found."}</p>}
+        {whyBlock(1)}
+      </>,
+    },
+    battery: (() => {
+      const day = bars[2], roof = seg(day, /solar|roof/i), fromB = seg(day, /battery/i), grid = seg(day, /grid/i);
+      return {
+        head: head5[1] === "None" ? "No battery" : head5[1],
+        body: <>
+          {day && roof != null ? <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p> : null}
+          {d.battery_kwh && ratio != null ? <p>{n1(d.battery_kwh)} kWh is {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0 kWh per kWp for {n2(d.pv_kwp ?? 0)} kWp.</p> : !d.battery_kwh ? <p>No battery in this design.</p> : null}
+        </>,
+        info: <>{day && <BarView bar={day} />}{whyBlock(2)}</>,
+      };
+    })(),
+    wallbox: (() => {
+      const ch = bars[3], km = seg(ch, /^km\b/i) ?? layers?.ev?.annual_km, kwh = seg(ch, /^energy\b/i) ?? layers?.ev?.annual_kwh, home = seg(ch, /^charged at home/i);
+      const night = ch?.total ?? layers?.ev?.kwh_per_night_typical;
+      return {
+        head: head5[2] === "None, no EV" ? "No wallbox" : head5[2] === "None" ? "No wallbox" : head5[2],
+        body: d.wallbox_kw && km && kwh ? (
+          <p>{n0(km)} km a year takes about {n0(kwh)} kWh{home ? `; ${n0(home)} kWh of it is charged at home` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p>
+        ) : <p>{line2[3]}</p>,
+        info: d.wallbox_kw || layers?.ev ? <>{ch && <BarView bar={ch} />}{whyBlock(3)}</> : null,
+      };
+    })(),
+    heatpump: (() => {
+      // The engine's heat-loss sentence, in product copy: degrees marked, the room-scan clause plain.
+      const loss = plain(bars[4]?.sentence)?.replace(/(-?\d+) C\b/g, "$1 °C").replace(/;\s*[^;]*room scan[^;]*\.$/i, ". A room scan on site refines this.") ?? null;
+      // The x-ray's heat-loss shares, folded into the card as one sentence (same numbers and colours as the tint).
+      const env = hasEnv ? model!.envelope! : null;
+      const shares = env ? (() => {
+        const { list } = elementsOf(env), by = new Map(list.map((x) => [x.key, x]));
+        const roof = by.get("roof")?.share ? by.get("roof") : by.get("ceiling") ?? by.get("roof");
+        return [roof, by.get("wall"), by.get("window"), by.get("floor")].filter((x): x is NonNullable<typeof x> => !!x && x.share > 0).sort((p, q) => q.share - p.share);
+      })() : [];
+      const sharesP = shares.length ? (
+        <p className="sc-shares">{shares.map((x, i) => (
+          <span key={x.key}>{i === 0 ? "" : i === shares.length - 1 ? " and " : ", "}<i style={{ background: x.colour }} aria-hidden="true" />{i === 0 ? x.name : x.name.toLowerCase()} {pc(x.share)}</span>
+        ))} of the heat loss, estimated.</p>
+      ) : null;
+      return {
+        head: multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW heat pump` : "No heat pump in this design",
+        body: multi ? <p>The walls and roof are the whole building&rsquo;s, so no heat pump size for one flat.</p> : <>
+          {loss && <p>{loss}</p>}
+          {sharesP}
+          <p>{d.heatpump_kw ? "Sized from the heating bill." : hpWhy ?? "Heating facts not asked yet."}</p>
+        </>,
+        info: multi ? null : <>
+          {hasEnv && <EnvelopeBar env={model!.envelope!} bare />}
+          {bars[4] && <BarView bar={bars[4]} />}
+          <HeatPumpStep res={res} inputs={inputs} env={null} multi={multi} variants={variants} onVariant={onVariant} />
+          {whyBlock(4)}
+        </>,
+      };
+    })(),
+  };
+  const cardNow = sysNow ? sysBody[sysNow] : null;
+  const sysCard = sysNow && cardNow && (
+    <SystemCard sys={sysNow} head={cardNow.head} info={cardNow.info} pending={!!pending || !fresh}
+      extra={sysNow === "panels" && address && spatial !== false ? <ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /> : undefined}>
+      {cardNow.body}
+    </SystemCard>
+  );
+  // A flat in an apartment block: the engine's single-family design does not apply, so the pass shows none and Approve waits.
+  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending} none={multi ? "No design for this building yet" : null}>{offer(false)}</ProposedCard>;
   const overlays = (
     <>
       {!SYS && address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}
       {!narrow && !SYS && offer(true)}
-      {!narrow && SYS && expanded && sysInfo}
+      {SYS && expanded && sysCard}
       {!narrow && SYS && card}
     </>
   );
@@ -388,6 +479,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         </div>
       )}
       {!SYS && rail}
+      {SYS && <div className="sys-under">{sysChips}</div>}
 
       <div ref={heroRef} className={`${s.hero} ${onPanels && shading ? s.heroTall : ""}`}>
         {address && spatial !== false ? (
@@ -404,9 +496,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         )}
       </div>
 
-      {SYS && <div className="sys-under">{sysChips}</div>}
-      {SYS && narrow && rail}
-      {FIVE && onPanels && address && spatial !== false && (!SYS || narrow) && <div className={s.shadeUnder}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}
+      {FIVE && onPanels && address && spatial !== false && !SYS && <div className={s.shadeUnder}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}
       {narrow && !SYS && <div className={s.offerUnder}>{offer(false)}</div>}
       {narrow && SYS && card}
       {prev && JSON.stringify(prev.design) !== JSON.stringify(res.design) && <span className={s.srOnly} aria-live="polite">Draft updated.</span>}
@@ -416,9 +506,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
 function Ico({ children }: { children: ReactNode }) {
   return <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>;
-}
-function Inert({ label, children }: { label: string; children: ReactNode }) {
-  return <button type="button" className={`${s.tb} ${s.inert}`} aria-disabled="true" title={`${label}: not in this demo`} aria-label={`${label}, not in this demo`}><Ico>{children}</Ico></button>;
 }
 function HouseSkel() {
   return (

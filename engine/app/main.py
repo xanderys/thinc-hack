@@ -677,6 +677,20 @@ class StepReq(BaseModel):
     answers: Union[dict, list, None] = None  # older shape: HomeInputs fields or [{field, value}]
     note: Optional[str] = None
     base_version: Optional[int] = None
+    overrides: Optional[dict] = None  # v2.13: the planner's kit choices (as /api/refine), stored on the lead; {} clears them
+
+
+def _clean_overrides(raw: dict) -> dict:
+    """Validate kit overrides exactly as /api/refine does; raises InputError (422) on a bad key or value."""
+    bad = [k for k in raw if k not in FIELDS]
+    if bad:
+        raise InputError(f"Unknown override field: {', '.join(bad)}. Allowed: {', '.join(FIELDS)}.")
+    nonnum = [k for k, v in raw.items() if v is not None and v != "include" and not (isinstance(v, (int, float)) and not isinstance(v, bool))]
+    if nonnum:
+        raise InputError(f"Override {', '.join(nonnum)} must be a number, null or \"include\".")
+    ov = {k: v for k, v in raw.items() if not (k == "inverter_kw" and v == "include")}
+    check_design({k: v for k, v in ov.items() if v != "include"}, "overrides")
+    return ov
 
 
 def _facts(raw: dict, block: bool = True) -> dict:
@@ -847,6 +861,22 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     stale = _stale(lead, req.base_version)
     if stale is not None:
         return stale
+    if req.overrides is not None:  # a kit edit on the Proposed Design card: kept on the lead so a reload shows it
+        ov = _clean_overrides(req.overrides)
+        if not lead:
+            return err(404, f"No lead {req.lead_id}: overrides need an existing lead.")
+        if ov != (lead.get("overrides") or {}):
+            if ov:
+                lead["overrides"] = ov
+            else:
+                lead.pop("overrides", None)
+            if lead.get("status") in ("approved", "signed"):  # the design on screen moved after release: release it again
+                lead["status"], lead["approved_at"] = "done", None
+                lead.pop("approved", None)
+            lead["updated_at"] = leads.now()
+            leads.save(lead)
+        if req.facts_so_far is None and not req.answers:  # overrides only: no redraft, no history step
+            return {"version": int(lead.get("version") or 0), "overrides": lead.get("overrides") or {}, "status": lead["status"]}
     if not lead:  # upsert: link to the homeowner page's lead by name and place, else start one from what is known
         name = meta.get("customer_name") or ""
         place = ans.get("address") or ans.get("postcode") or ""
@@ -986,7 +1016,7 @@ def _lead_out(lead: dict) -> dict:
         dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(lead)}
     return {"lead_id": lead["lead_id"], "version": int(lead.get("version") or 0), "status": lead["status"],
             "customer_name": lead["customer_name"], "approved_at": lead.get("approved_at"), "approved_variant": lead.get("approved_variant"),
-            "proposal_hash": current_hash(lead), "decision": dec, "approved": lead.get("approved"),
+            "proposal_hash": current_hash(lead), "decision": dec, "approved": lead.get("approved"), "overrides": lead.get("overrides") or {},
             "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
             "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"], "pinned": bool(lead.get("pinned")),
             "created_at": lead["created_at"], "updated_at": lead["updated_at"]}

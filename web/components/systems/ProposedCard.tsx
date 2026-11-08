@@ -10,6 +10,7 @@ type Fig = { k: "kwp" | "kwh" | "price"; v: string };
 type Props = {
   kwp: number | null | undefined; kwh: number | null | undefined; price: number;
   pending: boolean; side?: "bottom"; children: ReactNode; id?: string | null;
+  none?: string | null;   // no design applies to this building: no figures, this line, and Approve disabled
 };
 
 const n = (x: number, d: number) => (Math.round(x * 10 ** d) / 10 ** d).toLocaleString("en-GB");
@@ -22,7 +23,7 @@ function useReduce() {
   return r;
 }
 
-export default function ProposedCard({ kwp, kwh, price, pending, children, id }: Props) {
+export default function ProposedCard({ kwp, kwh, price, pending, children, id, none }: Props) {
   const side = "bottom" as const;
   const reduce = useReduce();
   const [open, setOpen] = useState(false);
@@ -166,13 +167,18 @@ export default function ProposedCard({ kwp, kwh, price, pending, children, id }:
           onClick={() => { if (moved.current) { moved.current = false; return; } to(!open); }}>
           <span className="pc-grip" aria-hidden="true" />
           <span className="pc-h">Proposed Design</span>
-          <span className="pc-figs" aria-live="polite" aria-busy={pending}>{figs.map(figure)}</span>
+          {none ? <span className="pc-none">{none}</span> : <span className="pc-figs" aria-live="polite" aria-busy={pending}>{figs.map(figure)}</span>}
           <svg className="pc-chev" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M5 12.5l5-5 5 5" />
           </svg>
         </button>
         <div className="pc-body" inert={!open} aria-hidden={!open || undefined}>
-          {children}
+          {none ? (
+            <div className="pc-nobody">
+              <p>{none}</p>
+              <button type="button" className="btn" disabled>Approve</button>
+            </div>
+          ) : children}
         </div>
       </div></div>
     </div>

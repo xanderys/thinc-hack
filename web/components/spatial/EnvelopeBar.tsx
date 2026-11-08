@@ -68,7 +68,7 @@ export function HeatPumpStep({ res, inputs, env, multi, variants, onVariant }: S
       {has ? (
         <p className={s.sentence}><b>{n1(d.heatpump_kw!)} kW</b> heat pump, sized from the heating bill.</p>
       ) : (
-        <p className={s.sentence}>None, not asked.{a && plus != null ? <> If asked: <b>{n1(a.design.heatpump_kw!)} kW</b>, +{eur(plus)}.</> : null}</p>
+        <p className={s.sentence}>No heat pump.{a && plus != null ? <> Adding one: <b>{n1(a.design.heatpump_kw!)} kW</b>, +{eur(plus)}.</> : null}</p>
       )}
       {/* Apartment buildings: the chain says why there is no heat load (Chain.tsx). */}
       {!multi && env ? <EnvelopeBar env={env} /> : null}

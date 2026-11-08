@@ -284,10 +284,10 @@ def hp_net_capex(inputs) -> float:
 
 
 def hp_capex_note(inputs) -> str:
-    s = f"Heat pump EUR {HP_GROSS_EUR:,} less the {HP_SUBSIDY:.0%} BEG base subsidy on up to EUR {HP_ELIGIBLE_CAP:,}"
+    s = f"Heat pump €{HP_GROSS_EUR:,} less the {HP_SUBSIDY:.0%} BEG base subsidy on up to €{HP_ELIGIBLE_CAP:,}"
     if inputs.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable"):
-        s += f", less EUR {BOILER_AVOIDED_EUR:,} for the boiler replacement it avoids"
-    return s + f": EUR {hp_net_capex(inputs):,.0f} counted."
+        s += f", less €{BOILER_AVOIDED_EUR:,} for the boiler replacement it avoids"
+    return s + f": €{hp_net_capex(inputs):,.0f} counted."
 
 
 def battery_life_years(kwh, discharged_kwh):
@@ -431,7 +431,7 @@ def economics(inputs, design, after, before, location="Munich", year=None) -> di
         a.append(f"No feed-in pay in the real {year} negative day-ahead price intervals (DE-LU); upkeep {OPEX_SHARE:.1%} of PV and battery cost a year.")
     a.append(f"NPV over {YEARS} years at {DISCOUNT:.0%} discount, {DEGRADATION:.1%} a year PV degradation"
              + (f"; battery replaced after {life:.0f} years ({BAT_LIFE_YEARS} years or {BAT_LIFE_CYCLES:,} cycles)." if life and life < YEARS else "."))
-    a.append(f"PV EUR {PV_FIXED_EUR:,.0f} plus EUR {PV_EUR_KWP:,.0f} per kWp (EUR 1,350 per kWp at 5 kWp, 1,000 at 20 kWp); battery EUR {BAT_EUR_KWH} per kWh.")
+    a.append(f"PV €{PV_FIXED_EUR:,.0f} plus €{PV_EUR_KWP:,.0f} per kWp (€1,350 per kWp at 5 kWp, €1,000 at 20 kWp); battery €{BAT_EUR_KWH} per kWh.")
 
     # PV used in each hour (direct or from the battery), shared across loads by their share of that hour
     covered_h = after["direct"] + after["discharge"]

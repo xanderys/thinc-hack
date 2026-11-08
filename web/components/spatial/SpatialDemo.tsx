@@ -2,7 +2,7 @@
 // Progressive, layered explanation of a design over the real house model.
 // Usage: <SpatialDemo inputs={inputs} design={design} address={address} layer={n} onLayerChange={setN} />
 // Renders nothing when the engine has no 3D model for the address; onAvailable(false) tells the parent to keep its drawing.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { Design, DesignResponse, HomeInputs } from "@/lib/api";
 import { call } from "@/lib/client";
 import type { Envelope, Layers, PanelRect, RoofModel, RoofPlane } from "./types";
@@ -17,7 +17,7 @@ import { snapKey } from "./snapshot";
 import LayersMenu from "./LayersMenu";
 import { isOrigin } from "@/lib/tilesGeo";
 import { isMultiUnit } from "@/lib/building";
-import { setImagery, useViewOpts, type Imagery } from "./whiteMode";
+import { setImagery, type Imagery } from "./whiteMode";
 import s from "./spatial.module.css";
 import ShadingPanel from "./ShadingScrubber";
 import { useShadeView, useShading } from "@/lib/shading";
@@ -46,7 +46,6 @@ type Props = {
 
 // Layer ids are fixed (7 Heat, 8 Plan); a step shows only when its data is present.
 const STEPS = ["Roof", "Sun", "Panels", "A day", "Battery", "Value", "Heat", "Plan"];
-const LICENCE = "Bayerische Vermessungsverwaltung, www.geodaten.bayern.de, CC BY 4.0";
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
 const n1 = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 const n2 = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 2 });
@@ -72,6 +71,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const setLayer = (n: number) => { if (onLayerChange) onLayerChange(n); if (ctrl == null) setOwn(n); };
 
   const [layers, setLayers] = useState<Layers | null>(null);
+  const [zoomCan, setZoomCan] = useState({ in: true, out: true });
   const [absent, setAbsent] = useState(false);
   const [layersErr, setLayersErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -131,7 +131,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     import("./scene").then(({ SpatialScene }) => {
       if (dead || !host.current || !overlay.current || !svg.current) return;
       const sc = new SpatialScene(host.current, overlay.current, svg.current, {
-        reduce, compass: compass.current, onHour: (h, playing) => setHour({ h, playing }), onView: (m) => setView(m),
+        reduce, compass: compass.current, onHour: (h, playing) => setHour({ h, playing }), onView: (m) => setView(m), onZoom: setZoomCan,
       });
       if (modelRef.current) sc.setModel(modelRef.current);
       scene.current = sc;
@@ -169,8 +169,6 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   // Handed to the scene whenever both exist, in any order; the scene starts it once its glb is in.
   useEffect(() => { if (ready && isOrigin(groundOrigin)) scene.current?.groundFor(groundOrigin); }, [ready, groundKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
-  const vo = useViewOpts();
-  const credit = vo.google && vo.ground === "google" && vo.credit ? `, ground: ${vo.credit}` : "";
   // Overlays marked data-cover inside the view (the number card, the shading strip) report their rects; each takes
   // the side of the canvas that costs the house least, and the scene fits the house into what is left. The free
   // area is also published as CSS variables (--free-l, --free-t, --free-w, --free-h) so a loading skeleton can sit
@@ -419,6 +417,25 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const frontier = layers && L === 6 ? <FrontierChart frontier={layers.frontier} /> : null;
   const chart = battery ?? frontier;
 
+  // Zoom: a stacked + and − beside Face north; the scene clamps to the pinch and wheel limits and reports them.
+  const zoomPair = (
+    <div className={s.zoom} role="group" aria-label="Zoom">
+      <button type="button" title="Zoom in" aria-label="Zoom in" disabled={!zoomCan.in} onClick={() => scene.current?.zoomBy(1)}>
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+      </button>
+      <button type="button" title="Zoom out" aria-label="Zoom out" disabled={!zoomCan.out} onClick={() => scene.current?.zoomBy(-1)}>
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 7h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+      </button>
+    </div>
+  );
+  // + and − on the keyboard do the same while the model has focus.
+  const onKey = (e: ReactKeyboardEvent) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement).closest("input, textarea, select, [contenteditable]")) return;
+    const dir = e.key === "+" || e.key === "=" ? 1 : e.key === "-" || e.key === "−" || e.key === "_" ? -1 : 0;
+    if (!dir) return;
+    e.preventDefault(); scene.current?.zoomBy(dir as 1 | -1);
+  };
+
   return (
     <section className={homeowner ? `${s.wrap} ${s.homeowner}` : s.wrap} aria-label="How the design is computed, over the house">
       {!bare && <div className={s.strip} style={{ ["--n" as string]: nSteps }} role="group" aria-label="Layers">
@@ -430,7 +447,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
       </div>}
 
       <div ref={viewEl} className={bare ? `${s.view} ${s.bareView}` : s.view}>
-        <div ref={host} className={s.host} />
+        <div ref={host} className={s.host} tabIndex={0} aria-label="3D model of the house; plus and minus zoom" onKeyDown={onKey} />
         <svg ref={svg} className={s.flows} aria-hidden="true" />
         <div ref={overlay} className={s.overlay} aria-hidden="true" />
         {photo.under}
@@ -455,13 +472,14 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         )}
 
         {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { setView(v); if (v === "3d" && L === 8) setLayer(3); }, recentre: () => scene.current?.refit() })}
-        {bare && <div className={`${s.tools} ${s.toolsBare}`}><button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button></div>}
+        {bare && <div className={`${s.tools} ${s.toolsBare}`}>{zoomPair}<button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button></div>}
         {!bare && <div className={s.tools}>
           <div className={s.toggle} role="group" aria-label="View">
             <button type="button" aria-pressed={L !== 8 && view === "3d"} onClick={() => { setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
             <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => setView("2d")}>2D</button>
           </div>
           <LayersMenu className={s.layersBtn} />
+          {zoomPair}
           <button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button>
         </div>}
 
@@ -481,7 +499,6 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {!bare && chart && <div className={s.side}>{chart}</div>}
         {!bare && <ShadingPanel address={address} kwp={kwp} float />}
         {photo.overlay}
-        {glbOk && L !== 8 && view === "3d" && !photo.on && <p className={s.massTag}>Building model</p>}
         {children}
       </div>
 
@@ -500,9 +517,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {content && !homeowner && content.sources.length > 0 && (
           <p className={s.sources}>Sources: {content.sources.map((x, i) => <span key={x.key}>{i ? "; " : ""}{x.url ? <a href={x.url} target="_blank" rel="noreferrer">{x.citation}</a> : x.citation}</span>)}</p>
         )}
-        <p className={s.licence}>{LICENCE}{credit}</p>
       </div>}
-      {bare && <p className={`${s.licence} ${s.licenceBare}`}>{LICENCE}{credit}</p>}
     </section>
   );
 }

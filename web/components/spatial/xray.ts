@@ -24,7 +24,9 @@ const BREATH_S = 5;
 // The four shares on the card, in this order; roof falls back to the top ceiling when the roof space is unheated.
 const CARD: ElementKey[] = ["roof", "wall", "window", "floor"];
 
-type Face = { c: THREE.Vector3; n: THREE.Vector3; area: number };
+// Leader targets: points just inside each face's outline; the one nearest the card on screen is used, so a leader
+// reaches its face at the near edge and never crosses the roof or another face.
+type Face = { c: THREE.Vector3; n: THREE.Vector3; area: number; cands: THREE.Vector3[]; poly?: THREE.Vector3[] };
 type Fade = { m: THREE.Material & { opacity: number }; k: number; glow?: number };
 
 export class Xray {
@@ -35,8 +37,8 @@ export class Xray {
   private wall: { mesh: THREE.Mesh; orig: THREE.BufferGeometry } | null = null;
   private wallsDone = false;
   private faces: Face[] = [];          // wall facades of this house, for the wall leader
-  private roofAt: THREE.Vector3 | null = null;
-  private floorAt: THREE.Vector3 | null = null;
+  private roofs: Face[] = [];
+  private floorCands: THREE.Vector3[] = [];
   private shellBox: THREE.Box3 | null = null;   // the glass shell's own bounds, tighter than the scene's box
   private card: HTMLDivElement | null = null;
   private lines: SVGSVGElement | null = null;
@@ -58,7 +60,7 @@ export class Xray {
     this.mats = [];
     if (this.wall) { this.wall.mesh.geometry = this.wall.orig; this.wall = null; }
     this.wallsDone = false;
-    this.faces = []; this.roofAt = null; this.floorAt = null; this.shellBox = null;
+    this.faces = []; this.roofs = []; this.floorCands = []; this.shellBox = null;
     this.card?.remove(); this.card = null;
     this.lines?.remove(); this.lines = null;
   }
@@ -88,7 +90,6 @@ export class Xray {
     const T = this.tints(this.env!);
     // Roof: the aerial texture stays readable under a light tint; a second sheet just above it carries the glow.
     if (T.roof) {
-      let best = 0;
       this.host.planes().filter((p) => p.is_target).forEach((p) => {
         const pts = p.polygon.map(toV), n = new THREE.Vector3();
         for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; n.x += (a.y - b.y) * (a.z + b.z); n.y += (a.z - b.z) * (a.x + b.x); n.z += (a.x - b.x) * (a.y + b.y); }
@@ -102,7 +103,8 @@ export class Xray {
         };
         sheet(0.05, this.mat(T.roof!.col, 0.34), 5);
         sheet(0.45, this.mat(T.roof!.col, 0, { glow: 0.22 * (T.roof!.s / T.hi) }), 7);
-        if (p.area_m2 > best) { best = p.area_m2; this.roofAt = pts.reduce((a, q) => a.add(q), new THREE.Vector3()).multiplyScalar(1 / pts.length).addScaledVector(n, 0.1); }
+        const c0 = pts.reduce((a, q) => a.add(q), new THREE.Vector3()).multiplyScalar(1 / pts.length);
+        this.roofs.push({ c: c0, n, area: p.area_m2, poly: pts, cands: inset(pts, c0, 0.4).map((q) => q.addScaledVector(n, 0.1)) });
       });
     }
     this.buildWalls();
@@ -169,7 +171,12 @@ export class Xray {
         if (area < 3) return;
         pts.forEach((p) => halo.push(p.clone().addScaledVector(n, 0.4)));
         const c0 = pts.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
-        this.faces.push({ c: c0.addScaledVector(n, 0.05), n, area });
+        // Both ends of the facade at ground-floor height, inset 0.4 m: always below the eaves.
+        const u = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), n).normalize();
+        const us = pts.map((q) => q.dot(u)), u0 = Math.min(...us), u1 = Math.max(...us), y0 = Math.min(...pts.map((q) => q.y));
+        const d = n.dot(pts[0]) + 0.05;
+        const cands = [u0 + 0.4, u1 - 0.4].flatMap((uu) => [1.2, 2.2].map((dy) => u.clone().multiplyScalar(uu).addScaledVector(n, d).setY(y0 + dy)));
+        this.faces.push({ c: c0.addScaledVector(n, 0.05), n, area, cands });
       });
       if (halo.length) { const h = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints(halo), this.mat(T.wall.col, 0, { glow: 0.2 * (T.wall.s / T.hi) })); h.renderOrder = 7; this.g.add(h); }
     }
@@ -183,7 +190,7 @@ export class Xray {
         geoF.setIndex(THREE.ShapeUtils.triangulateShape(hull, []).flat());
         const fm = new THREE.Mesh(geoF, this.mat(T.floor.col, 0.62)); fm.renderOrder = 3; this.g.add(fm);
         const cx = hull.reduce((s, p) => s.add(p), new THREE.Vector2()).multiplyScalar(1 / hull.length);
-        this.floorAt = new THREE.Vector3(cx.x, y, cx.y);
+        this.floorCands = inset(hull.map((p) => new THREE.Vector3(p.x, y, p.y)), new THREE.Vector3(cx.x, y, cx.y), 0.5);
       }
     }
     this.apply();
@@ -211,10 +218,10 @@ export class Xray {
     });
     const pc = (s: number) => `${Math.round(s * 100)} %`;
     card.innerHTML = `<div data-x="head" style="font-weight:600;margin-bottom:1px">Heat loss</div>` +
-      rows.map((e) => `<div data-k="${e.key === "ceiling" ? "roof" : e.key}" style="display:grid;grid-template-columns:8px 1fr auto;gap:7px;align-items:center;white-space:nowrap">` +
+      rows.map((e) => `<div data-k="${e.key === "ceiling" ? "roof" : e.key}" data-c="${e.colour}" style="display:grid;grid-template-columns:8px 1fr auto;gap:7px;align-items:center;white-space:nowrap">` +
         `<i style="width:8px;height:8px;border-radius:50%;background:${e.colour}"></i><span>${e.name}</span>` +
         `<b style="font-weight:600;font-variant-numeric:tabular-nums">${pc(e.share)}</b></div>`).join("") +
-      `<div data-x="foot" style="font-size:11px;color:var(--ink-3, #8a8d96);margin-top:2px">Estimated from address</div>`;
+      `<div data-x="foot" style="font-size:11px;color:var(--ink-3, #8a8d96);margin-top:2px">Estimate</div>`;
     ov.appendChild(svg); ov.appendChild(card);
     this.card = card; this.lines = svg;
   }
@@ -262,22 +269,35 @@ export class Xray {
     svg.style.opacity = o.toFixed(3);
     // Each row's leader starts at the card edge nearest its face and ends in a small dot on the face.
     const cam = this.host.camera(), eye = new THREE.Vector3(); cam.getWorldPosition(eye);
-    const wallAt = this.faces.length ? this.faces.reduce((best, fc) => {
-      const s = fc.n.dot(eye.clone().sub(fc.c).normalize()) * Math.sqrt(fc.area);
-      return s > best.s ? { s, f: fc } : best;
-    }, { s: -Infinity, f: this.faces[0] }).f.c : null;
-    const at: Record<string, THREE.Vector3 | null> = { roof: this.roofAt, wall: wallAt, floor: this.floorAt, window: null };
+    const facing = (fc: Face) => fc.n.dot(eye.clone().sub(fc.c).normalize());
+    // The facade that faces the camera most (a facade seen edge-on would put its dot under the roof).
+    const big = this.faces.filter((fc) => fc.area >= 6), pool = big.length ? big : this.faces;
+    const wall = pool.length ? pool.reduce((b, fc) => (facing(fc) > facing(b) ? fc : b)) : null;
+    const up = this.roofs.filter((r) => facing(r) > 0.05);
+    const roofCands = up.flatMap((r) => r.cands);
+    // Wall and floor ends hidden behind a roof face on screen are skipped, so their leaders never cross the roof.
+    const shadows = up.map((r) => (r.poly ?? []).map((v) => this.host.project(v)));
+    const open = (q: P) => !shadows.some((poly) => inside(q, poly));
+    // The candidate whose screen point lies nearest the card.
+    const near = (cands: THREE.Vector3[]) => {
+      let best: P | null = null, bd = Infinity;
+      cands.forEach((v) => {
+        const q = this.host.project(v); if (!q.ok || (!roofCands.includes(v) && !open(q))) return;
+        const dx = Math.max(x - q.x, 0, q.x - (x + cw)), dy = Math.max(y - q.y, 0, q.y - (y + ch)), dd = dx * dx + dy * dy;
+        if (dd < bd) { bd = dd; best = q; }
+      });
+      return best as P | null;
+    };
+    const at: Record<string, P | null> = { roof: near(roofCands), wall: wall ? near(wall.cands) : null, floor: near(this.floorCands), window: null };
     let html = "";
     card.querySelectorAll<HTMLElement>("[data-k]").forEach((row) => {
-      const t = at[row.dataset.k ?? ""];
-      if (!t) return;
-      const p = this.host.project(t);
-      if (!p.ok) return;
+      const p = at[row.dataset.k ?? ""];
+      if (!p) return;
       const ry = y + row.offsetTop + row.offsetHeight / 2;
       const sx = p.x < x ? x : p.x > x + cw ? x + cw : x + cw / 2, sy = p.x < x || p.x > x + cw ? ry : p.y < y ? y : y + ch;
       const kx = sx === x ? sx - 14 : sx === x + cw ? sx + 14 : sx;
       html += `<polyline points="${sx.toFixed(1)},${sy.toFixed(1)} ${kx.toFixed(1)},${sy.toFixed(1)} ${p.x.toFixed(1)},${p.y.toFixed(1)}" fill="none" stroke="${INK}" stroke-opacity="0.45" stroke-width="1"/>` +
-        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="#fff" stroke="${INK}" stroke-width="1"/>`;
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${row.dataset.c ?? "#fff"}" stroke="${INK}" stroke-width="1"/>`;
     });
     if (svg.innerHTML !== html) svg.innerHTML = html;
   }
@@ -314,4 +334,23 @@ function convexHull(p: THREE.Vector2[]): THREE.Vector2[] {
   for (const q of pts) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
   for (const q of pts.reverse()) { while (hi.length >= 2 && cross(hi[hi.length - 2], hi[hi.length - 1], q) <= 0) hi.pop(); hi.push(q); }
   return lo.slice(0, -1).concat(hi.slice(0, -1));
+}
+
+// Points along a closed outline (corners and edge midpoints), each moved d metres towards c so it sits on the face.
+function inset(pts: THREE.Vector3[], c: THREE.Vector3, d: number): THREE.Vector3[] {
+  const out: THREE.Vector3[] = [];
+  pts.forEach((a, i) => {
+    const b = pts[(i + 1) % pts.length];
+    [a, a.clone().lerp(b, 0.5)].forEach((q) => { const v = c.clone().sub(q), l = v.length(); out.push(q.clone().addScaledVector(v, l > d * 2 ? d / l : 0.3)); });
+  });
+  return out;
+}
+
+function inside(q: { x: number; y: number }, poly: { x: number; y: number }[]): boolean {
+  let hit = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > q.y) !== (b.y > q.y) && q.x < ((b.x - a.x) * (q.y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+  }
+  return hit;
 }
