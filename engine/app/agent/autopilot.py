@@ -261,7 +261,7 @@ def seed() -> list:
     for s in SEEDS:
         lead = _api["create"](s["name"], s.get("address") or s.get("postcode"), s["facts"], phone)
         lead.setdefault("meta", {}).update(seed=True, intake_kind=s["kind"], intake_text=s["text"])
-        lead["test"] = True
+        lead["test"] = False  # real board leads for the shoot; the 13:00 hide-unpinned sweep clears them
         leads.save(lead)
         out.append({"lead_id": lead["lead_id"], "customer_name": s["name"], "kind": s["kind"]})
         if s.get("address"):  # build the 3D model now, so the run measures from the layout, not the area estimate

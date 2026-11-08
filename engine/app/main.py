@@ -718,7 +718,7 @@ class StepReq(BaseModel):
     note: Optional[str] = None
     base_version: Optional[int] = None
     phone: Optional[str] = None  # v2.14: the homeowner's mobile (E.164), stored on the lead
-    source: Optional[Literal["whatsapp", "call", "form", "planner"]] = None  # v2.14: where the stated facts came from (chips show "via WhatsApp")
+    source: Optional[Literal["whatsapp", "call", "form", "planner", "email", "voice"]] = None  # v2.14: where the stated facts came from (chips show "via WhatsApp")
     overrides: Optional[dict] = None  # v2.13: the planner's kit choices (as /api/refine), stored on the lead; {} clears them
 
 
