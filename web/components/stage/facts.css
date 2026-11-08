@@ -13,8 +13,8 @@
 .fq-wrap[data-open] .fq-body { grid-template-rows: 1fr; opacity: 1; }
 .fq-clip { min-height: 0; overflow: hidden; display: grid; gap: 10px; }
 .fq-wrap[data-open] .fq-clip { padding: 10px 14px 14px; }
-.fq-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 18px; }
-.fq { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 6px 8px; border-radius: 8px; cursor: pointer; min-width: 0; }
+.fq-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 8px; }
+.fq { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 6px 4px; border-radius: 8px; cursor: pointer; min-width: 0; }
 .fq:hover { background: var(--sheet); }
 .fq:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .fq[aria-expanded="true"] { background: var(--paper); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -25,7 +25,7 @@
 .fq .v { font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
 .fq .via { font-size: 11px; color: var(--ink-3); }
 .fq[data-state="estimated"] .v { color: var(--ink-3); font-style: italic; }
-.fq-need { font-size: 13px; color: var(--ink-2); border: 1px dotted var(--ink-4); border-radius: 14px; padding: 4px 10px; min-width: 0; overflow-wrap: anywhere; }
+.fq-need { font-size: 13px; color: var(--ink-3); border: 1px dotted var(--ink-4); border-radius: 14px; padding: 4px 10px; min-width: 0; overflow-wrap: anywhere; }
 .fq-slot { display: flex; min-width: 0; }
 .fq-slot > * { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
@@ -84,3 +84,25 @@
 
 /* The address wraps on the card face. */
 .b-open:has(.fq-wrap) .b-open-lines .b-l2 { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.fq[data-state="missing"] svg { color: var(--ink-4); }
+
+/* The header is one height on every lead: the address takes one line (full text in its title), the shared-roof note
+   leaves the face (its words stay in the verdict chip's tip). */
+.b-open:has(.fq-wrap) .b-open-h { height: 82px; box-sizing: border-box; overflow: hidden; }
+.b-open:has(.fq-wrap) .b-open-lines .b-l2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.b-open:has(.fq-wrap) .b-open-h .b-shared { display: none; }
+.b-open:has(.fq-wrap) .b-open-lines { min-width: 0; }
+
+/* Blocking: the card's top row, only when the lead has blockers. */
+.bk { display: flex; align-items: center; gap: 12px; padding: 8px 6px 8px 14px; background: var(--paper); border: 1px solid var(--rule-2); border-bottom: 0; border-radius: 12px 12px 0 0; }
+.bk-rows { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0; display: grid; gap: 2px; }
+.bk-rows li { display: flex; gap: 10px; align-items: baseline; min-width: 0; font-size: 13.5px; color: var(--ink); }
+.bk-t { min-width: 0; overflow-wrap: anywhere; }
+.bk-s { flex: none; font-size: 12px; color: var(--ink-3); }
+.bk-ask { flex: none; font: inherit; font-size: 13.5px; min-height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: var(--accent); color: var(--paper); cursor: pointer; }
+.bk-ask:disabled { background: transparent; color: var(--ink-3); border: 1px dotted var(--ink-4); cursor: default; }
+.bk-ask:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bk-err { margin: 0; font-size: 12.5px; color: var(--bad); }
+.b-open:has(.bk) .b-open-h { border-radius: 0; border-top-color: var(--rule); }
+.b-open:has(.bk) .fq-wrap:not([data-open]) + * { }
+@media (max-width: 760px) { .bk { flex-wrap: wrap; } .bk-rows { flex-basis: 100%; } }
