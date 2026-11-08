@@ -121,8 +121,12 @@ def _pass(lead, dry, first_pass=True):
     f = lead.get("inputs") or {}
     roof = f.get("roof") or {}
     if first_pass and f.get("address"):
-        if roof.get("max_panels") and roof.get("capacity_source") == "layout":
-            yield _ev(lead, "measure", f"Measured the roof, {roof['max_panels']} modules fit", "ruler")
+        planned = int(round(((lead.get("draft") or {}).get("design") or {}).get("pv_kwp", 0) / 0.463)) if \
+            ((lead.get("draft") or {}).get("design") or {}).get("pv_kwp") else 0
+        if roof.get("max_panels") and roof.get("capacity_source") == "layout" and planned:
+            yield _ev(lead, "measure", f"Measured the roof, {planned} of {roof['max_panels']} modules planned", "ruler")
+        elif planned:
+            yield _ev(lead, "measure", f"Measured the roof, {planned} modules planned", "ruler")
         elif roof.get("usable_area_m2"):
             yield _ev(lead, "measure", f"Measured the roof, about {roof['usable_area_m2']:.0f} m2 usable", "ruler")
         else:
