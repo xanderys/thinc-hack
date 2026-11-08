@@ -4,7 +4,8 @@ import ComposerField from "@/components/composer/ComposerField";
 import { transcribe } from "@/components/composer/create";
 import Blocks, { inline, openLead } from "./Blocks";
 import { useCopilotContext } from "./context";
-import { ask, run, sendMessage, useSuggestions, useThread, type Message, type Proposal } from "./store";
+import { ask, run, sendMessage, useSuggestions, useThread, type ApEntry, type Message, type Proposal } from "./store";
+import { cancelRun, confirmRun } from "@/components/autopilot/store";
 import type { Suggestion } from "./suggest";
 import s from "./agent.module.css";
 
@@ -60,7 +61,7 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
   return (
     <div className={s.shell}>
       <div className={s.thread} ref={thread} onScroll={onScroll}>
-        {items.map((it) => it.who === "event" ? <p key={it.id} className={s.event}>{inline(it.text, go)}</p> : it.who === "you"
+        {items.map((it) => it.ap ? <ApItem key={it.id} a={it.ap} onLead={go} /> : it.who === "event" ? <p key={it.id} className={s.event}>{inline(it.text, go)}</p> : it.who === "you"
           ? <div key={it.id} className={s.you}>{it.text}</div>
           : <div key={it.id} className={s.agent}>
               {it.text && <Blocks text={it.text} onLead={go} />}
@@ -153,5 +154,30 @@ function MessageCard({ m, onLead, onSend }: { m: Message; onLead: (id: string) =
           : <button type="button" className={`${s.apply} ${m.state === "sending" ? s.busyBtn : ""}`} disabled={m.state === "sending"} onClick={onSend}>Send on WhatsApp</button>}
       </div>
     </div>
+  );
+}
+
+// Autopilot in the thread: the confirm card, then one entry per step (lead chip, the engine's words, a badge or bubble).
+function ApItem({ a, onLead }: { a: ApEntry; onLead: (id: string) => void }) {
+  if (a.kind === "confirm") return (
+    <div className={s.agent}><div className={s.prop}>
+      {a.n == null && a.state === "open" ? <span className={`b-skel ${s.apSkel}`} aria-hidden /> : a.state !== "error" && <p className={s.p}>Sends {a.n} WhatsApp{a.n === 1 ? "" : "s"} to homeowners.</p>}
+      {a.err && <p className={s.err} role="alert"><b>Engine said</b> {a.err}</p>}
+      {a.state === "open" && <div className={s.actions}>
+        <button type="button" className={s.apply} disabled={a.n == null} onClick={confirmRun}>Run</button>
+        <button type="button" className={s.undo} onClick={cancelRun}>Cancel</button>
+      </div>}
+      {a.state === "cancelled" && <span className={s.unit}>Cancelled</span>}
+    </div></div>
+  );
+  const who = a.lead_id ? <button type="button" className={s.chip} onClick={() => onLead(a.lead_id!)}>{a.name}</button> : <b>{a.name}</b>;
+  if (a.step === "ask" && a.state !== "active") return (
+    <div className={s.apStep}>{who}<div className={s.msg}>{a.text}</div></div>
+  );
+  return (
+    <p className={`${s.event} ${s.apStep}`} data-state={a.state}>
+      {who} <span className={a.state === "active" ? s.apActive : a.state === "needs_you" ? s.apNeeds : undefined}>{a.text}</span>
+      {a.step === "send" && a.state === "done" && <> <span className={`${s.badge} ${s.ok}`}>Sent</span></>}
+    </p>
   );
 }

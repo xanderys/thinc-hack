@@ -92,3 +92,11 @@
 
 .event { margin: 0; font-size: 13px; color: var(--ink-3); }
 .msg { align-self: flex-start; max-width: 92%; padding: 8px 12px; border-radius: 18px 18px 18px 6px; background: rgba(36, 161, 72, 0.10); white-space: pre-wrap; font-size: 15px; }
+/* Autopilot steps in the thread: the active step shimmers (no caption); needs-you reads in ink. */
+.apStep { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.apStep .msg { flex-basis: 100%; }
+.apActive { color: transparent; background: linear-gradient(90deg, var(--ink-3) 0%, var(--ink-4) 50%, var(--ink-3) 100%) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; animation: apShimmer 1.2s linear infinite; }
+.apNeeds { color: var(--ink); }
+.apSkel { display: block; height: 16px; width: 60%; margin: 4px 0 10px; }
+@keyframes apShimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .apActive { animation: none; } }
