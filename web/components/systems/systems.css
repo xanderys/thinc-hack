@@ -80,7 +80,7 @@
 
 /* Phone: a Wallet pass peeking from the bottom edge, 16 px in from each side, right above the safe area. */
 .pc-bottom .pc-card {
-  position: fixed; left: 16px; right: 16px; bottom: env(safe-area-inset-bottom, 0px); z-index: 19; height: min(84dvh, 760px);
+  position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--pc-lift, 0px)); z-index: 19; height: min(84dvh, 760px);
   border-radius: 20px 20px 0 0; border-bottom: 0; box-shadow: 0 -6px 24px rgba(7, 27, 113, 0.10); will-change: transform;
 }
 .pc-bottom .pc-pass { padding-top: 16px; }
@@ -93,7 +93,7 @@
   .pc-bottom { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
   .pc-bottom .pc-clip {
     display: block; position: absolute; left: 50%; transform: translateX(-50%); width: clamp(480px, 40vw, 540px); max-width: calc(100% - 24px);
-    top: 12px; bottom: 0; overflow: hidden; pointer-events: none; border-radius: 20px 20px 0 0;
+    top: 12px; bottom: var(--pc-lift, 0px); overflow: hidden; pointer-events: none; border-radius: 20px 20px 0 0;
   }
   .pc-bottom .pc-card { position: absolute; left: 0; right: 0; bottom: 0; top: auto; height: min(100%, 680px); pointer-events: auto; border-radius: 20px 20px 0 0; border-bottom: 0; box-shadow: none; }
   .pc-bottom .pc-body { padding-bottom: 0; }
@@ -323,3 +323,5 @@
 .fg-pair .fg-stack { justify-self: start; }
 .fg-under { grid-column: 2 / -1; margin-top: -2px; }
 .fg-cov { color: var(--ink-3); }
+
+.pc-open .pc-card { z-index: 21; }
