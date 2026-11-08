@@ -6,7 +6,6 @@ import type { Design, DesignResponse, Health, HomeInputs, Lead as LeadT, LeadRow
 import { designOf, refineOf } from "@/lib/engineCache";
 import { call } from "@/lib/client";
 import { HERO_LEAD } from "@/lib/demo";
-import House from "@/components/stage/House";
 import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Live, Seed } from "@/components/stage/Stage";
 import { LEAD_LIVE, whatsappOrigin } from "@/lib/whatsapp";
@@ -14,6 +13,7 @@ import Composer from "@/components/composer/Composer";
 import AddSheet from "./AddSheet";
 import HousePhoto from "./HousePhoto";
 import ModelThumb from "./ModelThumb";
+import GapChips from "./GapChips";
 import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
 import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
 import { pastLine } from "@/lib/past";
@@ -102,6 +102,11 @@ export default function Board({ openId: initial }: { openId?: string }) {
   const [kept, setKept] = useState<Record<string, Kept>>({});
 
   useEffect(() => { setApproved(readApproved()); }, []);
+  // The composer lane announces a lead it just created: refetch the list so it shows at the top.
+  useEffect(() => {
+    const on = () => setTick((t) => t + 1);
+    addEventListener("marquee:lead-created", on); return () => removeEventListener("marquee:lead-created", on);
+  }, []);
 
   // Leads every 4 s; each card's design when its lead changes.
   useEffect(() => {
@@ -305,6 +310,9 @@ export default function Board({ openId: initial }: { openId?: string }) {
   const baseCard = listed ?? (offQ ? { q: offQ } as Partial<Card> as Card : undefined);
   const openCard = nowQ && baseCard ? { ...baseCard, q: nowQ } : baseCard;
 
+  // A big card needs a finished design and a built 3D roof model; every other lead is a short row.
+  const big = (c: Card) => !!c.design && (!!live[c.id] || c.status === "in_call" || (!isPc(c.place) && roofs[c.place]?.capacity_source === "layout"));
+
   if (openId) return (
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
       <div className={calling ? "b-open-h live" : "b-open-h"}>
@@ -353,18 +361,18 @@ export default function Board({ openId: initial }: { openId?: string }) {
           <section key={v ?? "checking"} className={qs.group} aria-label={v ? VERDICT_WORD[v] : "Checking"}>
             <h2 className={qs.gH}>{v ? VERDICT_WORD[v] : "Checking"} <span className={qs.count}>{group.length}</span></h2>
             <ul className="b-grid">
-        {group.map((c) => {
+        {group.filter(big).map((c) => {
           const lv = live[c.id] || c.status === "in_call";
           const st = lv ? "in_call" : DECIDED.has(c.status) || c.status === "approved" ? c.status : approved[c.id] ? "approved" : c.status;
           const dec = DECIDED.has(c.status) ? c.decision : null;
           return (
-            <li key={c.id}>
+            <li key={c.id} className="b-wrapcard">
               <button type="button" className={lv ? "b-card live" : "b-card"} style={{ viewTransitionName: `card-${c.id}` }} onClick={() => open(c.id)}>
                 {lv && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
                 <span className="b-top">{!dec && <span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{st === c.status && c.label ? c.label : STATUS[st]}</span>}{c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
                 <span className="b-name">{c.name}</span>
                 <span className="b-place">{c.place}</span>
-                {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><ModelThumb lead={designs[c.id]?.lead} design={c.design} /></span>}
+                {c.design && !lv && <span className="b-house" aria-hidden><ModelThumb lead={designs[c.id]?.lead} design={c.design} /></span>}
                 {!c.design && !lv && <span className="b-house b-skel b-skel-house" aria-hidden />}
                 {c.edited && <span className="b-edited">Edited</span>}
                 {c.design || lv ? <span className="b-line num">{c.line}</span> : <span className="b-skel b-skel-line" aria-hidden />}
@@ -374,10 +382,23 @@ export default function Board({ openId: initial }: { openId?: string }) {
                 {dec && c.status === "signed" && pastLine(designs[c.id]?.lead?.facts.installer_id) && <span className="b-today">{pastLine(designs[c.id]?.lead?.facts.installer_id)}</span>}
                 {dec && dec.matches_current === false && <span className="b-warn">Signed a different version than the one on file</span>}
               </button>
+              <GapChips lead={designs[c.id]?.lead} address={c.place} onChanged={() => setTick((t) => t + 1)} />
             </li>
           );
         })}
             </ul>
+            {group.some((c) => !big(c)) && <ul className="b-rows">
+              {group.filter((c) => !big(c)).map((c) => (
+                <li key={c.id} className="b-row">
+                  <button type="button" className="b-rowmain" style={{ viewTransitionName: `card-${c.id}` }} onClick={() => open(c.id)}>
+                    <span className="b-rname">{c.name}</span>
+                    <span className="b-rplace">{c.place}</span>
+                    {c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : <span className="b-skel b-skel-chip" aria-hidden />}
+                  </button>
+                  <GapChips lead={designs[c.id]?.lead} address={c.place} onChanged={() => setTick((t) => t + 1)} />
+                </li>
+              ))}
+            </ul>}
           </section>
         );
       })}
