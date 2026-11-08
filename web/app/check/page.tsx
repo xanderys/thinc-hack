@@ -3,12 +3,15 @@ import { VERDICT_WORD } from "@/lib/qualify";
 import { useEffect, useMemo, useState } from "react";
 import StepHead from "@/components/stage/StepHead";
 import { CONST, human } from "@/components/stage/Rules";
-import { COMPONENT_DESIGN_FIELD, INSTALLER_NAME, type ComponentKey, type Design, type Eval, type HomeInputs, type InboxRow, type InstallerId, type ProjectDetail, type ProjectSummary, type RecommenderScore, type Rule, type ValidateFlag, type ValidateResponse } from "@/lib/api";
+import { COMPONENT_DESIGN_FIELD, type ComponentKey, type Design, type Eval, type HomeInputs, type InboxRow, type InstallerId, type ProjectDetail, type ProjectSummary, type RecommenderScore, type Rule, type ValidateFlag, type ValidateResponse } from "@/lib/api";
 import { call } from "@/lib/client";
 import { REALITY_MISS, REALITY_PROJECT } from "@/lib/demo";
-import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, named } from "@/lib/stage";
+import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, unnamed as named } from "@/lib/stage";
 import s from "./check.module.css";
 
+// The population, counted from the engine's own eval payload (never typed): "Two installers".
+const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
+const installersWord = (n: number) => `${WORDS[n] ?? n0(n)} installer${n === 1 ? "" : "s"}`;
 // Fields /api/eval sends beyond lib/api.ts (docs/api.md v2.7).
 type Row4 = { population: string; ground_truth: string; band: string; engine: string; n: number; pv: number; battery: number; wallbox: number; heatpump?: number; all_four: number };
 type EvalX = Eval & {
@@ -67,6 +70,7 @@ function Headline({ ev, err, retry }: { ev: EvalX | null; err: string | null; re
   return (
     <section className={s.head}>
       <h2>Whole design within tolerance on {n0(sealed?.n ?? ev.split.test)} {sealed ? "sealed held-out signed homes, scored once" : "held-out signed projects"}</h2>
+      <p className={s.src}>{installersWord(Object.keys(ev.per_installer ?? {}).length)}, {n0(ev.split.train + ev.split.test)} projects in the data pack; {n0(sealed?.n ?? ev.split.test)} held out and scored here.</p>
       <dl className={s.figs}>
         <div className={s.us}><dt>Marquee draft</dt><dd>{pct1(sealed?.all_four ?? o.design_match_share)}</dd></div>
         {!sealed && o.ceiling_design_match_share != null && <div className={s.them}><dt>Agreement with designs for similar recorded homes</dt><dd>{pct1(o.ceiling_design_match_share)}</dd></div>}
@@ -84,7 +88,7 @@ type Approved = { lead_id?: string | null; inputs: HomeInputs; draft: Design | n
 function rule(f: ValidateFlag, installer: HomeInputs["installer_id"]) {
   const k = f.component as ComponentKey, nb = f.neighbours, took = Math.round(nb.share_included * nb.n);
   const range = nb.p25 != null && nb.p75 != null ? `, between ${n2(nb.p25)} and ${n2(nb.p75)} ${UNIT[k] ?? ""}` : "";
-  return `Learned from ${nb.n} similar homes at ${INSTALLER_NAME[installer]}: ${took} took ${k === "pv" ? "solar" : `a ${(NAME[k] ?? k).toLowerCase()}`}${took ? range : ""}.`;
+  return `Learned from ${nb.n} similar homes: ${took} took ${k === "pv" ? "solar" : `a ${(NAME[k] ?? k).toLowerCase()}`}${took ? range : ""}.`;
 }
 
 function Validation() {
@@ -145,11 +149,11 @@ function Validation() {
   );
 }
 
-function RulesTable({ rules, installer }: { rules: Rule[]; installer: string }) {
+function RulesTable({ rules }: { rules: Rule[] }) {
   return (
     <div className={`${s.panel} ${s.scroll}`}>
       <table className={s.t}>
-        <thead><tr><th>Rule</th><th>Published guide</th><th>Fitted rule ({installer})</th><th className={s.r}>This draft</th></tr></thead>
+        <thead><tr><th>Rule</th><th>Published guide</th><th>Fitted rule</th><th className={s.r}>This draft</th></tr></thead>
         <tbody>{rules.map((r) => (
           <tr key={r.name}>
             <td>{r.name in NAME ? NAME[r.name as ComponentKey] : human(r.name, RULE)}</td>
@@ -174,7 +178,7 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
   const i = p.inputs, tol = (k: ComponentKey) => ev?.components[k]?.tolerance ?? "";
   const rows = KEYS.map((k) => { const f = COMPONENT_DESIGN_FIELD[k]; const o = p.ours.design[f], x = p.expert[f]; return { k, o, x, ok: within(o, x, tol(k)) }; });
   const misses = rows.filter((r) => !r.ok);
-  const what = [INSTALLER_NAME[p.installer_id], `${n0(i.annual_demand_kwh)} kWh a year`, i.heating_type !== "Unknown" ? `${HEATING_WORD[i.heating_type].toLowerCase()} heating${i.heating_cost_per_year_eur ? ` at €${n0(i.heating_cost_per_year_eur)} a year` : ""}` : null, i.has_ev ? "an electric car" : null].filter(Boolean).join(", ");
+  const what = [`${n0(i.annual_demand_kwh)} kWh a year`, i.heating_type !== "Unknown" ? `${HEATING_WORD[i.heating_type].toLowerCase()} heating${i.heating_cost_per_year_eur ? ` at €${n0(i.heating_cost_per_year_eur)} a year` : ""}` : null, i.has_ev ? "an electric car" : null].filter(Boolean).join(", ");
   return (
     <>
       <section className={s.sec}>
@@ -196,7 +200,7 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
         </div>
         {misses.map((m) => {
           const nb = p.ours.components[m.k].neighbours, took = Math.round(nb.share_included * nb.n);
-          const lead = m.o == null ? `Only ${took} of ${nb.n} similar homes from this installer added one, so the draft left it out.` : named(p.ours.components[m.k].reason);
+          const lead = m.o == null ? `Only ${took} of ${nb.n} similar homes added one, so the draft left it out.` : named(p.ours.components[m.k].reason);
           return <p className={`${s.note} ${s.miss}`} key={m.k}><b>{NAME[m.k]} missed.</b> {lead}</p>;
         })}
         <button className={s.link} onClick={onOther}>Another held-out home</button>
@@ -205,7 +209,7 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
       {!!p.ours.rules?.length && (
         <section className={s.sec}>
           <h2>Rules behind this draft</h2>
-          <RulesTable rules={p.ours.rules} installer={INSTALLER_NAME[p.installer_id]} />
+          <RulesTable rules={p.ours.rules} />
           <Src><Api path={`/api/projects/${p.project_id}`} /> (<code>ours.rules</code>), <Doc path="docs/rules-readout.md" /></Src>
         </section>
       )}
@@ -273,7 +277,7 @@ function Replay({ ev }: { ev: EvalX | null }) {
             const i = r.inputs, sub = [i.heating_type !== "Unknown" ? HEATING_WORD[i.heating_type] : "Heating not recorded", i.has_ev ? "Electric car" : null].filter(Boolean).join(", ");
             return (
               <div className={`${s.ir} s-in`} key={r.project_id} title={r.note || undefined}>
-                <span>{INSTALLER_NAME[r.installer_id]}, {n0(i.annual_demand_kwh)} kWh a year<small>{sub}</small></span>
+                <span>{n0(i.annual_demand_kwh)} kWh a year<small>{sub}</small></span>
                 <span className={s.d}>{designLine(r.draft)}</span>
                 <span className={r.within.all ? s.ok : s.rev}>{r.within.all ? "Matches" : "Review"}</span>
                 {!r.within.all && <span className={s.why}>{miss(r)}</span>}

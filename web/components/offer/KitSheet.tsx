@@ -2,6 +2,7 @@
 //   kit: the design's sizes (pv_kwp, inverter_kw, battery_kwh, wallbox_kw, heatpump_kw), plus modules when the roof layout knows the count.
 //   total: capex in euros, shown once as an estimate; assumptions: the engine's economics.assumptions, for the rate card "i" on it; omit it (or null) and the total line is left out. note: one small line under it.
 //   edit (planner only): (field, label, content) => node, wraps a row's name and spec in a control such as InlineOverride; omit for read-only.
+//   skus (optional): the engine's products per part (skusOf(response)); rows and the rate card name them.
 //   info (optional): per field, an "i" popover at the row's end (planner: DC/AC ratio on the inverter).
 //   changed + flash (optional): parts that just changed ring once; bump flash to ring again.
 //   A size of null or 0 means the component is not in the design and gets no row.
@@ -9,6 +10,7 @@
 import type { ReactNode } from "react";
 import { eur, n1, type Part } from "./format";
 import Num from "./Num";
+import { skuName, type Sku, type SkuPart } from "./facts";
 import RateCard from "./RateCard";
 import s from "./kitSheet.module.css";
 
@@ -22,21 +24,26 @@ const MODULE_KWP = 0.45;   // the engine's standard module when the layout gives
 
 type Row = { key: string; field?: KitField; part?: Part; qty: number; name: string; spec?: string; icon: ReactNode };
 
-export default function KitSheet({ kit, total, assumptions, note, edit, info, changed, flash = 0, className }: {
-  kit: KitSheetKit; total?: number | null; assumptions?: string[] | null; note?: string; info?: Partial<Record<KitField, ReactNode>>; edit?: (f: KitField, label: string, content: ReactNode) => ReactNode;
+export default function KitSheet({ kit, total, assumptions, skus, note, edit, info, changed, flash = 0, className }: {
+  kit: KitSheetKit; total?: number | null; assumptions?: string[] | null; skus?: Partial<Record<SkuPart, Sku>>; note?: string; info?: Partial<Record<KitField, ReactNode>>; edit?: (f: KitField, label: string, content: ReactNode) => ReactNode;
   changed?: Part[]; flash?: number; className?: string;
 }) {
   if (!kit) return null;   // the design is not in yet
   const rows: Row[] = [];
   if (kit.pv_kwp) {
-    const count = kit.modules && kit.modules > 0 ? kit.modules : Math.max(1, Math.round(kit.pv_kwp / MODULE_KWP));
-    const wp = Math.round((kit.pv_kwp * 1000) / count / 5) * 5;
+    // The module's own watts where the engine names it (23 x 463 W = 10.65 kWp), else the standard module.
+    const unitW = skus?.module?.size && (skus.module.unit ?? "W").toUpperCase().startsWith("W") ? skus.module.size : null;
+    const count = kit.modules && kit.modules > 0 ? kit.modules : Math.max(1, Math.round((kit.pv_kwp * 1000) / (unitW ?? MODULE_KWP * 1000)));
+    const wp = unitW ?? Math.round((kit.pv_kwp * 1000) / count / 5) * 5;
     rows.push({ key: "pv", field: "pv_kwp", part: "pv", qty: count, name: "Solar module", spec: `${wp} Wp`, icon: <Modules n={count} /> });
   }
   if (kit.inverter_kw) rows.push({ key: "inv", field: "inverter_kw", part: "inverter", qty: 1, name: kit.battery_kwh ? "Hybrid inverter" : "Inverter", spec: `${n1(kit.inverter_kw)} kW`, icon: <Inverter /> });
   if (kit.battery_kwh) rows.push({ key: "bat", field: "battery_kwh", part: "battery", qty: 1, name: "Battery storage", spec: `${n1(kit.battery_kwh)} kWh`, icon: <Battery kwh={kit.battery_kwh} /> });
   if (kit.wallbox_kw) rows.push({ key: "wb", field: "wallbox_kw", part: "wallbox", qty: 1, name: "Wallbox", spec: `${n1(kit.wallbox_kw)} kW`, icon: <Wallbox /> });
   if (kit.heatpump_kw) rows.push({ key: "hp", field: "heatpump_kw", part: "heatpump", qty: 1, name: "Heat pump", spec: `${n1(kit.heatpump_kw)} kW`, icon: <HeatPump /> });
+  // The product name from the data where the engine sends one (engine v2.15), else the generic part name.
+  const SKU_OF: Record<string, SkuPart> = { pv: "module", inv: "inverter", bat: "battery", wb: "wallbox", hp: "heatpump" };
+  for (const r of rows) { const s = skus?.[SKU_OF[r.key]]; if (s) r.name = skuName(s); }
   if (rows.length) rows.push({ key: "inst", qty: 1, name: "Installation and services", icon: <Cabinet /> });
   const hot = new Set(changed ?? []);
 
@@ -57,7 +64,7 @@ export default function KitSheet({ kit, total, assumptions, note, edit, info, ch
         ))}
       </ol>
       {total != null && rows.length > 0 && (
-        <p className={s.total}><span>Total</span><b><Num v={eur(total)} /></b><em>estimate</em>{assumptions && <RateCard design={kit} total={total} assumptions={assumptions} modules={kit.modules} />}</p>
+        <p className={s.total}><span>Total</span><b><Num v={eur(total)} /></b><em>estimate</em>{assumptions && <RateCard design={kit} total={total} assumptions={assumptions} modules={kit.modules} skus={skus} />}</p>
       )}
       {note && total != null && rows.length > 0 && <p className={s.note}>{note}</p>}
     </div>
