@@ -132,8 +132,12 @@ function Page({ agentId, installerId, test }: Props) {
     setRedesigns((x) => x + 1);
     const r = await fetch("/api/intake/step", { method: "POST", headers: { "content-type": "application/json", "X-Client-Route": "start-call-fact" },
       body: JSON.stringify({ lead_id: id, facts_so_far: { [f]: val }, source: "call" }) }).catch(() => null);
-    const b = r && !r.ok ? await r.json().catch(() => null) : null;
-    if (r?.ok) await pull.current().catch(() => {});
+    const b = r ? await r.json().catch(() => null) : null;
+    if (r?.ok) {
+      // The step's own redesign goes on screen at once; the lead read after it brings the rest.
+      if (b?.draft?.design) setCallLead((c) => (c ? { ...c, draft: b.draft, ...(typeof b.version === "number" ? { version: b.version } : {}) } : c));
+      await pull.current().catch(() => {});
+    }
     else setHeard((h) => (h?.n === n ? null : h));   // the line goes if the engine did not take the fact
     setRedesigns((x) => Math.max(0, x - 1));
     return r?.ok ? "ok" : `error: the fact was not saved (${b?.error ?? r?.status ?? "no connection"}); ask the homeowner again`;
@@ -188,7 +192,8 @@ function Page({ agentId, installerId, test }: Props) {
       const r = await fetch(`/api/leads/${leadId}`, { cache: "no-store" }).catch(() => null);
       if (!r?.ok) return;
       const l: Lead = await r.json();
-      if (l.draft?.design) setCallLead(l);
+      // A poll that left before a fact landed never puts the older design back.
+      if (l.draft?.design) setCallLead((c) => (c && c.lead_id === l.lead_id && (c.version ?? -1) > (l.version ?? -1) ? c : l));
       // A declined call never moves the lead past "draft": its Submit draft is the design to show.
       if (CALLING.has(l.status) && !declinedRef.current) return;
       const prev = leadSeen.current;
@@ -479,7 +484,7 @@ function Speaker() {
 function CallScene({ lead, heard, busy }: { lead: Lead | null; heard: { text: string; n: number } | null; busy: boolean }) {
   const d = lead?.draft?.design, address = lead?.address_or_postcode ?? "";
   const [ok, setOk] = useState<boolean | null>(null);
-  const figs = d ? [d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "No solar", d.battery_kwh ? `${n2(d.battery_kwh)} kWh battery` : "No battery", ...(d.heatpump_kw ? [`${n2(d.heatpump_kw)} kW heat pump`] : []), ...(d.wallbox_kw ? ["Wallbox"] : []), ...(lead?.draft?.economics?.capex_eur != null ? [`€${n0(lead.draft.economics.capex_eur)}`] : [])] : null;
+  const figs = d ? [d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "No solar", d.battery_kwh ? `${n2(d.battery_kwh)} kWh battery` : "No battery", ...(d.heatpump_kw ? [`${n2(d.heatpump_kw)} kW heat pump`] : []), ...(d.wallbox_kw ? [`${n2(d.wallbox_kw)} kW wallbox`] : []), ...(lead?.draft?.economics?.capex_eur != null ? [`€${n0(lead.draft.economics.capex_eur)}`] : [])] : null;
   return (
     <div className="ios-scene" aria-label="Your design">
       <div className={lead && d && ok !== false ? "ios-scene-3d" : "ios-scene-3d ios-sk"} aria-busy={!lead}>
