@@ -170,7 +170,8 @@ def ask(lead: dict, facts: list[str] | None = None, dry: bool = False, origin: s
             _drop_dry(w, "question")
             conv = uuid.uuid4().hex[:10]
             _log(lead, conv, "out", "dry", compose_ask(lead, asking), purpose="question")
-            w.update(state="dry", conversation_id=conv, round=0, open_facts=open_facts, asking=asking, last_error=None)
+            if w.get("state") not in ("open", "expired"):  # a dry run never stops a real conversation from listening
+                w.update(state="dry", conversation_id=conv, round=0, open_facts=open_facts, asking=asking, last_error=None)
             lead["updated_at"] = leads.now()
             leads.save(lead)
             return {"conversation_id": conv, "sent": False, "dry": True, "open_facts": open_facts, "asking": asking, "text": compose_ask(lead, asking)}
