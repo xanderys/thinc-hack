@@ -131,7 +131,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
 
       <section className="pp-card" aria-label="Your system">
         <h2>Your system</h2>
-        <KitSlot design={design} total={e.capex_eur} />
+        <KitSlot design={design} total={e.capex_eur} assumptions={e.assumptions} />
       </section>
 
       <Decision lead={lead} brand={brand} startedAt={startedAt} onDecided={onDecided} />

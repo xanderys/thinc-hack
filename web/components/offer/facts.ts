@@ -2,7 +2,7 @@
 // case-context words never reach product copy, and each variant reduces to the figures that drive the choice.
 import type { Design, Economics } from "@/lib/api";
 import type { Check } from "@/components/spatial/types";
-import { eur, n0, n1, pc } from "./format";
+import { eur, n0, n1, n2, pc } from "./format";
 
 export const sentence = (x: string) => { const t = x.trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
 
@@ -73,3 +73,26 @@ export function checkLine(c: Check): { label: string; value: string } | null {
   return label ? { label, value: checkValue(c) } : null;
 }
 export const findCheck = (checks: Check[] | null | undefined, name: RegExp) => (checks ?? []).find((c) => name.test(c.name)) ?? null;
+
+// The rate card behind every total: the data pack carries no prices, so each euro is the engine's market model. Rates
+// come from the engine's own assumption sentence ("PV €2,333 plus €883 per kWp ...; battery €315 per kWh"); a component
+// the sentence does not price (wallbox, heat pump) shows the remainder of the engine's total as an effective rate.
+export type RateLine = { label: string; calc: string; eur: number };
+const euros = (x: string) => Number(x.replace(/,/g, ""));
+export function rateCard(d: Partial<Design>, total: number, assumptions: string[] | null | undefined, modules?: number | null): { lines: RateLine[]; total: number } | null {
+  const text = (assumptions ?? []).join(" ");
+  const pv = /PV €([\d,]+) plus €([\d,]+) per kWp/i.exec(text), bat = /battery €([\d,]+) per kWh/i.exec(text);
+  if (!pv && !bat) return null;
+  const lines: RateLine[] = [];
+  if (d.pv_kwp && pv) {
+    const fixed = euros(pv[1]), per = euros(pv[2]), n = modules && modules > 0 ? modules : Math.round(d.pv_kwp / 0.45);
+    lines.push({ label: "Solar modules and inverter", calc: `${n} modules, ${n2(d.pv_kwp)} kWp × €${n0(per)}/kWp`, eur: Math.round(d.pv_kwp * per) });
+    lines.push({ label: "Installation and services", calc: "fixed per system", eur: fixed });
+  }
+  if (d.battery_kwh && bat) { const per = euros(bat[1]); lines.push({ label: "Battery storage", calc: `${n1(d.battery_kwh)} kWh × €${n0(per)}/kWh`, eur: Math.round(d.battery_kwh * per) }); }
+  const rest = Math.round(total - lines.reduce((x, l) => x + l.eur, 0));
+  const loads = [d.wallbox_kw ? `Wallbox ${n1(d.wallbox_kw)} kW` : null, d.heatpump_kw ? `Heat pump ${n1(d.heatpump_kw)} kW` : null].filter((x): x is string => !!x);
+  if (loads.length && rest > 0) lines.push({ label: loads.join(" and "), calc: "effective rate (the engine's total less the parts above)", eur: rest });
+  else if (rest !== 0) lines.push({ label: "Rounding", calc: "to the nearest €10", eur: rest });
+  return { lines, total };
+}

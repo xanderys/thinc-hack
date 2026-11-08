@@ -14,6 +14,7 @@ import InlineOverride from "./InlineOverride";
 import Approve from "./Approve";
 import { checkLine, findCheck } from "./facts";
 import Info, { InfoRows } from "./Info";
+import RateCard from "./RateCard";
 import s from "./offer.module.css";
 
 export type OfferProps = {
@@ -152,7 +153,7 @@ export default function OfferPanel(p: OfferProps) {
   const tiles = [
     { k: "Solar", v: d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "No solar" },
     { k: "Battery", v: d.battery_kwh ? `${n2(d.battery_kwh)} kWh` : "No battery" },
-    { k: "Investment", v: eur(e.capex_eur) },
+    { k: "Investment", v: eur(e.capex_eur), info: <RateCard design={d} total={e.capex_eur} assumptions={e.assumptions} modules={modules} /> },
     { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
     { k: "Autarky", v: pc(e.autarky_share) },
     { k: "Break-even", v: breakEven == null ? "20+ years" : `${breakEven} years`, info: payInfo },
@@ -162,7 +163,7 @@ export default function OfferPanel(p: OfferProps) {
   return (
     <aside ref={box} className={`${s.panel} ${p.docked ? s.docked : s.under}`} aria-label="Offer" data-cover={p.docked ? "" : undefined}>
       <Tiles items={tiles} mode={reduce ? "fade" : mode} pending={pending} />
-      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} info={dcac ? { inverter_kw: <Info label="DC/AC ratio"><InfoRows rows={[dcac]} /></Info> } : undefined} note="Estimates until the site visit" changed={hl.parts} flash={hl.n}
+      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} assumptions={e.assumptions} info={dcac ? { inverter_kw: <Info label="DC/AC ratio"><InfoRows rows={[dcac]} /></Info> } : undefined} note="Estimates until the site visit" changed={hl.parts} flash={hl.n}
         edit={(f, label, content) => (
           <InlineOverride field={f} text={label} content={content} unit={UNIT[f]} sizes={sizes[f] ?? []} current={d[f]} set={handSet(f)} fixed={overrides[f] !== undefined}
             canNone={f !== "pv_kwp" && f !== "inverter_kw"} onChoose={choose} />
