@@ -254,7 +254,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     // (a lead without overrides shows its design at once, those figures are final).
     if (cause.current || fixed) setPending((p) => p ?? Date.now());
     // A stored draft from before the engine named products (no skus) is read again once, so the rows can name them.
-    if (seedDraft.current) { if ("skus" in seedDraft.current) seedDesign(inputs, seedDraft.current); seedDraft.current = null; }   // the plain draft for these facts, also when opening on kit edits
+    // Only a full draft answers the design read: a slim one (the board list sends drafts without derivations) stays on
+    // screen until the one design call brings the rule results the popovers show.
+    if (seedDraft.current) { const sd = seedDraft.current as DesignResponse; if ("skus" in sd && sd.components?.pv?.derivation) seedDesign(inputs, sd); seedDraft.current = null; }   // the plain draft for these facts, also when opening on kit edits
     const t = setTimeout(async () => {
       setBusy(true);
       try {
@@ -325,8 +327,17 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
             setMoved({ cause: cause.current, lines });
           }
           cause.current = null; liveWhy.current = null;
-          setPrev(before); last.current = r.data; setRes(r.data); setResIn(asked); setResCause(why); setErr(null); setPending(null);
-          if (!fixed) setDrafted(r.data);
+          // A refine answers without derivations; the rule's own result depends on the facts, not on kit edits, so the
+          // last design that carried them lends them (the popovers lead with the rule result, then the catalogue snap).
+          const src = [before, drafted].find((x) => x?.components?.pv?.derivation);
+          let data = r.data;
+          if (src && data.components && !data.components.pv?.derivation) {
+            const comps = { ...data.components } as DesignResponse["components"];
+            (Object.keys(comps) as (keyof typeof comps)[]).forEach((k) => { if (comps[k] && !comps[k].derivation && src.components[k]?.derivation) comps[k] = { ...comps[k], derivation: src.components[k].derivation }; });
+            data = { ...data, components: comps };
+          }
+          setPrev(before); last.current = data; setRes(data); setResIn(asked); setResCause(why); setErr(null); setPending(null);
+          if (!fixed) setDrafted(data);
         } else if (r.status === 409 && lid && fixed) stale(lid); else { setErr(r.error); setPending(null); }
   }
 
