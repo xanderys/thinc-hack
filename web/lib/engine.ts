@@ -49,8 +49,8 @@ export async function callEngine(method: string, path: string, search: URLSearch
         ...(body ? { "content-type": "application/json" } : {}),
         ...(extra ?? {}),
         // v1.9: reading leads needs the intake secret; server-side only, never sent to the browser.
-        // v2.5: approve also needs it; the homeowner's decision POST goes through without it.
-        ...(((method === "GET" && path.startsWith("/api/leads")) || (method === "POST" && path === "/api/intake/step") || (method === "PUT" && /^\/api\/leads\/[^/]+\/approve$/.test(path))) && process.env.INTAKE_SECRET ? { "X-Intake-Secret": process.env.INTAKE_SECRET } : {}),
+        // v2.5: approve also needs it; the homeowner's decision POST goes through without it. Send (Complete sheet) too.
+        ...(((method === "GET" && path.startsWith("/api/leads")) || (method === "POST" && path === "/api/intake/step") || (method === "PUT" && /^\/api\/leads\/[^/]+\/approve$/.test(path)) || (method === "POST" && /^\/api\/leads\/[^/]+\/send$/.test(path))) && process.env.INTAKE_SECRET ? { "X-Intake-Secret": process.env.INTAKE_SECRET } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",

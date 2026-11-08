@@ -133,7 +133,7 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
   }, [open]);
   return (
     <div className="fc-wrap">
-      <div className="fc-row">
+      <div className="fc-row" data-facts-row="">
         {specs.map((s) => {
           const st = s.state(inputs, roof);
           return (

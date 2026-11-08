@@ -196,6 +196,7 @@ export interface Lead {
   next_question: NextQuestion | null; questions_asked: number; created_at: string; updated_at: string;
   version?: number;   // optimistic concurrency: writes carry it back as base_version
   proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | "edit" | null; decision?: LeadDecision | null;   // v2.5
+  sent?: { channel: string; at: string; text: string; link: string } | null;   // engine fe8b790: the last Send
   approved?: { variant: Variant["key"] | "edit"; design: Design; economics?: Economics; investment_eur: number; design_hash: string; overrides?: Overrides } | null;   // v2.11
   overrides?: Overrides;   // the planner's kit choices, written on each edit (intake step `overrides`)
   phone?: string | null;   // v2.14, E.164; no phone, no WhatsApp
@@ -208,11 +209,11 @@ export interface WhatsAppMessage { dir: "out" | "in"; kind?: "text" | "voice" | 
 export interface LeadWhatsApp { state: "open" | "closed" | "none"; round?: number; open_facts?: { field: string; label?: string; unit?: string }[]; last_error?: string | null; messages: WhatsAppMessage[] }
 export interface WhatsAppAsk { conversation_id: string; sent: unknown; open_facts: { field: string; label?: string; unit?: string }[]; asking?: unknown; version?: number; whatsapp?: LeadWhatsApp }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).
-export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "signed" | "declined" | "question";
+export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "sent" | "signed" | "declined" | "question";   // sent: the Complete sheet sent the link
 export type DecisionAction = "sign" | "decline" | "question";
 export interface LeadDecision { action: DecisionAction; name?: string | null; decided_at: string; proposal_hash: string; has_signature: boolean; matches_current: boolean; question?: string | null; }
 export interface ApproveResponse { status: "approved"; approved_at: string; approved_variant: Variant["key"] | null; proposal_hash: string; }
 export interface DecisionBody { action: DecisionAction; name?: string; accepted?: boolean; signature_png?: string; question?: string; proposal_hash: string; }
 export interface DecisionResponse { ok: boolean; status: LeadStatus; decided_at: string; proposal_hash: string; }
-export interface LeadRow { lead_id: string; status: Lead["status"]; title: string; customer_name?: string; address_or_postcode?: string; created_at?: string; decision?: LeadDecision | null; proposal_hash?: string; }
+export interface LeadRow { lead_id: string; status: Lead["status"]; status_label?: string; title: string; customer_name?: string; address_or_postcode?: string; created_at?: string; decision?: LeadDecision | null; proposal_hash?: string; }
 export interface Priors { n_steps_logged: number; order: { field: string; mean_swing: number; times_asked: number }[]; }

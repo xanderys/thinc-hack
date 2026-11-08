@@ -135,6 +135,8 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
       });
       if (modelRef.current) sc.setModel(modelRef.current);
       scene.current = sc;
+      // Development and headless checks only: where the house sits against the free rect.
+      if (process.env.NODE_ENV !== "production") (window as unknown as { __marqueeFrame?: () => unknown }).__marqueeFrame = () => sc.frameReport();
       setReady(true);
       setGlbErr(null);
       // A cold engine can miss the first glb request: one quiet retry after 4 s before the error shows.

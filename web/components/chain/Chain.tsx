@@ -122,6 +122,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     if (!el) return;
     const fit = () => {
       const top = el.getBoundingClientRect().top + window.scrollY; el.style.setProperty("--chain-top", `${Math.round(top + 12)}px`);
+      el.style.setProperty("--sys-root-h", `${(window.innerHeight - top).toFixed(2)}px`);   // desktop Systems: to the viewport bottom, measured
       // Systems on a phone: the model runs from its own top to the tucked pass, measured, never under it.
       const h = heroRef.current;
       if (h) {
@@ -133,9 +134,13 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     const ro = new ResizeObserver(fit); ro.observe(document.body);
     // The header and the facts bar above settle after mount (fonts, facts, the compact Systems layout): re-measure then.
     document.querySelectorAll(".b-open-h, .t-bar").forEach((x) => ro.observe(x));
+    document.fonts?.ready.then(fit).catch(() => {});   // web fonts change the header's height once they land
+    // The header and facts above re-mount and settle late; a cheap check twice a second re-measures when the root moves.
+    let lastTop = -1;
+    const poll = window.setInterval(() => { const tp = Math.round(el.getBoundingClientRect().top + window.scrollY); if (tp !== lastTop) { lastTop = tp; fit(); } }, 500);
     addEventListener("resize", fit); addEventListener("orientationchange", fit); window.visualViewport?.addEventListener("resize", fit);
     const mo = new MutationObserver(fit); mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });   // --pc-peek lands later
-    return () => { ro.disconnect(); mo.disconnect(); removeEventListener("resize", fit); removeEventListener("orientationchange", fit); window.visualViewport?.removeEventListener("resize", fit); };
+    return () => { clearInterval(poll); ro.disconnect(); mo.disconnect(); removeEventListener("resize", fit); removeEventListener("orientationchange", fit); window.visualViewport?.removeEventListener("resize", fit); };
   }, []);
   const address = inputs.address ?? inputs.roof?.matched_address;
   const installer = INSTALLER_NAME[inputs.installer_id as keyof typeof INSTALLER_NAME] ?? "this installer";
@@ -644,9 +649,9 @@ function Offer({ res }: { res: DesignResponse }) {
   const discharged = (a as { battery_discharged_kwh?: number }).battery_discharged_kwh ?? 0;
   const direct = Math.max(0, a.pv_yield_kwh - charged - a.fed_in_kwh);
   const flows = { direct, charged, fed: a.fed_in_kwh, discharged, imp: a.grid_import_kwh };
-  // Engine v2.7: cumulative series, or the yearly one summed here.
-  const ce = e as unknown as { cashflow_cumulative_eur?: number[]; cashflow_yearly_eur?: number[] };
-  const cash = ce.cashflow_cumulative_eur?.length ? ce.cashflow_cumulative_eur : ce.cashflow_yearly_eur?.reduce<number[]>((o, x) => [...o, (o.at(-1) ?? 0) + x], []);
+  // The engine's own cumulative series only (it carries the battery replacement); never a sum of the yearly flows here.
+  const ce = e as unknown as { cashflow_cumulative_eur?: number[] };
+  const cash = ce.cashflow_cumulative_eur?.length ? ce.cashflow_cumulative_eur : null;
   return (
     <div className={s.offer}>
       <div className={s.two}>

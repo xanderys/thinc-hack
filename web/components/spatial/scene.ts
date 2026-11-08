@@ -20,9 +20,9 @@ import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
 const BLUE = new THREE.Color("#374be6");
-// Sun heatmap: one muted ramp from the roof that gets least sun (blue-grey) to the most (soft orange).
-const HEAT_LO = new THREE.Color("#7f97b5");
-const HEAT_HI = new THREE.Color("#e2a066");
+// Sun heatmap: one muted ramp, least sun to most, through a light sand middle so no face reads as grey-pink.
+const HEAT = [new THREE.Color("#4f7cb3"), new THREE.Color("#ece2c6"), new THREE.Color("#dd8a3e")];
+const heatColour = (out: THREE.Color, s: number) => (s < 0.5 ? out.copy(HEAT[0]).lerp(HEAT[1], s * 2) : out.copy(HEAT[1]).lerp(HEAT[2], (s - 0.5) * 2));
 const SUN = new THREE.Color("#E8730C");
 const INK = "#0A0C14";
 const NEIGHBOUR = "#B4B1A9";
@@ -40,7 +40,9 @@ type Fade = { a: number; v: number; goal: number };
 const DAY_SECONDS = 12;
 
 // prio: when two labels come within 24 px the lesser hides. tap: a roof plane's label that shows only once that plane is tapped.
-export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string; prio?: number; tap?: string };
+// unit: a pill that belongs to a part on the model. Each frame it sits on the part's own top (top, in the part's
+// frame) and hides when the roof or walls stand between the camera and the part's centre (mid).
+export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string; prio?: number; tap?: string; unit?: { obj: THREE.Object3D; top: THREE.Vector3; mid: THREE.Vector3 } };
 const GAP = 24;
 // On-model chips: one line each, never more than four on screen; a chip that would overlap another tries below,
 // left and right of its anchor before it hides.
@@ -139,6 +141,7 @@ export class SpatialScene {
   // when snapUnits moves it onto the wall after the building model loads.
   private wbAt = new THREE.Vector3();
   private battAt = new THREE.Vector3();
+  private occRay = new THREE.Raycaster();
   private gridPole = new THREE.Group(); // the grid connection, shown only with the day flow's "Grid" label
   private inverterUnit: THREE.Object3D | null = null;
   private hpUnit: THREE.Object3D | null = null;
@@ -157,7 +160,7 @@ export class SpatialScene {
   private panelFx: Fx[] = [];
   private fades = new Map<THREE.Object3D, Fade>();
   private geoKey = "";
-  private wbOn = false; private battOn = true;
+  wbOn = false; private battOn = true; // wbOn: the design has a wallbox (systems.ts reads it)
   private tintMode: "off" | "yield" | "sun" = "off";
   private yieldScale: [number, number] = [500, 1110];
   private day: DayHour[] | null = null;
@@ -337,18 +340,21 @@ export class SpatialScene {
     const half = this.span / 2, need = Math.max((half * f.kH) / t, (half * f.kW) / (t * a));
     // The mesh cap keeps the photo crisp; a tall free area, or one narrowed by overlays, still gets the room it needs.
     const d = Math.min(need * 1.6, this.fitCap * Math.max(1, 1.3 / (f.fw / f.fh)) * Math.max(f.kW, f.kH));
-    if (reset || !this.fitted) {
-      const dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
-      this.persp.position.copy(this.centre).addScaledVector(dir, d);
-      this.fitted = true;
-    } else {
-      const cur = this.persp.position.clone().sub(this.controls.target).normalize();
-      this.persp.position.copy(this.centre).addScaledVector(cur, d);
-    }
     this.fitD = d;
-    if (!this.fly) this.controls.target.copy(this.centre);
-    this.controls.minDistance = d * 0.55;
-    this.controls.maxDistance = d * 1.8;
+    // The opening view and every pose: the house box framed into the free rect (framed()); the zoom limits span both.
+    const open = this.framed(new THREE.Vector3(0.42, 0.62, 0.66)), df = open.pos.distanceTo(open.tgt);
+    this.controls.minDistance = Math.min(d, df) * 0.55;
+    this.controls.maxDistance = Math.max(d, df) * 1.8;
+    if (reset || !this.fitted) {
+      this.persp.position.copy(open.pos);
+      if (!this.fly) this.controls.target.copy(open.tgt);
+      this.fitted = true;
+    } else if (!this.pose) {
+      // Orbited by hand: keep the direction, re-frame the distance and the target.
+      const cur = this.persp.position.clone().sub(this.controls.target);
+      const g = this.framed(cur);
+      if (!this.fly) { this.controls.target.copy(g.tgt); this.persp.position.copy(g.pos); }
+    }
     // A stage pose survives a resize or a new design: re-aim at it (no animation unless already flying).
     if (this.pose && this.fitted) {
       const g = this.goalOf(this.pose);
@@ -357,9 +363,44 @@ export class SpatialScene {
     }
     this.controls.update();
   }
+  // A pose keeps its angle (azimuth, elevation); its target and distance come from the fit: the house's box centred in
+  // the free rect (canvas minus the card, the tucked pass and the toolbar), all eight corners inside it with a margin.
   private goalOf(p: Pose) {
-    const tgt = this.focusPts[p.focus].clone();
-    return { tgt, pos: tgt.clone().addScaledVector(poseOffset(p), this.fitD * p.dist) };
+    return this.framed(poseOffset(p));
+  }
+  private framed(dir: THREE.Vector3) {
+    const tgt = this.box.isEmpty() ? this.centre.clone() : this.box.getCenter(new THREE.Vector3());
+    return { tgt, pos: tgt.clone().addScaledVector(dir.clone().normalize(), this.fitFor(dir, tgt)) };
+  }
+  // The shortest distance along dir at which the house box projects inside the free rect, less a 10 % margin.
+  private scratch = new THREE.PerspectiveCamera();
+  private fitFor(dir: THREE.Vector3, tgt: THREE.Vector3) {
+    if (this.box.isEmpty()) return this.fitD;
+    const W = this.host.clientWidth || 1, H = this.host.clientHeight || 1, f = this.free();
+    const cam = this.scratch;
+    // The goal screen offset, not the one gliding now: the fit is for where the framing is going.
+    cam.copy(this.persp); cam.setViewOffset(W, H, this.offGoal.x, this.offGoal.y, W, H); cam.updateProjectionMatrix();
+    // The free rect in NDC; the principal point already sits at its centre through the view offset.
+    const x0 = ((f.cx - f.fw / 2) / W) * 2 - 1, x1 = ((f.cx + f.fw / 2) / W) * 2 - 1;
+    const y1 = 1 - ((f.cy - f.fh / 2) / H) * 2, y0 = 1 - ((f.cy + f.fh / 2) / H) * 2;
+    const mx = (x1 - x0) * 0.1, my = (y1 - y0) * 0.1;
+    const b = this.box, corners = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => new THREE.Vector3(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z));
+    const u = dir.clone().normalize(), v = new THREE.Vector3();
+    const fits = (d: number) => {
+      cam.position.copy(tgt).addScaledVector(u, d); cam.lookAt(tgt); cam.updateMatrixWorld();
+      // In front of the camera is enough: the far plane is a render limit, not a framing one.
+      return corners.every((c) => { if (v.copy(c).applyMatrix4(cam.matrixWorldInverse).z >= 0) return false; v.copy(c).project(cam); return v.x >= x0 + mx && v.x <= x1 - mx && v.y >= y0 + my && v.y <= y1 - my; });
+    };
+    let lo = this.fitD * 0.15, hi = this.fitD * 6;
+    if (!fits(hi)) return this.fitD;   // nothing frames it (a degenerate free rect): the standard fit, never the bound
+    for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; if (fits(m)) hi = m; else lo = m; }
+    return hi;
+  }
+  // Dev and checks only: the house centre on screen and the free rect, in canvas pixels.
+  frameReport() {
+    const W = this.host.clientWidth || 1, H = this.host.clientHeight || 1, f = this.free();
+    const c = (this.box.isEmpty() ? this.centre : this.box.getCenter(new THREE.Vector3())).clone().project(this.camera);
+    return { house: [Math.round(((c.x + 1) / 2) * W), Math.round(((1 - c.y) / 2) * H)], free: [Math.round(f.cx), Math.round(f.cy)], fw: Math.round(f.fw), fh: Math.round(f.fh), dist: +this.persp.position.distanceTo(this.controls.target).toFixed(1), fitD: +this.fitD.toFixed(1) };
   }
   private fitted = false;
   // The photo mesh is only crisp up close: it caps the fitted distance (stage poses scale with it); null lifts it.
@@ -757,8 +798,8 @@ export class SpatialScene {
       if (mode === "yield") {
         const y = p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp;
         const s = Math.max(0, Math.min(1, (y - 650) / 500));
-        m.color.copy(HEAT_LO).lerp(HEAT_HI, s);
-        m.userData.goal = 0.78;
+        heatColour(m.color, s);
+        m.userData.goal = 0.88;
       } else if (mode === "off") m.userData.goal = 0;
     });
   }
@@ -1002,7 +1043,8 @@ export class SpatialScene {
     const own: Record<string, number> = {};
     this.panels.children.forEach((g) => { const id = g.userData?.plane; if (id) own[id] = (own[id] ?? 0) + 1; });
     const cnt = (id: string) => counts?.[id] ?? own[id] ?? 0;
-    return this.targets.map(({ p, c, n }) => {
+    // Panels: a face without modules gets no label element at all.
+    return this.targets.filter(({ p }) => kind !== "panels" || cnt(p.id) > 0).map(({ p, c, n }) => {
       const at = c.clone().addScaledVector(n, 0.4), k = cnt(p.id);
       const face = p.pitch < 3 ? "flat roof" : `${facing(p.azimuth)} face, ${Math.round(p.pitch)}° pitch`;
       const html = kind === "roof"
@@ -1031,8 +1073,11 @@ export class SpatialScene {
   kitLabels(batt: string | null, wb: string | null): Label[] {
     const out: Label[] = [];
     this.pillAnchors();
-    if (batt) out.push({ key: "kit-batt", at: this.battAt, html: `<b>${batt}</b>`, cls: "chip c-bat", prio: 5e6 });
-    if (wb && this.wallbox) out.push({ key: "kit-wb", at: this.wbAt, html: `<b>${wb}</b>`, cls: "chip c-ev", prio: 5e6 });
+    const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    if (batt) out.push({ key: "kit-batt", at: this.battAt, html: `<b>${batt}</b>`, cls: "chip c-bat", prio: 5e6,
+      unit: this.batteryBox ? { obj: this.batteryBox, top: V(0, BATTERY.h / 2, 0), mid: V(0, 0, 0) } : undefined });
+    if (wb && this.wallbox) out.push({ key: "kit-wb", at: this.wbAt, html: `<b>${wb}</b>`, cls: "chip c-ev", prio: 5e6,
+      unit: { obj: this.wallbox, top: V(0, WALLBOX.h, 0), mid: V(0, WALLBOX.h / 2, 0) } });
     return out;
   }
 
@@ -1057,6 +1102,19 @@ export class SpatialScene {
       el.style.display = kw > 0.03 ? "" : "none";
       el.setAttribute("stroke-width", String(Math.min(26, 1.5 + kw * 3.2)));
     });
+  }
+
+  // The roof or a wall stands between the camera and this point, more than 0.6 m in front of it (so the glass wall a
+  // part is mounted on, or stands behind, does not count). 3D only: the plan view looks straight down.
+  private behindHouse(pt: THREE.Vector3) {
+    // What is drawn for the house: the roof model's planes and the glass shell (the glb's own roof and walls do not
+    // take the ray here).
+    const occ = [...this.tints.children, this.xray.shellMesh()].filter((m): m is THREE.Mesh => !!m && (m as THREE.Mesh).isMesh);
+    if (this.camera !== this.persp || !occ.length) return false;
+    const from = this.persp.position, d = from.distanceTo(pt);
+    this.occRay.set(from, pt.clone().sub(from).normalize());
+    this.occRay.far = d - 0.6;
+    return this.occRay.intersectObjects(occ, false).length > 0;
   }
 
   private project(v: THREE.Vector3) {
@@ -1126,8 +1184,7 @@ export class SpatialScene {
     this.cancelMomentum();
     if (this.mode === "2d") { this.setOrtho(this.persp.aspect); return; }
     if (this.home) { this.flyTo(this.home); return; }
-    const d = this.fitD, dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
-    const pos = this.centre.clone().addScaledVector(dir, d), tgt = this.centre.clone();
+    const { pos, tgt } = this.framed(new THREE.Vector3(0.42, 0.62, 0.66));
     if (this.opts.reduce) { this.persp.position.copy(pos); this.controls.target.copy(tgt); this.controls.update(); return; }
     this.fly = { pos, tgt, top: false };
   }
@@ -1310,9 +1367,9 @@ export class SpatialScene {
         const el = this.labelEls.get(x.key);
         if (!el) return;
         if (x.key.startsWith("node-") && el.innerHTML !== x.html) { el.innerHTML = x.html; this.labelSize.delete(x.key); }
-        const p = this.project(x.at);
+        const p = this.project(x.unit ? x.unit.obj.localToWorld(x.unit.top.clone()) : x.at);
         const batt = x.key === "node-batt", chip = !!x.cls?.includes("chip");
-        let ok = p.ok && (!x.tap || x.tap === this.tapped) && (!chip || chips < MAX_CHIPS);
+        let ok = p.ok && (!x.tap || x.tap === this.tapped) && (!chip || chips < MAX_CHIPS) && (!x.unit || (x.unit.obj.visible && !this.behindHouse(x.unit.obj.localToWorld(x.unit.mid.clone()))));
         let dx = 0, dy = 0;
         if (ok) {
           let sz = this.labelSize.get(x.key);
