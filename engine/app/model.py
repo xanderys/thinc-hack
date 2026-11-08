@@ -783,6 +783,9 @@ class Engine:
         for r, d, w in self._inbox[:limit]:
             inp = row_inputs(r)
             full = self.predict(inp, full=False)
+            d = full["design"]  # the flags judge the design shown on the row, not the order-time draft
+            w = {c: bool(rules.within(c, [d[TARGET[c]] or 0.0], [r[TARGET[c]]])[0]) for c in COMPONENTS}
+            w["all"] = all(w.values())
             inc = [c for c in full["components"].values() if c["decision"] == "include"]
             note = ""
             if not w["all"]:
