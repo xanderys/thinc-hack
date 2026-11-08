@@ -6,6 +6,7 @@ import type { Design, DesignResponse, Health, Lead as LeadT, LeadRow, ReadRespon
 import { call } from "@/lib/client";
 import { HERO_LEAD } from "@/lib/demo";
 import House from "@/components/stage/House";
+import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Live, Seed } from "@/components/stage/Stage";
 import AddSheet from "./AddSheet";
 import HousePhoto from "./HousePhoto";
@@ -214,42 +215,38 @@ export default function Board({ openId: initial }: { openId?: string }) {
   useEffect(() => { setShared(null); }, [openId]);
 
   const openCard = cards.find((c) => c.id === openId);
+  const ll = liveLead?.lead_id === openId ? liveLead : null;   // test leads and old leads are not on the board list
 
   if (openId) return (
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
       <div className={calling ? "b-open-h live" : "b-open-h"}>
         {calling && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
         <button type="button" className="b-close" onClick={close} aria-label="Close, back to the board"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 3l12 12M15 3L3 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></button>
-        <div>
-          <h1>{openCard?.name ?? seed?.read.inputs.address ?? "House"}</h1>
-          <p>{openCard?.place}{(() => {
-            if (!openCard && !calling) return null;
-            const st = calling ? "in_call" : openCard && (DECIDED.has(openCard.status) || openCard.status === "approved") ? openCard.status : openCard && approved[openCard.id] ? "approved" : openCard?.status ?? "draft";
-            return <span className={`b-st b-chip ${st}`}>{STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${hm(openCard.decision?.decided_at)}` : ""}</span>;
-          })()}</p>
-          {openCard && <p className={qs.head}>{openCard.q ? <span className="b-verdict"><VerdictChip verdict={openCard.q.verdict} /><span className="b-offer">{[cap(openCard.q.sentence.split(": ").slice(1).join(": ").replace(/\.$/, "")), ...(openCard.q.expected_offer_eur != null ? [`expected offer €${Math.round(openCard.q.expected_offer_eur).toLocaleString("en-GB")}, estimate`] : [])].join(" · ")}</span></span> : <VerdictLine q={null} />}</p>}
+        <div className="b-open-lines">
+          {/* Line one: the name, status chip right-aligned on desktop. Line two: the address. Line three: verdict and offer. */}
+          <div className="b-l1">
+            <h1>{openCard?.name ?? ll?.customer_name ?? seed?.read.inputs.address ?? "House"}</h1>
+            {(() => {
+              if (!openCard && !calling && !ll) return null;
+              const base = openCard?.status ?? ll?.status ?? "draft";
+              const st = calling ? "in_call" : DECIDED.has(base) || base === "approved" ? base : approved[openId] ? "approved" : base;
+              return <span className={`b-st b-chip ${st}`}>{STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${hm(openCard.decision?.decided_at)}` : ""}</span>;
+            })()}
+          </div>
+          <p className="b-l2">{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
+          <p className={`${qs.head} b-l3`}>{openCard?.q
+            ? <span className="b-verdict"><VerdictChip verdict={openCard.q.verdict} /><span className="b-offer">{[cap(openCard.q.sentence.split(": ").slice(1).join(": ").replace(/\.$/, "").replace(/, \d+ of \d+ facts stated$/, "")), ...(openCard.q.expected_offer_eur != null ? [`€${(Math.round(openCard.q.expected_offer_eur / 100) * 100).toLocaleString("en-GB")} estimate`] : [])].join(" · ")}</span></span>
+            : <VerdictLine q={null} />}</p>
           {openCard?.q && <p className="b-small">Every number is an estimate until the site visit.</p>}
           {openCard?.q && !calling && liveLead?.lead_id === openId && liveLead.history.length > 0 && (
-            <p className={qs.rina}>Rina, after the call: {liveLead.history.length} {liveLead.history.length === 1 ? "answer" : "answers"}. {openCard.q.sentence} Expected offer {offerEur(openCard.q.expected_offer_eur)}.</p>
+            <p className={`${qs.rina} b-rina`}>Rina, after the call: {liveLead.history.length} {liveLead.history.length === 1 ? "answer" : "answers"}. {openCard.q.sentence} Expected offer {offerEur(openCard.q.expected_offer_eur)}.</p>
           )}
           {shared && <p className="b-shared" title={shared.reason}>Shared roof, apartment building: single-family design does not apply</p>}
         </div>
         <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
       </div>
       {seedErr && <div className="error" role="alert"><span><span className="src">Engine said</span>{seedErr}</span><button className="btn ghost" onClick={() => { const id = openId; setOpenId(null); setTimeout(() => setOpenId(id), 0); }}>Retry</button></div>}
-      {!seed && !seedErr && (
-        <div className="ok-skel" role="status" aria-label="Opening the house">
-          <div className="ok-chips">{[110, 90, 130, 120, 110, 120].map((w, i) => <span key={i} className="s-skel" style={{ width: w }} />)}</div>
-          <div className="ok-body">
-            <div className="ok-steps">{[0, 1, 2, 3, 4].map((i) => <span key={i} className="s-skel ok-step" />)}</div>
-            <div className="ok-hero">
-              <div className="ok-sim">{[0, 1, 2, 3].map((i) => <span key={i} className="s-skel" />)}</div>
-              <svg className="ok-house" viewBox="0 0 240 160" aria-hidden><path d="M30 84 L120 24 L210 84 V148 H30 Z" /></svg>
-              <p className="ok-words">Opening the house</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {!seed && !seedErr && <OpenSkeleton />}
       {staleNote && <p className="b-shared" role="status">This lead changed elsewhere, reloaded.</p>}
       {seed && <Stage key={`${seed.leadId}:${reload}`} seed={seed} onApproved={onApproved} live={liveFeed} />}
     </div>
@@ -306,3 +303,4 @@ export default function Board({ openId: initial }: { openId?: string }) {
     </div>
   );
 }
+

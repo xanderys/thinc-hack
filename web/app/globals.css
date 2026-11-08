@@ -758,3 +758,63 @@ input, select, textarea { border-radius: 8px; }
   .ok-sim { left: 8px; right: 8px; width: auto; grid-template-columns: repeat(4, 1fr); padding: 6px; }
   .ok-sim .s-skel { height: 40px; }
 }
+/* Lane 3 (8 Nov 2026): the open card's bar and skeleton everywhere; the desktop two-column layout from 1024 px. */
+.s-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1 1 100%; min-width: 0; }
+@media (max-width: 640px) { .s-bar .s-undo { display: none; } }   /* phones keep their bar; Undo is on the model toolbar */
+.s-bar .s-say { flex: 1 1 260px; min-width: 0; }
+.s-bar .s-listen { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.s-bar .btn { min-height: 40px; }
+.b-l1 { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.b-l1 h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b-open-lines { flex: 1; min-width: 0; }
+.st-skel { display: grid; gap: 12px; margin-top: 12px; }
+.st-skel-l { display: grid; gap: 6px; align-content: start; }
+.st-skel-card { height: 64px; border-radius: 12px; }
+.st-skel-house { height: 46vh; min-height: 300px; border-radius: 12px; order: -1; }
+
+@media (min-width: 1024px) {
+  /* One screen: masthead, the three-line header, then the two columns down to the window's bottom edge. No page scroll. */
+  body:has(.b-open) { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+  body:has(.b-open) > main { flex: 1; min-height: 0; width: 100%; max-width: none; padding: 0 24px 16px; display: flex; flex-direction: column; }
+  .b-open { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-top: 10px; }
+  .b-open-h { flex: none; padding-bottom: 10px; align-items: flex-start; }
+  .b-open-h .b-head-photo, .b-open-h .b-small, .b-open-h .b-rina, .b-open-h .b-shared { display: none; }
+  .b-open-h h1 { font-size: 24px; line-height: 1.2; }
+  .b-open-h p { margin: 2px 0 0; line-height: 1.35; }
+  .b-l1 .b-chip { margin-left: auto; flex: none; }
+  .b-l2, .b-l3 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .b-l2 .b-skel-line { width: 240px; height: 14px; }
+
+  .st-open { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-top: 8px; }
+  .st-open > .t-bar { flex: none; }
+  .st-open > [class*="chain_root__"] {
+    flex: 1; min-height: 0; height: auto; margin-top: 8px;
+    grid-template-columns: clamp(360px, 30vw, 440px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
+  }
+  /* Step cards scroll on their own; the track stays invisible (overlay scrollbars on macOS, a thin thumb elsewhere). */
+  .st-open [class*="chain_rail__"] { grid-column: 1; grid-row: 1; scrollbar-width: thin; scrollbar-color: rgba(20, 24, 40, 0.22) transparent; }
+  .st-open [class*="chain_rail__"]::-webkit-scrollbar { width: 6px; background: transparent; }
+  .st-open [class*="chain_rail__"]::-webkit-scrollbar-thumb { background: rgba(20, 24, 40, 0.22); border-radius: 3px; }
+  .st-open [class*="chain_hero__"] { grid-column: 2; grid-row: 1; }
+  /* Reasoning hidden: the house takes the full width, the step strip sits under it. */
+  .st-open > [class*="chain_isCollapsed__"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .st-open > [class*="chain_isCollapsed__"] [class*="chain_hero__"] { grid-column: 1; grid-row: 1; }
+  .st-open > [class*="chain_isCollapsed__"] [class*="chain_collapsed__"] { grid-column: 1; grid-row: 2; }
+
+  /* The sentence bar docks over the canvas bottom as glass; the model toolbar sits just above it; the map credit stays visible under it. */
+  .st-open [class*="chain_say__"] {
+    grid-column: 2; grid-row: 1; align-self: end; justify-self: center; z-index: 6; margin: 0 0 30px; width: min(760px, calc(100% - 120px));
+    padding: 8px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.72); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5);
+  }
+  .st-open > [class*="chain_isCollapsed__"] [class*="chain_say__"] { grid-column: 1; }
+  .st-open [class*="chain_say__"] .s-chips { margin: 0 0 6px; }
+  .st-open [class*="chain_say__"] .error { margin: 6px 0 0; }
+  .st-open [class*="chain_hero__"] [class*="chain_toolbar__"] { bottom: calc(var(--say-h, 58px) + 40px); }
+
+  .st-skel { flex: 1; min-height: 0; grid-template-columns: clamp(360px, 30vw, 440px) minmax(0, 1fr); }
+  .st-skel-house { height: auto; min-height: 0; order: 0; }
+}
+@media (min-width: 1024px) and (prefers-reduced-transparency: reduce) {
+  .st-open [class*="chain_say__"] { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--rule); }
+}

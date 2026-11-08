@@ -91,7 +91,11 @@ export default function TopBar(p: Props) {
 }
 
 // Preference, locks, Undo and Approve: the top bar on the stage page, the Offer stage in the open card.
-export function Decide(p: Pick<Props, "pref" | "setPref" | "res" | "overrides" | "setOverride" | "canUndo" | "onUndo" | "approvedAt" | "onApprove">) {
+export function Decide(p: Pick<Props, "pref" | "setPref" | "res" | "overrides" | "setOverride" | "canUndo" | "onUndo" | "approvedAt" | "onApprove"> & { slim?: boolean }) {
+  // The open card: preference buttons and Locks are gone, Undo is in the sentence bar; only Approve stays here.
+  if (p.slim) return p.res ? (
+    <div className="t-row"><span className="t-go">{p.approvedAt ? <span className="s-approved s-mark">Approved {p.approvedAt}</span> : <button className="btn" onClick={p.onApprove}>Approve</button>}</span></div>
+  ) : null;
   return (
     <div className="t-row">
         <div className="s-pref t-pref" role="group" aria-label="Preference">
