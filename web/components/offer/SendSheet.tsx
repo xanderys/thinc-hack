@@ -29,7 +29,7 @@ async function copyText(x: string): Promise<boolean> {
 
 export function rinaMessage(name: string, brand: string, link: string) {
   const first = name.trim().split(/\s+/)[0] || "there";
-  return `Hi ${first}, it's Rina from ${brand}. Your solar proposal is ready: ${link}\nIt shows the system, the price and what it saves you each year. You can sign it there, or reply here with any question.`;
+  return `Hi ${first}, it's Rina from ${brand}. Your solar proposal is ready: ${link}\nIt shows the system, the price and when it pays for itself. You can sign it there, or reply here with any question.`;
 }
 
 export default function SendSheet({ leadId, name, brand, link, version, onClose, onSent }: {
