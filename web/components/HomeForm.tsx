@@ -8,7 +8,7 @@ export const LOAD_PROFILES: Record<LoadProfile, string> = {
 export const HEATING: Record<HeatingType, string> = {
   Gas: "Gas", Oil: "Oil", Heatpump: "Heat pump", OtherNonRenewable: "Other, fossil", OtherRenewable: "Other, renewable", Unknown: "Unknown",
 };
-export const INSTALLERS: Record<InstallerId, string> = { "2a8ba8e2": "Isarwerk Solar", "23c108b7": "Würmtal Energie" };
+export const INSTALLERS: Record<InstallerId, string> = { "2a8ba8e2": "Installer A", "23c108b7": "Installer B" };
 
 type Props = { value: HomeInputs; onChange: (v: HomeInputs) => void };
 
