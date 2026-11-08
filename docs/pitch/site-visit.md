@@ -20,7 +20,7 @@ The WhatsApp copilot asks for facts in text (yearly use, heating type and use, b
 | Meter cabinet and grid connection | Not modelled | Leaves: still needs a visit or a photo from the homeowner |
 | Inverter and battery location | Placed indoors on the model as a default | Leaves: still needs a visit |
 | Cable runs | Not modelled | Leaves: still needs a visit |
-| Wallbox location | Not placed | Leaves: still needs a visit or a photo |
+| Wallbox location | A wallbox is drawn beside the house; its real position is not checked | Leaves: still needs a visit or a photo |
 | Scaffold and access | Street and garden visible on the aerial view; not assessed | Leaves: still needs a visit |
 | Structural load of the roof | Not modelled | Leaves: still needs a visit |
 | Permits and grid operator notice | Not handled | Leaves: office work, not a visit |
