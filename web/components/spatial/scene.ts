@@ -613,7 +613,13 @@ export class SpatialScene {
     this.groundOff = googleGround(this.glbRoot, this.renderer, o);
   }
 
-  setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on || this.systems.sys === "wallbox"; }
+  // The design has a wallbox. Without one the Wallbox view shows no unit, car or cable, matching its "No wallbox" card.
+  wbOn = false;
+  setWallbox(on: boolean) {
+    this.wbOn = on;
+    if (this.wallbox) this.wallbox.visible = on;
+    if (this.systems.sys) this.systems.override();
+  }
   // The roof box includes the eaves, so a unit placed from it misses the wall: once the building model is in,
   // move the battery and inverter onto the inner face of the south wall (the ray starts inside the house), the
   // wallbox onto the outer face of the east wall by the drive, and the heat pump to a hand's width outside the west

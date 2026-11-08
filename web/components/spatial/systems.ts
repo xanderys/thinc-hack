@@ -25,7 +25,7 @@ const DOT_R = 0.32;      // metres: about 6 px at the storage pose
 type V = THREE.Vector3;
 type Host = {
   scene: THREE.Scene; box: THREE.Box3; anchors: { roof: V; home: V; batt: V; grid: V };
-  sunGroup: THREE.Group; sunDot: THREE.Mesh; kit: THREE.Group; batteryBox: THREE.Mesh; wallbox: THREE.Object3D | null;
+  sunGroup: THREE.Group; sunDot: THREE.Mesh; kit: THREE.Group; batteryBox: THREE.Mesh; wallbox: THREE.Object3D | null; wbOn: boolean;
   panels: THREE.Group; opts: { reduce?: boolean }; shade: { at?: ShadeAt };
   sunPos: (h: number) => V; flyTo: (p: Pose) => void; xray: { set: (e: Envelope | null) => unknown };
   setLabels: (l: unknown[]) => void;
@@ -147,7 +147,7 @@ export class Systems {
   }
   // The cable reaches the car once it is parked in the Wallbox view; until then it hangs in its loop on the unit.
   private plugged() {
-    const on = this.sys === "wallbox" && !this.carMoving;
+    const on = this.sys === "wallbox" && !this.carMoving && this.host.wbOn;
     if (this.plug) this.plug.visible = on;
     const loop = this.host.wallbox?.getObjectByName("loop");
     if (loop) loop.visible = !on;
@@ -172,15 +172,15 @@ export class Systems {
   override() {
     const H = this.host, s = this.sys;
     this.battery.visible = s === "battery";
-    this.charge.visible = s === "wallbox";
-    this.car.visible = s === "wallbox";
+    this.charge.visible = s === "wallbox" && H.wbOn;
+    this.car.visible = s === "wallbox" && H.wbOn;
     if (H.batteryBox) H.batteryBox.visible = s !== "wallbox" && s !== "panels" && s !== "heatpump";
     if (!s) { this.panelsOnTop(false); return; }
     H.panels.visible = true; // the kit is the same in every system
     this.panelsOnTop(s === "heatpump");
     H.sunGroup.visible = s === "panels" || s === "battery";
     H.kit.visible = s === "battery" || s === "wallbox";
-    if (H.wallbox) H.wallbox.visible = s === "wallbox" ? true : H.wallbox.visible;
+    if (H.wallbox) H.wallbox.visible = H.wbOn;
     this.plugged();
   }
 
