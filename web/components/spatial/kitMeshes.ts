@@ -7,7 +7,9 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
 import { batteryModules } from "./kitBands";
 
 export const KIT = {
-  paper: "#FAF8F3", // battery housing (the scene's battery colour)
+  paper: "#FAF8F3", // the wallbox housing
+  housing: "#B7B1A5", // battery housing: a mid warm grey that still reads behind the frosted glass walls
+  led: "#24a148",   // the battery modules' status lights (the battery colour)
   slate: "#596070", // inverter housing
   unit: "#E9E6DF",  // heat pump and cabinet housings, a shade darker so they read against the wall
   dark: "#151826",  // module fill and displays, the roof panels' colour
@@ -46,11 +48,12 @@ export const BATTERY = { w: 0.9, h: 1.5, d: 0.6 };
 export const batteryHeight = (modules: number) => 0.04 + modules * (0.25 + 0.018) + 0.08;
 export const batteryFor = (kwh: number) => battery(batteryModules(kwh));
 export function battery(modules: number): THREE.Group {
-  const g = new THREE.Group(), body = lam(KIT.paper), seam = lam(KIT.seam), mh = 0.25, sh = 0.018;
+  const g = new THREE.Group(), body = lam(KIT.housing), seam = lam(KIT.seam), led = new THREE.MeshBasicMaterial({ color: KIT.led }), mh = 0.25, sh = 0.018;
   let y = 0.04;
   g.add(box(BATTERY.w - 0.06, 0.04, BATTERY.d - 0.06, seam, 0, 0.02)); // plinth
   for (let i = 0; i < modules; i++) {
     g.add(box(BATTERY.w, mh, BATTERY.d, body, 0, y + mh / 2));
+    g.add(box(0.16, 0.025, 0.01, led, -BATTERY.w / 2 + 0.16, y + mh / 2, BATTERY.d / 2 + 0.005)); // status light
     y += mh;
     g.add(box(BATTERY.w - 0.04, sh, BATTERY.d - 0.04, seam, 0, y + sh / 2));
     y += sh;
