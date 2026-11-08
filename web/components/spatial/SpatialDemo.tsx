@@ -35,7 +35,7 @@ type Props = {
   leadId?: string;                    // sent with the layers call so call facts tag as Rina
   onLayers?: (l: Layers) => void;     // the one layers response, for bars, checks and the energy numbers
   sunTint?: boolean;                  // tint the roof faces by sun with the modules showing (per-panel shading not in yet)
-  tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void; photo?: { on: boolean; set: (on: boolean) => void } }) => ReactNode;
+  tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void } }) => ReactNode;
   children?: ReactNode;               // overlays drawn over the canvas
 };
 
@@ -416,15 +416,15 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
           </div>
         )}
 
-        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { setView(v); if (v === "3d" && L === 8) setLayer(3); } })}
-        {bare && <div className={`${s.tools} ${s.toolsBare}`}><div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div></div>}
+        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { setView(v); if (v === "3d" && L === 8) setLayer(3); }, recentre: () => scene.current?.refit() })}
+        {bare && <div className={`${s.tools} ${s.toolsBare}`}><button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button></div>}
         {!bare && <div className={s.tools}>
           <div className={s.toggle} role="group" aria-label="View">
             <button type="button" aria-pressed={L !== 8 && view === "3d"} onClick={() => { setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
             <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => setView("2d")}>2D</button>
           </div>
           <LayersMenu className={s.layersBtn} />
-          <div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div>
+          <button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button>
         </div>}
 
         {!bare && L === 2 && (

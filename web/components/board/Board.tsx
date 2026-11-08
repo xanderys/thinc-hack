@@ -190,6 +190,11 @@ export default function Board({ openId: initial }: { openId?: string }) {
     history.pushState({}, "", "/");
     transition(() => setOpenId(null));
   }, []);
+  // The banner's back arrow (Masthead) closes the card the same way, with the card's transition.
+  useEffect(() => {
+    const on = (e: Event) => { e.preventDefault(); close(); };
+    addEventListener("marquee:back", on); return () => removeEventListener("marquee:back", on);
+  }, [close]);
   useEffect(() => {
     const on = () => { const m = location.pathname.match(/^\/h\/([^/]+)/); transition(() => setOpenId(m ? decodeURIComponent(m[1]) : null)); };
     addEventListener("popstate", on); return () => removeEventListener("popstate", on);
@@ -221,7 +226,6 @@ export default function Board({ openId: initial }: { openId?: string }) {
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
       <div className={calling ? "b-open-h live" : "b-open-h"}>
         {calling && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
-        <button type="button" className="b-close" onClick={close} aria-label="Close, back to the board"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 3l12 12M15 3L3 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></button>
         <div className="b-open-lines">
           {/* Line one: the name, status chip right-aligned on desktop. Line two: the address. Line three: verdict and offer. */}
           <div className="b-l1">

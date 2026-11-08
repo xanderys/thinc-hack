@@ -158,7 +158,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const model: RoofModel | null = layers ? (Array.isArray(layers.planes) ? null : layers.planes) : null;
   // A flat in an apartment block: the roof and the envelope are the building's, not the household's.
   const building = model ? isMultiUnit(model, inputs) : null, multi = !!building?.multi;
-  const hasEnv = !multi && !!model?.envelope?.faces?.length, hasPlan = !!model?.plan?.outline?.length;
+  const hasEnv = !multi && !!model?.envelope?.faces?.length;
   useEffect(() => {
     if (!building) return;
     dispatchEvent(new CustomEvent("marquee:building", { detail: { leadId: leadId ?? null, multi: building.multi, reason: building.reason } }));
@@ -169,7 +169,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   useEffect(() => { if (FIVE && !onPanels) setShadeOn(false); }, [onPanels]);
   // The planner's pick on the model (3D or Photo over the plan) holds until the stage changes.
   const [pick, setPick] = useState<{ stage: number; layer: number } | null>(null);
-  const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : (FIVE ? [3, 5, 5, hasEnv ? 7 : 1, hasPlan ? 8 : 3] : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, hasPlan ? 8 : 3, hasPlan ? 8 : 3])[stage - 1];
+  const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : (FIVE ? [3, 5, 5, hasEnv ? 7 : 1, 3] : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, 3, 3])[stage - 1];
   const bars = useMemo(() => Object.fromEntries((layers?.bars ?? []).map((b) => [BAR_AT[b.key], b])) as Record<number, Bar>, [layers]);
   // The four numbers come from the same run as the bars and checks when it is in; the design's own until then.
   const d0 = res.design as unknown as Record<string, unknown>;
@@ -229,7 +229,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   const go = (n: number) => { setAuto(false); setStage(n); setWhy(null); setWhyStep(null); };
 
-  const tools = ({ view: v, setView, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
+  const tools = ({ view: v, setView, recentre, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
     <div className={s.toolbar} role="toolbar" aria-label="Model" data-cover>
       <Inert label="Select"><path d="M5 3l12 7-5 1.5L9.5 17z" /></Inert>
       <Inert label="Pan"><path d="M7 11V5.5a1.5 1.5 0 013 0V10m0-1.5V4a1.5 1.5 0 013 0v5m0-3a1.5 1.5 0 013 0v6c0 3.5-2.5 6-6 6s-5-1.5-6.5-4L3 11.5a1.5 1.5 0 012.5-1.5L7 12" /></Inert>
@@ -238,6 +238,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       <button type="button" className={s.tb} onClick={() => { holdOffer(); onUndo(); }} disabled={!canUndo} title="Undo" aria-label="Undo"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
       <span className={s.sep} />
       <LayersMenu className={s.tb} up heatmap={{ on: heatmap, set: setHeatmap }} />
+      <button type="button" className={s.tb} onClick={recentre} title="Re-centre" aria-label="Re-centre"><Ico><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4" /></Ico></button>
       <button type="button" className={s.tb} aria-pressed={expanded} title="Reasoning" aria-label="Reasoning" onClick={() => { setAuto(false); setExpanded((x) => !x); }}>
         <Ico>{expanded ? <><path d="M1.5 10S5 4 10 4s8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z" /><circle cx="10" cy="10" r="2.5" /></> : <><path d="M1.5 10S5 4 10 4s8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z" /><circle cx="10" cy="10" r="2.5" /><path d="M3 17L17 3" /></>}</Ico>
       </button>

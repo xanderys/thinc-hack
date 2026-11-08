@@ -44,8 +44,9 @@
 .toggle { display: flex; border: 1px solid var(--ink); background: var(--paper); }
 .toggle button { appearance: none; border: 0; background: transparent; border-radius: 0; padding: 4px 9px; font-size: 12.5px; font-family: var(--font-mono), monospace; cursor: pointer; }
 .toggle button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
-.compass { width: 34px; height: 34px; border: 1px solid var(--ink); background: var(--paper); display: grid; place-items: center; }
-.needle { display: grid; justify-items: center; font-family: var(--font-mono), monospace; font-size: 10px; line-height: 1; transform-origin: 50% 50%; }
+.compass { width: 34px; height: 34px; border: 1px solid var(--ink); background: var(--paper); display: grid; place-items: center; padding: 0; color: var(--ink); cursor: pointer; font: inherit; }
+.compass:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.needle { display: grid; justify-items: center; font-family: var(--font-sans), sans-serif; font-weight: 600; font-size: 10px; line-height: 1; transform-origin: 50% 50%; }
 .needle i { display: block; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 9px solid var(--accent); }
 
 .clock { position: absolute; right: 10px; bottom: 10px; font-family: var(--font-mono), monospace; font-size: 22px; background: var(--paper); border: 1px solid var(--ink); padding: 2px 8px; font-variant-numeric: tabular-nums; pointer-events: none; }

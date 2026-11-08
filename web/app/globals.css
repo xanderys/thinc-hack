@@ -52,7 +52,7 @@ button, input, select { font: inherit; color: inherit; }
 .masthead nav { display: flex; gap: 20px; }
 .masthead nav a { text-decoration: none; color: rgba(244, 241, 234, 0.72); padding-bottom: 2px; border-bottom: 1.5px solid transparent; }
 .masthead nav a[aria-current="page"] { color: var(--paper); border-bottom-color: var(--paper); }
-.masthead .engine { margin-left: auto; font-size: 12.5px; color: rgba(244, 241, 234, 0.72); font-family: var(--font-mono), monospace; }
+.masthead .engine { margin-left: auto; font-size: 12.5px; color: rgba(244, 241, 234, 0.72); }
 .masthead .engine.mock { color: var(--paper); text-decoration: underline; }
 
 main { max-width: 1360px; margin: 0 auto; padding: 0 32px 64px; }
@@ -818,3 +818,15 @@ input, select, textarea { border-radius: 8px; }
 @media (min-width: 1024px) and (prefers-reduced-transparency: reduce) {
   .st-open [class*="chain_say__"] { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--rule); }
 }
+
+/* Board cards: figures in the sans with tabular numbers, no monospace in the chrome. */
+.b-card .num { font-family: var(--font-sans), sans-serif; font-variant-numeric: tabular-nums; }
+
+/* Banner: the back chevron sits in the left gutter's first 44 px, with "Planner" right after it; an open card's
+   banner shares the card's gutter at desktop widths. */
+.masthead { align-items: center; }
+.masthead .back { display: grid; place-items: center; width: 44px; height: 44px; margin: -10px -14px -10px -18px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--paper); cursor: pointer; }
+.masthead .back:hover { background: rgba(244, 241, 234, 0.12); }
+.masthead .back:focus-visible { outline: 2px solid var(--paper); outline-offset: -2px; }
+@media (min-width: 1024px) { body:has(.b-open) .masthead { padding-left: 24px; padding-right: 24px; } }
+.b-open-h { padding-right: 0; }
