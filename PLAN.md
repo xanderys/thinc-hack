@@ -41,6 +41,7 @@ Contract between units: `docs/api.md`. Change it only through the orchestrator.
 - Deploy: MARQUEE SHIP runs vercel deploy --prod from the repo root then vercel alias set; Git deploys are cancelled by the ignore step.
 
 ## Next
+- 09:34 Munich Sun: HOME GO (CoS: tucked pass in every state at 390; VIDEO's 'no pass' lead was already signed, sign card hidden by design, nothing to fix): aliasing home e078003. Planner gate on rh9qc1m9c running; 430369d (board edited design) staged behind it.
 - 09:33 Munich Sun: web 6ec16f4 pushed (board card shows the edited design for a lead with overrides via the planner's own refine call with retries; approved leads keep the approved design); next planner delta after the current pair. Main e078003 (engine e9c7763) staged for both sites as the one-step alias on the CoS pass.
 - 09:32 Munich Sun: preview pair with CoS: planner rh9qc1m9c (main 9f3b436, on-model storage clean-up) and home miho8uxr6; a go deploys both. Engine e9c7763 merging. Next delta: board shows the edited design when overrides exist (web lane).
 - 09:32 Munich Sun: ENGINE live e9c7763 (09:30): /api/roof/model takes lead_id or kwp and returns placed = the design's modules (23 of 40 on the hero), layout_kwp tells the web which kWp the panels show; next restart no earlier than 10:00. Main 9f3b436 (on-model storage clean-up) previewing; home preview miho8uxr6 up; planner URL next; CoS pair pass then deploy. Web lane: board shows the edited design when overrides exist (in work).
