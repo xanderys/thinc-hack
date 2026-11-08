@@ -120,7 +120,7 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
 }
 
 /** The facts row. An explicit edit calls onFact (the existing intake-step path); opening a chip never writes. slot: room for a button at the row's end. */
-export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phone, onPhone, sources }: { sources?: Record<string, string>; phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
+export default function Facts({ inputs, roof, onFact, hidden, flash, slot, origin, phone, onPhone, sources }: { sources?: Record<string, string>; phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; flash?: Field | null; slot?: ReactNode }) {
   const [open, setOpen] = useState<Field | "phone" | null>(null);
   const card = useClientCard();
   useEffect(() => () => setClientCard(false), []);
@@ -135,7 +135,7 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
     addEventListener("keydown", on); return () => removeEventListener("keydown", on);
   }, [open]);
   const cell = (key: string, g: Glyph, label: string, st: string, value: string | null, via: boolean, field: Field | "phone", mark?: string) => (
-    <button key={key} type="button" className="fq" data-state={st} aria-expanded={open === field} aria-controls="fc-panel" onClick={() => setOpen((o) => o === field ? null : field)}>
+    <button key={key} type="button" className="fq" data-flash={flash === field ? "" : undefined} data-state={st} aria-expanded={open === field} aria-controls="fc-panel" onClick={() => setOpen((o) => o === field ? null : field)}>
       <Glyph g={g} />
       {st === "missing"
         ? <span className="fq-need">Needs: {label.toLowerCase()}</span>

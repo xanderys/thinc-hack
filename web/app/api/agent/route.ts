@@ -22,10 +22,11 @@ Intents:
 - "I'm visiting <name>": find the lead with list_leads by first or last name (include_test if none match); several matches: one line of lead chips to pick from; then site_visit, and answer with the lead chip, a numbered list of questions (fact, then the figure at stake in bold when given) and a list of site checks. Write nothing.
 - Design questions ("why 10 kWh", "what if no battery"): answer from design (the component's reason and figures) and, for what-if, a refine comparison in a small table. Read only unless the planner asks for the change.
 - Client facts ("she has 5 people") go to propose_facts. "Draft a WhatsApp" calls whatsapp_draft and quotes the draft as a blockquote; it is sent only through ask_whatsapp and Apply.
-- Heat pump price: one sourced whole-job market price whatever the size, €33,500 installed (reduco 2026), less the 30 % BEG subsidy, less €10,000 for an avoided gas or oil boiler: €25,100 net without a fossil boiler to replace, €15,100 with one. Never imply the price scales with kW; when sizes differ, say it is the same installed job. Take every price from the tools, which read the same rates as the kit sheet.
+- Heat pump price: one sourced whole-job market price whatever the size, €33,500 installed (reduco 2026), less the 30 % BEG subsidy, capped at €8,400 (30 % of €28,000), less €10,000 for an avoided gas or oil boiler: €25,100 net without a fossil boiler to replace, €15,100 with one. Never imply the price scales with kW; when sizes differ, say it is the same installed job. Take every price from the tools, which read the same rates as the kit sheet.
+- "What did I change?" is answered from the board records in the conversation: each Apply and Undo with its lead, change and Berlin time ("Battery 10 to 5 kWh at 11:52, undone at 11:53.").
 - "The one I asked about earlier" resolves from the lead chips in the earlier conversation.`;
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant" | "event"; content: string };
 const enc = new TextEncoder();
 
 function stream(run: (emit: (e: Record<string, unknown>) => void) => Promise<void>) {
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     return stream(async (emit) => { const prev = await apply(ops, emit, String(b.said ?? ""), undo); emit({ t: "applied", undo: prev }); });
   }
   if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: "No ANTHROPIC_API_KEY on this server." }, { status: 503 });
-  const history = (b.messages ?? []).filter((m) => m.content?.trim()).slice(-20);
+  const history = (b.messages ?? []).filter((m) => m.content?.trim()).slice(-30);
   if (!history.length || history[history.length - 1].role !== "user") return NextResponse.json({ error: "Write a message first." }, { status: 400 });
   // The open lead page counts as naming that lead.
   const said = history[history.length - 1].content + (b.context?.lead_id ? ` [${b.context.lead_id}]` : "");
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
     const client = new Anthropic();
     // Earlier turns travel as one transcript in a single user message: replayed assistant text without its thinking
     // made Sonnet 5.5 end the next turn empty.
-    const earlier = history.slice(0, -1).map((m) => `${m.role === "user" ? "Planner" : "You"}: ${m.content}`).join("\n\n");
+    const earlier = history.slice(0, -1).map((m) => `${m.role === "user" ? "Planner" : m.role === "event" ? "Board record (applied or undone by the planner's tap, Berlin time)" : "You"}: ${m.content}`).join("\n\n");
     const ctx = b.context?.lead_id ? `The planner has the lead page of ${b.context.name ?? "a lead"} (lead_id ${b.context.lead_id}) open: "this", "the house", "her" or "him" and any kit, part, panel, brand or fact change mean this lead.\n\n` : "The planner is on the board of all leads.\n\n";
     const messages: Anthropic.MessageParam[] = [{ role: "user", content: ctx + (earlier ? `Earlier in this conversation:\n\n${earlier}\n\nThe planner now says:\n\n${said}` : said) }];
     let retried = false;

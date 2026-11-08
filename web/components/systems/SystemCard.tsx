@@ -4,7 +4,7 @@
 // beside it and never sits under it. The derivation (bars, equations, Why) waits behind the "i" in a popover that
 // hangs off the card and leaves the house where it is.
 // Motion: a chip change springs the new card in (0.5 s smooth spring, bounce 0, from 8 px); Reduce Motion: a crossfade.
-import { Component, useEffect, useRef, useState, type ReactNode } from "react";
+import { Component, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { SystemName } from "./system";
 import "./systems.css";
 
@@ -44,6 +44,15 @@ export default function SystemCard({ sys, head, label, children, info, pending, 
     return () => { removeEventListener("keydown", esc, true); removeEventListener("pointerdown", out, true); };
   }, [open]);
   const id = `sc-pop-${sys}`;
+  // The popover never runs off the screen: its height is capped at the room left below its top (it scrolls inside).
+  useLayoutEffect(() => {
+    if (!open) return;
+    const el = root.current?.querySelector<HTMLElement>(".sc-pop");
+    if (!el) return;
+    const fit = () => { el.style.maxHeight = ""; const r = el.getBoundingClientRect(); const room = window.innerHeight - r.top - 12; if (r.height > room) el.style.maxHeight = `${Math.max(140, Math.floor(room))}px`; };
+    fit(); addEventListener("resize", fit);
+    return () => removeEventListener("resize", fit);
+  }, [open, sys]);
   return (
     <div ref={root} className="sc" data-sys={sys}>
       {/* The section stays mounted so the canvas keeps measuring it (data-cover); the inner key replays the spring. */}

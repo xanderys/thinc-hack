@@ -4,8 +4,8 @@ import ComposerField from "@/components/composer/ComposerField";
 import { transcribe } from "@/components/composer/create";
 import Blocks, { inline, openLead } from "./Blocks";
 import { useCopilotContext } from "./context";
-import { ask, run, setPendingSuggestion, useThread, type Proposal } from "./store";
-import { suggest, type Suggestion, type SuggestLead, type SuggestRow } from "./suggest";
+import { ask, run, useSuggestions, useThread, type Proposal } from "./store";
+import type { Suggestion } from "./suggest";
 import s from "./agent.module.css";
 
 const eur = (x: number | null | undefined) => (x == null ? "" : `€${Math.round(x).toLocaleString("en-GB")}`);
@@ -27,20 +27,8 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
   const field = useRef<HTMLTextAreaElement | null>(null);
   const media = useRef<{ r: MediaRecorder; chunks: Blob[]; stream: MediaStream } | null>(null);
   const go = onLead ?? openLead;
-  // What the screen holds, for the suggestion chips (no model call).
-  const [sugs, setSugs] = useState<Suggestion[]>([]);
-  useEffect(() => {
-    let stop = false;
-    const load = async () => {
-      try {
-        if (ctx.leadId) { const l = await fetch(`/api/leads/${encodeURIComponent(ctx.leadId)}`).then((r) => r.json()) as SuggestLead; if (!stop) setSugs(suggest(ctx, l)); }
-        else { const rows = await fetch("/api/leads?limit=40").then((r) => r.json()) as SuggestRow[]; if (!stop) setSugs(suggest(ctx, null, Array.isArray(rows) ? rows : [])); }
-      } catch { /* chips stay as they were */ }
-    };
-    void load(); const iv = setInterval(load, 15000);
-    return () => { stop = true; clearInterval(iv); };
-  }, [ctx.leadId, ctx.name, items.length]);   // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setPendingSuggestion(sugs.length > 0); }, [sugs]);
+  // Chips come from the store, computed per screen there (no model call, no race with this component).
+  const sugs = useSuggestions();
   const tap = (x: Suggestion) => { if (x.event) dispatchEvent(new CustomEvent(x.event)); else if (x.message && !busy) void ask(x.message, ctx); };
   useEffect(() => () => { media.current?.stream.getTracks().forEach((t) => t.stop()); }, []);
   // Reopened: back where the reader was. New content: follow it only when the reader is at the bottom.
@@ -72,7 +60,7 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
   return (
     <div className={s.shell}>
       <div className={s.thread} ref={thread} onScroll={onScroll}>
-        {items.map((it) => it.who === "you"
+        {items.map((it) => it.who === "event" ? <p key={it.id} className={s.event}>{inline(it.text, go)}</p> : it.who === "you"
           ? <div key={it.id} className={s.you}>{it.text}</div>
           : <div key={it.id} className={s.agent}>
               {it.text && <Blocks text={it.text} onLead={go} />}

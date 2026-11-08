@@ -106,11 +106,11 @@ export async function propose(title: string, ops: Op[], said: string): Promise<P
     const before = await shown(l);
     let after: DesignResponse | null = before, what = "";
     if (op.action === "kit") { const ov = { ...(l.overrides ?? {}), ...(op.overrides ?? {}) }; after = await refine(l, ov); what = Object.entries(op.overrides ?? {}).map(([k, v]) => part(k, v)).join(", "); }
-    else if (op.action === "facts") { after = await refine(l, l.overrides ?? {}, op.values); what = Object.entries(op.values ?? {}).map(([k, v]) => `${FACT[k] ?? k}: ${v}`).join(", "); }
+    else if (op.action === "facts") { after = await refine(l, l.overrides ?? {}, op.values); what = Object.entries(op.values ?? {}).map(([k, v]) => `${k === "phone" ? "Phone" : FACT[k] ?? k}: ${v}`).join(", "); }
     else what = op.action === "complete" ? "Complete" : op.action === "send" ? `Send by ${op.channel ?? "whatsapp"}` : "Ask on WhatsApp";
     // A change that changes nothing offers no Apply.
     const F = l.facts as unknown as Record<string, unknown>;
-    const same = op.action === "facts" ? Object.entries(op.values ?? {}).every(([k, v]) => F[k] === v)
+    const same = op.action === "facts" ? Object.entries(op.values ?? {}).every(([k, v]) => (k === "phone" ? l.phone === v : F[k] === v))
       : op.action === "kit" && !!after && JSON.stringify(before.design) === JSON.stringify(after.design) && before.economics?.capex_eur === after.economics?.capex_eur;
     if (same) {
       unchanged.push(`${l.customer_name} already has this: ${what.charAt(0).toLowerCase()}${what.slice(1)}, nothing to apply.`); return;
@@ -140,10 +140,12 @@ export async function apply(ops: Op[], emit: Emit, said: string, undo = false) {
         prev.push({ lead_id: l.lead_id, name: l.customer_name, action: "kit", overrides: l.overrides ?? {} });
       } else if (op.action === "facts") {
         const vals = op.values ?? {};
-        const r = await callEngine("POST", "/api/intake/step", S(), { lead_id: l.lead_id, facts_so_far: vals, source: "planner", base_version: l.version }, H());
+        // A phone travels as the step's own field; the rest are facts.
+        const { phone, ...rest } = vals as Record<string, unknown> & { phone?: string };
+        const r = await callEngine("POST", "/api/intake/step", S(), { lead_id: l.lead_id, ...(Object.keys(rest).length ? { facts_so_far: rest } : {}), ...(phone !== undefined ? { phone } : {}), source: "planner", base_version: l.version }, H());
         if (r.status !== 200) throw new Error(`Engine said: ${err(r.body)}`);
         const F = l.facts as unknown as Record<string, unknown>;
-        prev.push({ lead_id: l.lead_id, name: l.customer_name, action: "facts", values: Object.fromEntries(Object.keys(vals).map((k) => [k, F[k] ?? null])) });
+        prev.push({ lead_id: l.lead_id, name: l.customer_name, action: "facts", values: Object.fromEntries(Object.keys(vals).map((k) => [k, k === "phone" ? (l.phone ?? null) : F[k] ?? null])) });
       } else if (op.action === "complete") {
         const d = await shown(l);
         const r = await callEngine("PUT", `/api/leads/${l.lead_id}/approve`, S(), { variant: "edit", design: d.design, overrides: l.overrides ?? {}, base_version: l.version }, H());
@@ -247,7 +249,7 @@ export const TOOLS: Anthropic.Tool[] = [
   { name: "ask_whatsapp", description: "Propose asking the homeowner on WhatsApp for missing facts. Shown with Apply, never run directly.", input_schema: obj({ ops: OPS, facts: { type: "array", items: { type: "string", enum: ["annual_demand_kwh", "heating_type", "has_ev", "heating_demand_kwh", "has_solar", "num_inhabitants"] } } }, ["ops"]) },
   { name: "create_lead", description: "Create a lead from a scrap, an email or a voice transcript, exactly as the planner gave it. Returns the new lead with its design and verdict.", input_schema: obj({ text: { type: "string" } }, ["text"]) },
   { name: "site_visit", description: "Before a site visit: the open facts that move the design, ranked with the figure at stake, and the on-site checks for the systems in this design. Reads only.", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
-  { name: "propose_facts", description: "Propose changing facts the client gave (annual_demand_kwh, num_inhabitants, heating_type Gas|Oil|Heatpump|OtherNonRenewable|OtherRenewable, heating_demand_kwh, has_ev, ev_planned, ev_annual_km, house_size_sqm, house_built_year, has_solar, preference). Shown with before and after figures and Apply; Apply runs the intake step.", input_schema: obj({ lead_id: { type: "string" }, name: { type: "string" }, facts: { type: "object" } }, ["lead_id", "name", "facts"]) },
+  { name: "propose_facts", description: "Propose changing facts the client gave (annual_demand_kwh, num_inhabitants, heating_type Gas|Oil|Heatpump|OtherNonRenewable|OtherRenewable, heating_demand_kwh, has_ev, ev_planned, ev_annual_km, house_size_sqm, house_built_year, has_solar, preference) or the homeowner's phone (phone, E.164 such as +49 151 2345678; ask the planner for the number when none is given). Shown with before and after figures and Apply; Apply runs the intake step.", input_schema: obj({ lead_id: { type: "string" }, name: { type: "string" }, facts: { type: "object" } }, ["lead_id", "name", "facts"]) },
   { name: "whatsapp_draft", description: "The WhatsApp message Rina would send to ask this homeowner for missing facts, as a draft. Sends nothing; to send, call ask_whatsapp.", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
   { name: "stats", description: "How close the engine comes to the expert designs on unseen projects: the eval scoreboard.", input_schema: obj({}) },
 ];

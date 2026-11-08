@@ -55,10 +55,11 @@ export function useShadeView(): { on: boolean; at: ShadeAt } {
 export const setShadeOn = (on: boolean) => emit({ on, ...(on ? {} : { at: null }) });
 export const setShadeAt = (at: ShadeAt) => emit({ at });
 
-// Green at full sun, amber at 80%, red at 60% or less.
-const STOPS: [number, [number, number, number]][] = [[0.6, [218, 30, 40]], [0.8, [245, 179, 66]], [1, [36, 161, 72]]];
+// By share of sun: green at full sun (0 % shaded), amber from 75 to 50 % sun (25 to 50 % shaded), deep red only at
+// no sun (100 % shaded); continuous in between.
+const STOPS: [number, [number, number, number]][] = [[0, [140, 16, 26]], [0.5, [236, 128, 40]], [0.75, [245, 179, 66]], [1, [36, 161, 72]]];
 export function shadeRgb(share: number): [number, number, number] {
-  const x = Math.max(0.6, Math.min(1, share));
+  const x = Math.max(0, Math.min(1, share));
   for (let i = 1; i < STOPS.length; i++) {
     const [a, ca] = STOPS[i - 1], [b, cb] = STOPS[i];
     if (x <= b) { const t = (x - a) / (b - a); return [0, 1, 2].map((j) => Math.round(ca[j] + (cb[j] - ca[j]) * t)) as [number, number, number]; }
@@ -66,7 +67,7 @@ export function shadeRgb(share: number): [number, number, number] {
   return STOPS[STOPS.length - 1][1];
 }
 export const shadeCss = (share: number) => `rgb(${shadeRgb(share).join(",")})`;
-export const SHADE_GRADIENT = "linear-gradient(90deg, rgb(218,30,40), rgb(245,179,66) 50%, rgb(36,161,72))";
+export const SHADE_GRADIENT = "linear-gradient(90deg, rgb(140,16,26), rgb(236,128,40) 50%, rgb(245,179,66) 75%, rgb(36,161,72))";
 
 // A module's share of full sun over the selected period: the month when one is picked, else the year. The module's
 // figure is its loss over that period, 1 minus this.

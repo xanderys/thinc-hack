@@ -8,6 +8,21 @@ Team Marquee, thinc! hack MUC, 7 to 8 Nov 2026, Reonic case. Team: Zi Yuan, Xand
 - Homeowner: https://marquee-home.vercel.app
 - Engine: runs on one machine behind a Tailscale Funnel; the web apps reach it through `ENGINE_URL`.
 
+## What is live
+
+Demo path, in order. The hero lead is 10.65 kWp = 23 × 463 W, a Sigenergy 10 kW inverter, an EcoFlow 10 kWh battery, €14,887.
+
+1. **Board.** Big lead cards with a verdict (Priority, Call first, Decline), the reason, and Needs pills for what is still missing. Leads arrive by form, pasted email, voice note or a call.
+2. **Composer and copilot.** One field takes typed, pasted or spoken enquiries and creates the lead. The copilot (Claude Sonnet 5.5 with tools over the engine) answers in short Sill-style replies with tappable lead chips and suggestion chips. Writes are proposed first, applied on Apply, and undone as one batch with Undo. It can also book a site visit.
+3. **Autopilot.** Run works through every open lead with a live SSE log, asks the homeowner for what is missing and sends the proposal. A confirm comes before any real WhatsApp send; `?dry=1` rehearses. Six seeded enquiries on real Munich addresses cover the cases.
+4. **Plan.** The real house from Bavarian LoD2, four decisions in a chain with the rule behind each size, and refine by sentence ("the family buys an EV next year").
+5. **SKU catalogue.** Every size snaps to products the installer sells. The kit sheet is an invoice with an exact total (hero €14,887), and the rate card names the SKU on each line.
+6. **Component views.** Battery, wallbox and heat pump each open a day strip with the engine's hourly figures.
+7. **3D scene.** Continuous per-module shading, a thermal camera, energy flow inside the glass, and unit pills you can add, resize or remove.
+8. **Homeowner page.** The same 3D scene, the approved design and the options to discuss with the installer, then Sign or Decline.
+9. **WhatsApp copilot and live call.** The same engine answers a homeowner on WhatsApp, and the voice agent takes a call and fills the lead as it goes.
+10. **Check.** Our design next to the expert's on a held-out home, then the scoreboard below.
+
 ## Setup
 
 Reonic's data pack is not in the repo; point `REONIC_DATA_DIR` at it.

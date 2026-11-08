@@ -118,7 +118,7 @@ export class Xray {
     const c = (k: ElementKey) => {
       const v = wm2.get(k);
       if (v == null || v <= 0) return null;
-      const t = v / hi, [r, g, b] = thermal(t);
+      const t = (v / hi) * 0.82, [r, g, b] = thermal(t); // white is kept for the windows (no mesh); drawn elements stop at orange
       return { col: new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace), s: t };
     };
     return { roof: c("roof") ?? c("ceiling"), wall: c("wall"), floor: c("floor"), hi: 1 };
@@ -166,7 +166,7 @@ export class Xray {
           geo.setIndex(tris);
           const m = new THREE.Mesh(geo, mat); m.renderOrder = order; this.g.add(m);
         };
-        sheet(0.05, this.mat(T.roof!.col, 0.34), 5);
+        sheet(0.05, this.mat(T.roof!.col, 0.85), 5); // the roof in its infrared colour, nearly opaque
         sheet(0.45, this.mat(T.roof!.col, 0, { glow: 0.22 * (T.roof!.s / T.hi) }), 7);
         const c0 = pts.reduce((a, q) => a.add(q), new THREE.Vector3()).multiplyScalar(1 / pts.length);
         this.roofs.push({ c: c0, n, area: p.area_m2, poly: pts, cands: inset(pts, c0, 0.4).map((q) => q.addScaledVector(n, 0.1)) });
@@ -402,9 +402,13 @@ export class Xray {
     if (s) {
       // The shell shows whenever the glass look or the x-ray does; the x-ray tints it towards the wall's share.
       const o = Math.max(this.gf, this.f);
-      s.glass.color.copy(FROST); if (this.wallTint) s.glass.color.lerp(this.wallTint, 0.4 * this.f);   // a tint on the glass, same alpha
-      s.glass.emissive.copy(s.glass.color).multiplyScalar(0.45);
-      s.glass.opacity = SHELL_K * o; s.edge.opacity = EDGE_K * o; s.far.opacity = FAR_K * o; s.patch.opacity = PATCH_K * o;
+      // Thermal camera: while the x-ray is on (the Heat pump chip), the walls turn from frosted glass to the wall's
+      // infrared colour at full opacity, cooling towards the ramp's cold end as the strip's outside temperature rises.
+      s.glass.color.copy(FROST);
+      if (this.wallTint) { THERMAL_TMP.copy(this.wallTint).lerp(IR_COLD, 1 - Math.min(1, this.heat)); s.glass.color.lerp(THERMAL_TMP, this.f); }
+      s.glass.emissive.copy(s.glass.color).multiplyScalar(this.wallTint ? 0.45 - 0.35 * this.f : 0.45); // little self-glow in thermal, so the ramp colour holds
+      s.glass.opacity = SHELL_K * o + (0.96 - SHELL_K * o) * (this.wallTint ? this.f : 0);
+      s.edge.opacity = EDGE_K * o; s.far.opacity = FAR_K * o; s.patch.opacity = PATCH_K * o;
       this.sg.visible = o > 0.005;
     }
   }
@@ -470,3 +474,4 @@ function thermal(t: number): [number, number, number] {
   }
   return IR[IR.length - 1][1];
 }
+const IR_COLD = new THREE.Color().setRGB(27 / 255, 31 / 255, 107 / 255, THREE.SRGBColorSpace), THERMAL_TMP = new THREE.Color();
