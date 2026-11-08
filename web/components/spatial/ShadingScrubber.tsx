@@ -2,7 +2,7 @@
 // Chip "Shading", its card (Shading X %, Y kWh a year loss, source) and the month and hour scrubber.
 // Renders nothing until GET /api/roof/shading is ready for this address and kWp.
 import { useEffect, useRef, useState } from "react";
-import { dayHours, SHADE_GRADIENT, setShadeAt, setShadeOn, useShadeView, useShading } from "@/lib/shading";
+import { dayHours, SHADE_GRADIENT, setShadeAt, setShadeOn, useShadeView, useShading, type ShadeAt } from "@/lib/shading";
 import s from "./ShadingScrubber.module.css";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -10,16 +10,17 @@ const pct1 = (x: number) => `${(Math.round(x * 1000) / 10).toLocaleString("en-GB
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
 
 // compact: the phone strip under the model (one line, months and hour in one row, source on tap).
-type Props = { address?: string | null; kwp?: number | null; solarStage?: boolean; float?: boolean; compact?: boolean };
+// start: the moment the Solar stage lands on (null: across the year).
+type Props = { address?: string | null; kwp?: number | null; solarStage?: boolean; float?: boolean; compact?: boolean; start?: ShadeAt };
 
-export default function ShadingPanel({ address, kwp, solarStage, float, compact }: Props) {
+export default function ShadingPanel({ address, kwp, solarStage, float, compact, start = null }: Props) {
   const [src, setSrc] = useState(false);
   const data = useShading(address, kwp);
   const { on, at } = useShadeView();
-  // The Solar stage lands on the year's figure.
+  // The Solar stage lands on the year's figure, or on the given moment.
   const was = useRef(false);
   useEffect(() => {
-    if (solarStage && !was.current && data) { setShadeOn(true); setShadeAt(null); }
+    if (solarStage && !was.current && data) { setShadeOn(true); setShadeAt(start); }
     was.current = !!solarStage && !!data;
   }, [solarStage, data]);
   if (!data || !data.modules.length) return null;
