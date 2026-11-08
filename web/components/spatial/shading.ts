@@ -7,7 +7,7 @@ import { shadeRgb, shareAt, type ShadeAt, type Shading } from "@/lib/shading";
 
 const toV = ([x, y, z]: V3) => new THREE.Vector3(x, z, -y);
 const NARROW = 520;   // px: phone width, smaller figures
-const MIN_PX = 26;    // a module narrower than this on screen gets no % (20 at phone width)
+// Every module gets its %, the biggest losses first; a figure that would touch one already shown waits for a closer view.
 // Inline, so they win over the scene's boxed label style: plain figures on the drawing, like the plan's lengths.
 const PCT_CSS = "position:absolute;left:0;top:0;padding:0;border:0;background:none;box-shadow:none;font:600 var(--sp-pct-size,10px)/1 var(--font-sans),sans-serif;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.55);white-space:nowrap;";
 const EDGE_CSS = "position:absolute;left:0;top:0;padding:0 3px;border:0;border-radius:3px;background:rgba(255,255,255,.82);box-shadow:none;font:500 9.5px/1.3 var(--font-sans),sans-serif;font-variant-numeric:tabular-nums;color:#0A0C14;white-space:nowrap;";
@@ -125,22 +125,26 @@ export class ShadeLayer {
       this.k = Math.min(1, Math.max(0, this.k));
       this.mods.forEach((m) => { m.mat.opacity = 0.9 * this.k; m.mesh.visible = !!m.has && this.k > 0.002; });
     }
-    const narrow = width < NARROW, minPx = narrow ? 20 : MIN_PX;
+    const narrow = width < NARROW;
     const size = narrow ? "8.5px" : "10px";
     if (this.overlay && this.overlay.style.getPropertyValue("--sp-pct-size") !== size) this.overlay.style.setProperty("--sp-pct-size", size);
-    this.mods.forEach((m) => {
+    const taken: { x0: number; x1: number; y0: number; y1: number }[] = [];
+    const loss = (m: Mod) => (m.el.textContent ? parseInt(m.el.textContent, 10) || 0 : 0);
+    [...this.mods].sort((a, b) => loss(b) - loss(a)).forEach((m) => {
       const show = this.on && m.mesh.visible;
       if (!show) { if (m.el.style.visibility !== "hidden") m.el.style.visibility = "hidden"; return; }
       m.mesh.updateWorldMatrix(true, false);
-      const c = m.centre.clone().applyMatrix4(m.mesh.matrixWorld), p = project(c);
-      const A = project(m.a.clone().applyMatrix4(m.mesh.matrixWorld)), B = project(m.b.clone().applyMatrix4(m.mesh.matrixWorld));
-      const big = Math.hypot(A.x - B.x, A.y - B.y) >= minPx || this.picked === m.key;
-      m.el.style.visibility = p.ok && big ? "visible" : "hidden";
+      const p = project(m.centre.clone().applyMatrix4(m.mesh.matrixWorld));
+      const w = narrow ? 18 : 22, h = narrow ? 9 : 11;
+      const r = { x0: p.x - w / 2, x1: p.x + w / 2, y0: p.y - h / 2, y1: p.y + h / 2 };
+      const free = p.ok && (this.picked === m.key || !taken.some((q) => r.x0 < q.x1 + 1 && q.x0 < r.x1 + 1 && r.y0 < q.y1 + 1 && q.y0 < r.y1 + 1));
+      if (free) taken.push(r);
+      m.el.style.visibility = free ? "visible" : "hidden";
       m.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)`;
     });
     // Edge lengths on the roof faces wherever shading shows (the Panels view), small, like a drawing's dimensions.
     // They never stack: longest first, a tag that would touch one already shown stays hidden.
-    const shown: { x0: number; x1: number; y0: number; y1: number }[] = [];
+    const shown = [...taken];
     [...this.edges].sort((a, b) => b.len - a.len).forEach((e) => {
       const show = this.on;
       if (!show) { if (e.el.style.visibility !== "hidden") e.el.style.visibility = "hidden"; return; }

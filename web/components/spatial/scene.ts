@@ -124,7 +124,6 @@ export class SpatialScene {
   private sunDot!: THREE.Mesh;
   private sunLight = new THREE.DirectionalLight(0xffffff, 1.6);
   private targets: { p: RoofPlane; c: THREE.Vector3; n: THREE.Vector3; tint: THREE.Mesh }[] = [];
-  private nbrTints: { p: RoofPlane; tint: THREE.Mesh }[] = [];
   private centre = new THREE.Vector3();
   private span = 14;
   private anchors = { roof: new THREE.Vector3(), home: new THREE.Vector3(), batt: new THREE.Vector3(), grid: new THREE.Vector3() };
@@ -374,7 +373,7 @@ export class SpatialScene {
   }
 
   setModel(model: RoofModel) {
-    this.targets = []; this.nbrTints = [];
+    this.targets = [];
     [this.placeholder, this.outlines, this.tints, this.kit, this.hpGroup, this.sunGroup, this.ctxLines].forEach((g) => g.clear());
     const nbr = neighbourEdges(model.planes);
     this.ctxLines.add(outlineMesh(nbr));
@@ -404,14 +403,6 @@ export class SpatialScene {
       tint.renderOrder = 2;
       this.tints.add(tint);
       this.targets.push({ p, c: f.c, n: f.n, tint });
-    });
-    // The heatmap also covers the neighbours' roofs that carry a yield, so the house reads against its street.
-    model.planes.forEach((p) => {
-      if (p.is_target || !((p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp) > 0) || p.polygon.length < 3) return;
-      const tint = planeMesh(p, 0.04, new THREE.MeshBasicMaterial({ color: PAPER.clone(), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
-      tint.renderOrder = 2;
-      this.tints.add(tint);
-      this.nbrTints.push({ p, tint });
     });
     if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(0, 4, 0), new THREE.Vector3(12, 8, 12));
     box.expandByPoint(new THREE.Vector3(box.min.x, 0, box.min.z));
@@ -616,18 +607,18 @@ export class SpatialScene {
   setEnvelope(env: Envelope | null) { this.systems.setEnvelope(env); }
   private lastShow: { outlines: boolean; panels: boolean; kit: boolean; sun: boolean; battery: "plain" | "lit" } = { outlines: true, panels: true, kit: false, sun: false, battery: "plain" };
 
-  // Roof tint by yield (the sun heatmap): the house's faces and the neighbours' roofs, one muted ramp. It fades in and
-  // out over 0.2 s in tick() (a crossfade marks the change; the same under Reduce Motion).
+  // Roof tint by yield (the sun heatmap): each of the house's faces graded on one muted ramp, on a fixed scale
+  // (650 to 1150 kWh per kWp a year, Munich north to south), so a face's colour means the same on every house.
+  // The neighbours stay untinted. It fades over 0.2 s in tick() (a crossfade; the same under Reduce Motion).
   setTint(mode: "off" | "yield" | "sun") {
     this.tintMode = mode;
-    const [lo, hi] = this.yieldScale;
-    [...this.targets, ...this.nbrTints].forEach(({ p, tint }) => {
+    this.targets.forEach(({ p, tint }) => {
       const m = tint.material as THREE.MeshBasicMaterial;
       if (mode === "yield") {
         const y = p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp;
-        const s = Math.max(0, Math.min(1, (y - lo) / Math.max(1, hi - lo)));
+        const s = Math.max(0, Math.min(1, (y - 650) / 500));
         m.color.copy(HEAT_LO).lerp(HEAT_HI, s);
-        m.userData.goal = p.is_target ? 0.86 : 0.72;
+        m.userData.goal = 0.78;
       } else if (mode === "off") m.userData.goal = 0;
     });
   }
@@ -707,7 +698,7 @@ export class SpatialScene {
     const wm = this.wallMesh;
     if (!env) {
       if (wm && this.wallMat) { if (this.wallGeo) wm.geometry = this.wallGeo; wm.material = this.wallMat; }
-      [...this.targets, ...this.nbrTints].forEach(({ tint }) => { const m = tint.material as THREE.MeshBasicMaterial; m.opacity = 0; m.userData.goal = 0; });
+      this.targets.forEach(({ tint }) => { const m = tint.material as THREE.MeshBasicMaterial; m.opacity = 0; m.userData.goal = 0; });
       return [] as Label[];
     }
     const dens = env.faces.filter((f) => f.area_m2 > 0).map((f) => f.loss_w / f.area_m2);
