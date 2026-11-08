@@ -83,6 +83,13 @@ export default function CopilotShell() {
     set(); addEventListener("resize", set); const t = setTimeout(set, 600);
     return () => { removeEventListener("resize", set); clearTimeout(t); };
   }, [path, asCircle, open]);
+  // The open card covers the 3D scene: its render loop rests until the card closes (hook guarded until the scene has it).
+  useEffect(() => {
+    if (!open) return;
+    const sc = () => (window as unknown as { __marqueeScene?: { pause?: () => void; resume?: () => void } }).__marqueeScene;
+    sc()?.pause?.();
+    return () => { sc()?.resume?.(); };
+  }, [open]);
   // Opening by focus or tap puts the cursor in the Thread's own field.
   useEffect(() => { if (open) { const t = setTimeout(() => (cardEl.current?.querySelector("textarea") as HTMLTextAreaElement | null)?.focus(), 120); return () => clearTimeout(t); } }, [open]);
 

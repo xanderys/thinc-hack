@@ -20,6 +20,12 @@ const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
 const set = (f: (xs: Item[]) => Item[]) => { items = f(items); emit(); };
 const patch = (id: number, f: (x: Item) => Item) => set((xs) => xs.map((x) => (x.id === id ? f(x) : x)));
+// Streaming text lands many times a frame: apply it at once, tell React at most once per animation frame.
+let frame = 0;
+const patchSoon = (id: number, f: (x: Item) => Item) => {
+  items = items.map((x) => (x.id === id ? f(x) : x));
+  if (!frame) frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame(() => { frame = 0; emit(); }) : (emit(), 0);
+};
 const patchP = (id: number, pi: number, f: (p: Proposal) => Proposal) => patch(id, (x) => ({ ...x, proposals: x.proposals!.map((p, j) => (j === pi ? f(p) : p)) }));
 const mine = new Set<string>();
 
@@ -51,7 +57,7 @@ export async function ask(q: string, ctx: CopilotContext) {
     if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw new Error(j.error ?? `${res.status} ${res.statusText}`); }
     let turn = "";   // a turn that ends in tool calls is narration: its text is dropped when the tools start
     for await (const e of lines(res)) {
-      if (e.t === "text") { turn += String(e.d); const t = turn; patch(me.id, (x) => ({ ...x, text: t })); }
+      if (e.t === "text") { turn += String(e.d); const t = turn; patchSoon(me.id, (x) => ({ ...x, text: t })); }
       else if (e.t === "tools") { turn = ""; patch(me.id, (x) => ({ ...x, text: "" })); }
       else if (e.t === "propose") patch(me.id, (x) => ({ ...x, proposals: [...(x.proposals ?? []), { ...(e as unknown as Proposal), said: q + (ctx.leadId ? ` [${ctx.leadId}]` : ""), state: "open", results: [] }] }));
       else if (e.t === "created") { mine.add(String(e.lead_id)); dispatchEvent(new CustomEvent("marquee:lead-created", { detail: e.lead_id })); }
