@@ -19,6 +19,11 @@ export function RunButton() {
     fetch("/api/autopilot/status", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((b) => setElsewhere(!!b?.running)).catch(() => {});
   }, [run.phase]);
   const busy = run.phase === "running" || run.phase === "confirm";
+  // The copilot's "Run autopilot" chip starts the same flow as this button, confirm line included.
+  useEffect(() => {
+    const on = () => askRun(flags());
+    addEventListener("marquee:run-autopilot", on); return () => removeEventListener("marquee:run-autopilot", on);
+  }, []);
   const go = () => {
     askRun(flags());
   };
