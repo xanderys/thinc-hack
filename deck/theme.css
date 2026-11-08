@@ -83,7 +83,7 @@ section.ink .label, section.blue .label { color: var(--on-dark-2); }
 
 .stat {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 168px;
+  font-size: 132px;
   font-weight: 400;
   line-height: 1;
   letter-spacing: -.04em;
@@ -94,13 +94,13 @@ section.ink .stat, section.blue .stat { color: var(--paper); }
 
 .data {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 22px;
-  line-height: 2;
+  font-size: 19px;
+  line-height: 1.8;
   color: var(--ink-2);
   border-top: 1px solid var(--rule);
   padding-top: 16px;
   width: 100%;
-  max-width: 860px;
+  max-width: 1056px;
 }
 .data b { font-weight: 500; color: var(--ink); }
 section.ink .data, section.blue .data { color: var(--on-dark-2); border-top-color: var(--rule-dark); }
@@ -130,3 +130,16 @@ section.board h2 { font-size: 48px; margin-bottom: 18px; }
 section.board p:not(.label):not(.brief) { font-size: 22px; max-width: none; }
 section.board .data { margin-top: 6px; max-width: none; }
 section.board img { display: block; margin-top: 14px; }
+
+/* Two columns: text left, product right */
+section.split .cols { display: grid; grid-template-columns: 400px 1fr; gap: 40px; align-items: center; width: 100%; }
+section.split h1 { font-size: 48px; margin-bottom: 20px; }
+section.split .data { font-size: 16px; line-height: 1.6; max-width: none; }
+section.split img { width: 100%; height: auto; display: block; border: 1px solid var(--rule-dark); }
+section.board img { height: 300px; width: auto; }
+section.board .data { font-size: 20px; }
+
+p { font-size: 24px; }
+section.board h2 { max-width: 1056px; }
+
+.data + p { margin-top: 22px; }

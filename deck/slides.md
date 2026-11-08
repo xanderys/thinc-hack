@@ -10,103 +10,74 @@ footer: Marquee
 <!-- _class: blue -->
 <!-- _paginate: false -->
 
-<p class="label">Marquee</p>
+<p class="label">Marquee, for Reonic</p>
 
-# Enquiry to offer: 8 days to 3 minutes.
+# A first draft of the whole system, with its rules and its score.
 
-<p>Median, one installer, 260 projects</p>
-
-<p class="brief">Reonic case brief: the first credible offer often wins (p5)</p>
+<p>Team Marquee: Xander Lim, Zi Yuan, Jamon. thinc! hack Munich, 8 November 2026.</p>
 
 ---
 
-<p class="label">Enquiry, Tuesday 8:40</p>
+<p class="label">The installer’s pipeline today</p>
 
-## Six new enquiries. Two site visits this afternoon.
+## Six new enquiries, two site visits, and every size depends on the others.
 
-<div class="data">“Family of four, detached house, want solar, maybe a battery. Bill attached.”<br>panel size <b>?</b>  battery <b>?</b>  heat pump <b>?</b>  charger <b>?</b><br>each depends on the others</div>
-
-[UNCONFIRMED: planner's day on this slide; source docs/pitch/planner-day.md]
+<div class="data">“Family of four, detached house, want solar, maybe a battery. Bill attached.”<br>panels <b>?</b>  battery <b>?</b>  wallbox <b>?</b>  heat pump <b>?</b><br>enquiry, qualification, design, offer, signature: each a hand step<br>Marquee drafts each step and the planner approves it</div>
 
 ---
 
 <!-- _class: board -->
 
-<p class="label">Enquiry to site visit</p>
+<p class="label">Enquiry: which leads deserve a visit</p>
 
-## Which leads deserve a visit.
+## Every lead arrives with a verdict and the reason a planner would give.
 
-<p>The installer can see which leads deserve a visit before they spend a planner’s afternoon on one. And the planner arrives already knowing the likely answer, so the scan confirms the design instead of starting it.</p>
+![h:300](img/board-verdicts.png)
 
-<div class="data">258 held-out sales replayed: Priority <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b></div>
+<div class="data">replayed on <b>258</b> held-out signed sales: Priority <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b></div>
 
-![h:240](img/board-verdicts.png)
-
-[UNCONFIRMED: Decline shown is Markus Lindner (homeowner declined); Moser, the shed, left off; Xander's pick. Screenshot retaken with Lindner f6e838cd85 at 6.3 kWp; the Decline count reads 2 while Moser stays on the board]
-
-[UNCONFIRMED: replay shares, engine/lab/qualification_backtest.md 1186795; Visit renamed Priority, board screenshot to be retaken when the web release lands]
-
-<p class="brief">Estimates until the site visit; offer values from stated cost assumptions, not quotes.</p>
+<p class="brief">Estimates until the site visit. Offer values come from stated cost assumptions, not quotes.</p>
 
 ---
 
-<!-- _class: ink -->
+<!-- _class: ink split -->
 
 <p class="label">Design to offer: live</p>
 
+<div class="cols">
+<div>
+
 # “The family buys an EV next year.”
 
-<div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>10.35 kWp</b> (<b>23</b> modules on the real roof), <b>10 kWh</b>, payback <b>10.3 years</b><br>the planners’ design is already the best 20-year value on this roof<br>the car adds an <b>11 kW</b> wallbox: independence <b>76%</b> to <b>60%</b>, payback <b>9.6 years</b></div>
+<div class="data">the real house: Bavarian LoD2 roof, aerial photo, shade per panel<br>four decisions in a chain, then the offer<br>one sentence changes the facts and the chain runs again<br>intake by form, pasted email, or a call with Rina</div>
 
-[UNCONFIRMED: final hero numbers. Final set from THINC HACK MASTER drops "Best value", and Best payback (3.6 kWp, 5 kWh, 9.1 y) beats the planners' 10.3 y, so "already the best 20-year value" is now false; EV: planners 9.6 y, 60%; Best payback 9.9/15, 9.4 y, 68%. THINC HACK MASTER recommends: "the planners’ design pays back in 10.3 years; the smallest-payback option is 9.1 years at a third of the independence"]
+</div>
+<div>
 
-[UNCONFIRMED: screenshot of the house card opened into the full design, from the live build]
+![](img/hero-design.png)
+
+</div>
+</div>
 
 <p class="brief">Reonic minimum: “The planner changes at least one input or component and receives an updated design.”</p>
 
 ---
 
-<p class="label">Enquiry: one question, not a call back</p>
+<p class="label">Design: rules read from 1,570 signed designs</p>
 
-<div class="stat">15%</div>
+## Each installer’s habits, written as rules a planner can check.
 
-## The share of PV size that the usual intake explains.
-
-<div class="data">installer A designs from placeholder numbers:<br>default price on about <b>75%</b> of projects, default <b>4,500 kWh</b> demand on <b>32%</b><br>the assistant replaces placeholders with stated facts in <b>3 minutes</b></div>
-
-<p class="brief">Reonic, Manuel Schneider: “Im Zweifelsfall sind unsere Produkte immer so entwickelt, den Nutzer zu fragen.” (pv magazine, 8 Jun 2026)</p>
-
-[UNCONFIRMED: 15% from docs/data-insights.md, installer and demand band R2; Schneider quote on slide]
+<div class="data">installer A, panels by use: to <b>2,856 kWh</b> <b>6.3 kWp</b>, to <b>3,550</b> <b>8.1</b>, to <b>9,100</b> <b>10.35</b>, above <b>12.15</b><br>installer A, battery: to <b>4,100 kWh</b> the <b>5 kWh</b> pack, above it <b>10 kWh</b><br>installer B, panels: to <b>3,750 kWh</b> <b>7.2 kWp</b>, above <b>11.7</b>; a battery on <b>95 to 99%</b> of jobs<br>heat pump: none unless asked, or a gas or oil boiler <b>20 years</b> or older<br>wallbox: <b>11 kW</b> when there is a car</div>
 
 ---
 
-<!-- _class: ink -->
+<p class="label">The exam: 633 sealed homes</p>
 
-<p class="label">Design: rules a planner can read</p>
+<div class="stat">18.6%</div>
 
-## Each installer’s habits, as rules on screen.
+## All four decisions match the expert’s. The textbook rule: 6.8%.
 
-<div class="data">installer B, PV by yearly use:<br>up to <b>2,900 kWh</b>: <b>6.75 kWp</b>   up to <b>3,750</b>: <b>7.2</b><br>up to <b>8,950</b>: <b>11.7</b>   above: <b>13.05</b><br>beside it, the physics variants: best value, most independence</div>
-
-[UNCONFIRMED: production rule list (rules4.json, installer 23c108b7, fit half); physics optimum as variants]
-
----
-
-<p class="label">Design: every installer has a style</p>
-
-## Same 4,500 kWh home, two installers.
-
-<div class="data">installer A <b>8.6 kWp</b><br>installer B <b>10.8 kWp</b>, and a fixed <b>9 kWh</b> pack on <b>99%</b> of jobs</div>
-
----
-
-<p class="label">The exam: 633 sealed test homes</p>
-
-## Transparent rules match the experts as well as the black box, and explain every number.
-
-<div class="data">all four parts right: rules <b>18.6%</b> sealed, <b>23.0%</b> on the clean 126<br>black box <b>19.0%</b> on the same 126, statistically tied; textbook <b>6.8%</b> / <b>6.3%</b><br>where they differ, ours earns the homeowner more over 20 years<br>on <b>327</b> homes, the expert’s on <b>180</b>, median <b>+430 EUR</b></div>
-
-[UNCONFIRMED: final scoreboard, THINC HACK MASTER final note]
+<div class="data">sealed test half, <b>633</b> new-system homes the rules never saw; panels alone <b>41%</b>, battery <b>50%</b><br>tolerance: panels <b>±1 kWp</b> or <b>±15%</b>, battery <b>±2 kWh</b>, heat pump and wallbox decisions exact<br>black box <b>19.0%</b>, rules <b>23.0%</b> on the <b>126</b> homes both scored, paired p <b>0.332</b>: a tie</div>
 
 <p class="brief">Reonic minimum: “You measure how close your designs come to the expert designs on projects your system has not seen.”</p>
 
@@ -114,11 +85,31 @@ footer: Marquee
 
 <!-- _class: ink -->
 
-<p class="label">Installation to next design: roadmap</p>
+<p class="label">Where the draft differs from the expert, and why</p>
 
-## The closed loop.
+## Three things the record does not hold set the gap.
 
-<div class="data"><b>today</b> each design replays through Munich’s real 2025:<br>real weather, real day-ahead prices, <b>576</b> negative hours<br><b>next</b> installed systems’ meter and inverter data flows back<br>through Reonic and teaches the next design what worked</div>
+<div class="data">roof size and budget are not recorded<br><b>17 to 19%</b> of homes carry the <b>4,500 kWh</b> default in place of a bill<br>a quarter of wallboxes went to homes with no car on record<br>with an address, Marquee adds the measured roof the record lacks<br>where the designs differ, the same simulator favours ours on 20-year value on <b>327</b> of <b>514</b> homes, the expert’s on <b>180</b> (modelled)</div>
+
+---
+
+<p class="label">Offer to signature</p>
+
+## Approve releases the chosen design to the homeowner, who signs or declines.
+
+<div class="data">variants: planners’ pick, best payback, most independence, lowest upfront<br>the homeowner page shows the approved one and nothing else<br>the signature or the decline comes back to the board</div>
+
+<p>Reonic’s chat sizes from the catalogue when asked, and the planner picks by hand. Marquee proposes unprompted, explains its rules, publishes its expert match, and hands the chosen design over to sign.</p>
+
+---
+
+<!-- _class: ink -->
+
+<p class="label">Inside Reonic</p>
+
+## Three steps to production.
+
+<div class="data">rules fitted per installer, across every installer on Reonic<br>the computed next question inside Reonic’s intake, by form or by voice<br>meter data from installed systems back into the next rule set<br>today each design replays through Munich’s real 2025: real weather, real day-ahead prices, <b>576</b> negative hours</div>
 
 <p class="brief">Prices and weather: Energy-Charts (Fraunhofer ISE), CC BY 4.0</p>
 
@@ -129,8 +120,6 @@ footer: Marquee
 
 <p class="label">Marquee</p>
 
-## Planners sign off the exceptions. The machine drafts the rest. Every number has a source.
+## Every draft shows its rules and its score, and the planner signs off the exceptions.
 
-<div class="data">Xander, Zi Yuan, Jamon</div>
-
-[UNCONFIRMED: close line; from the pitch beats in docs/briefs/stage.md]
+<div class="data">Xander Lim, Zi Yuan, Jamon</div>

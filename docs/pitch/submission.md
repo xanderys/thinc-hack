@@ -1,15 +1,15 @@
 # Submission
 
-**One sentence:** Marquee proposes a home's solar, battery and heat pump the way the best planner would, with the reasons, and matches the experts as often as they match each other.
+**One sentence:** Marquee drafts a home's panels, battery, wallbox and heat pump with the rules it used, reports how often the experts agreed on homes it never saw, and hands the approved design to the homeowner to sign.
 
-**What it does:** A planner enters a home and gets a complete design, or "none" for any component, with a one-line reason and similar past homes as evidence. The planner refines it with a slider or a sentence ("the family buys an EV next year") and the design adapts. A check view compares our design with the expert's on held-out projects.
+**What it does:** A lead arrives by form, pasted email or a call with the installer's voice agent, and lands on the planner's board with a verdict (Priority, Call first, Decline) and the reason. The planner opens the real house, from Bavarian LoD2 data with the aerial photo and shade per panel, and sees four decisions in a chain plus the offer, each with its rule. One sentence ("the family buys an EV next year") changes the facts and the chain runs again. Approve releases exactly the chosen variant to the homeowner's page, where they sign or decline.
 
-**For whom:** Planners at installation companies; a homeowner view is the next step on the same engine.
+**For whom:** Planners and sales staff at installers on Reonic, and their homeowners.
 
-**What is unique:** We measured how often planners agree with each other on identical homes (40.3%) and match that level: 38.5% of PV designs within 1 kWp or 15% of the expert, against 14.6% for the textbook rule. The model learned the unwritten rules in the data: a PV floor plus slope, a battery with 95% of PV designs, wallboxes without a recorded EV.
+**What is unique:** An auditable first draft. The rules are read out of 1,570 signed designs per installer and printed on screen, so a planner can check and overrule every size. The score is published: all four decisions within tolerance on 18.6% of 633 sealed held-out homes, against 6.8% for the textbook rule, and a tie with a black box model on the homes both were scored on.
 
-**How it was built:** A chained statistical model (PV, then battery given PV, then heat pump, then wallbox) with gradient boosting and nearest neighbours, snapped to each installer's catalogue, with physics checks. No language model makes a sizing decision; Claude only turns a planner's sentence into input changes.
+**How it was built:** A Python engine of readable rules fitted per installer, with hourly physics (pvlib, Munich's real 2025 weather and day-ahead prices) for the economics and a sealed held-out evaluation. No language model sizes anything; Claude turns a planner's sentence into input changes in the web layer, and ElevenLabs carries the voice agent.
 
-**Tech stack:** Python, pandas, scikit-learn, FastAPI (engine); Next.js, TypeScript, Anthropic SDK (web); Vercel.
+**Tech stack:** Python, pandas, FastAPI, pvlib (engine); Next.js, TypeScript, three.js, Anthropic SDK, ElevenLabs (web); Bavarian LoD2 and census open data; Vercel.
 
-**Links:** demo https://marquee-reonic.vercel.app, code [UNCONFIRMED: repo link and whether it is public].
+**Links:** demo https://marquee-reonic.vercel.app, code https://github.com/xanderys/thinc-hack
