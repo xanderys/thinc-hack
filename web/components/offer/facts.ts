@@ -87,7 +87,7 @@ export function rateCard(d: Partial<Design>, total: number, assumptions: string[
   if (d.pv_kwp && pv) {
     const fixed = euros(pv[1]), per = euros(pv[2]), n = modules && modules > 0 ? modules : Math.round(d.pv_kwp / 0.45);
     lines.push({ label: "Solar modules and inverter", calc: `${n} modules, ${n2(d.pv_kwp)} kWp × €${n0(per)}/kWp`, eur: Math.round(d.pv_kwp * per) });
-    lines.push({ label: "Installation and services", calc: "fixed per system", eur: fixed });
+    lines.push({ label: "Fixed cost per system", calc: "the price model's base for any solar system", eur: fixed });
   }
   if (d.battery_kwh && bat) { const per = euros(bat[1]); lines.push({ label: "Battery storage", calc: `${n1(d.battery_kwh)} kWh × €${n0(per)}/kWh`, eur: Math.round(d.battery_kwh * per) }); }
   const rest = Math.round(total - lines.reduce((x, l) => x + l.eur, 0));

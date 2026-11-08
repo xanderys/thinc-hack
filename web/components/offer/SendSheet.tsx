@@ -14,6 +14,19 @@ const CHANNELS: { k: Channel; label: string; off?: string }[] = [
   { k: "sms", label: "SMS", off: "No SMS provider" },
 ];
 
+// The clipboard API first; a hidden textarea with execCommand where the browser refuses it (some embedded views).
+async function copyText(x: string): Promise<boolean> {
+  try { await navigator.clipboard.writeText(x); return true; } catch { /* fall back */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = x; ta.setAttribute("readonly", ""); Object.assign(ta.style, { position: "fixed", opacity: "0", left: "-9999px" });
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch { return false; }
+}
+
 export function rinaMessage(name: string, brand: string, link: string) {
   const first = name.trim().split(/\s+/)[0] || "there";
   return `Hi ${first}, it's Rina from ${brand}. Your solar proposal is ready: ${link}\nIt shows the system, the price and what it saves you each year. You can sign it there, or reply here with any question.`;
@@ -39,15 +52,13 @@ export default function SendSheet({ leadId, name, brand, link, version, onClose,
   // is no longer Complete (a change after saving) and shows the engine's words.
   const go = async () => {
     setErr(null);
-    if (ch === "copy") {
-      try { await navigator.clipboard.writeText(link); } catch (e) { setErr(`Could not copy: ${(e as Error).message}`); return; }
-    }
+    if (ch === "copy" && !(await copyText(link))) setErr("Could not copy here: select the link above and copy it.");
     setState("busy");
     // The version as the lead holds it now (saving Complete moved it), so base_version never trails a fresh save.
     const cur = await call<{ version?: number }>(`/api/leads/${encodeURIComponent(leadId)}`);
     const base = cur.ok && cur.data.version != null ? cur.data.version : version;
     const r = await send<{ version?: number; status?: string }>(`/api/leads/${encodeURIComponent(leadId)}/send`, { channel: ch, ...(base != null ? { base_version: base } : {}), ...(dry ? { dry: true } : {}) }, `send-${ch}`);
-    if (!r.ok) { setState(ch === "copy" ? "copied" : "idle"); setErr(r.error); return; }
+    if (!r.ok) { setState("idle"); setErr(r.error); return; }
     setState(ch === "copy" ? "copied" : "sent");
     if (!dry) onSent(r.data?.version);
   };
@@ -67,7 +78,7 @@ export default function SendSheet({ leadId, name, brand, link, version, onClose,
               ))}
             </div>
             <p className={s.sheetMsg}>{msg}</p>
-            {state === "copied" && <p className={s.sheetDone} role="status">Link copied{err ? "" : dry ? ", dry run, not sent" : ", waiting for the homeowner"}</p>}
+            {state === "copied" && <p className={s.sheetDone} role="status">{err ? "Marked as sent" : "Link copied"}{dry ? ", dry run, not sent" : ", waiting for the homeowner"}</p>}
             {err && <p className={s.failS} role="alert">{err}</p>}
           </>
         )}

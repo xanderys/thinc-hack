@@ -641,9 +641,9 @@ function Offer({ res }: { res: DesignResponse }) {
   const discharged = (a as { battery_discharged_kwh?: number }).battery_discharged_kwh ?? 0;
   const direct = Math.max(0, a.pv_yield_kwh - charged - a.fed_in_kwh);
   const flows = { direct, charged, fed: a.fed_in_kwh, discharged, imp: a.grid_import_kwh };
-  // Engine v2.7: cumulative series, or the yearly one summed here.
-  const ce = e as unknown as { cashflow_cumulative_eur?: number[]; cashflow_yearly_eur?: number[] };
-  const cash = ce.cashflow_cumulative_eur?.length ? ce.cashflow_cumulative_eur : ce.cashflow_yearly_eur?.reduce<number[]>((o, x) => [...o, (o.at(-1) ?? 0) + x], []);
+  // The engine's own cumulative series only (it carries the battery replacement); never a sum of the yearly flows here.
+  const ce = e as unknown as { cashflow_cumulative_eur?: number[] };
+  const cash = ce.cashflow_cumulative_eur?.length ? ce.cashflow_cumulative_eur : null;
   return (
     <div className={s.offer}>
       <div className={s.two}>
