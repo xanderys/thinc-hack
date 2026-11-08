@@ -219,7 +219,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const d0 = res.design as unknown as Record<string, unknown>;
   const fresh = !layers?.chosen || (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (Number((layers.chosen as unknown as Record<string, unknown>)[k]) || 0) === (Number(d0[k]) || 0));
   const le = fresh ? layers?.economics : undefined;
-  const e = le ? { ...res.economics, ...le, annual: { ...res.economics.annual!, ...(le.annual ?? {}) } } as typeof res.economics : res.economics, a = e.annual;
+  // The price is the refine's own (it lands with the design); the layers run adds yields and shares, never a second price.
+  const e = le ? { ...res.economics, ...le, capex_eur: res.economics.capex_eur, annual: { ...res.economics.annual!, ...(le.annual ?? {}) } } as typeof res.economics : res.economics, a = e.annual;
   const breakEven = le?.break_even_year ?? (e as { break_even_year?: number | null }).break_even_year ?? null;
   // While an edit waits on the engine, the sizes the planner just chose show at once (on the model, the labels, the
   // cards and the pass, which tween on a design change); prices and yields follow when the engine answers.
@@ -451,6 +452,14 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const pvChecks = checksFor(/roof fit|orient|shad/i), batChecks = checksFor(/battery/i);
   const roofBar = bars[1] && shading ? { ...bars[1], segments: [...bars[1].segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address" as const, citation: shading.source }] } : bars[1];
   const useKwh = (inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0);
+  // The rule's own result and the catalogue snap, as one chain (payload: derivation.axiom_result and final, the part's
+  // sku): "Rule result 10.35 kWp, snapped to 23 × 463 W = 10.65 kWp". Nothing when the two agree.
+  const snapLine = (k: ComponentKey, unit: string) => {
+    const dv = res.components[k]?.derivation, sku = (res.components[k] as { sku?: { size?: number | null; unit?: string | null; modules?: number | null } }).sku;
+    if (!dv || dv.axiom_result == null || dv.final == null || Math.abs(dv.final - dv.axiom_result) < 0.005) return null;
+    const to = sku?.size ? (k === "pv" && sku.modules ? `${sku.modules} × ${n0(sku.size)} ${sku.unit ?? "W"}` : `the ${n1(sku.size)} ${sku.unit ?? unit} package`) : null;
+    return <p>Rule result {n2(dv.axiom_result)} {unit}, snapped to {to ? (k === "pv" ? `${to} = ${n2(dv.final)} ${unit}` : to) : `${n2(dv.final)} ${unit}`}.</p>;
+  };
   // No sentences on the cards: figures only; every derivation sentence moved behind the i.
   const sysBody: Record<SystemName, { head: ReactNode; label: string; body: ReactNode; info: ReactNode }> = {
     panels: (() => {
@@ -465,6 +474,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
           {usePara}
           {roofBar && <BarView bar={roofBar} bare />}
           <BarView bar={useBar} bare />
+          {snapLine("pv", "kWp")}
           <p>{n2(d.pv_kwp ?? 0)} kWp{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}.</p>
           {pvChecks.length > 0 && <Checks checks={pvChecks} />}
           {shading?.source && <p>Shading: {shading.source}</p>}
@@ -483,7 +493,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         info: <>
           {day && roof != null && <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p>}
           {kwh && ratio != null ? <p>{n1(kwh)} kWh is {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0 kWh per kWp for {n2(d.pv_kwp ?? 0)} kWp.</p> : !kwh ? <p>No battery in this design.</p> : null}
-          {day && <BarView bar={day} />}{batChecks.length > 0 && <Checks checks={batChecks} />}{whyBlock(2)}
+          {snapLine("battery", "kWh")}{day && <BarView bar={day} />}{batChecks.length > 0 && <Checks checks={batChecks} />}{whyBlock(2)}
         </>,
       };
     })(),
@@ -501,7 +511,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         body: !wb && adding?.part !== "wallbox" ? why0("wallbox") : wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
         info: <>
           {wb && km && kwh ? <p>{n0(km)} km a year takes about {n0(kwh)} kWh{homeShare ?? (homeKwh && kwh ? homeKwh / kwh : null) ? `; ${pc((homeShare ?? homeKwh! / kwh)!)} of it is charged at home, ${n0(homeKwh ?? homeShare! * kwh)} kWh` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p> : <p>{line2[3]}</p>}
-          {ch && (wb || layers?.ev) && <BarView bar={ch} />}{whyBlock(3)}
+          {snapLine("wallbox", "kW")}{ch && (wb || layers?.ev) && <BarView bar={ch} />}{whyBlock(3)}
         </>,
       };
     })(),
@@ -528,6 +538,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         info: multi ? <p>The walls and roof are the whole building&rsquo;s, so no heat pump size for one flat.</p> : <>
           {lossS && <p>{lossS}</p>}
           <p>{hp ? "Sized from the heating bill." : hpWhy ?? "Heating facts not asked yet."}</p>
+          {snapLine("heatpump", "kW")}
           {hasEnv && <EnvelopeBar env={model!.envelope!} bare />}
           {bars[4] && <BarView bar={bars[4]} />}
           <HeatPumpStep res={res} inputs={inputs} env={null} multi={multi} variants={variants} onVariant={onVariant} />
@@ -538,7 +549,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   };
   const cardNow = sysNow ? sysBody[sysNow] : null;
   const sysCard = sysNow && cardNow && (
-    <SystemCard sys={sysNow} head={cardNow.head} label={cardNow.label} info={cardNow.info} pending={waiting || !fresh}
+    <SystemCard sys={sysNow} head={cardNow.head} label={cardNow.label} info={cardNow.info} pending={waiting}
       extra={sysNow === "panels" && address && spatial !== false ? <ShadingPanel address={address} kwp={d.pv_kwp} solarStage start={{ m: 6, h: 11 }} compact /> : undefined}>
       {cardNow.body}
     </SystemCard>
