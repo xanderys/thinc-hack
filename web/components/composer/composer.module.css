@@ -1,0 +1,20 @@
+.dock { position: sticky; bottom: 0; z-index: 20; margin-top: 24px; padding: 8px 0 calc(10px + env(safe-area-inset-bottom)); background: var(--paper); max-width: 760px; margin-inline: auto; }
+.line { min-height: 22px; padding: 0 6px 6px; font-size: 14px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.line > span { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.skel { width: 220px; height: 14px; max-width: 70%; }
+.box { display: flex; align-items: flex-end; gap: 2px; padding: 6px; border: 1px solid var(--rule-2); border-radius: 26px; background: var(--sheet); }
+.box:focus-within { border-color: var(--accent); }
+.busy { background-color: #eceef4; background-image: linear-gradient(90deg, #eceef4 0%, #f6f7fa 50%, #eceef4 100%); background-size: 200% 100%; animation: shim 1.2s linear infinite; }
+.rec { border-color: var(--accent); }
+@keyframes shim { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.field { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; line-height: 24px; padding: 8px 6px; max-height: 164px; color: var(--ink); }
+.glyph, .go { flex: 0 0 40px; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--ink-2); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+.glyph:hover:not(:disabled) { color: var(--ink); }
+.on { background: var(--accent); color: #fff; }
+.go { background: var(--accent); color: #fff; }
+.go:disabled { background: var(--sheet-2); color: var(--ink-4); cursor: default; }
+.glyph:disabled { opacity: 0.5; cursor: default; }
+.open { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.err { color: var(--bad); }
+.src { font-weight: 600; margin-right: 4px; }
+@media (prefers-reduced-motion: reduce) { .busy { animation: none; } }
