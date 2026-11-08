@@ -61,3 +61,11 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
 **How is this different from PV*SOL, Autarc, Aurora or OpenSolar?** They simulate or size what the planner configures. Marquee makes the choice, says why, and reports its match rate on held-out homes. We found no other tool that publishes that score.
 
 **What would you do with another month?** Rules per installer across all of Reonic's installers, the computed next question in Reonic's intake, and installed-system meter data back into the rule set.
+
+## PENDING: SKU catalogue figures (engine 10:00, not confirmed; swap in only after the Chief-of-Staff's audit rerun, then delete this section)
+Hero chain after the SKU snap: 23 × Sunpro 463 W = 10.65 kWp, Sigenergy 10 kW inverter, EcoFlow 10 kWh battery, €14,890 estimate, 9,858 kWh a year, 76.5% autarky, break-even 10 years, IRR 8.1%, €16,864 after 20 years, NPV €8,320. Sealed 18.6% on 633 and the 80/18/2 backtest unchanged.
+Replacement answers once confirmed:
+- 20 years: "Break-even in year 10, IRR 8.1%, €16,864 after 20 years, NPV €8,320. Market-rate estimate from a rate card, not the installer's prices." (battery replacement and residual figures to be reconfirmed for the new chain)
+- Battery: "the design has 10 kWh (EcoFlow), Installer A's package above 4,100 kWh" (HTW guide 7.5 kWh unchanged)
+- Roof limit: 40 modules; kWp at 463 W to be reconfirmed (40 × 0.463 = 18.5 kWp)
+- Heat load: unchanged
