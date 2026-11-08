@@ -233,6 +233,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     sc.show({ outlines: L <= 3, panels: L >= 3 && L !== 7, kit: L >= 4 && L <= 6, sun: L === 4, battery: L === 5 && !!design.battery_kwh ? "lit" : "plain" });
     sc.setTint(L === 2 || (sunTint && L === 3) ? "yield" : "off");
     sc.setWallbox(!!design.wallbox_kw);
+    sc.setUnits({ inverter: !!design.inverter_kw, heatpump: !!design.heatpump_kw && L >= 4 && L <= 7 });
     if (L === 3 && prev !== 3 && prev < 3) sc.setPanels(panelList, !reduce);
     if (L === 4 && layers) sc.setDay(layers.day.hours, !reduce); else sc.setDay(null, false);
     if (L === 1) sc.setLabels(sc.planeLabels("roof"));
@@ -248,7 +249,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     }
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, design.battery_kwh, stage, sunTint]);
+  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, design.battery_kwh, design.inverter_kw, design.heatpump_kw, stage, sunTint]);
 
   // The plan layer is always top-down; the other layers keep the planner's choice.
   useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);
