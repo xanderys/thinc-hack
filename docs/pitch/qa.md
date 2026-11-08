@@ -40,11 +40,21 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
 
 **Where do the prices come from?** Public German market rates in a rate card the installer replaces with its own catalogue on day one; the dataset carries no prices, so we never claim price accuracy. Every € in the app sits behind an "i" that reads "Market estimate, not the installer's price list", with the unit rates and the arithmetic.
 
+**What does the hero earn over 20 years?** Break-even in year 10, IRR 8.19%, €16,796 after 20 years, with the €3,150 battery replacement at year 15 and the €2,100 residual counted. Market-rate estimate, not the installer's prices.
+
+**Is the battery oversized?** By HTW Berlin's guide (at most 1.5 kWh per 1,000 kWh of use) the hero would take 7.5 kWh; the design has 10 kWh, Installer A's package above 4,100 kWh. The rule follows what the installer sold, and the planner can pick the 5 kWh pack.
+
+**How many modules fit the hero's roof?** 40 modules, 18 kWp; the design uses 23.
+
+**What does the Check page replay show?** Drawn from unseen homes with no match-first order: 3 of 20 match the expert on all four decisions at once, 15%, in line with the sealed 18.6% on 633; by part, panels sit within tolerance on 41% and the battery on 50%. All four at once is the strict test; the sealed figure is the one to quote.
+
+Never quote a heat-loss kW figure for the hero; the envelope rerun is pending.
+
 **Where is the AI?** No language model sizes anything. The engine is readable rules fitted on the data plus hourly physics. Claude only reads a pasted enquiry into facts in the web layer, and ElevenLabs carries Rina's voice.
 
 **Why does the Check page say 17.1% on 258 homes?** That was the earlier board population. The Check page now shows the sealed figure, 18.6% on 633, and nothing else.
 
-**Would the verdict turn away real customers?** Every lead in the pack was sold, so each Decline in a replay is a miss, and Decline fires only where the rules propose no panels. Call first fires almost only where the use was never recorded. The pack holds signed sales only, so a replay shows the rule is not trigger-happy; it cannot show that it catches bad leads. [HELD: the replay percentages, until THINC HACK MASTER sends the final numbers after the engine restart; audit figure if cleared: 80% Priority, 18% Call first, 2% Decline on the 126 unseen homes.]
+**Would the verdict turn away real customers?** Replayed on the 126 held-out signed sales: 80% Priority, 18% Call first, 2% Decline. Every one was sold, so each Decline is a miss: 2 of 126, both homes where the rules propose no panels. Call first fires almost only where the use was never recorded. The pack holds signed sales only, so this shows the rule is not trigger-happy; it cannot show that it catches bad leads.
 
 **Does anyone feed installed-system data back into design?** We found no public product that does. 1KOMMA5° Heartbeat connects tens of thousands of systems to trade power, not to size new ones (press release, 14 Nov 2025). Reonic holds both the offer and the installed system, so it can close that loop.
 
