@@ -11,8 +11,13 @@ BALCONY_KWP = 0.86           # two 430 W modules, the common balcony kit (assump
 
 
 def multi_unit(roof: dict) -> bool:
-    m = re.match(r"\s*(\d+)", str((roof or {}).get("dwellings_class") or ""))
-    return bool(((roof or {}).get("geometry") or {}).get("large_building")) or bool(m and int(m.group(1)) >= 3)
+    """The measured building first: large_building, or a census class of 3 or more dwellings on a building big enough to
+    hold them (footprint 150 m2 or more, or 3 or more storeys). The census class is an area figure, so an 80 m2 house in
+    a "3 to 6 dwellings" area stays a house."""
+    r = roof or {}
+    m = re.match(r"\s*(\d+)", str(r.get("dwellings_class") or ""))
+    big = (r.get("footprint_m2") or 0) >= 150 or (r.get("storeys") or 0) >= 3
+    return bool((r.get("geometry") or {}).get("large_building")) or bool(m and int(m.group(1)) >= 3 and big)
 
 
 def apply(lead: dict, draft: dict, roof: dict) -> dict:
