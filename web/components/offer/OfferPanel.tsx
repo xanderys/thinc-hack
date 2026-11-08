@@ -2,7 +2,8 @@
 // ticks, what to confirm on site, Approve. Always visible: beside the house on desktop, under it on a phone.
 // It holds no design state of its own; every change goes through Stage (overrides, variants, Approve).
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Design, DesignResponse, Economics, OverrideValue, Overrides } from "@/lib/api";
+import type { Design, DesignResponse, Economics, HomeInputs, OverrideValue, Overrides, Variant as EngineVariant } from "@/lib/api";
+import { call } from "@/lib/client";
 import type { Variant as StageVariant } from "@/components/stage/Plan";
 import type { Check, RoofModel } from "@/components/spatial/types";
 import { facing } from "@/components/spatial/facing";
@@ -21,6 +22,7 @@ export type OfferProps = {
   checks?: Check[] | null; model?: RoofModel | null;
   overrides: Overrides; setOverride: (f: keyof Design, v: OverrideValue | undefined) => void;
   approvedAt: string | null; onApprove: () => void; leadId?: string | null;
+  inputs?: HomeInputs;   // the facts the design on screen was drawn from; a fact change re-reads the offers
   docked?: boolean;   // inside the canvas on desktop: marks itself as cover so the house fits beside it
 };
 
@@ -34,6 +36,13 @@ const isInfo = (c: Check) => c.level === "info" || !!c.informational;
 const isFail = (c: Check) => !c.pass && !isRef(c) && !isInfo(c);
 const refOut = (c: Check) => isRef(c) && (c.inside_band != null ? !c.inside_band : !c.pass);
 const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+
+// Engine offers in Stage's variant shape, so a pick runs through Stage's onVariant like any other.
+function asStage(vs: EngineVariant[], d: Design): StageVariant[] {
+  const same = (x: Design) => JSON.stringify(x) === JSON.stringify(d);
+  return vs.map((v) => ({ name: v.label.split(" (")[0], tag: "", design: v.design, e: v.economics, note: v.note, current: same(v.design),
+    overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } }));
+}
 
 function useReduce() {
   const [r, setR] = useState(false);
@@ -100,16 +109,31 @@ export default function OfferPanel(p: OfferProps) {
   // The four offers come from the last run without fixed sizes (none, or only "include" from a sentence): a refine
   // with a variant's or a hand-set size reports the offers relative to those sizes, which would turn the planners'
   // pick into the edit. With fixed sizes the offers stay as they were and only the selection follows the screen.
+  // Only hand picks, inline overrides and Undo keep them; a sentence or a fact change re-reads the offers for the new
+  // facts without the fixed sizes (one /api/design call), since the planners' pick is then a new design.
   const fixedSizes = Object.values(overrides).some((v) => v !== "include" && v !== undefined);
   const frozen = useRef<Row[]>([]);
+  const factsKey = JSON.stringify(p.inputs ?? null);
+  const frozenFacts = useRef(factsKey);
+  const keep = /^(Switched to|Changed by hand|Undone)/.test(cause ?? "");
+  const [reread, setReread] = useState<{ key: string; rows: Row[] } | null>(null);
+  useEffect(() => {
+    if (!fixedSizes || keep || !p.inputs || factsKey === frozenFacts.current) return;
+    const ac = new AbortController();
+    call<DesignResponse>("/api/design", { inputs: p.inputs }, ac.signal).then((r) => {
+      if (r.ok && r.data.variants?.length) setReread({ key: factsKey, rows: rowsOf(asStage(r.data.variants, d)) });
+    }).catch(() => {});
+    return () => ac.abort();
+  }, [factsKey, fixedSizes, keep]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo(() => {
     const same = (x: Design) => (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (x[k] ?? null) === (d[k] ?? null));
     const fresh = rowsOf(p.variants);
-    if (!fixedSizes || !frozen.current.length) frozen.current = fresh.filter((r) => r.key !== "edit");
+    if (!fixedSizes || !frozen.current.length) { frozen.current = fresh.filter((r) => r.key !== "edit"); frozenFacts.current = factsKey; }
+    else if (reread && reread.key === factsKey && frozenFacts.current !== factsKey) { frozen.current = reread.rows.filter((r) => r.key !== "edit"); frozenFacts.current = factsKey; }
     const four = (fixedSizes ? frozen.current : fresh.filter((r) => r.key !== "edit")).map((r) => ({ ...r, selected: same(r.design) }));
     if (!four.length || four.some((r) => r.selected)) return four;
     return [...four, { key: "edit" as const, name: "Your edit", line: "as you changed it", design: d, e, pick: null, selected: true }];
-  }, [p.variants, fixedSizes, d, e]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [p.variants, fixedSizes, d, e, reread, factsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const tiles = [
     { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
     { k: "Autarky", v: pc(e.autarky_share) },
