@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { apply, runTool, TOOLS, type Op } from "./tools";
+import { apply, leadBrief, runTool, TOOLS, type Op } from "./tools";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -11,6 +11,8 @@ How you answer:
 - The first line is the answer: one plain sentence carrying the outcome, the recommendation first, then the reasoning ("Becker has the most upsell: +€25,100, saves €810 a year."). Never open with "I'll", "Let me", "Sure" or a heading. Never say what you are about to do or which tool you call.
 - Wrap what the planner must decide, do or know in ==double equals==, a few words at a time, only for a decision, an action or a consequential figure.
 - Rich blocks when they read better: [[ok: Ready]] / [[warn: Needs heating]] / [[fail: Declined]] badges; GitHub tables with at most three columns; at most one callout for the key risk, written as a line "> [!WARNING] text"; the proposal card (from the propose tools) for every write. Short replies stay plain.
+- Answer what-if questions with one compare tool call (what_if); on the open lead its facts and design are already given below, so call no read tool first.
+- Never write estimated, assumed or estimate.
 - Never print raw field names; use plain labels ("Electric car: yes, about 12,000 km a year", "Yearly use: 5,000 kWh", "Heating: gas", "Boiler: 40 years old", "Household: 4 people"), never has_ev, ev_planned or annual_demand_kwh, in prose, tables or code spans.
 - Every lead name is a chip: [[lead: Full Name|lead_id]]. Figures: bold value then unit, like **10.65** kWp, **€14,890**, **76** % autarky. Bold is for figures only.
 - Voice: British English, no em dashes, no middle dots, no "not X, it's Y", no taglines, no filler, no closing offers, specific numbers over ranges; every sentence changes what the planner knows or does. Take a position ("Size it at 7 kWh, not 10: payback 9 years against 11"); never hedge without a pick.
@@ -63,17 +65,20 @@ export async function POST(req: NextRequest) {
     // Earlier turns travel as one transcript in a single user message: replayed assistant text without its thinking
     // made Sonnet 5.5 end the next turn empty.
     const earlier = history.slice(0, -1).map((m) => `${m.role === "user" ? "Planner" : m.role === "event" ? "Board record (applied or undone by the planner's tap, Berlin time)" : "You"}: ${m.content}`).join("\n\n");
-    const ctx = b.context?.lead_id ? `The planner has the lead page of ${b.context.name ?? "a lead"} (lead_id ${b.context.lead_id}) open: "this", "the house", "her" or "him" and any kit, part, panel, brand or fact change mean this lead.\n\n` : "The planner is on the board of all leads.\n\n";
+    const brief = b.context?.lead_id ? await leadBrief(b.context.lead_id) : null;
+    const ctx = b.context?.lead_id ? `${brief ? `Open lead, as the board shows it now: ${JSON.stringify(brief)}\n\n` : ""}The planner has the lead page of ${b.context.name ?? "a lead"} (lead_id ${b.context.lead_id}) open: "this", "the house", "her" or "him" and any kit, part, panel, brand or fact change mean this lead.\n\n` : "The planner is on the board of all leads.\n\n";
     const messages: Anthropic.MessageParam[] = [{ role: "user", content: ctx + (earlier ? `Earlier in this conversation:\n\n${earlier}\n\nThe planner now says:\n\n${said}` : said) }];
     let retried = false;
-    for (let turn = 0; turn < 8; turn++) {
+    const ROUNDS = 3;   // at most two tool rounds, then the answer
+    for (let turn = 0; turn < ROUNDS; turn++) {
       const s = client.messages.stream({
         model: MODEL, max_tokens: 8000, system: SYSTEM, tools: TOOLS, messages,
-        thinking: { type: "between_tools" }, output_config: { effort: "medium" },
+        thinking: { type: "between_tools" }, output_config: { effort: "low" },
+        ...(turn === ROUNDS - 1 ? { tool_choice: { type: "none" } } : {}),
       } as unknown as Anthropic.MessageStreamParams);
-      // Narration before a tool call is short: hold the first 160 characters, stream after that.
+      // Narration before a tool call is short: hold the first 100 characters, stream after that.
       let held = "", live = false;
-      s.on("text", (d) => { if (live) return emit({ t: "text", d }); held += d; if (held.length > 160) { live = true; emit({ t: "text", d: held }); } });
+      s.on("text", (d) => { if (live) return emit({ t: "text", d }); held += d; if (held.length > 100) { live = true; emit({ t: "text", d: held }); } });
       const msg = await s.finalMessage();
       const said_ = msg.content.some((c) => c.type === "text" && c.text.trim());
       if (msg.stop_reason !== "tool_use" && !said_) {
