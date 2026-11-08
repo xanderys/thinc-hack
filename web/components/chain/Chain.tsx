@@ -182,8 +182,12 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   const checkHead = (() => { const c = layers?.checks ?? []; const bad = c.filter(isFail).length, out = c.filter(refOut).length; return c.length ? (bad ? `${bad} of ${c.length} checks flag` : out ? "Checks pass; battery above Reonic’s guide" : `All ${c.length} checks pass`) : "Checks"; })();
   const rule = (k: string) => res.rules?.find((r) => r.name === k);
+  // Modules in the design on screen: the same placed panels the face chips count, and only once the layers run is the
+  // one for this design (a variant switch would otherwise show the old count against the new size).
+  const placed = model?.planes?.filter((p) => p.is_target).reduce((x, p) => x + (p.chosen_panels?.length ?? 0), 0) || model?.layout?.panels || 0;
+  const mods = fresh && placed ? `, ${placed} modules` : "";
   const head5: string[] = [
-    `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}${multi ? ", shared roof" : ""}`,
+    `${n2(d.pv_kwp ?? 0)} kWp${mods}${multi ? ", shared roof" : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh` : "None",
     d.wallbox_kw ? `${n1(d.wallbox_kw)} kW` : inputs.has_ev ? "None" : "None, no EV",
     multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : "None, not asked",
@@ -193,7 +197,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     bars[1] ? (() => { const f = bars[1].segments.filter((g) => g.unit === "kWp").length; return `${n2(bars[1].total)} kWp on ${f} face${f === 1 ? "" : "s"}${multi ? ", shared roof" : ""}`; })() : address && spatial !== false ? "Roof being measured" : address ? "No 3D model here, roof assumed standard face" : "No street given, roof assumed standard face",
     `${n0(inputs.annual_demand_kwh ?? 0)} kWh a year${layers?.ev ? ` plus ${n0(layers.ev.annual_kwh)} kWh for the car` : ""}`,
     `${inputs.has_ev ? `Electric car${inputs.ev_annual_km ? `, ${n0(inputs.ev_annual_km)} km a year` : ""}` : "No electric car planned"}${multi ? "; heat load not estimated for flats" : model?.envelope ? `; heat load up to ${n1(model.envelope.design_heat_load_kw)} kW` : ""}`,
-    `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}`,
+    `${n2(d.pv_kwp ?? 0)} kWp${mods}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh battery` : "No battery",
     [d.wallbox_kw ? `${n1(d.wallbox_kw)} kW wallbox` : "No wallbox", d.heatpump_kw ? `${n1(d.heatpump_kw)} kW heat pump` : "no heat pump"].join(", "),
     checkHead,
