@@ -291,7 +291,7 @@ function Page({ agentId, installerId, test }: Props) {
         {pick("ev", "Electric car")}
         {pick("bill_band", "Electricity bill", "€ a month")}
         {pick("roof", "Roof faces")}
-        <button type="submit" className="h-go" disabled={step !== "form"}>{step === "waiting" ? "Sending" : "Submit"}</button>
+        <button type="submit" className="h-go" disabled={step !== "form"}>{step === "waiting" ? <span className="h-bar">Submit</span> : "Submit"}</button>
         {leadError && step === "form" && <p className="h-why" role="alert">{leadError} <button type="button" className="h-retry" onClick={submit}>Retry</button></p>}
         {error && <p className="h-why" role="alert">ElevenLabs said: {error}</p>}
       </form>

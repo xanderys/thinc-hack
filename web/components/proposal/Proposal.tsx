@@ -14,8 +14,6 @@ import Tiles from "@/components/offer/Tiles";
 import type { SystemName } from "@/components/systems/system";
 import type { Layers } from "@/components/spatial/types";
 import RoofNote from "@/components/home/RoofNote";
-import { Facts } from "@/components/offer/VariantTabs";
-import { variantFacts } from "@/components/offer/facts";
 import { pastLine } from "@/lib/past";
 import "./proposal.css";
 import { berlinStamp } from "@/lib/time";
@@ -54,12 +52,13 @@ const ROWS: { key: Variant["key"]; name: string }[] = [
 function rowsOf(variants: Variant[]) {
   return variants.flatMap((v) => { const r = ROWS.find((x) => x.key === v.key); return r ? [{ ...r, v }] : []; });
 }
-// Sizes, price and break-even only: a "change against the proposal" line would mark the proposed row.
-const rowFacts = (v: Variant) => [
-  { label: "Solar", value: v.design.pv_kwp ? `${n2(v.design.pv_kwp)} kWp` : "none" },
-  { label: "Battery", value: v.design.battery_kwh ? `${n2(v.design.battery_kwh)} kWh` : "none" },
-  ...variantFacts(v.economics, v.design, null).filter((f) => f.label !== "Change"),
-];
+// One line per offer, with no figures and no comparison against the proposed design.
+const LINE: Record<string, string> = {
+  expert: "The system planners at this installer fit to homes like this one.",
+  independence: "The most of your power from your own roof.",
+  payback: "The shortest time to earn back the cost.",
+  upfront: "The least to pay at the start.",
+};
 
 type Props = {
   lead: Lead; brand: string;
@@ -84,7 +83,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const own = e.annual ? Math.max(0, e.annual.load_kwh - e.annual.grid_import_kwh) : null;
 
   // The homeowner sees the installer and a neutral state only: never variant names or which one the planner chose.
-  const mark = lead.status === "signed" ? "Signed" : lead.status === "declined" ? "Declined" : "Your proposal";
+  const mark = lead.status === "signed" ? "Signed" : lead.status === "declined" ? "Declined" : null;   // "Proposed Design" below already names the page
   const figs = [
     { k: "kwp" as const, v: design.pv_kwp ? `${n2(design.pv_kwp)} kWp` : "No solar" },
     { k: "kwh" as const, v: design.battery_kwh ? `${n2(design.battery_kwh)} kWh` : "No battery" },
@@ -102,7 +101,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
     <article className="pp pp-dock" aria-label="Your proposal">
       <header className="pp-top">
         <p className="pp-brand">{brand}</p>
-        <p className="pp-mark">{mark}</p>
+        {mark && <p className="pp-mark">{mark}</p>}
       </header>
       <SystemsChips active={sys} onPick={setSys} />
       <section className="pp-stage" aria-label="Your home">
@@ -119,12 +118,12 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
           <Tiles items={tiles} mode="fade" />
           {alts.length > 0 && (
             <section className="pp-card" aria-labelledby="pp-alts">
-              <h2 id="pp-alts">Alternatives for your installer to discuss</h2>
+              <h2 id="pp-alts">Options to discuss with your installer</h2>
               <ul className="pp-vars">
-                {alts.map(({ key: k, name: label, v }) => (
+                {alts.map(({ key: k, name: label }) => (
                   <li key={k}>
                     <span className="pp-vname">{label}</span>
-                    <Facts className="pp-facts" items={rowFacts(v)} />
+                    <p className="pp-vline">{LINE[k]}</p>
                   </li>
                 ))}
               </ul>
@@ -217,7 +216,7 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
         <div className="pp-l pp-sighead"><span id="pp-sig-l">Signature</span><button type="button" className="pp-link" onClick={() => { sig.current?.clear(); setInked(false); }} disabled={!inked}>Clear</button></div>
         <Signature ref={sig} labelledBy="pp-sig-l" onInk={setInked} />
         <label className="pp-tick"><input type="checkbox" checked={tick} onChange={(ev) => setTick(ev.target.checked)} /><span>I accept this proposal</span></label>
-        <button type="button" className="pp-go" disabled={!ready} onClick={() => send("sign")}>{busy === "sign" ? "Signing" : "Sign"}</button>
+        <button type="button" className="pp-go" disabled={!ready} onClick={() => send("sign")}>{busy === "sign" ? <span className="pp-skt">Sign</span> : "Sign"}</button>
       </fieldset>
       {error && <p className="pp-err" role="alert">{error.text} <button type="button" className="pp-link" onClick={() => send(error.act)}>Try again</button></p>}
 
@@ -229,12 +228,12 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
         <div className="pp-more">
           <label className="pp-l" htmlFor="pp-q">Your question</label>
           <textarea id="pp-q" className="pp-input pp-area" rows={3} value={question} onChange={(ev) => setQuestion(ev.target.value)} />
-          <button type="button" className="pp-go" disabled={!question.trim() || !!busy} onClick={() => send("question")}>{busy === "question" ? "Sending" : "Send question"}</button>
+          <button type="button" className="pp-go" disabled={!question.trim() || !!busy} onClick={() => send("question")}>{busy === "question" ? <span className="pp-skt">Send question</span> : "Send question"}</button>
         </div>
       )}
       {mode === "decline" && (
         <div className="pp-more">
-          <button type="button" className="pp-go pp-no" disabled={!!busy} onClick={() => send("decline")}>{busy === "decline" ? "Declining" : "Decline this proposal"}</button>
+          <button type="button" className="pp-go pp-no" disabled={!!busy} onClick={() => send("decline")}>{busy === "decline" ? <span className="pp-skt">Decline this proposal</span> : "Decline this proposal"}</button>
         </div>
       )}
       <p className="pp-small">Demo acceptance, not a qualified e-signature.</p>
