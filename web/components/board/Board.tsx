@@ -25,7 +25,6 @@ const factsTip = (q: { facts?: { stated: number; total: number }; confidence_lin
 import qs from "@/components/qualify/qualify.module.css";
 import { berlinStamp, berlinTime } from "@/lib/time";
 import { undoLast, useCanUndo } from "@/lib/edits";
-import { AgentLog, RunButton } from "@/components/autopilot/Autopilot"; // autopilot mount
 
 // The open card's one Undo: in the header, visible without scrolling at every width; one kit edit at a time.
 function HeaderUndo({ id }: { id: string }) {
@@ -369,7 +368,6 @@ export default function Board({ openId: initial }: { openId?: string }) {
 
   return (
     <div className="b-board">
-      <RunButton /> {/* autopilot mount */}
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setTick((t) => t + 1)}>Retry</button></div>}
       <ul className={`b-grid ${qs.addRow}`}>
         <li>
@@ -428,7 +426,6 @@ export default function Board({ openId: initial }: { openId?: string }) {
           </section>
         );
       })}
-      <AgentLog /> {/* autopilot mount */}
       {adding && <AddSheet onClose={() => setAdding(false)} sample={HERO_LEAD} voice={VOICE}
         onCreated={(id) => { setAdding(false); setTick((t) => t + 1); open(id); }} />}
       {/* composer mount */}

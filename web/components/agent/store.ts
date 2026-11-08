@@ -8,7 +8,11 @@ export type Op = { lead_id: string; name: string; action: string; overrides?: Re
 export type Row = { lead_id: string; name: string; what: string; price_from: number | null; price_to: number | null; autarky_from: number | null; autarky_to: number | null; verdict_from: string; verdict_to: string; kwp_from?: number | null; kwp_to?: number | null; kwh_from?: number | null; kwh_to?: number | null; payback_from?: number | null; payback_to?: number | null; facts?: { label: string; from: unknown; to: unknown }[] };
 export type Proposal = { title: string; ops: Op[]; rows: Row[]; refused: string[]; unchanged?: string[]; said: string; state: "open" | "applying" | "applied" | "undoing" | "undone"; results: { lead_id: string; name: string; ok: boolean; msg?: string; what?: string }[]; undo?: Op[] };
 export type Message = { lead_id: string; name: string; facts: string[]; text: string; state: "draft" | "sending" | "sent"; at?: string; err?: string };
-export type Item = { id: number; who: "you" | "agent" | "event"; text: string; messages?: Message[]; pending?: boolean; err?: { src: string; msg: string }; proposals?: Proposal[] };
+// Autopilot entries in the thread (components/autopilot/store.ts): the confirm card and one entry per run step.
+export type ApEntry =
+  | { kind: "confirm"; n: number | null; state: "open" | "running" | "cancelled" | "error"; err?: string }
+  | { kind: "step"; lead_id: string | null; name: string; step: string; text: string; state: "active" | "done" | "needs_you" | "error" };
+export type Item = { id: number; who: "you" | "agent" | "event"; text: string; messages?: Message[]; pending?: boolean; err?: { src: string; msg: string }; proposals?: Proposal[]; ap?: ApEntry };
 
 let items: Item[] = [], busy = false, seq = 0;
 export const isBusy = () => busy || items.some((i) => i.pending || i.proposals?.some((p) => p.state === "applying" || p.state === "undoing")); // AutoReload waits for it
@@ -98,6 +102,10 @@ export function useThread() {
   return { items: xs, busy: b };
 }
 export function note(text: string) { set((xs) => [...xs, { id: ++seq, who: "agent", text }]); }
+// For the autopilot: add an entry to the thread and change it in place as the run goes.
+export function push(x: Omit<Item, "id">): number { const id = ++seq; set((xs) => [...xs, { ...x, id }]); return id; }
+export function update(id: number, f: (x: Item) => Item) { patch(id, f); }
+export const itemOf = (id: number) => items.find((x) => x.id === id);
 
 async function* lines(res: Response) {
   const r = res.body!.getReader(); const dec = new TextDecoder(); let buf = "";

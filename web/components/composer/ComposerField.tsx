@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import s from "./composer.module.css";
+import { useCopilotContext } from "@/components/copilot/context";
+import "@/components/autopilot/store";   // registers marquee:run-autopilot
 
 export type ComposerFieldProps = {
   value: string; onChange: (v: string) => void; onSend: () => void;
@@ -23,6 +25,11 @@ export type ComposerFieldProps = {
 
 export default function ComposerField({ value, onChange, onSend, onAttach, onMicStart, onMicStop, busy, recording, elapsed = 0, stream, onMicCancel, transcribing, line, trailing, fieldRef, onActivate, placeholder = "New enquiry or a question" }: ComposerFieldProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
+  // Autopilot: on the board only (no lead open); it runs in the copilot thread.
+  const ctx = useCopilotContext();
+  const [board, setBoard] = useState(false);
+  const apPressed = useRef(false);
+  useEffect(() => { const on = () => setBoard(location.pathname === "/"); on(); addEventListener("popstate", on); return () => removeEventListener("popstate", on); }, []);
   const files = useRef<HTMLInputElement>(null);
   const dock = useRef<HTMLDivElement>(null);
   // --composer-h: the dock's height with the safe area, for the panel that sits above it.
@@ -61,6 +68,14 @@ export default function ComposerField({ value, onChange, onSend, onAttach, onMic
         <textarea ref={setRef} className={s.field} rows={1} value={value} disabled={busy && !recording} placeholder={placeholder}
           aria-label="Add a house" onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onSend(); } }} />
+        {board && !ctx.leadId && (
+          <button type="button" className={s.glyph} title="Autopilot" aria-label="Autopilot" disabled={busy}
+            // On press: the collapsed field opens the card on the same press and is gone before a click would land.
+            onPointerDown={() => { apPressed.current = true; dispatchEvent(new CustomEvent("marquee:run-autopilot")); }}
+            onClick={() => { if (!apPressed.current) dispatchEvent(new CustomEvent("marquee:run-autopilot")); apPressed.current = false; }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 10h3.5l2-5 3 10 2-5H17" /></svg>
+          </button>
+        )}
         {trailing}
         {recording && <span className={s.secs} aria-live="off">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}</span>}
         <button type="button" className={`${s.glyph} ${recording ? s.on : ""}`} aria-label={recording ? "Stop recording" : "Record"} aria-pressed={!!recording} disabled={busy && !recording}
