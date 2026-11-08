@@ -133,7 +133,7 @@ function ProposalCard({ p, onLead, onApply, onUndo }: { p: Proposal; onLead: (id
 function OneLead({ r, onLead }: { r: Proposal["rows"][number]; onLead: (id: string) => void }) {
   const kwh = (x: number | null | undefined) => (x ? <><b>{num(x, 1)}</b><span className={s.unit}> kWh</span></> : "None");
   const rows: [string, ReactNode, ReactNode][] = [];
-  for (const f of r.facts ?? []) rows.push([f.label, f.from == null ? "Not known" : String(f.from), <b key="t">{String(f.to)}</b>]);
+  for (const f of r.facts ?? []) rows.push([f.label, String(f.from ?? "not known"), <b key="t">{String(f.to)}</b>]);
   if (r.kwp_from !== r.kwp_to) rows.push(["Solar", <><b>{num(r.kwp_from)}</b><span className={s.unit}> kWp</span></>, <><b>{num(r.kwp_to)}</b><span className={s.unit}> kWp</span></>]);
   if (r.kwh_from !== r.kwh_to) rows.push(["Battery", kwh(r.kwh_from), kwh(r.kwh_to)]);
   if (r.price_from !== r.price_to) rows.push(["Price", <b key="f">{eur(r.price_from)}</b>, <><b>{eur(r.price_to)}</b>{r.price_from != null && r.price_to != null ? <span className={s.unit}> {signed(r.price_to - r.price_from)}</span> : null}</>]);

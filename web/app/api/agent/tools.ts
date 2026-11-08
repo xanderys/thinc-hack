@@ -5,6 +5,7 @@ import { callEngine } from "@/lib/engine";
 import { qualify, VERDICT_WORD } from "@/lib/qualify";
 import type { DesignResponse, Lead, RoofResult } from "@/lib/api";
 import { POST as interpret } from "@/app/api/interpret/route";
+import { factLines, fieldLabel, fieldValue } from "@/components/agent/labels";
 
 // Tools for the board agent. Reads run at once; every write comes back as a proposal the planner applies.
 type Ov = Record<string, number | null | "include" | string | string[]>;
@@ -106,7 +107,7 @@ export async function propose(title: string, ops: Op[], said: string): Promise<P
     const before = await shown(l);
     let after: DesignResponse | null = before, what = "";
     if (op.action === "kit") { const ov = { ...(l.overrides ?? {}), ...(op.overrides ?? {}) }; after = await refine(l, ov); what = Object.entries(op.overrides ?? {}).map(([k, v]) => part(k, v)).join(", "); }
-    else if (op.action === "facts") { after = await refine(l, l.overrides ?? {}, op.values); what = Object.entries(op.values ?? {}).map(([k, v]) => `${k === "phone" ? "Phone" : FACT[k] ?? k}: ${v}`).join(", "); }
+    else if (op.action === "facts") { after = await refine(l, l.overrides ?? {}, op.values); what = factLines(op.values ?? {}).join(", "); }
     else what = op.action === "complete" ? "Complete" : op.action === "send" ? `Send by ${op.channel ?? "whatsapp"}` : "Ask on WhatsApp";
     // A change that changes nothing offers no Apply.
     const F = l.facts as unknown as Record<string, unknown>;
@@ -120,7 +121,7 @@ export async function propose(title: string, ops: Op[], said: string): Promise<P
       autarky_from: before.economics?.autarky_share ?? null, autarky_to: after?.economics?.autarky_share ?? null, verdict_from: vf, verdict_to: after ? vt : "No design",
       kwp_from: before.design?.pv_kwp ?? null, kwp_to: after?.design?.pv_kwp ?? null, kwh_from: before.design?.battery_kwh ?? null, kwh_to: after?.design?.battery_kwh ?? null,
       payback_from: before.economics?.break_even_year ?? null, payback_to: after?.economics?.break_even_year ?? null,
-      ...(op.action === "facts" ? { facts: Object.entries(op.values ?? {}).filter(([k, v]) => (k === "phone" ? l.phone !== v : F[k] !== v)).map(([k, v]) => ({ label: k === "phone" ? "Phone" : FACT[k] ?? k, from: k === "phone" ? l.phone ?? null : F[k] ?? null, to: v })) } : {}) });
+      ...(op.action === "facts" ? { facts: Object.entries(op.values ?? {}).filter(([k, v]) => (k === "phone" ? l.phone !== v : F[k] !== v)).map(([k, v]) => ({ label: fieldLabel(k), from: fieldValue(k, k === "phone" ? l.phone ?? null : F[k] ?? null), to: fieldValue(k, v) })) } : {}) });
     keep.push({ ...op, name: l.customer_name });
   }));
   return { title, ops: keep, rows, refused, unchanged };
@@ -159,7 +160,7 @@ export async function apply(ops: Op[], emit: Emit, said: string, undo = false) {
         if (r.status !== 200) throw new Error(`Engine said: ${err(r.body)}`);
       }
       const what = op.action === "kit" ? Object.entries(op.overrides ?? {}).map(([k, v]) => { const [n, u] = PART[k] ?? [k, ""]; return v === null ? `${n} removed` : v === "include" ? `${n} added` : `${n} fixed at ${v} ${u}`.trim(); }).join(", ")
-        : op.action === "facts" ? `Facts updated: ${Object.keys(op.values ?? {}).map((k) => FACT[k] ?? k).join(", ")}` : op.action === "complete" ? "Complete" : op.action === "send" ? "Proposal sent" : "Asked on WhatsApp";
+        : op.action === "facts" ? `Updated: ${factLines(op.values ?? {}).join(", ")}` : op.action === "complete" ? "Complete" : op.action === "send" ? "Proposal sent" : "Asked on WhatsApp";
       emit({ t: "result", lead_id: l.lead_id, name: l.customer_name, ok: true, what: undo ? "Undone" : what });
     } catch (e) { emit({ t: "result", lead_id: op.lead_id, name: op.name, ok: false, msg: (e as Error).message }); }
   }
@@ -208,7 +209,7 @@ async function siteVisit(id: string) {
   let questions: { fact: string; state: string; at_stake: string | null }[];
   if (Array.isArray(l.blockers) && l.blockers.length) {
     questions = [...l.blockers].sort((a, b) => Math.abs(b.delta_eur ?? 0) - Math.abs(a.delta_eur ?? 0))
-      .map((b) => ({ fact: b.label ?? FACT[b.field] ?? b.field, state: b.state ?? "estimated", at_stake: b.delta_text ?? (b.delta_eur != null ? `€${Math.round(Math.abs(b.delta_eur)).toLocaleString("en-GB")}` : null) }));
+      .map((b) => ({ fact: b.label ?? FACT[b.field] ?? fieldLabel(b.field), state: b.state ?? "estimated", at_stake: b.delta_text ?? (b.delta_eur != null ? `€${Math.round(Math.abs(b.delta_eur)).toLocaleString("en-GB")}` : null) }));
   } else {
     const src = l.sources ?? {}, first = l.next_question?.field, F = l.facts as unknown as Record<string, unknown>, ht = F.heating_type as string | undefined;
     const open = Object.keys(FACT).filter((k) => src[k] === "estimated" || src[k] === "missing" || (src[k] == null && F[k] == null));
