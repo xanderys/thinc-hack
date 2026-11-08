@@ -103,6 +103,112 @@ def fmt(x, unit):
 SIZES = ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")
 
 
+def r2(x: float) -> str:
+    """Two decimals, half up (1.065 reads 1.07)."""
+    import decimal
+    return str(decimal.Decimal(str(x)).quantize(decimal.Decimal("0.01"), rounding=decimal.ROUND_HALF_UP))
+
+
+LABELS = (("Installer A", "Isarwerk Solar"), ("Installer B", "this installer"), ("450 W", "463 W"))
+
+
+def retext(out: dict, before: dict | None):
+    """Rewrites the payload's text after snapping: old PV and inverter sizes to the catalogue ones, the 450 W module to
+    463 W, installer letters to the name, DC/AC at half-up rounding. Numbers in derivations follow the design."""
+    import re as _re
+    d = out.get("design") or {}
+    subs = list(LABELS)
+    if before:
+        if before.get("pv_kwp") and d.get("pv_kwp") and before["pv_kwp"] != d["pv_kwp"]:
+            subs.append((f"{before['pv_kwp']:g} kWp", f"{d['pv_kwp']:g} kWp"))
+            subs.append((f"x {before['pv_kwp']:g}", f"x {d['pv_kwp']:g}"))
+            subs.append((f"× {before['pv_kwp']:g}", f"× {d['pv_kwp']:g}"))
+        if before.get("inverter_kw") and d.get("inverter_kw") and before["inverter_kw"] != d["inverter_kw"]:
+            subs.append((f"Inverter {before['inverter_kw']:g} kW", f"Inverter {d['inverter_kw']:g} kW"))
+            subs.append((f"{before['inverter_kw']:g} kW inverter", f"{d['inverter_kw']:g} kW inverter"))
+    ratio = r2(d["pv_kwp"] / d["inverter_kw"]) if d.get("pv_kwp") and d.get("inverter_kw") else None
+
+    def fix(x):
+        if isinstance(x, str):
+            for a, b in subs:
+                x = x.replace(a, b)
+            if ratio:
+                x = _re.sub(r"(DC/AC(?: ratio)?(?: of)?) \d+\.\d+", lambda m: f"{m.group(1)} {ratio}", x)
+            return x
+        if isinstance(x, list):
+            return [fix(v) for v in x]
+        if isinstance(x, dict):
+            return {k: fix(v) for k, v in x.items()}
+        return x
+
+    for k in ("explanation", "plausibility", "rules", "rules_applied", "rules_applied_rules5"):
+        if k in out:
+            out[k] = fix(out[k])
+    comps = out.get("components") or {}
+    for c in list(comps):
+        keep = {k: comps[c][k] for k in ("sku", "inverter_sku") if k in comps[c]}
+        comps[c] = {**fix({k: v for k, v in comps[c].items() if k not in keep}), **keep}
+        der = comps[c].get("derivation")
+        if before and isinstance(der, dict) and c == "pv" and before.get("pv_kwp") and der.get("final") == before.get("pv_kwp"):
+            der["final"] = d.get("pv_kwp")
+    for v in out.get("variants") or []:
+        if v.get("note"):
+            v["note"] = fix_labels(v["note"])
+
+
+def fix_labels(s: str) -> str:
+    for a, b in LABELS:
+        s = s.replace(a, b)
+    return s
+
+
+def none_reasons(inp: dict, design: dict, ov: dict) -> dict:
+    """One product-voice phrase per part the design leaves out (null when it is in). British English, no sentences."""
+    from .planner_rules.calibrated import BOILER_AGE_YEARS
+    out = {}
+    pv = design.get("pv_kwp") or 0
+    if design.get("battery_kwh"):
+        out["battery"] = None
+    elif ov.get("battery_kwh") not in (None, "include") and "battery_kwh" in ov:
+        out["battery"] = "Removed by the planner"
+    elif not pv:
+        out["battery"] = "No PV to charge a battery"
+    elif pv < MIN_PV_FOR_BATTERY:
+        out["battery"] = f"{pv:g} kWp is too little PV for a battery"
+    else:
+        out["battery"] = "Planners here sign homes like this without one"
+    if design.get("heatpump_kw"):
+        out["heatpump"] = None
+    elif "heatpump_kw" in ov and ov.get("heatpump_kw") != "include":
+        out["heatpump"] = "Removed by the planner"
+    else:
+        ht, age = inp.get("heating_type") or "Unknown", inp.get("boiler_age_years")
+        stated = inp.get("heating_stated")
+        if ht == "Heatpump":
+            out["heatpump"] = "Already heats with a heat pump"
+        elif ht == "Unknown":
+            out["heatpump"] = "Heating facts not asked yet"
+        elif ht not in ("Gas", "Oil"):
+            out["heatpump"] = f"{stated} heating, no boiler to replace" if stated and stated not in ("Gas", "Oil") else "No gas or oil boiler to replace"
+        elif age is None:
+            out["heatpump"] = "Boiler age not asked yet"
+        elif age < BOILER_AGE_YEARS:
+            out["heatpump"] = f"{ht} boiler from {2026 - int(age)} still has years left"
+        else:
+            out["heatpump"] = "Not in this design"
+    if design.get("wallbox_kw"):
+        out["wallbox"] = None
+    elif "wallbox_kw" in ov and ov.get("wallbox_kw") != "include":
+        out["wallbox"] = "Removed by the planner"
+    elif inp.get("has_wallbox"):
+        out["wallbox"] = "Wallbox already installed"
+    elif not inp.get("has_ev"):
+        out["wallbox"] = "No electric car now or planned"
+    else:
+        out["wallbox"] = "Not in this design"
+    return out
+
+
 def proposal_hash(design: dict, variant: str, investment: float) -> str:
     """sha256 over {"design": the five sizes, "variant": key, "investment_eur": capex}, keys sorted, compact JSON."""
     import hashlib
@@ -340,13 +446,26 @@ class Engine:
             stated_direction_check(inp, out)
         except Exception:
             pass
+        try:  # v2.16: why a part is left out, as one short phrase (components.<c>.none_reason, variants[].none_reasons)
+            reasons = none_reasons(inp, out.get("design") or {}, overrides or {})
+            for c, ph in reasons.items():
+                if c in (out.get("components") or {}):
+                    out["components"][c]["none_reason"] = ph
+            for v in out.get("variants") or []:
+                vr = none_reasons(inp, v.get("design") or {}, overrides or {} if v.get("key") in ("expert", "edit") else {})
+                if v.get("key") == "upfront" and not (v.get("design") or {}).get("battery_kwh") and (out.get("design") or {}).get("battery_kwh"):
+                    vr["battery"] = "Left out for the lowest upfront cost"
+                v["none_reasons"] = vr
+        except Exception:
+            log.exception("none reasons")
         try:  # v2.14: each variant's modules per face (the slot grid's first n per face are placed), so one call carries every layout
+            if snap and out.get("variants"):  # every variant names its products, with or without an address
+                from . import catalogue as _C
+                for v in out["variants"]:
+                    v["skus"] = _C.snap(v.get("design") or {}, overrides)[1]
             if inp.get("address") and out.get("variants"):
                 from . import shading as _sh
                 for v in out["variants"]:
-                    if snap:
-                        from . import catalogue as _C
-                        v["skus"] = _C.snap(v.get("design") or {}, overrides)[1]
                     kwp = (v.get("design") or {}).get("pv_kwp")
                     counts = _sh.chosen_counts(inp["address"], kwp) if kwp else {}
                     v["layout"] = {"modules_per_face": counts, "modules": sum(counts.values())}
@@ -362,6 +481,11 @@ class Engine:
                     ln["sku"] = sk["name"] + (f" x {sk['modules']}" if sk.get("modules") else "")
         except Exception:
             log.exception("rates")
+        try:  # v2.15: every sentence speaks the catalogue sizes and the installer's name
+            retext(out, getattr(self, "_unsnapped", None) if snap else None)
+        except Exception:
+            log.exception("retext")
+        self._unsnapped = None
         add_hashes(out, "edit" if overrides else "expert")
         return out
 
@@ -379,6 +503,12 @@ class Engine:
         if inst not in self.catalogue:
             raise ValueError(f"Unknown installer_id {inst}")
         ov = overrides or {}
+        if inp.get("roof") and inp.get("address"):  # a stored lead's roof contract predates the layout capacity: refresh it
+            try:
+                from . import roofs as _roofs
+                inp = {**inp, "roof": _roofs._capacity(inp["address"], inp["roof"])}
+            except Exception:
+                pass
         t = base_features(inp, inst)["t"]
         rec_in = self.rules_inputs(inp)
         fn = {"calibrated": planner_rules.calibrated.recommend, "band": planner_rules.rules3.recommend,
@@ -421,6 +551,7 @@ class Engine:
             from . import catalogue
             before = dict(design)
             design, skus = catalogue.snap(design, ov)
+            self._unsnapped = before
             for c in COMPONENTS:
                 k = TARGET[c]
                 if design.get(k) != before.get(k) and design.get(k):

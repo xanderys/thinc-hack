@@ -154,3 +154,51 @@ def snap(design: dict, overrides: dict | None = None) -> tuple[dict, dict]:
         if d.get(k):
             skus[PART[k]] = sku(PART[k], d[k], ov.get(f"sku_{PART[k]}"))
     return d, skus
+
+
+def skus_for(design: dict) -> dict:
+    """Products for a design at its own sizes (no snapping): for drafts frozen before the catalogue (approved, sent,
+    decided) so every stored design still names real products."""
+    out = {}
+    pv = (design or {}).get("pv_kwp")
+    if pv:
+        m = sku("module", MODULE_W)
+        if m:
+            k = float(pv)
+            m["modules"] = int(round(k / 0.45)) if abs(k / 0.45 - round(k / 0.45)) < 1e-3 else int(round(k / (MODULE_W / 1000)))
+        out["module"] = m
+    for k in ("inverter_kw", "battery_kwh", "wallbox_kw", "heatpump_kw"):
+        v = (design or {}).get(k)
+        if v:
+            out[PART[k]] = sku(PART[k], v) or {"brand": None, "name": None, "size": float(v), "unit": UNIT[PART[k]], "share": None, "brands": []}
+    return out
+
+
+def attach(draft: dict, inputs: dict | None = None) -> dict:
+    """Fills skus (and, with inputs, the rate card) on a stored draft where they are missing; sizes and stored economics
+    untouched."""
+    if not isinstance(draft, dict) or not draft.get("design"):
+        return draft
+    if inputs is not None and not draft.get("rates"):
+        try:
+            from .hourly import sim
+            draft["rates"] = sim.rates(inputs, draft["design"])
+        except Exception:
+            log.exception("rates on read")
+    if not draft.get("skus"):
+        draft["skus"] = skus_for(draft["design"])
+    comps = draft.get("components") or {}
+    for c, part in (("pv", "module"), ("battery", "battery"), ("wallbox", "wallbox"), ("heatpump", "heatpump")):
+        if c in comps and draft["skus"].get(part) and not comps[c].get("sku"):
+            comps[c]["sku"] = draft["skus"][part]
+    if "pv" in comps and draft["skus"].get("inverter") and not comps["pv"].get("inverter_sku"):
+        comps["pv"]["inverter_sku"] = draft["skus"]["inverter"]
+    for v in draft.get("variants") or []:
+        if not v.get("skus"):
+            v["skus"] = skus_for(v.get("design") or {})
+    names = {"pv": "module", "battery": "battery", "wallbox": "wallbox", "heatpump": "heatpump"}
+    for ln in (draft.get("rates") or {}).get("lines") or []:
+        sk = draft["skus"].get(names.get(ln.get("item"), ""))
+        if sk and sk.get("name") and not ln.get("sku"):
+            ln["sku"] = sk["name"] + (f" x {sk['modules']}" if sk.get("modules") else "")
+    return draft

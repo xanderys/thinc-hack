@@ -291,7 +291,14 @@ def rates(inputs, design) -> dict:
             "heatpump_subsidy_cap_eur": float(HP_ELIGIBLE_CAP), "heatpump_subsidy_eur": round(subsidy), "heatpump_boiler_avoided_eur": float(boiler),
             "heatpump_net_eur": round(hp_net_capex(inputs)), "installation_eur": 0.0,
             "installation_note": "Installation is inside each rate (the PV rate and the heat pump price are installed prices).",
-            "lines": lines, "total_eur": round(_capex(inputs, design)[0])}
+            "lines": lines, "total_eur": capex_exact(inputs, design)}
+
+
+def capex_exact(inputs, design) -> int:
+    """The investment to the euro: the sum of the rate card's lines, each rounded to the euro (one figure everywhere)."""
+    pv, bat, hp, wb = (design.get(k) or 0 for k in ("pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"))
+    return (round(pv_cost(pv)) if pv else 0) + (round(bat * BAT_EUR_KWH) if bat else 0) \
+        + (round(rules.WALLBOX_COST) if wb else 0) + (round(hp_net_capex(inputs)) if hp else 0)
 
 
 def pv_cost(kwp):
@@ -445,6 +452,7 @@ def economics(inputs, design, after, before, location="Munich", year=None) -> di
         fuel = inputs.get("heating_cost_per_year_eur") or after["heat"] * HEAT_EUR_PER_KWH
         bill_b += fuel
     capex, solar_capex = _capex(inputs, design)
+    capex = float(capex_exact(inputs, design))  # the euro figure on the rate card drives NPV, break-even, IRR and the cash line
     opex = OPEX_SHARE * solar_capex
     saving = bill_b - bill_a - opex
 
@@ -490,7 +498,7 @@ def economics(inputs, design, after, before, location="Munich", year=None) -> di
     from_pv = {k: float((share * after[k]).sum()) for k in ("house", "ev", "hp")}
 
     econ = {
-        "capex_eur": float(round(capex, -1)), "annual_saving_eur": float(round(saving, -1)),
+        "capex_eur": float(capex_exact(inputs, design)), "annual_saving_eur": float(round(saving, -1)),
         "payback_years": float(round(capex / saving, 1)) if saving > 0 and capex else None,
         "self_consumption_share": round(float(sc), 3), "autarky_share": round(float(aut), 3),
         # Reonic's display conventions beside ours: break-even undiscounted (first year cumulative savings exceed the

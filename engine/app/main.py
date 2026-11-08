@@ -105,6 +105,7 @@ def startup():
     try:
         from . import catalogue
         catalogue.build()  # before any design snaps to it
+        threading.Thread(target=_pack_counts, daemon=True).start()
     except Exception:
         log.exception("catalogue build failed")
     leads.load_all()  # before anything can create or step a lead
@@ -1101,6 +1102,13 @@ STATUS_LABEL = {"draft": "Draft", "in_call": "On a call", "done": "Ready", "appr
 
 
 def _lead_out(lead: dict) -> dict:
+    try:  # v2.15: a draft frozen before the catalogue still names real products (sizes untouched)
+        from . import catalogue
+        catalogue.attach(lead.get("draft"), lead.get("inputs"))
+        if isinstance(lead.get("approved"), dict) and lead["approved"].get("design"):
+            catalogue.attach(lead["approved"], lead.get("inputs"))  # the homeowner page's kit rows: products and prices
+    except Exception:
+        log.exception("sku attach")
     dec = lead.get("decision")
     if dec:
         dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(lead)}
@@ -1523,6 +1531,22 @@ def intake_priors(x_intake_secret: Optional[str] = Header(None)):
     return leads.priors()
 
 
+PACK_COUNTS: dict = {}
+
+
+def _pack_counts():
+    try:
+        import pandas as pd
+        root = data.data_dir()
+        sq = set().union(*[set(pd.read_csv(f, usecols=["project_id"]).project_id.astype(str)) for f in root.glob("*/projects_status_quo.csv")])
+        pp = set().union(*[set(pd.read_csv(f, usecols=["project_id"]).project_id.astype(str)) for f in root.glob("*/project_options_parts.csv")])
+        from .planner_rules import split
+        fit, test = split.halves()
+        PACK_COUNTS.update(in_pack=len(sq), with_parts=len(sq & pp), after_outliers=len(fit) + len(test))
+    except Exception:
+        log.exception("pack counts")
+
+
 @app.get("/api/catalogue")
 def catalogue_route():
     """v2.15: one SKU catalogue for every installer: per part the products (brand, name, size, how often they appear in
@@ -1536,6 +1560,13 @@ def evaluation():
     engine()
     out = dict(STATE["eval"])
     out["synthetic"] = synthetic_report()  # v1.4: null until the suite has written a report
+    out["projects_total"] = {  # v2.15: the population at each step, counted from the data pack at run time
+        "in_pack": PACK_COUNTS.get("in_pack"), "with_parts": PACK_COUNTS.get("with_parts"), "after_outliers": PACK_COUNTS.get("after_outliers"),
+        "exam_scored": 633,
+        "population": "in_pack: projects in projects_status_quo.csv; with_parts: those with any rows in project_options_parts.csv (the rest "
+                      "have no design to learn from); after_outliers: minus PV over 40 kWp, battery over 40 kWh or use outside 500 to "
+                      "30,000 kWh, split into the rules' fit and sealed halves; exam_scored: the sealed half's new-system homes the "
+                      "published 18.6 % is scored on (final_test). split.train + split.test is the older 80/20 ML board (new-system jobs only)."}
     # the board's qualification backtest on the homes no fitted rule saw; a recorded result, not recomputed here
     out["qualification_backtest"] = {
         "priority": 101, "call_first": 23, "decline": 2, "n": 126,
