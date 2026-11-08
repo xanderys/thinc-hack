@@ -3,6 +3,7 @@
 // Renders nothing until GET /api/roof/shading is ready for this address and kWp.
 import { useEffect, useRef, useState } from "react";
 import { dayHours, periodLoss, SHADE_GRADIENT, setShadeAt, setShadeOn, useShadeView, useShading, type ShadeAt } from "@/lib/shading";
+import { plainSource } from "@/lib/plain";
 import s from "./ShadingScrubber.module.css";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -70,7 +71,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
         </div>
       )}
       {on && <span className={s.whenC}>{caption}</span>}
-      {src && <p className={s.src}>{data.source}</p>}
+      {src && <p className={s.src}>{plainSource(data.source)}</p>}
     </div>
   );
 
@@ -92,7 +93,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
               onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)), moment: true })} />
             <span className={s.when}>{caption}</span>
           </div>
-          <p className={s.src}>{data.source}</p>
+          <p className={s.src}>{plainSource(data.source)}</p>
         </div>
       )}
     </div>

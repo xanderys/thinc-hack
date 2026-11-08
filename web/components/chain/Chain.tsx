@@ -3,6 +3,7 @@
 // Each stage adds one sentence to the rail, a working-shown bar or check list where the engine has one,
 // and moves the camera to the part of the house it explains. A change re-runs the chain from the stage it moved.
 import { call } from "@/lib/client";
+import { plainSource } from "@/lib/plain";
 import { isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
@@ -508,7 +509,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
           <BarView bar={useBar} bare />
           <p>{n2(d.pv_kwp ?? 0)} kWp{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}.</p>
           {pvChecks.length > 0 && <Checks checks={pvChecks} />}
-          {shading?.source && <p>Shading: {shading.source}</p>}
+          {shading?.source && <p>Shading: {plainSource(shading.source)}</p>}
           {res.roof?.stated_direction_conflict && <p>{res.roof.note ?? "Roof measured from the building model; the stated direction was not found."}</p>}
           {whyBlock(1)}
         </>,

@@ -1,3 +1,4 @@
+import { plainError } from "./plain";
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string; status?: number };
 
 // Reads and the engine's pure calculations are safe to repeat. An engine that is slow under load answers one of them
@@ -19,7 +20,7 @@ async function once<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
       signal,
     });
     const json = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` }));
-    if (!res.ok) return { ok: false, error: json?.error || `${res.status} ${res.statusText}`.trim(), status: res.status };
+    if (!res.ok) return { ok: false, error: plainError(json?.error || `${res.status} ${res.statusText}`.trim()), status: res.status };
     return { ok: true, data: json as T };
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
@@ -42,7 +43,7 @@ export async function send<T>(path: string, body: unknown, route: string, method
   try {
     const res = await fetch(path, { method, headers: { "content-type": "application/json", "X-Client-Route": route }, body: JSON.stringify(body ?? {}) });
     const json = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` }));
-    if (!res.ok) return { ok: false, error: json?.error || `${res.status} ${res.statusText}`.trim(), status: res.status };
+    if (!res.ok) return { ok: false, error: plainError(json?.error || `${res.status} ${res.statusText}`.trim()), status: res.status };
     return { ok: true, data: json as T, status: res.status };
   } catch (e) {
     return { ok: false, error: (e as Error).message, status: 0 };
