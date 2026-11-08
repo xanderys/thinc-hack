@@ -3,7 +3,7 @@
 // Usage: <SpatialDemo inputs={inputs} design={design} address={address} layer={n} onLayerChange={setN} />
 // Renders nothing when the engine has no 3D model for the address; onAvailable(false) tells the parent to keep its drawing.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import type { Design, DesignResponse, HomeInputs } from "@/lib/api";
+import type { Design, DesignResponse, HomeInputs, OverrideValue } from "@/lib/api";
 import { call } from "@/lib/client";
 import type { Envelope, Layers, PanelRect, RoofModel, RoofPlane } from "./types";
 import { labelOf, p2, planesOf } from "./types";
@@ -19,6 +19,8 @@ import { isOrigin } from "@/lib/tilesGeo";
 import { isMultiUnit } from "@/lib/building";
 import { setImagery, type Imagery } from "./whiteMode";
 import s from "./spatial.module.css";
+import EditLayer from "./EditLayer";
+import { MODULE_WP, countOf, kwpKey, loadPicks, savePicks, slotsOf, withPicks, type Picks } from "./editing";
 import ShadingPanel from "./ShadingScrubber";
 import { useShadeView, useShading } from "@/lib/shading";
 
@@ -42,6 +44,7 @@ type Props = {
   children?: ReactNode;               // overlays drawn over the canvas
   system?: System | null;             // the Systems chip: its layer on the model and its camera (systems.ts)
   onScene?: (sc: SpatialScene | null) => void; // the live scene, for callers that drive it directly (scene.setSystem)
+  edit?: { setOverride: (f: keyof Design, v: OverrideValue | undefined) => void }; // the planner's on-model editing (EditLayer.tsx); never on the homeowner page
 };
 
 // Layer ids are fixed (7 Heat, 8 Plan); a step shows only when its data is present.
@@ -64,7 +67,7 @@ function useReduce() {
   return r;
 }
 
-export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, homeowner, leadId, onLayers, tools, sunTint, children, system, onScene }: Props) {
+export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, homeowner, leadId, onLayers, tools, sunTint, children, system, onScene, edit }: Props) {
   const reduce = useReduce();
   const [own, setOwn] = useState(1);
   const layer = ctrl ?? own;
@@ -79,6 +82,8 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const [glbErr, setGlbErr] = useState<string | null>(null);
   const [glbOk, setGlbOk] = useState(false);
   const [ready, setReady] = useState(false);
+  const [sysNow, setSysNow] = useState<System | null>(null);   // the Systems chip on screen, for the edit layer
+  const editSys = (system ?? sysNow) as "panels" | "battery" | "wallbox" | "heatpump" | null;
   const [hour, setHour] = useState<{ h: number; playing: boolean }>({ h: 12, playing: false });
   const [view, setView] = useState<"3d" | "2d">("3d");
 
@@ -116,7 +121,27 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layersKey, layersUrl, tryN]);
 
-  const model = useMemo(() => (layers ? modelOf(layers.planes) : null), [layers]);
+  // On-model editing: the planner's slot picks for the design on screen (editing.ts). A tap shows at once; the
+  // stored picks for this kWp take over when the engine's answer for the new count is in. Undo finds the picks
+  // stored for the kWp it returns to.
+  const editLead = edit && !homeowner ? leadId ?? "demo" : null;
+  const [picksAll, setPicksAll] = useState<Record<string, Picks>>({});
+  useEffect(() => { if (editLead) setPicksAll(loadPicks(editLead)); }, [editLead]);
+  const [live, setLive] = useState<{ kwp: number; picks: Picks; until: number } | null>(null);
+  const wantN = Math.round(((design.pv_kwp ?? 0) * 1000) / MODULE_WP);
+  const picks: Picks | null = !editLead ? null
+    : live && live.until > Date.now() && kwpKey(live.kwp) !== kwpKey(design.pv_kwp) ? live.picks
+    : picksAll[kwpKey(design.pv_kwp)] && countOf(picksAll[kwpKey(design.pv_kwp)]) === wantN ? picksAll[kwpKey(design.pv_kwp)] : null;
+  const picksKey = picks ? JSON.stringify(picks) : "";
+  const model = useMemo(() => {
+    const m = layers ? modelOf(layers.planes) : null;
+    return m && picks ? { ...m, planes: withPicks(m.planes, picks) } : m;
+  }, [layers, picksKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The cards read the same layout as the model: hand them the planes with the picks in.
+  useEffect(() => {
+    if (!layers || !picks || !model) return;
+    onLayers?.({ ...layers, planes: Array.isArray(layers.planes) ? model.planes : { ...layers.planes, planes: model.planes } });
+  }, [model]); // eslint-disable-line react-hooks/exhaustive-deps
   modelRef.current = model;
   const hasModel = !!model;
   // Once the view has a scene it keeps it while a reload briefly empties the layers: no teardown, no new canvas.
@@ -251,13 +276,15 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     else if (L === 5) {
       // Battery step: the battery carries its size; Wallbox step: the wallbox does, or nothing.
       const f = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
-      const bt = stage !== "extras" && design.battery_kwh ? `${f(design.battery_kwh)} kWh` : null;
-      const wb = stage !== "storage" && design.wallbox_kw ? `${f(design.wallbox_kw)} kW` : null;
+      // While the planner edits a unit on the model, its own control carries the size: no second label.
+      const own = (k: string) => !!edit && !homeowner && editSys === k;
+      const bt = stage !== "extras" && design.battery_kwh && !own("battery") ? `${f(design.battery_kwh)} kWh` : null;
+      const wb = stage !== "storage" && design.wallbox_kw && !own("wallbox") ? `${f(design.wallbox_kw)} kW` : null;
       sc.setLabels(sc.kitLabels(bt, wb));
     }
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, design.battery_kwh, design.inverter_kw, design.heatpump_kw, stage, sunTint]);
+  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, design.battery_kwh, design.inverter_kw, design.heatpump_kw, stage, sunTint, editSys]);
 
   // The plan layer is always top-down; the other layers keep the planner's choice.
   useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);
@@ -271,7 +298,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   useEffect(() => {
     if (!ready || system !== undefined) return;
     const ok = (n: unknown): n is System | null => n === null || n === "panels" || n === "battery" || n === "wallbox" || n === "heatpump";
-    const apply = (n: unknown) => { if (ok(n)) scene.current?.setSystem(n); };
+    const apply = (n: unknown) => { if (ok(n)) { scene.current?.setSystem(n); setSysNow(n); } };
     const w = window as unknown as { __marqueeSystem?: unknown };
     if (w.__marqueeSystem !== undefined) apply(w.__marqueeSystem);
     const on = (e: Event) => apply((e as CustomEvent<{ name?: unknown }>).detail?.name ?? null);
@@ -282,6 +309,23 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
 
   // The camera follows the reasoning: each stage flies to its pose; the 2D/3D pill still overrides afterwards.
   useEffect(() => { if (stage && ready) scene.current?.flyTo(POSES[stage]); }, [stage, ready, modelGen]);
+
+  // On-model editing: a slot tap adds or takes off one module and sends pv_kwp through the chooser's path.
+  const faces = useMemo(() => (editLead && model ? model.planes.filter((p) => p.is_target).map(slotsOf) : []), [editLead, model]);
+  const toggleSlot = useCallback((plane: string, i: number) => {
+    if (!edit || !editLead) return;
+    const now: Picks = Object.fromEntries(faces.map((f) => [f.plane.id, [...f.placed]]));
+    const cur = now[plane] ?? [];
+    now[plane] = cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort((a, b) => a - b);
+    const n = countOf(now);
+    if (n < 1) return; // the design keeps at least one module; the chooser's None is not offered for solar either
+    const kwp = Math.round(n * MODULE_WP) / 1000;
+    savePicks(editLead, kwp, now);
+    setPicksAll((a) => ({ ...a, [kwpKey(kwp)]: now }));
+    setLive({ kwp, picks: now, until: Date.now() + 20000 });
+    edit.setOverride("pv_kwp", kwp);
+  }, [edit, editLead, faces]);
+  const setUnit = useCallback((f: keyof Design, v: OverrideValue) => edit?.setOverride(f, v), [edit]);
 
   const seek = useCallback((h: number) => { scene.current?.seek(h); setHour({ h, playing: false }); }, []);
 
@@ -508,6 +552,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {!bare && chart && <div className={s.side}>{chart}</div>}
         {!bare && <ShadingPanel address={address} kwp={kwp} float />}
         {photo.overlay}
+        {editLead && ready && scene.current && view === "3d" && L !== 8 && !photo.on && (
+          <EditLayer scene={scene.current} sys={editSys} faces={faces} design={design} onToggle={toggleSlot} onSet={setUnit} />
+        )}
         {children}
       </div>
 

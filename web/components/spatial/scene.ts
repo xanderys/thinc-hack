@@ -156,6 +156,8 @@ export class SpatialScene {
   private labelEls = new Map<string, HTMLDivElement>();
   private panelAnim: { g: THREE.Object3D; from: THREE.Vector3; delay: number; mats: THREE.Material[] }[] = [];
   private panelT = -1;
+  private slotG = new THREE.Group();      // on-model editing: dotted frames of the empty slots
+  private ghostG = new THREE.Group();     // on-model editing: dotted outline of a unit the design does not have
   private panelsOut = new THREE.Group();   // modules leaving after a variant switch, fading out
   private panelFx: Fx[] = [];
   private fades = new Map<THREE.Object3D, Fade>();
@@ -198,7 +200,7 @@ export class SpatialScene {
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xd6d1c5, 1.9));
     this.sunLight.position.set(-20, 30, 25);
     this.scene.add(this.sunLight);
-    this.scene.add(this.ctxLines, this.placeholder, this.outlines, this.tints, this.panels, this.panelsOut, this.kit, this.hpGroup, this.gridPole, this.sunGroup);
+    this.scene.add(this.ctxLines, this.placeholder, this.outlines, this.tints, this.panels, this.panelsOut, this.kit, this.hpGroup, this.gridPole, this.sunGroup, this.slotG, this.ghostG);
 
     // Touch moves the model, never the page.
     this.renderer.domElement.style.touchAction = "none";
@@ -768,6 +770,48 @@ export class SpatialScene {
       this.applyFade(o, f.a);
     });
   }
+  // On-model editing (EditLayer.tsx). Screen point of an engine-local point (x east, y north, z up) or a scene point.
+  screenOf(v: V3 | THREE.Vector3) { return this.project(Array.isArray(v) ? toV(v) : v); }
+  // Whether a face with outward normal n (engine-local) at point at faces the camera.
+  facing(n: V3, at: V3) {
+    const eye = this.camera.getWorldPosition(new THREE.Vector3());
+    const nn = new THREE.Vector3(n[0], n[2], -n[1]);
+    return nn.dot(eye.sub(toV(at)).normalize()) > 0.08;
+  }
+  private unitObj(kind: "battery" | "wallbox" | "heatpump") { return kind === "battery" ? this.batteryBox ?? null : kind === "wallbox" ? this.wallbox : this.hpUnit; }
+  // The unit's box in the scene, present or not (an absent unit keeps its place, faded out or hidden).
+  unitBox(kind: "battery" | "wallbox" | "heatpump"): THREE.Box3 | null {
+    const o = this.unitObj(kind);
+    if (!o) return null;
+    o.updateWorldMatrix(true, true);
+    const b = new THREE.Box3();
+    o.traverse((x) => { const m = x as THREE.Mesh; if (m.isMesh && m.geometry) { m.geometry.computeBoundingBox(); b.union(m.geometry.boundingBox!.clone().applyMatrix4(m.matrixWorld)); } });
+    return b.isEmpty() ? null : b;
+  }
+  // A dotted outline where the unit would go.
+  setGhost(kind: "battery" | "wallbox" | "heatpump" | null) {
+    this.ghostG.children.forEach((c) => { (c as THREE.LineSegments).geometry.dispose(); ((c as THREE.LineSegments).material as THREE.Material).dispose(); });
+    this.ghostG.clear();
+    const b = kind ? this.unitBox(kind) : null;
+    if (!b) return;
+    const size = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
+    const ln = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(size.x + 0.04, size.y + 0.04, size.z + 0.04)),
+      new THREE.LineDashedMaterial({ color: INK, dashSize: 0.1, gapSize: 0.07, transparent: true, opacity: 0.75 }));
+    ln.computeLineDistances(); ln.position.copy(c); ln.renderOrder = 8;
+    this.ghostG.add(ln);
+  }
+  // Dotted frames on the roof where a module fits and none sits.
+  setSlotFrames(frames: V3[][] | null) {
+    this.slotG.children.forEach((c) => (c as THREE.LineLoop).geometry.dispose());
+    this.slotG.clear();
+    if (!frames?.length) return;
+    const mat = new THREE.LineDashedMaterial({ color: "#F4F1EA", dashSize: 0.14, gapSize: 0.1, transparent: true, opacity: 0.9 });
+    frames.forEach((f) => {
+      const ln = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(f.map(toV)), mat);
+      ln.computeLineDistances(); ln.renderOrder = 4; this.slotG.add(ln);
+    });
+  }
+
   setBattery(on: boolean) { this.battOn = on; this.fadeTo(this.batteryBox ?? null, on); }
 
   setShading(d: Shading | null, on: boolean, at: ShadeAt) { this.shade.set(d, on, at); }
@@ -832,7 +876,9 @@ export class SpatialScene {
   // The design has a wallbox. Without one the Wallbox view shows no unit, car or cable, matching its "No wallbox" card.
   setWallbox(on: boolean) {
     this.wbOn = on;
-    if (this.wallbox) this.wallbox.visible = on;
+    if (!this.wallbox) return;
+    this.wallbox.visible = true;
+    this.fadeTo(this.wallbox, on);
     if (this.systems.sys) this.systems.override();
   }
   // The roof box includes the eaves, so a unit placed from it misses the wall: once the building model is in,

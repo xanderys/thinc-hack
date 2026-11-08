@@ -217,7 +217,16 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const le = fresh ? layers?.economics : undefined;
   const e = le ? { ...res.economics, ...le, annual: { ...res.economics.annual!, ...(le.annual ?? {}) } } as typeof res.economics : res.economics, a = e.annual;
   const breakEven = le?.break_even_year ?? (e as { break_even_year?: number | null }).break_even_year ?? null;
-  const d = res.design;
+  // While an edit waits on the engine, the sizes the planner just chose show at once (on the model, the labels, the
+  // cards and the pass, which tween on a design change); prices and yields follow when the engine answers.
+  const ovNow = ((isValidElement(decide) ? (decide.props as { overrides?: Record<string, unknown> }).overrides : null) ?? {});
+  const ovKey = JSON.stringify(ovNow);
+  const d = useMemo(() => {
+    if (!pending) return res.design;
+    const o: Record<string, unknown> = { ...res.design };
+    Object.entries(ovNow).forEach(([k, v]) => { if (typeof v === "number") o[k] = v; else if (v === null && k !== "pv_kwp") o[k] = 0; });
+    return o as unknown as typeof res.design;
+  }, [res.design, pending, ovKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const rot = rotLine(findRot(res.components.pv?.derivation, layers, res));
 
   const checkHead = (() => { const c = layers?.checks ?? []; const bad = c.filter(isFail).length, out = c.filter(refOut).length; return c.length ? (bad ? `${bad} of ${c.length} checks flag` : out ? "Checks pass; battery above Reonic’s guide" : `All ${c.length} checks pass`) : "Checks"; })();
@@ -521,7 +530,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       <div ref={heroRef} className={`${s.hero} ${onPanels && shading ? s.heroTall : ""}`}>
         {address && spatial !== false ? (
           <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatLayer ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
-            onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && panelHeat}>
+            onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && panelHeat}
+            edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); dp.setOverride?.(f, v); } } : undefined}>
             {overlays}
           </SpatialDemo>
         ) : (
