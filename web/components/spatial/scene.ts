@@ -147,6 +147,7 @@ export class SpatialScene {
   // when snapUnits moves it onto the wall after the building model loads.
   private wbAt = new THREE.Vector3();
   private baseMinD = 0;   // the house-wide zoom limit (fit), lowered only while a unit's close view is on
+  private eaveY = 0;      // height of the target roof's lowest edge, for framing the unit close views
   private battAt = new THREE.Vector3();
   private occRay = new THREE.Raycaster();
   private gridPole = new THREE.Group(); // the grid connection, shown only with the day flow's "Grid" label
@@ -381,16 +382,18 @@ export class SpatialScene {
   }
   // A close view of a unit on its wall: the camera stands out from that wall (south for the battery and the heat pump,
   // east for the wallbox), turned 15 degrees for depth, at 1.7 m, and aims a little above the unit so the unit sits in
-  // the lower middle of the frame, clear of the Proposed Design bar. 12 m out for the 1.2 m battery and heat pump (the
-  // wall and the roof edge fill the frame), 8 m for the 0.4 m wallbox; at 1440 each unit draws about 80 px or taller.
+  // the lower part of the frame, clear of the Proposed Design bar. 15 m out for the 1.2 m battery and heat pump, aimed
+  // 2.8 m under the eaves, so the eave line and a strip of roof sit in the top fifth of the 8 m tall frame and the
+  // unit draws about 100 px or more at 1440; 8 m for the 0.4 m wallbox.
   private unitGoal(kind: "battery" | "wallbox" | "heatpump") {
     const b = this.unitBox(kind);
     if (!b || this.box.isEmpty()) return null;
     const c = b.getCenter(new THREE.Vector3());
-    const small = kind === "wallbox", d = small ? 8 : 12;
+    const small = kind === "wallbox", d = small ? 8 : 15;
     const n = small ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
     n.applyAxisAngle(new THREE.Vector3(0, 1, 0), (small ? 1 : -1) * (15 * Math.PI) / 180);
-    const tgt = new THREE.Vector3(c.x, small ? 1.5 : 1.8, c.z);
+    const eave = this.eaveY > 0 ? this.eaveY : 5.5;
+    const tgt = new THREE.Vector3(c.x, small ? 1.5 : THREE.MathUtils.clamp(eave - 2.8, 1.8, 2.8), c.z);
     const pos = tgt.clone().addScaledVector(n, d).setY(1.7);
     return { tgt, pos };
   }
@@ -509,6 +512,7 @@ export class SpatialScene {
     if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(0, 4, 0), new THREE.Vector3(12, 8, 12));
     box.expandByPoint(new THREE.Vector3(box.min.x, 0, box.min.z));
     this.box.copy(box);
+    this.eaveY = target.length ? Math.min(...target.flatMap((p) => p.polygon.map((q) => toV(q).y))) : 0;
     if (this.glbRoot && !this.box.isEmpty()) this.flattenNeighbours(this.glbRoot);
     const size = box.getSize(new THREE.Vector3());
     // Battery: indoors against the south wall, seen through the glass walls (snapUnits puts it on the wall's inner
