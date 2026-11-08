@@ -29,6 +29,7 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
   const starting = useRef(false), t0 = useRef(0), tick = useRef<ReturnType<typeof setInterval> | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [micErr, setMicErr] = useState<string | null>(null);
+  const [live, setLive] = useState<MediaStream | null>(null);
   const go = onLead ?? openLead;
   // Chips come from the store, computed per screen there (no model call, no race with this component).
   const sugs = useSuggestions();
@@ -48,7 +49,7 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const r = new MediaRecorder(stream); const chunks: Blob[] = [];
       r.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-      media.current = { r, chunks, stream }; r.start(250); setRec(true);
+      media.current = { r, chunks, stream }; r.start(250); setRec(true); setLive(stream);
       t0.current = Date.now(); setElapsed(0);
       tick.current = setInterval(() => setElapsed(Math.floor((Date.now() - t0.current) / 1000)), 250);
     } catch (e) { setMicErr(e instanceof DOMException && e.name === "NotAllowedError" ? "Microphone access is blocked in this browser." : "The microphone is not available."); }
@@ -56,13 +57,18 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
   }
   async function stopRec() {
     if (tick.current) { clearInterval(tick.current); tick.current = null; }
-    const m = media.current; if (!m) return; media.current = null; setRec(false);
+    const m = media.current; if (!m) return; media.current = null; setRec(false); setLive(null);
     await new Promise<void>((res) => { m.r.onstop = () => res(); if (m.r.state !== "inactive") m.r.stop(); else res(); });
     m.stream.getTracks().forEach((t) => t.stop());
     const blob = new Blob(m.chunks, { type: m.r.mimeType || "audio/webm" }); if (blob.size < 800) return;
     setVoicing(true); const out = await transcribe(blob); setVoicing(false);
     if (!("text" in out)) setMicErr("Couldn't hear that. Try again.");
     if ("text" in out) { setText((t) => (t.trim() ? `${t.trim()} ${out.text}` : out.text)); field.current?.focus(); }
+  }
+  function cancelRec() {
+    if (tick.current) { clearInterval(tick.current); tick.current = null; }
+    const m = media.current; media.current = null; setRec(false); setLive(null);
+    if (m) { try { m.r.stop(); } catch { /* already stopped */ } m.stream.getTracks().forEach((x) => x.stop()); }
   }
   async function pick(file: File) { try { setText((await file.text()).slice(0, 8000)); field.current?.focus(); } catch { /* unreadable file */ } }
 
@@ -83,7 +89,7 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
       {sugs.length > 0 && !busy && <div className={s.sugs}>{sugs.map((x) => <button key={x.label} type="button" className={s.sug} onClick={() => tap(x)}>{x.label}</button>)}</div>}
       <div className={s.fieldWrap}>
         <ComposerField value={text} onChange={setText} onSend={submit} onAttach={pick} onMicStart={() => void startRec()} onMicStop={() => void stopRec()}
-          busy={busy || voicing} recording={rec} elapsed={elapsed} trailing={fieldTrailing ?? trailing} fieldRef={field} placeholder={ctx.name ? `Ask about ${ctx.name}` : "New enquiry or a question"} />
+          busy={busy || voicing} recording={rec} elapsed={elapsed} stream={live} onMicCancel={cancelRec} transcribing={voicing} trailing={fieldTrailing ?? trailing} fieldRef={field} placeholder={ctx.name ? `Ask about ${ctx.name}` : "New enquiry or a question"} />
         {micErr && <p role="alert" style={{ margin: "6px 4px 0", fontSize: 13, color: "var(--muted, #6b6b73)" }}>{micErr}</p>}
       </div>
     </div>

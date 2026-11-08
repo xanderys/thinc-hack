@@ -55,3 +55,11 @@
 }
 /* iOS zooms into any field under 16 px on focus: 16 px on phones, the same box through line-height and padding. */
 @media (max-width: 600px) { .field { font-size: 16px; line-height: 22px; padding: 5px 4px; } }
+
+.voice { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.wave { flex: 1 1 auto; height: 32px; color: var(--accent); }
+.done { background: var(--accent); color: #fff; }
+.waveIdle { flex: 1 1 auto; height: 32px; display: flex; align-items: center; justify-content: center; gap: 2px; color: var(--accent); }
+.waveIdle i { display: block; width: 3px; height: 6px; border-radius: 2px; background: currentColor; opacity: 0.7; animation: wv 0.9s ease-in-out infinite; }
+@keyframes wv { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(3.5); } }
+@media (prefers-reduced-motion: reduce) { .waveIdle i { animation: none; } }

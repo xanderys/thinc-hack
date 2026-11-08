@@ -46,23 +46,24 @@ export async function createLeadFromText(text: string, source: Source, opts: { k
   return { ok: true, lead_id: id, name, place };
 }
 
-/** Clip to text: WalaoFlow first (16 kHz mono PCM), the engine's speech to text when it is unreachable. */
+/** Clip to text: ElevenLabs (the engine's speech to text) and WalaoFlow race; the first non-empty text wins. */
 export async function transcribe(blob: Blob): Promise<{ text: string } | { error: string }> {
-  let last = "";
-  try {
-    const res = await fetch("/api/leads/dictate", { method: "POST", headers: { "content-type": "application/octet-stream" }, body: await pcm16k(blob) });
-    const j = await res.json().catch(() => ({}));
-    if (res.ok && typeof j.text === "string" && j.text.trim()) return { text: j.text.trim() };
-    last = j.error ?? `${res.status} ${res.statusText}`;
-  } catch (e) { last = (e as Error).message; }
-  const fd = new FormData(); fd.append("audio", blob, "voice.webm");
-  try {
+  const errs: string[] = [];
+  const eleven = (async () => {
+    const fd = new FormData(); fd.append("audio", blob, "voice.webm");
     const res = await fetch("/api/leads/transcribe", { method: "POST", body: fd });
     const j = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` }));
-    if (res.ok && typeof j.text === "string" && j.text.trim()) return { text: j.text.trim() };
-    last = typeof j.error === "string" ? j.error : typeof j.detail === "string" ? j.detail : `${res.status} ${res.statusText}`;
-  } catch (e) { last = (e as Error).message; }
-  return { error: last || "Nothing was heard." };
+    if (res.ok && typeof j.text === "string" && j.text.trim()) return j.text.trim() as string;
+    throw new Error(typeof j.error === "string" ? j.error : typeof j.detail === "string" ? j.detail : `${res.status} ${res.statusText}`);
+  })();
+  const walao = (async () => {
+    const res = await fetch("/api/leads/dictate", { method: "POST", headers: { "content-type": "application/octet-stream" }, body: await pcm16k(blob) });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && typeof j.text === "string" && j.text.trim()) return j.text.trim() as string;
+    throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+  })();
+  try { return { text: await Promise.any([eleven, walao]) }; }
+  catch (e) { for (const x of (e as AggregateError).errors ?? []) errs.push((x as Error).message); return { error: errs.filter(Boolean).join("; ") || "Nothing was heard." }; }
 }
 
 async function pcm16k(blob: Blob): Promise<ArrayBuffer> {
