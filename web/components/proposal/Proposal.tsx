@@ -29,8 +29,12 @@ export const span = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000
 // A street and number before the first comma, as in "Katharinenstraße 5, 82008 Unterhaching".
 const hasStreet = (s: string) => s.includes(",") && /[A-Za-zÄÖÜäöüß.]{3,}\s+\d+\s*[a-zA-Z]?$/.test(s.split(",")[0].trim());
 
-export function offered(lead: Lead): { key: Variant["key"]; design: Design; economics: DesignResponse["economics"] } {
-  const key = lead.approved_variant ?? "expert";
+type Key = Variant["key"] | "edit";
+// What the planner approved (engine v2.11 stores it on the lead, a hand edit included); before approval the draft.
+export function offered(lead: Lead): { key: Key; design: Design; economics: DesignResponse["economics"] } {
+  const a = lead.approved;
+  if (a?.design) return { key: a.variant, design: a.design, economics: a.economics ?? { ...lead.draft.economics, capex_eur: a.investment_eur } };
+  const key = lead.approved_variant && lead.approved_variant !== "edit" ? lead.approved_variant : "expert";
   const v = lead.draft.variants?.find((x) => x.key === key);
   return { key: v ? key : "expert", design: v?.design ?? lead.draft.design, economics: v?.economics ?? lead.draft.economics };
 }
@@ -45,10 +49,12 @@ const ROWS: { key: Variant["key"]; name: string }[] = [
   { key: "expert", name: "Planners' pick" }, { key: "independence", name: "Most independence" },
   { key: "payback", name: "Best payback" }, { key: "upfront", name: "Lowest upfront cost" },
 ];
-function rowsOf(variants: Variant[], key: Variant["key"]) {
+function rowsOf(variants: Variant[], key: Key, mine?: { design: Design; economics: DesignResponse["economics"] }) {
   const rows = ROWS.flatMap((r) => { const v = variants.find((x) => x.key === r.key); return v ? [{ ...r, v }] : []; });
+  // A design the planner set by hand is none of the four offers: it leads the list as the one proposed.
+  if (key === "edit" && mine) return [{ key: "edit" as Variant["key"], name: "Your planner's design", v: { key: "expert", label: "", note: "", design: mine.design, economics: mine.economics } as Variant }, ...rows];
   const picked = variants.find((x) => x.key === key);
-  if (picked && !rows.some((r) => r.key === key)) rows.push({ key, name: picked.label, v: picked });
+  if (picked && !rows.some((r) => r.key === key)) rows.push({ key: key as Variant["key"], name: picked.label, v: picked });
   return rows;
 }
 
@@ -124,7 +130,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
         <section className="pp-card" aria-label="Variants">
           <h2>Variants</h2>
           <ul className="pp-vars">
-            {rowsOf(variants, key).map(({ key: k, name: label, v }) => (
+            {rowsOf(variants, key, { design, economics: e }).map(({ key: k, name: label, v }) => (
               <li key={k} className={k === key ? "on" : undefined} aria-current={k === key ? "true" : undefined}>
                 <span className="pp-vname">{label}{k === key && <span className="pp-pill blue">Proposed</span>}</span>
                 <Chips d={v.design} />
