@@ -1,0 +1,50 @@
+.wrap { position: relative; display: inline-flex; }
+.chip {
+  list-style: none; cursor: pointer; min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 10px;
+  border: 1px solid var(--rule); background: var(--sheet-2); color: var(--ink); font: inherit; font-size: 14px; white-space: nowrap; border-radius: 18px;
+}
+.chip::-webkit-details-marker { display: none; }
+.chip[aria-disabled="true"] { cursor: not-allowed; color: var(--ink-4); }
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap[open] > .chip { border-color: var(--accent); }
+.on { border-color: var(--accent); }
+.glyph { flex: none; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+.label { display: inline-block; }
+
+.pop {
+  position: absolute; z-index: 6; top: calc(100% + 4px); right: 0; width: 320px; max-height: 360px; overflow-y: auto;
+  background: var(--paper); border: 1px solid var(--ink); padding: 10px; white-space: normal;
+}
+.thread { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.thread li { max-width: 88%; padding: 8px 10px; font-size: 14px; line-height: 1.4; }
+.thread p { margin: 0; }
+.out { justify-self: end; background: var(--sheet-2); border: 1px solid var(--rule); }
+.in { justify-self: start; border: 1px solid var(--accent); }
+.ts { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-3); }
+.filled { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--ink-2); }
+
+.err { display: inline-flex; margin-left: 8px; align-items: center; gap: 10px; font-size: 13px; padding: 4px 10px; border: 1px solid var(--accent); white-space: normal; }
+.src { color: var(--ink-3); }
+
+@media (max-width: 640px) {
+  .wrap[open] { position: static; }
+  .pop { position: fixed; left: 16px; right: 16px; bottom: 16px; top: auto; width: auto; max-height: 60vh; }
+}
+
+/* Motion: the thread grows from its chip and the label crossfades on a state change; springs with no bounce. */
+@media (prefers-reduced-motion: no-preference) {
+  .pop { animation: wa-in 350ms var(--spring-smooth) both; transform-origin: top right; }
+  .label { animation: wa-label 350ms var(--spring-smooth) both; }
+  .in { animation: wa-in 350ms var(--spring-smooth) both; }
+  @keyframes wa-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+  @keyframes wa-label { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop, .label, .in { animation: wa-fade 200ms linear both; }
+  @keyframes wa-fade { from { opacity: 0; } to { opacity: 1; } }
+}
+.tag { display: inline-block; margin-right: 6px; font-size: 12px; color: var(--ink-3); }
+.ts .tag { margin: 0 0 0 6px; color: var(--accent); }
+.lastErr { margin: 10px 0 0; font-size: 13px; color: var(--ink); border-left: 2px solid var(--bad); padding-left: 8px; }
+.pop > .btn, .pop > button { margin-top: 10px; }
