@@ -16,6 +16,8 @@ Answer in Markdown, essential text only, British English, no em dashes, no headi
 - Pinned demo leads (Huber, Lindner, Moser) are included in a write only when the planner names them in their message.
 - A scrap, a pasted email or a voice transcript about a new house goes to create_lead as given; reply with the chip, the verdict badge and the kit in one or two lines.
 - "I'm visiting <name>": find the lead with list_leads by first or last name (include_test if none match); several matches: one line of lead chips to pick from; then call site_visit and answer with exactly two short blocks, no narration: a numbered list "Questions" (fact, then the figure at stake in bold when given) and a list "Site checks". Start with the lead chip. Write nothing.
+- Design questions ("why 10 kWh", "what if no battery"): answer from design (the component's reason and the figures) and, for what-if, a refine comparison; show before and after (kWp, kWh, price, payback) in a small table. Read only unless the planner asks for the change.
+- Client facts ("she has 5 people", "they use 6,000 kWh") go to propose_facts. "Draft a WhatsApp" calls whatsapp_draft and quotes the draft as a blockquote; it is sent only through ask_whatsapp and Apply.
 - Upsell questions: call upsell for battery and for heat pump, rank by price added, show the table.`;
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -33,12 +35,12 @@ function stream(run: (emit: (e: Record<string, unknown>) => void) => Promise<voi
 }
 
 export async function POST(req: NextRequest) {
-  let b: { messages?: Msg[]; apply?: Op[]; undo?: Op[]; said?: string; test?: boolean };
+  let b: { messages?: Msg[]; apply?: Op[]; undo?: Op[]; said?: string; test?: boolean; context?: { lead_id?: string; name?: string } };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Body is not JSON" }, { status: 400 }); }
 
   if (b.apply || b.undo) {
     const undo = !!b.undo, ops = (b.undo ?? b.apply)!;
-    return stream(async (emit) => { const prev = await apply(ops, emit, String(b.said ?? ""), undo); emit({ t: "applied", undo: prev.map((p) => ({ lead_id: p.lead_id, name: p.name, action: "kit", overrides: p.overrides })) }); });
+    return stream(async (emit) => { const prev = await apply(ops, emit, String(b.said ?? ""), undo); emit({ t: "applied", undo: prev }); });
   }
   if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: "No ANTHROPIC_API_KEY on this server." }, { status: 503 });
   const history = (b.messages ?? []).filter((m) => m.content?.trim()).slice(-20);
@@ -50,7 +52,8 @@ export async function POST(req: NextRequest) {
     // Earlier turns travel as one transcript in a single user message: replayed assistant text without its thinking
     // made Sonnet 5.5 end the next turn empty.
     const earlier = history.slice(0, -1).map((m) => `${m.role === "user" ? "Planner" : "You"}: ${m.content}`).join("\n\n");
-    const messages: Anthropic.MessageParam[] = [{ role: "user", content: earlier ? `Earlier in this conversation:\n\n${earlier}\n\nThe planner now says:\n\n${said}` : said }];
+    const ctx = b.context?.lead_id ? `The planner has the lead page of ${b.context.name ?? "a lead"} (lead_id ${b.context.lead_id}) open: "this", "the house", "her" or "him" and any kit, part, panel, brand or fact change mean this lead. A pinned lead still needs its name in the message before a write is proposed.\n\n` : "The planner is on the board of all leads.\n\n";
+    const messages: Anthropic.MessageParam[] = [{ role: "user", content: ctx + (earlier ? `Earlier in this conversation:\n\n${earlier}\n\nThe planner now says:\n\n${said}` : said) }];
     let retried = false;
     for (let turn = 0; turn < 8; turn++) {
       const s = client.messages.stream({
