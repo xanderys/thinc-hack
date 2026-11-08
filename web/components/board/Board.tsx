@@ -33,7 +33,7 @@ const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
 const isPc = (x?: string | null) => !x || /^\s*\d{5}\s*$/.test(x);
 type LiveRow = { lead_id?: string | null; status: string; started_at: number | null; customer_name?: string | null; address_or_postcode?: string | null };
 
-const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "Draft", approved: "Approved", signed: "Signed", declined: "Declined", question: "Question" };
+const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "Draft", approved: "Complete", sent: "Sent", signed: "Signed", declined: "Declined", question: "Question" };
 const DECIDED = new Set(["signed", "declined", "question"]);
 const hm = (iso?: string | null) => iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
 // Enquiry to decision, in the largest unit that reads well.

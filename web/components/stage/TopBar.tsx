@@ -97,7 +97,7 @@ export default function TopBar(p: Props) {
 export function Decide(p: Pick<Props, "pref" | "setPref" | "res" | "overrides" | "setOverride" | "canUndo" | "onUndo" | "approvedAt" | "onApprove"> & { slim?: boolean }) {
   // The open card: preference buttons and Locks are gone, Undo is in the sentence bar; only Approve stays here.
   if (p.slim) return p.res ? (
-    <div className="t-row"><span className="t-go">{p.approvedAt ? <span className="s-approved s-mark">Approved {p.approvedAt}</span> : <button className="btn" onClick={p.onApprove}>Approve</button>}</span></div>
+    <div className="t-row"><span className="t-go">{p.approvedAt ? <span className="s-approved s-mark">Complete</span> : <button className="btn" onClick={p.onApprove}>Complete</button>}</span></div>
   ) : null;
   return (
     <div className="t-row">
@@ -115,8 +115,8 @@ export function Decide(p: Pick<Props, "pref" | "setPref" | "res" | "overrides" |
         <span className="t-go">
           {p.canUndo && <button className="btn ghost" onClick={p.onUndo}>Undo</button>}
           {p.res && (p.approvedAt
-            ? <span className="s-approved s-mark">Approved {p.approvedAt}</span>
-            : <button className="btn" onClick={p.onApprove}>Approve</button>)}
+            ? <span className="s-approved s-mark">Complete</span>
+            : <button className="btn" onClick={p.onApprove}>Complete</button>)}
         </span>
     </div>
   );

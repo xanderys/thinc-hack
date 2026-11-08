@@ -88,6 +88,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     return r.ok ? { ok: true } : { ok: false, error: r.error };
   }
   // A kit choice (chooser, undo; never an offer tab) is written to the lead at once, so a reload and Approve see the same design.
+  const persisted = useRef<Overrides>({});   // the kit edits as the lead stores them (set on open and on each write)
   async function writeKit(route: string, kit: Overrides) {
     const id = leadRef.current;
     if (!id) return;
@@ -95,6 +96,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const r = await send<{ version?: number }>("/api/intake/step", { lead_id: id, overrides: kit, ...(baseVersion.current != null ? { base_version: baseVersion.current } : {}) }, route);
     if (r.status === 409) { stale(id); return; }
     if (r.ok && r.data?.version != null) baseVersion.current = r.data.version;
+    if (r.ok) persisted.current = kit;
     if (!r.ok) setErr(`The change was not saved: ${r.error}`);
   }
   const stale = (id: string) => window.dispatchEvent(new CustomEvent("marquee:lead-stale", { detail: id }));
@@ -170,6 +172,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       const shown = { ...draft, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
       setRes(shown); last.current = shown;
     } else if (kit && Object.keys(kit).length) setOverrides(kit);   // the planner's kit edits, as the lead stores them
+    persisted.current = !approved?.design && kit ? kit : {};
     const where = r.data.inputs.address ? `address=${encodeURIComponent(r.data.inputs.address)}` : r.data.postcode ? `postcode=${r.data.postcode}` : null;
     // A pending roof means the 3D measurement is still running: design on the standard face, ask again every 3 s.
     const gen = ++roofGen.current;
@@ -352,12 +355,20 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setOverrides(n); void writeKit("kit-edit", n);
   }, [changed, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const canUndo = history.length > 0 || Object.keys(overrides).length > 0;   // enabled whenever an edit exists
   function onUndo() {
     const h = history[history.length - 1];
-    if (!h) return;
+    // Opened on stored kit edits with nothing undone yet in this session: Undo reverts the stored edit.
+    if (!h) {
+      if (!Object.keys(overrides).length) return;
+      cause.current = "Undone:"; setApprovedAt(null); setOverrides({});
+      if (Object.keys(persisted.current).length) void writeKit("kit-undo", {});
+      return;
+    }
     setHistory(history.slice(0, -1)); cause.current = "Undone:"; setApprovedAt(null);
     setChanged(h.changed); setOverrides(h.overrides);
-    if (JSON.stringify(h.overrides) !== JSON.stringify(overrides)) void writeKit("kit-undo", h.overrides);
+    // Written only when it differs from what the lead stores (undoing a tab pick writes nothing; tabs never write).
+    if (JSON.stringify(h.overrides) !== JSON.stringify(persisted.current)) void writeKit("kit-undo", h.overrides);
     // The lead hears the undo too, so a reload shows what the screen shows: each fact the undone step moved goes back
     // to its earlier value (the earlier change, else the lead's own fact or the default).
     const base: Record<string, unknown> = { ...DEFAULTS, ...(read?.inputs ?? {}) };
@@ -423,13 +434,13 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} setInstaller={setInstaller}
         question={question ?? null} answer={answer} onAnswer={onAnswer} askError={askErr} asking={question === undefined} liveAsking={live?.asking ?? null}
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
-        canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
+        canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
       {slow && !roof?.pending && !err && <p className="s-roof" role="status">Measuring the roof</p>}
       {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
       {!res && <OpenSkeleton />}
-      {res && <Chain res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={history.length > 0} onUndo={onUndo} answered={answer != null} redraft={moved}
-        decide={<Decide slim pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />} />}
+      {res && <Chain res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={canUndo} onUndo={onUndo} answered={answer != null} redraft={moved}
+        decide={<Decide slim pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />} />}
     </div>
   );
 
@@ -443,7 +454,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
           {res && <Plan res={res} prev={prev} inputs={inputs} write={null} writeBusy={false} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? "Measuring the roof from Bavarian 3D data, about 10 s" : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} />}
-          {res && <Refine res={res} moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} />}
+          {res && <Refine res={res} moved={moved} canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} />}
         </div>
       </div>
     </div>

@@ -167,7 +167,7 @@ export default function ProposedCard({ kwp, kwh, price, pending, children, id, n
           {none ? (
             <div className="pc-nobody">
               <p>{none}</p>
-              <button type="button" className="btn" disabled>Approve</button>
+              <button type="button" className="btn" disabled>Complete</button>
             </div>
           ) : children}
         </div>

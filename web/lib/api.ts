@@ -200,7 +200,7 @@ export interface Lead {
   overrides?: Overrides;   // the planner's kit choices, written on each edit (intake step `overrides`)
 }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).
-export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "signed" | "declined" | "question";
+export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "sent" | "signed" | "declined" | "question";   // sent: the Complete sheet sent the link
 export type DecisionAction = "sign" | "decline" | "question";
 export interface LeadDecision { action: DecisionAction; name?: string | null; decided_at: string; proposal_hash: string; has_signature: boolean; matches_current: boolean; question?: string | null; }
 export interface ApproveResponse { status: "approved"; approved_at: string; approved_variant: Variant["key"] | null; proposal_hash: string; }
