@@ -11,9 +11,11 @@ export type ComposerFieldProps = {
   /** Right of the field, left of the send arrow: the expand chevron slot. */
   trailing?: ReactNode;
   fieldRef?: Ref<HTMLTextAreaElement>;
+  /** Called when the field is focused or any of its controls is pressed (the collapsed line expands the card). */
+  onActivate?: () => void;
 };
 
-export default function ComposerField({ value, onChange, onSend, onAttach, onMicStart, onMicStop, busy, recording, elapsed = 0, line, trailing, fieldRef }: ComposerFieldProps) {
+export default function ComposerField({ value, onChange, onSend, onAttach, onMicStart, onMicStop, busy, recording, elapsed = 0, line, trailing, fieldRef, onActivate }: ComposerFieldProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
   const files = useRef<HTMLInputElement>(null);
   const dock = useRef<HTMLDivElement>(null);
@@ -33,7 +35,7 @@ export default function ComposerField({ value, onChange, onSend, onAttach, onMic
   return (
     <div ref={dock} className={s.dock}>
       <div className={s.line} aria-live="polite">{line}</div>
-      <form className={`${s.box} ${busy ? s.busy : ""} ${recording ? s.rec : ""}`} onSubmit={(e) => { e.preventDefault(); onSend(); }}>
+      <form onFocusCapture={onActivate} onPointerDownCapture={onActivate} className={`${s.box} ${busy ? s.busy : ""} ${recording ? s.rec : ""}`} onSubmit={(e) => { e.preventDefault(); onSend(); }}>
         <button type="button" className={s.glyph} aria-label="Attach a text or email file" onClick={() => files.current?.click()} disabled={busy}>
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M16 9.5 10 15.5a3.5 3.5 0 0 1-5-5l6.5-6.5a2.3 2.3 0 0 1 3.3 3.3L8.3 13.8a1.1 1.1 0 0 1-1.6-1.6L12.5 6.4" /></svg>
         </button>

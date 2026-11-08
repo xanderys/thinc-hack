@@ -1,11 +1,12 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Composer from "@/components/composer/Composer";
+import ComposerField from "@/components/composer/ComposerField";
 import Thread from "@/components/agent/Thread";
 import { Ctx, type CopilotContext } from "./context";
 import s from "./copilot.module.css";
 
 const leadOf = (p: string) => p.match(/^\/h\/([^/]+)/)?.[1];
+const safe = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sab")) || 0;
 const shown = (p: string) => p === "/" || p.startsWith("/h/");
 const Chev = ({ up }: { up?: boolean }) => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={up ? undefined : { transform: "rotate(180deg)" }}><path d="M4.5 11 9 6.5l4.5 4.5" /></svg>
@@ -17,6 +18,8 @@ export default function CopilotShell() {
   const [name, setName] = useState<string | undefined>();
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+  const cardEl = useRef<HTMLElement>(null);
+  const noop = () => {};
   const lead = leadOf(path) ? decodeURIComponent(leadOf(path)!) : undefined;
   const asCircle = !!lead;
 
@@ -46,19 +49,29 @@ export default function CopilotShell() {
 
   useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); }; addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, [open]);
 
-  // The composer's measured travel to the corner: right edge to 16 px from the right, bottom 16 px up, shrunk to 56 px.
+  // Where the card morphs from: the board's field or the lead page's circle, as a transform of the card's own box (FLIP).
   useEffect(() => {
-    const el = wrap.current; if (!el) return;
+    const el = wrap.current, card = cardEl.current; if (!el || !card) return;
     const set = () => {
-      const dock = el.querySelector("form")?.parentElement as HTMLElement | null; if (!dock) return;
-      const w = dock.offsetWidth, h = dock.offsetHeight;
-      el.style.setProperty("--cs-x", `${innerWidth - 16 - (innerWidth / 2 + w / 2)}px`);
-      el.style.setProperty("--cs-y", "-16px");
-      el.style.setProperty("--cs-sx", String(56 / w)); el.style.setProperty("--cs-sy", String(56 / h));
+      const w = card.offsetWidth, h = card.offsetHeight; if (!w || !h) return;
+      let r: { left: number; top: number; width: number; height: number } | null = null;
+      if (asCircle) r = { left: innerWidth - 16 - 56, top: innerHeight - 16 - 56 - safe(), width: 56, height: 56 };
+      else { const f = el.querySelector("form")?.getBoundingClientRect(); if (f && f.width) r = { left: f.left, top: f.top, width: f.width, height: f.height }; }
+      if (!r) return;
+      el.style.setProperty("--from", `translate(${r.left - card.offsetLeft}px, ${r.top - card.offsetTop}px) scale(${r.width / w}, ${r.height / h})`);
+      // The composer line's own travel to the corner on a lead page.
+      const dock = el.querySelector("form")?.parentElement as HTMLElement | null;
+      if (dock) {
+        const dw = dock.offsetWidth, dh = dock.offsetHeight;
+        el.style.setProperty("--cs-x", `${innerWidth - 16 - (innerWidth / 2 + dw / 2)}px`); el.style.setProperty("--cs-y", "-16px");
+        el.style.setProperty("--cs-sx", String(56 / dw)); el.style.setProperty("--cs-sy", String(56 / dh));
+      }
     };
     set(); addEventListener("resize", set); const t = setTimeout(set, 600);
     return () => { removeEventListener("resize", set); clearTimeout(t); };
-  }, [path]);
+  }, [path, asCircle]);
+  // Opening by focus or tap puts the cursor in the Thread's own field.
+  useEffect(() => { if (open) { const t = setTimeout(() => (cardEl.current?.querySelector("textarea") as HTMLTextAreaElement | null)?.focus(), 120); return () => clearTimeout(t); } }, [open]);
 
   // Touching the 3D canvas or scrolling the page down puts the card back in its corner.
   const close = useCallback(() => setOpen(false), []);
@@ -83,10 +96,12 @@ export default function CopilotShell() {
   return (
     <Ctx.Provider value={ctx}>
       <div ref={wrap} className={s.shell} data-lead={asCircle ? "1" : undefined} data-open={open ? "1" : undefined} data-off={off}>
-        <div className={s.dockWrap}><Composer /></div>
-        {!asCircle && !open && <button type="button" className={s.expand} aria-label="Expand" aria-expanded={false} onClick={() => setOpen(true)}><Chev up /></button>}
+        <div className={s.dockWrap}>
+          <div aria-hidden style={{ height: "var(--composer-h, 96px)" }} />
+          <ComposerField value="" onChange={noop} onSend={noop} onAttach={() => setOpen(true)} onMicStart={noop} onMicStop={noop} onActivate={() => setOpen(true)} />
+        </div>
         <div className={s.scrim} onClick={close} aria-hidden />
-        <section className={s.card} data-copilot-card aria-hidden={!open} aria-label="Copilot">
+        <section ref={cardEl} className={s.card} data-copilot-card aria-hidden={!open} aria-label="Copilot">
           {lead && name && <span className={s.chip}>{name}</span>}
           {open && <Thread onLead={goLead} trailing={<button type="button" className={s.collapse} aria-label="Collapse" aria-expanded onClick={close}><Chev /></button>} />}
         </section>
