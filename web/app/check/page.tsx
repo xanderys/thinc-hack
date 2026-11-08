@@ -54,15 +54,20 @@ function Headline({ ev, err, retry }: { ev: EvalX | null; err: string | null; re
   if (err) return <section className={s.sec}><h2>Scoreboard</h2><Err src="Engine" msg={err} retry={retry} /></section>;
   if (!ev) return <section className={s.head} aria-busy="true"><h2>Scoreboard</h2><p className={s.wait} style={{ color: "rgba(255,255,255,.7)" }}>Loading</p></section>;
   const o = ev.overall;
+  // One named population: the sealed test half (633 homes), production engine, lowest option, our bands.
+  const ft = ev.final_test, prod = ft?.production.replace(/-readout$/, "");
+  const half = ft?.rows.filter((r) => r.population === "test half" && r.ground_truth === "lowest option" && r.band === "ours") ?? [];
+  const sealed = half.find((r) => r.engine === prod), textbook = half.find((r) => r.engine === "textbook");
   return (
     <section className={s.head}>
-      <h2>Whole design within tolerance on {n0(ev.split.test)} held-out signed projects</h2>
+      <h2>Whole design within tolerance on {n0(sealed?.n ?? ev.split.test)} {sealed ? "sealed held-out signed homes, scored once" : "held-out signed projects"}</h2>
       <dl className={s.figs}>
-        <div className={s.us}><dt>Marquee draft</dt><dd>{pct1(o.design_match_share)}</dd></div>
-        {o.ceiling_design_match_share != null && <div className={s.them}><dt>Two planners agreeing</dt><dd>{pct1(o.ceiling_design_match_share)}</dd></div>}
-        <div className={s.them}><dt>Textbook rule</dt><dd>{pct1(o.textbook_design_match_share ?? o.baseline_design_match_share)}</dd></div>
+        <div className={s.us}><dt>Marquee draft</dt><dd>{pct1(sealed?.all_four ?? o.design_match_share)}</dd></div>
+        {!sealed && o.ceiling_design_match_share != null && <div className={s.them}><dt>Agreement with designs for similar recorded homes</dt><dd>{pct1(o.ceiling_design_match_share)}</dd></div>}
+        {sealed ? textbook && <div className={s.them}><dt>Textbook rule</dt><dd>{pct1(textbook.all_four)}</dd></div>
+          : <div className={s.them}><dt>Textbook rule</dt><dd>{pct1(o.textbook_design_match_share ?? o.baseline_design_match_share)}</dd></div>}
       </dl>
-      <p className={s.src}>{o.definition}. Source: <a href="/api/eval" target="_blank" rel="noreferrer"><code>GET /api/eval</code></a></p>
+      <p className={s.src}>{o.definition}{sealed ? `, on the test half the rules were not fitted on (${sealed.engine}, lowest offered option)` : ""}. Source: {sealed ? <><Doc path="engine/lab/reports/final_test_v2.md" />, </> : null}<a href="/api/eval" target="_blank" rel="noreferrer"><code>GET /api/eval</code></a></p>
     </section>
   );
 }
@@ -195,12 +200,14 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
   );
 }
 
-// The first part outside tolerance, from the row's own fields.
+// The parts outside tolerance, from the row's own fields: only a part whose sizes really differ is named (a part the
+// engine marks out at the shown precision, e.g. 7.2 against 7.2, is not a miss to show).
 function miss(r: InboxRow) {
-  const k = KEYS.find((x) => !r.within[x]);
-  if (!k) return "";
-  const f = COMPONENT_DESIGN_FIELD[k];
-  return `${NAME[k]}: expert fitted ${sz(r.expert[f], UNIT[k])}, draft ${sz(r.draft[f], UNIT[k])}.`;
+  const out = KEYS.filter((k) => r.within[k] === false).map((k) => {
+    const f = COMPONENT_DESIGN_FIELD[k], x = sz(r.expert[f], UNIT[k]), o = sz(r.draft[f], UNIT[k]);
+    return x === o ? null : `${NAME[k]}: expert fitted ${x}, draft ${o}.`;
+  }).filter(Boolean);
+  return out.join(" ");
 }
 
 function Replay({ ev }: { ev: EvalX | null }) {
@@ -270,11 +277,11 @@ function ByComponent({ ev }: { ev: EvalX }) {
   const tb = ev.baselines?.textbook?.rule, fs = ev.baselines?.floor_slope?.rule, rot = ev.rule_of_thumb_comparison;
   return (
     <section className={s.sec}>
-      <h2>Per part, against the ceiling and two baselines</h2>
-      <p className={s.lede}>Share of the {n0(ev.split.test)} held-out projects within tolerance. Ceiling: how often planners at the same installer agree with each other on near-identical homes.</p>
+      <h2>Per part, against similar recorded homes and two baselines</h2>
+      <p className={s.lede}>Share of the {n0(ev.split.test)} held-out projects within tolerance. Agreement with designs for similar recorded homes: how often the same installer's own designs agree on near-identical homes.</p>
       <div className={`${s.panel} ${s.scroll}`}>
         <table className={s.t}>
-          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r}>Ceiling</th><th className={s.r}>Textbook</th><th className={s.r}>Floor plus slope</th><th>Tolerance</th></tr></thead>
+          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r}>Similar recorded homes</th><th className={s.r}>Textbook</th><th className={s.r}>Floor plus slope</th><th>Tolerance</th></tr></thead>
           <tbody>
             <tr className={s.prod}><td>Whole design</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.ceiling_design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.textbook_design_match_share ?? ev.overall.baseline_design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.floor_slope_design_match_share)}</td><td className={s.dim}>all four at once</td></tr>
             {KEYS.map((k) => { const c = ev.components[k]; return (
