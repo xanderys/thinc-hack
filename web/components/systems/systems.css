@@ -370,3 +370,16 @@
 .fg-size { display: grid; gap: 1px; }
 .fg-size .fg-fig b { font-size: 14px; }
 .fg-light { color: var(--ink-3); font-size: 12.5px; }
+
+/* The card never scrolls sideways (8 Nov 2026): the scrubber fits the card's width at every size. Months share the
+   row and shrink, the slider takes its own line, the date line wraps. */
+.sc-card, .sc-anim, .sc-extra { overflow-x: hidden; }
+.sc-anim, .sc-extra > * { min-width: 0; max-width: 100%; }
+.sc-extra [class*="ShadingScrubber_stripRow__"] { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.sc-extra [class*="ShadingScrubber_monthsC__"] { display: flex; min-width: 0; }
+.sc-extra [class*="ShadingScrubber_monthsC__"] button { flex: 1 1 0; min-width: 0; }
+.sc-extra [class*="ShadingScrubber_monthsC__"] button:first-child { flex: 0 0 auto; }
+.sc-extra [class*="ShadingScrubber_stripRow__"] input { width: 100%; min-width: 0; }
+@media (min-width: 761px) { .sc-extra [class*="ShadingScrubber_whenC__"] { display: block; white-space: normal; overflow-wrap: anywhere; } }
+/* An absent part: the engine's reason, one short line under the title. */
+.sc-why { margin: 0; font-size: 12.5px; line-height: 1.35; color: var(--ink-2); }
