@@ -46,7 +46,7 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
 
 **How many modules fit the hero's roof?** 40 modules, 18 kWp; the design uses 23.
 
-**What does the Check page replay show?** Drawn from unseen homes with no match-first order: 3 of 20 match the expert on all four decisions. The sealed figure is the one to quote, 18.6% on 633.
+**What does the Check page replay show?** Drawn from unseen homes with no match-first order: 3 of 20 match the expert on all four decisions at once, 15%, in line with the sealed 18.6% on 633; by part, panels sit within tolerance on 41% and the battery on 50%. All four at once is the strict test; the sealed figure is the one to quote.
 
 Never quote a heat-loss kW figure for the hero; the envelope rerun is pending.
 
