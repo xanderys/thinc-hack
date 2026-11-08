@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // The homeowner site is this same code deployed with HOMEOWNER_SITE=1: / shows the enquiry page and
 // every planner route (pages, engine proxy, LLM routes, the planner's lead list) answers 404.
 // The homeowner host opens the LLM and layers routes only for a lead the planner has released.
-const RELEASED = new Set(["approved", "signed", "declined", "question"]);
+const RELEASED = new Set(["approved", "sent", "signed", "declined", "question"]);
 const hits = new Map<string, number[]>();
 function limited(ip: string) {
   const now = Date.now(), h = (hits.get(ip) ?? []).filter((t) => now - t < 60_000);

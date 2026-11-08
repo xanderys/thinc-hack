@@ -40,7 +40,7 @@ export default function TopBar(p: Props) {
           {p.question.field.endsWith("_kwh") && <span className="s-quiet">kWh</span>}
         </div>
       )}
-      {p.asking && <p className="s-quiet s-wait">Finding the one question that matters</p>}
+      {p.asking && <span className="b-skel b-skel-line" aria-hidden="true" style={{ width: "min(320px, 70%)", height: 14 }} />}
       {p.askError && <p className="s-quiet" role="status"><span className="src">Engine said </span>{p.askError}</p>}
       <Facts sources={p.sources} phone={p.phone} onPhone={p.onPhone} origin={p.read.origin} inputs={i} roof={p.roof} onFact={p.onFact} hidden={p.question && p.answer === undefined ? p.question.field : null} slot={p.factsSlot} />
       {!p.noDecide && <Decide {...p} />}
