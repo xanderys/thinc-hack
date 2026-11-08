@@ -6,7 +6,7 @@ import { CONST, human } from "@/components/stage/Rules";
 import { COMPONENT_DESIGN_FIELD, type ComponentKey, type Design, type Eval, type HomeInputs, type InboxRow, type InstallerId, type ProjectDetail, type ProjectSummary, type RecommenderScore, type Rule, type ValidateFlag, type ValidateResponse } from "@/lib/api";
 import { call } from "@/lib/client";
 import { REALITY_MISS, REALITY_PROJECT } from "@/lib/demo";
-import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, named } from "@/lib/stage";
+import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, unnamed as named } from "@/lib/stage";
 import s from "./check.module.css";
 
 // The population, counted from the engine's own eval payload (never typed): "Two installers".
