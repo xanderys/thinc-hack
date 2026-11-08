@@ -5,6 +5,6 @@ import type { InstallerId } from "./api";
 // 2a8ba8e2: enquiry to offer 0.7 days (n 18), offer to signature 20.0 days (n 1,259).
 export function pastLine(installer?: InstallerId | string | null): string {
   if (installer === "23c108b7") return "This installer's past projects: about 8 days to an offer, then about 29 days to a signature.";
-  if (installer === "2a8ba8e2") return "This installer's past projects: about 0.7 days to an offer, then about 20 days to a signature.";
+  if (installer === "2a8ba8e2") return "This installer's past projects: about 20 days from offer to signature.";
   return "";
 }
