@@ -34,6 +34,7 @@ const CALLING = new Set(["draft", "in_call"]);
 const steps = (l: Lead) => l.history.filter((h) => h.step != null).length;
 // "now with a wallbox", "now 13.05 kWp of solar": the biggest news first.
 function whatsNew(a: Lead["draft"]["design"], b: Lead["draft"]["design"]): string {
+  if (!a || !b) return "";   // a draft still without its design
   const add: [keyof typeof a, string][] = [["wallbox_kw", "a wallbox"], ["heatpump_kw", "a heat pump"], ["battery_kwh", "a battery"]];
   for (const [f, w] of add) if (a[f] == null && b[f] != null) return `now with ${w}`;
   for (const [f, w] of add) if (a[f] != null && b[f] == null) return `now without ${w}`;
@@ -342,7 +343,7 @@ const Bar = ({ w }: { w: string }) => <span className="h-bar" style={{ width: w 
 
 function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: Lead | null; took: number; signedAt: number | null; signTook: number; brand: string; onOpen: () => void }) {
   const d = lead?.draft, e = d?.economics, v = d?.variants?.[0];
-  const say = d ? [
+  const say = d?.design ? [
     d.design.pv_kwp != null ? `${n2(d.design.pv_kwp)} kWp of solar panels on your roof.` : "No solar panels for now.",
     d.design.battery_kwh != null ? `A ${n2(d.design.battery_kwh)} kWh battery keeps daytime sun for the evening.` : "No battery for now.",
     d.design.heatpump_kw != null ? `A ${n2(d.design.heatpump_kw)} kW heat pump heats the house.` : "No heat pump for now.",

@@ -26,6 +26,7 @@ export default function KitSheet({ kit, total, assumptions, note, edit, info, ch
   kit: KitSheetKit; total?: number | null; assumptions?: string[] | null; note?: string; info?: Partial<Record<KitField, ReactNode>>; edit?: (f: KitField, label: string, content: ReactNode) => ReactNode;
   changed?: Part[]; flash?: number; className?: string;
 }) {
+  if (!kit) return null;   // the design is not in yet
   const rows: Row[] = [];
   if (kit.pv_kwp) {
     const count = kit.modules && kit.modules > 0 ? kit.modules : Math.max(1, Math.round(kit.pv_kwp / MODULE_KWP));

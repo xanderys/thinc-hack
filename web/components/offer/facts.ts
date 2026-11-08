@@ -26,8 +26,8 @@ const plural = (k: number, one: string, many: string) => `${k} ${k === 1 ? one :
 
 // Every component that differs from the planners' pick, in Angebot order (modules, storage, wallbox, heat pump),
 // capped at the two with the largest price effect; the first word of each later item in lower case.
-export function differs(d: Partial<Design>, ref: Partial<Design> | null): string | null {
-  if (!ref) return null;
+export function differs(d: Partial<Design> | null | undefined, ref: Partial<Design> | null): string | null {
+  if (!ref || !d) return null;
   const out: { text: string; cost: number }[] = [];
   const m = modulesOf(d.pv_kwp) - modulesOf(ref.pv_kwp);
   if (m) out.push({ cost: Math.abs(m) * WEIGHT.module, text: !d.pv_kwp ? "No solar" : !ref.pv_kwp ? `+${plural(m, "module", "modules")}` : m > 0 ? `${plural(m, "more module", "more modules")}` : `${plural(-m, "fewer module", "fewer modules")}` });
@@ -49,7 +49,8 @@ export const breakEvenOf = (e: Economics | null | undefined): number | null =>
 
 export type Fact = { label: string; value: string; note?: string };
 // Price, break-even, and the difference from the planners' pick (for the pick itself, none). Same shape everywhere.
-export function variantFacts(e: Economics | null | undefined, d: Partial<Design>, ref: Partial<Design> | null): Fact[] {
+export function variantFacts(e: Economics | null | undefined, d0: Partial<Design> | null | undefined, ref: Partial<Design> | null): Fact[] {
+  const d = d0 ?? {};
   const out: Fact[] = [];
   if (e) {
     out.push({ label: "Price", value: eur(e.capex_eur), note: "estimate" });
@@ -79,7 +80,8 @@ export const findCheck = (checks: Check[] | null | undefined, name: RegExp) => (
 // the sentence does not price (wallbox, heat pump) shows the remainder of the engine's total as an effective rate.
 export type RateLine = { label: string; calc: string; eur: number };
 const euros = (x: string) => Number(x.replace(/,/g, ""));
-export function rateCard(d: Partial<Design>, total: number, assumptions: string[] | null | undefined, modules?: number | null): { lines: RateLine[]; total: number } | null {
+export function rateCard(d: Partial<Design> | null | undefined, total: number, assumptions: string[] | null | undefined, modules?: number | null): { lines: RateLine[]; total: number } | null {
+  if (!d) return null;
   const text = (assumptions ?? []).join(" ");
   const pv = /PV €([\d,]+) plus €([\d,]+) per kWp/i.exec(text), bat = /battery €([\d,]+) per kWh/i.exec(text);
   if (!pv && !bat) return null;

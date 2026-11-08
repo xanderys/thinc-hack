@@ -40,10 +40,10 @@ type Key = Variant["key"] | "edit";
 // What the planner approved (engine v2.11 stores it on the lead, a hand edit included); before approval the draft.
 export function offered(lead: Lead): { key: Key; design: Design; economics: DesignResponse["economics"] } {
   const a = lead.approved;
-  if (a?.design) return { key: a.variant, design: a.design, economics: a.economics ?? { ...lead.draft.economics, capex_eur: a.investment_eur } };
+  if (a?.design) return { key: a.variant, design: a.design, economics: a.economics ?? { ...lead.draft?.economics, capex_eur: a.investment_eur } as DesignResponse["economics"] };
   const key = lead.approved_variant && lead.approved_variant !== "edit" ? lead.approved_variant : "expert";
-  const v = lead.draft.variants?.find((x) => x.key === key);
-  return { key: v ? key : "expert", design: v?.design ?? lead.draft.design, economics: v?.economics ?? lead.draft.economics };
+  const v = lead.draft?.variants?.find((x) => x.key === key);
+  return { key: v ? key : "expert", design: v?.design ?? lead.draft?.design, economics: v?.economics ?? lead.draft?.economics } as ReturnType<typeof offered>;
 }
 
 // The planner's four offers, in the planner's order and names (web/components/offer/VariantTabs.tsx). Best value is not offered here.
@@ -64,6 +64,7 @@ type Props = {
 
 export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const { key, design, economics: e } = offered(lead);
+  if (!design || !e) return <ProposalSkeleton />;   // a lead whose design is not in yet
   const variants = lead.draft.variants ?? [];
   const address = lead.address_or_postcode ?? "";
   const street = hasStreet(address);

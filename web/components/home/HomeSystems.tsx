@@ -15,7 +15,8 @@ const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
 
 type Props = { sys: SystemName; design: Design; economics: DesignResponse["economics"]; layers: Layers | null; demandKwh?: number | null; pending: boolean; note?: ReactNode };
 
-export default function HomeSystems({ sys, design: d, economics: e, layers, demandKwh, pending, note }: Props) {
+export default function HomeSystems({ sys, design: d0, economics: e, layers, demandKwh, pending, note }: Props) {
+  const d = d0 ?? ({} as NonNullable<Props["design"]>);   // a frame before the design is in draws empty figures
   const bar = (k: Bar["key"]) => layers?.bars?.find((b) => b.key === k);
   const seg = (b: Bar | undefined, re: RegExp) => b?.segments.find((g) => re.test(g.name))?.value;
   const line = (b: Bar | undefined) => { const t = scrub(b?.sentence); return t ? <p>{t.endsWith(".") ? t : `${t}.`}</p> : null; };

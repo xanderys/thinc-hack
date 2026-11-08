@@ -24,6 +24,7 @@ export function rowsOf(variants: StageVariant[]): Row[] {
   if (!variants.some((v) => [v.name, ...(v.also ?? [])].some((n) => BY_NAME[n]))) return [];
   const rows: Row[] = [];
   for (const v of variants) {
+    if (!v?.design) continue;   // an offer still loading has no sizes to show yet
     for (const name of [v.name, ...(v.also ?? [])]) {
       if (name === "Best value") continue;
       const key: RowKey = name === "Current" ? "edit" : BY_NAME[name] ?? "expert";
@@ -47,7 +48,8 @@ export function rowsOf(variants: StageVariant[]): Row[] {
   return [...four.filter((r) => r.key === "expert"), ...four.filter((r) => r.key !== "expert").sort((a, b) => price(a) - price(b)), ...rows.filter((r) => r.key === "edit")];
 }
 
-export function SizeChips({ d }: { d: Partial<Design> }) {
+export function SizeChips({ d: d0 }: { d: Partial<Design> | null | undefined }) {
+  const d = d0 ?? {};
   const chips: { k: "pv" | "battery" | "wallbox" | "heatpump"; label: string; v: string }[] = [
     ...(d.pv_kwp ? [{ k: "pv" as const, label: "Solar", v: `${n2(d.pv_kwp)} kWp` }] : []),
     ...(d.battery_kwh ? [{ k: "battery" as const, label: "Battery", v: `${n1(d.battery_kwh)} kWh` }] : []),

@@ -38,7 +38,7 @@ import { breakEvenNote } from "@/lib/notes";
 // Engine offers in Stage's variant shape, so a pick runs through Stage's onVariant like any other.
 function asStage(vs: EngineVariant[], d: Design): StageVariant[] {
   const same = (x: Design) => JSON.stringify(x) === JSON.stringify(d);
-  return vs.map((v) => ({ name: v.label.split(" (")[0], tag: "", design: v.design, e: v.economics, note: breakEvenNote(v.note, v, vs), current: same(v.design),
+  return vs.filter((v) => !!v?.design).map((v) => ({ name: v.label.split(" (")[0], tag: "", design: v.design, e: v.economics, note: breakEvenNote(v.note, v, vs), current: same(v.design),
     overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } }));
 }
 
