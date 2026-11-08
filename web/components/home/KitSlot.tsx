@@ -1,11 +1,15 @@
 "use client";
-// Adapter for the planner's kit diagram (lane 2, web/components/offer/KitDiagram.tsx).
-// Until that lands on main, this holds the diagram's box at its final size so the page never moves when it is swapped in.
+// The planner's kit diagram (lane 2) for the homeowner pages. The box has the tallest layout's proportions
+// (solar, battery, wallbox and heat pump), so the skeleton and every loaded design occupy the same space.
 import type { Design } from "@/lib/api";
+import KitDiagram from "@/components/offer/KitDiagram";
 
-export const KIT_HEIGHT = 148; // px, phone and desktop
+export const KIT_RATIO = "360 / 224"; // viewBox of the fullest diagram
 
 export default function KitSlot({ design }: { design: Design | null }) {
-  void design; // the real diagram takes the offered design
-  return <div className="hk-slot" style={{ height: KIT_HEIGHT }} aria-hidden />;
+  return (
+    <div className="hk-slot" style={{ aspectRatio: KIT_RATIO }} aria-hidden={design ? undefined : true}>
+      {design && <KitDiagram kit={design} />}
+    </div>
+  );
 }
