@@ -1,4 +1,4 @@
-# Engine API contract (v2.16)
+# Engine API contract (v2.17)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -277,3 +277,12 @@ v2.14 additions (engine, restart C: heat loss on the heated rooms)
 - Heat pump: "Already heats with a heat pump" | "Heating facts not asked yet" | "<District | Electric | ...> heating, no boiler to replace" | "No gas or oil boiler to replace" | "Boiler age not asked yet" | "<Gas | Oil> boiler from <year> still has years left" | "Removed by the planner" | "Not in this design".
 - Wallbox: "Wallbox already installed" | "No electric car now or planned" | "Removed by the planner" | "Not in this design".
 - A forced include never comes back none silently: an included heat pump is sized from the bill, the given heat or the default heat estimate, an included wallbox at 11 kW; if one still ends up none, `none_reason` says why. The web shows `none_reason` as the first line of a "No <part>" card, and nothing when the field is absent.
+
+## v2.17 (engine, additive): autopilot, composer intake, transcription
+- `POST /api/autopilot/run` header `X-Intake-Secret`, body `{lead_ids?: string[], dry?: boolean, wait_s?: number}` (default 45) → `text/event-stream`. Without `lead_ids` it takes every lead that is a draft with gaps or unsent, never a pinned lead unless listed. Each line is `data: {at, lead_id, name, step: "read" | "measure" | "ask" | "draft" | "send" | "needs_you" | "summary", text, glyph: "doc" | "ruler" | "message" | "pencil" | "paperplane" | "hand" | "check", state: "active" | "done" | "needs_you" | "error", verdict? (on draft), summary?: {sent, needs_you, asked} (on summary)}`. 409 while a run is going. Per lead: read the intake, design, qualify, ask the homeowner on WhatsApp for the top missing facts (real sends; one open conversation per phone, so an ask on the same phone supersedes the earlier one), wait `wait_s` for replies and re-run, Complete and send when the verdict is Priority and nothing is missing, else flag. Never a number not on the lead.
+- `GET /api/autopilot/status` → `{running, started_at, events_n, last}`.
+- `POST /api/autopilot/seed` (secret) → six test enquiries on real Munich addresses with LoD2 (Weber email complete; Schneider email, use missing; Fischer voice note, heating missing; Becker note, use and heating missing; Hoffmann city block, shared roof; Koch postcode only), `test: true`, demo phone; idempotent; returns the lead ids.
+- `POST /api/leads/transcribe` multipart field `file` (or a raw audio body) → `{text}` (ElevenLabs speech to text, the WhatsApp voice-note path).
+- `ENGINE_AUTOPILOT_NIGHTLY=1` enables a nightly run at 04:30 Europe/Berlin; off by default.
+- Sabine Wagner (ed63af6035) is unpinned and `test: true`; the pinned demo set is Huber, Lindner, Moser.
+- Web only: `POST /api/interpret` gains `mode: "composer"` → `{name?, address?, postcode?, num_inhabitants?, heating_type?, heating_stated?, has_ev?, ev_planned?, annual_demand_kwh?, phone?, note?}`; the composer then creates the lead (`test: true`) and runs the intake step with `source: "email" | "voice" | "planner"`.

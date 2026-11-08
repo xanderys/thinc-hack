@@ -53,10 +53,14 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet, 
       raf = requestAnimationFrame(tick);
       const root = box.current;
       if (!root) return;
+      // The face pills win: a "+" whose 24 px circle overlaps a visible pill hides (pills live in the scene's overlay).
+      const rr = root.getBoundingClientRect();
+      const pills = [...(root.parentElement?.querySelectorAll<HTMLElement>(".sp-label") ?? [])].filter((e) => e.style.visibility !== "hidden").map((e) => { const b = e.getBoundingClientRect(); return { x0: b.left - rr.left - 12, x1: b.right - rr.left + 12, y0: b.top - rr.top - 12, y1: b.bottom - rr.top + 12 }; });
       root.querySelectorAll<HTMLElement>("[data-at]").forEach((el) => {
         const at = JSON.parse(el.dataset.at!) as V3, n = el.dataset.n ? (JSON.parse(el.dataset.n) as V3) : null;
         const q = scene.screenOf(at);
-        const show = q.ok && (!n || scene.facing(n, at)) && q.x > -20 && q.y > -20 && q.x < root.clientWidth + 20 && q.y < root.clientHeight + 20;
+        const under = el.classList.contains(s.mark) && pills.some((r) => q.x > r.x0 && q.x < r.x1 && q.y > r.y0 && q.y < r.y1);
+        const show = q.ok && !under && (!n || scene.facing(n, at)) && q.x > -20 && q.y > -20 && q.x < root.clientWidth + 20 && q.y < root.clientHeight + 20;
         el.style.visibility = show ? "visible" : "hidden";
         el.style.transform = `translate(${q.x.toFixed(1)}px, ${q.y.toFixed(1)}px)`;
       });
@@ -120,7 +124,7 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet, 
         <span key={sl.id} className={s.mark} data-at={JSON.stringify(sl.c)} data-n={JSON.stringify(sl.n)} aria-hidden="true"><span>+</span></span>
       ))}
       {unit && sizing === unit && !has ? (
-        <span data-unit="" className={s.unit} aria-live="polite"><span>sizing</span></span>
+        <span data-unit="" className={`${s.unit} b-skel-pill`} aria-busy="true" aria-label={`Sizing the ${NAME[unit]}`}><span className="b-skel" aria-hidden="true" /></span>
       ) : unit && (has ? (
         <button type="button" data-unit="" className={s.unit} aria-haspopup="dialog" aria-expanded={open} aria-label={`Change the ${NAME[unit]} size`} onClick={() => setOpen((x) => !x)}>
           <span>{fmt(v)} {UNIT[unit]}</span>

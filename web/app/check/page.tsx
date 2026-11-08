@@ -62,7 +62,7 @@ const Doc = ({ path, branch }: { path: string; branch?: string }) => <a href={gh
 
 function Headline({ ev, err, retry }: { ev: EvalX | null; err: string | null; retry: () => void }) {
   if (err) return <section className={s.sec}><h2>Scoreboard</h2><Err src="Engine" msg={err} retry={retry} /></section>;
-  if (!ev) return <section className={s.head} aria-busy="true"><h2>Scoreboard</h2><p className={s.wait} style={{ color: "rgba(255,255,255,.7)" }}>Loading</p></section>;
+  if (!ev) return <section className={s.head} aria-busy="true"><h2>Scoreboard</h2><span className="b-skel" aria-hidden="true" style={{ width: "40%", height: 40, marginTop: 8, opacity: 0.25 }} /></section>;
   const o = ev.overall;
   // One named population: the sealed test half (633 homes), production engine, lowest option, our bands.
   const ft = ev.final_test, prod = ft?.production.replace(/-readout$/, "");
@@ -119,10 +119,10 @@ function Validation() {
   };
   const open = (res?.flags ?? []).map((f, i) => ({ f, i })).filter(({ f, i }) => f.level !== "ok" && !kept.includes(i));
   const fine = KEYS.filter((k) => !(res?.flags ?? []).some((f) => f.component === k && f.level !== "ok")).map((k, j) => j === 0 ? NAME[k] : NAME[k].toLowerCase());
-  const head = !res ? "Checking the approved offer" : open.length === 0 ? "Approved offer: nothing stands out against similar homes" : `Approved offer: ${open.length === 1 ? "one thing" : `${open.length} things`} to look at`;
+  const head = !res ? null : open.length === 0 ? "Approved offer: nothing stands out against similar homes" : `Approved offer: ${open.length === 1 ? "one thing" : `${open.length} things`} to look at`;
   return (
     <section className={s.sec}>
-      <h2>{head}</h2>
+      <h2 aria-busy={!head || undefined}>{head ?? <span className="b-skel b-skel-line" aria-hidden="true" style={{ width: "55%", height: 20 }} />}</h2>
       <p className={s.lede}><span className={s.mono}>{designLine(ap.approved)}</span></p>
       {err && <Err src="Engine" msg={err} retry={() => setTick((t) => t + 1)} />}
       {open.length > 0 && (
@@ -175,7 +175,7 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
   useEffect(() => { setP(null); call<ProjectDetail>(`/api/projects/${id}`).then((r) => { if (r.ok) { setP(r.data); setErr(null); } else setErr(r.error); }); }, [tick, id]);
   const title = <h2>One held-out home, draft against the senior planner</h2>;
   if (err) return <section className={s.sec}>{title}<Err src="Engine" msg={err} retry={() => setTick((t) => t + 1)} /></section>;
-  if (!p) return <section className={s.sec}>{title}<p className={s.wait}>Loading the held-out home</p></section>;
+  if (!p) return <section className={s.sec}>{title}<span className="b-skel" aria-hidden="true" style={{ width: "100%", height: 120, marginTop: 8 }} /></section>;
   const i = p.inputs, tol = (k: ComponentKey) => ev?.components[k]?.tolerance ?? "";
   const rows = KEYS.map((k) => { const f = COMPONENT_DESIGN_FIELD[k]; const o = p.ours.design[f], x = p.expert[f]; return { k, o, x, ok: within(o, x, tol(k)) }; });
   const misses = rows.filter((r) => !r.ok);
