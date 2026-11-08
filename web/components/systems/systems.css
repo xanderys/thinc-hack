@@ -366,3 +366,7 @@
 .pc-undo:disabled { color: var(--ink-4); cursor: default; }
 .pc-undo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 @keyframes figFadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* Heat pump sizing: the bill's size bold, the envelope's upper bound lighter on the next line. */
+.fg-size { display: grid; gap: 1px; }
+.fg-size .fg-fig b { font-size: 14px; }
+.fg-light { color: var(--ink-3); font-size: 12.5px; }

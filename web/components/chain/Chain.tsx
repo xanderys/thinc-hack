@@ -474,12 +474,15 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         return list.filter((x) => x.share > 0).sort((p, q) => q.share - p.share);
       })() : [];
       const hp = d.heatpump_kw;
+      const hpBound = (res.components.heatpump as unknown as { heat_load_upper_bound_kw?: number | null }).heat_load_upper_bound_kw ?? null;
       return {
         head: multi ? <Head main="No heat load" sub="for flats" /> : hp ? <Head main={`${n1(hp)} kW`} sub="heat pump" /> : <Head main="No heat pump" />,
         label: multi ? "Heat load not estimated for flats" : hp ? `${n1(hp)} kW heat pump` : "No heat pump",
         body: multi ? null : <>
           {shares.length > 0 && <SplitBar label="Heat loss" unit="" total={100} parts={shares.map((x) => ({ k: x.name, v: Math.round(x.share * 100), c: x.colour }))} />}
-          {bars[4] && <Fig v={`${n1(bars[4].total)} kW`} u={designT ? `heat loss at ${designT} °C` : "heat loss"} />}
+          {/* Sizing: the bill decides, the envelope is an upper bound (engine: components.heatpump.heat_load_upper_bound_kw). */}
+          {hp && hpBound != null ? <div className="fg-size"><p className="fg-fig"><b>Sized from the bill {n1(hp)} kW</b></p><p className="fg-fig fg-light">Envelope upper bound {n1(hpBound)} kW</p></div>
+            : bars[4] && <Fig v={`${n1(bars[4].total)} kW`} u={designT ? `heat loss at ${designT} °C, an upper bound` : "heat loss, an upper bound"} />}
         </>,
         info: multi ? <p>The walls and roof are the whole building&rsquo;s, so no heat pump size for one flat.</p> : <>
           {lossS && <p>{lossS}</p>}

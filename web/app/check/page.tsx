@@ -28,6 +28,10 @@ const pct1 = (x: number | null | undefined) => x == null ? "n/a" : `${(x * 100).
 // Rule names as the shared Rules disclosure labels them.
 const RULE: Record<string, string> = { bat_kwp: "Battery per kWp", bat_day: "Battery per daily use", inv: "Inverter", hp: "Heat pump", wb: "Wallbox", fill: "Roof fill", cap: "Roof capacity", orient: "Orientation", inverter: "Inverter" };
 const UNIT: Record<ComponentKey, string> = { pv: "kWp", battery: "kWh", heatpump: "kW", wallbox: "kW" };
+// One name per rule set: the engine's labels (reonic_rule, textbook) and the web's own baselines (floor_slope); the
+// engine's full wording rides along as the tooltip. Engine ids without a name here show as the engine sends them.
+const RULESET: Record<string, string> = { textbook: "Textbook rule", reonic_rule: "Reonic rule of thumb", floor_slope: "Median-fit rule", "black box": "Black box" };
+const rulesetTip = (ev: EvalX | null | undefined, k: string) => (ev?.recommenders_labels as Record<string, string> | undefined)?.[k] ?? ev?.baselines?.[k]?.rule;
 const sz = (x: number | null | undefined, u: string) => x == null ? "none" : `${n2(x)} ${u}`;
 const reduce = () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -64,8 +68,9 @@ function Headline({ ev, err, retry }: { ev: EvalX | null; err: string | null; re
       <dl className={s.figs}>
         <div className={s.us}><dt>Marquee draft</dt><dd>{pct1(sealed?.all_four ?? o.design_match_share)}</dd></div>
         {!sealed && o.ceiling_design_match_share != null && <div className={s.them}><dt>Agreement with designs for similar recorded homes</dt><dd>{pct1(o.ceiling_design_match_share)}</dd></div>}
-        {sealed ? textbook && <div className={s.them}><dt>Textbook rule</dt><dd>{pct1(textbook.all_four)}</dd></div>
-          : <div className={s.them}><dt>Textbook rule</dt><dd>{pct1(o.textbook_design_match_share ?? o.baseline_design_match_share)}</dd></div>}
+        {/* The textbook rule only: the generic baseline share is a different rule and is not shown under this name. */}
+        {sealed ? textbook && <div className={s.them}><dt title={rulesetTip(ev, "textbook")}>{RULESET.textbook}</dt><dd>{pct1(textbook.all_four)}</dd></div>
+          : o.textbook_design_match_share != null && <div className={s.them}><dt title={rulesetTip(ev, "textbook")}>{RULESET.textbook}</dt><dd>{pct1(o.textbook_design_match_share)}</dd></div>}
       </dl>
       <p className={s.src}>{o.definition}{sealed ? `, on the test half the rules were not fitted on (${sealed.engine}, lowest offered option)` : ""}. Source: {sealed ? <><Doc path="engine/lab/reports/final_test_v2.md" />, </> : null}<a href="/api/eval" target="_blank" rel="noreferrer"><code>GET /api/eval</code></a></p>
     </section>
@@ -142,7 +147,7 @@ function RulesTable({ rules, installer }: { rules: Rule[]; installer: string }) 
   return (
     <div className={`${s.panel} ${s.scroll}`}>
       <table className={s.t}>
-        <thead><tr><th>Rule</th><th>Reonic textbook</th><th>Fitted rule ({installer})</th><th className={s.r}>This draft</th></tr></thead>
+        <thead><tr><th>Rule</th><th>Published guide</th><th>Fitted rule ({installer})</th><th className={s.r}>This draft</th></tr></thead>
         <tbody>{rules.map((r) => (
           <tr key={r.name}>
             <td>{r.name in NAME ? NAME[r.name as ComponentKey] : human(r.name, RULE)}</td>
@@ -294,7 +299,7 @@ function ByComponent({ ev }: { ev: EvalX }) {
       <p className={s.lede}>Share of the {n0(us.n)} sealed held-out homes within tolerance, per part.</p>
       <div className={`${s.panel} ${s.scroll}`}>
         <table className={s.t}>
-          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r}>Textbook</th><th>Tolerance</th></tr></thead>
+          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r} title={rulesetTip(ev, "textbook")}>{RULESET.textbook}</th><th>Tolerance</th></tr></thead>
           <tbody>
             <tr className={s.prod}><td>Whole design</td><td className={`${s.r} ${s.n}`}>{pct1(us.all_four)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{tb ? pct1(tb.all_four) : ""}</td><td className={s.dim}>all four at once</td></tr>
             {KEYS.map((k) => (
@@ -323,9 +328,9 @@ function Recommenders({ ev }: { ev: EvalX }) {
           <thead><tr><th>Engine</th><th className={s.r}>Homes</th><th className={s.r}>Whole design</th><th className={s.r}>Solar</th><th className={s.r}>Battery</th><th className={s.r}>Wallbox</th></tr></thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.engine} className={r.engine === prod ? s.prod : undefined}><td>{r.engine}</td><td className={`${s.r} ${s.n}`}>{n0(r.n)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.all_four)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.pv)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.battery)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.wallbox)}</td></tr>
+              <tr key={r.engine} className={r.engine === prod ? s.prod : undefined}><td title={rulesetTip(ev, r.engine)}>{RULESET[r.engine] ?? r.engine}</td><td className={`${s.r} ${s.n}`}>{n0(r.n)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.all_four)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.pv)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.battery)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.wallbox)}</td></tr>
             ))}
-            {rr && <tr><td>Reonic rule of thumb</td><td className={`${s.r} ${s.n}`}>{rr.n != null ? n0(rr.n) : ""}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.pv_within)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.battery_within)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.wallbox_decision)}</td></tr>}
+            {rr && <tr><td title={rulesetTip(ev, "reonic_rule")}>{RULESET.reonic_rule}</td><td className={`${s.r} ${s.n}`}>{rr.n != null ? n0(rr.n) : ""}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.pv_within)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.battery_within)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.wallbox_decision)}</td></tr>}
           </tbody>
         </table>
       </div>
