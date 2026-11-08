@@ -14,7 +14,7 @@ Speakers: Zi Yuan opens and closes, Xander runs the demo and the exam, Jamon the
 ## 1:00 to 2:00, slide 4 and the live product, Xander
 1. "I open Frau Huber's card. Her real house, from Bavarian 3D data with the aerial photo, no site visit. Shade per panel."
 2. "Four decisions in a chain: panels, battery, wallbox, heat pump, then the offer." [read the sizes off the screen] "Each one shows the rule it came from."
-3. [type] "The family buys an EV next year." [read what moved] "The chain runs again. The wallbox appears, and the year changes."
+3. [open the Electric car chip, set Planned, 12,000 km] [read what moved] "One fact changes. The chain runs again: the wallbox appears, and the offer moves."
 4. "Intake also works from a pasted email, or a call with Rina, the installer's voice agent, who asks the one question the engine computes next."
 If Reonic's AI chat comes up: "Your chat sizes from the catalogue when the planner asks, and the planner picks by hand. Marquee proposes unprompted, explains its rules, and publishes how often it matches the experts on homes it never saw."
 
@@ -36,3 +36,7 @@ If the homeowner page is on screen, its header reads Isarwerk Solar: our fiction
 
 ## 3:55 to 4:00, slide 10, Zi Yuan
 "Every draft shows its rules and its score, and the planner signs off the exceptions. Thank you."
+
+## OPTIONAL beat, slide 8, Jamon: only if THINC HACK MASTER confirms the WhatsApp copilot and Complete are live
+"Two facts were missing. Marquee asked the homeowner on WhatsApp, the reply filled the chips, and the planner never typed them. The planner presses Complete and sends the proposal, on WhatsApp or as a link. The signature or the decline comes back to the board."
+If it is live, say Complete, never Approve, on slide 8, and build the deck with the optional slide (deck/slides-optional.md) in place of slide 8.
