@@ -21,7 +21,10 @@ async function released(req: NextRequest) {
   return RELEASED.has(l?.status);
 }
 
+const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#071b71"/><path d="M4 22 L22 8 L28 8 L10 22Z" fill="#ffc043"/></svg>`;
+
 export async function middleware(req: NextRequest) {
+  if (req.nextUrl.pathname === "/favicon.ico") return new NextResponse(ICON, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
   if (process.env.HOMEOWNER_SITE !== "1") return NextResponse.next();
   const p = req.nextUrl.pathname;
   if (p === "/") { const u = req.nextUrl.clone(); u.pathname = "/start"; return NextResponse.rewrite(u); }
@@ -38,6 +41,7 @@ export async function middleware(req: NextRequest) {
     if (await released(req)) return NextResponse.next();
     return new NextResponse("Not found", { status: 404 });
   }
+  if (p === "/api/health" && req.method === "GET") return NextResponse.next();
   if (p === "/spatial-demo/glb" && req.method === "GET") return NextResponse.next();
   // Satellite ground, photo mesh and house photo: read-only Google proxies (no engine calls, the key stays server side).
   if ((/^\/api\/tiles\//.test(p) || p === "/api/photo") && req.method === "GET") return NextResponse.next();
@@ -46,4 +50,4 @@ export async function middleware(req: NextRequest) {
   return new NextResponse("Not found", { status: 404 });
 }
 
-export const config = { matcher: ["/((?!_next/|favicon\\.ico|.*\\.(?:woff2?|ttf|png|jpg|svg|ico|webmanifest)$).*)"] };
+export const config = { matcher: ["/((?!_next/|.*\\.(?:woff2?|ttf|png|jpg|svg|webmanifest)$).*)"] };

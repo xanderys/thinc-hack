@@ -78,6 +78,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
           <polygon points="0,78 112,50 112,88 0,116" />
         </svg>
         <p className="pp-brand">{brand}</p>
+        {lead.approved && <p className="pp-mark">Approved: {key === "edit" ? "Planner's adjusted design" : ROWS.find((r) => r.key === key)?.name ?? "Planners' pick"}</p>}
         <div className="pp-title">
           <h1>Your proposal</h1>
           <p>{[name, address].filter(Boolean).join(", ")}</p>
@@ -101,7 +102,6 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
         {yieldKwh != null && <Kpi label="Yield a year" value={`${n0(yieldKwh)} kWh`} />}
         <div className="pp-kpi">
           <span>Supplied by your system</span><b>{pc(e.autarky_share)}</b>
-          <small>{pc(e.autarky_share)} of your electricity supplied by your system</small>
           {e.annual && own != null && (
             <details className="pp-more-d">
               <summary>Details</summary>
