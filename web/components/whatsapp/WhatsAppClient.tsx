@@ -80,18 +80,19 @@ export default function WhatsAppClient({ leadId, phone }: { leadId: string | nul
   const filled = whatsappFields(lead).map((f) => LABEL[f] ?? f.replace(/_/g, " "));
   const who = lead.customer_name?.split(" ")[0] || "Client";
   let chip;
+  const noPhone = !tel;
+  const askBtn = (
+    <span className={s.wrap} title={noPhone ? "No phone number on this lead" : undefined}>
+      <button type="button" className={s.chip} aria-disabled={noPhone || busy || state === "open"} aria-busy={busy} onClick={ask}>
+        <Glyph />{busy ? <span className="b-skel" aria-label="Sending" style={{ display: "inline-block", width: 96, height: 12 }} /> : "WhatsApp client"}
+      </button>
+    </span>
+  );
   if (idle) {
-    const noPhone = !tel;
-    chip = (
-      <span className={s.wrap} title={noPhone ? "No phone number on this lead" : undefined}>
-        <button type="button" className={s.chip} aria-disabled={noPhone || busy} aria-busy={busy} onClick={ask}>
-          <Glyph />{busy ? <span className="b-skel" aria-label="Sending" style={{ display: "inline-block", width: 96, height: 12 }} /> : "WhatsApp client"}
-        </button>
-      </span>
-    );
+    chip = askBtn;
   } else {
     const label = state === "open" ? "Asking on WhatsApp" : dryRun ? "Dry run" : "Answered on WhatsApp";
-    chip = (
+    chip = (<>{askBtn}
       <details className={s.wrap}>
         <summary className={`${s.chip} ${state === "open" ? s.on : ""}`}>
           {state === "open" && <span className={s.dot} aria-hidden />}
@@ -110,7 +111,7 @@ export default function WhatsAppClient({ leadId, phone }: { leadId: string | nul
           {filled.length > 0 && <p className={s.filled}>Filled: {filled.join(", ")}</p>}
           {dryRun && <button type="button" className="btn ghost" onClick={ask} disabled={busy}>Dry run again</button>}
         </div>
-      </details>
+      </details></>
     );
   }
   return <>{chip}{err && <Err err={err} />}</>;
