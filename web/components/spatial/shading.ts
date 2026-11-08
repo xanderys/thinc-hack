@@ -1,16 +1,16 @@
-// Shading layer for the three.js scene: a tint over each chosen module by its solar access (lib/shading.ts),
-// the % on each module once it is big enough on screen (on tap at phone width), and edge lengths on the roof faces in 3D.
+// Shading layer for the three.js scene: a tint over each chosen module by its solar access (lib/shading.ts), each
+// module's shading loss in % once it is big enough on screen, and the roof faces' edge lengths, in 3D and on the plan.
 // The scene tags each module group with { plane, idx, cs, n } in setPanels and calls frame() once per render.
 import * as THREE from "three";
 import type { RoofPlane, V3 } from "./types";
 import { shadeRgb, shareAt, type ShadeAt, type Shading } from "@/lib/shading";
 
 const toV = ([x, y, z]: V3) => new THREE.Vector3(x, z, -y);
-const NARROW = 520;   // px: at phone width the % shows on tap only
-const MIN_PX = 44;    // a module narrower than this on screen gets no %
+const NARROW = 520;   // px: phone width, smaller figures
+// Every module gets its %, the biggest losses first; a figure that would touch one already shown waits for a closer view.
 // Inline, so they win over the scene's boxed label style: plain figures on the drawing, like the plan's lengths.
-const PCT_CSS = "position:absolute;left:0;top:0;padding:0;border:0;background:none;box-shadow:none;font:600 10px/1 var(--font-sans),sans-serif;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.55);white-space:nowrap;";
-const EDGE_CSS = "position:absolute;left:0;top:0;padding:1px 4px;border:0;border-radius:4px;background:rgba(255,255,255,.88);box-shadow:none;font:500 10.5px/1.2 var(--font-sans),sans-serif;font-variant-numeric:tabular-nums;color:#0A0C14;white-space:nowrap;";
+const PCT_CSS = "position:absolute;left:0;top:0;padding:0;border:0;background:none;box-shadow:none;font:600 var(--sp-pct-size,10px)/1 var(--font-sans),sans-serif;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.55);white-space:nowrap;";
+const EDGE_CSS = "position:absolute;left:0;top:0;padding:0 3px;border:0;border-radius:3px;background:rgba(255,255,255,.82);box-shadow:none;font:500 9.5px/1.3 var(--font-sans),sans-serif;font-variant-numeric:tabular-nums;color:#0A0C14;white-space:nowrap;";
 
 type Mod = { key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; centre: THREE.Vector3; a: THREE.Vector3; b: THREE.Vector3; el: HTMLDivElement; has?: boolean };
 type Edge = { at: THREE.Vector3; el: HTMLDivElement; len: number; w?: number; h?: number };
@@ -85,7 +85,7 @@ export class ShadeLayer {
       if (v != null) {
         const [r, g, b] = shadeRgb(v);
         m.mat.color.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
-        m.el.textContent = `${Math.round(v * 100)} % sun`;
+        m.el.textContent = `${Math.round((1 - v) * 100)} %`;   // the module's shading loss at that moment
       }
     });
   }
@@ -126,21 +126,27 @@ export class ShadeLayer {
       this.mods.forEach((m) => { m.mat.opacity = 0.9 * this.k; m.mesh.visible = !!m.has && this.k > 0.002; });
     }
     const narrow = width < NARROW;
-    this.mods.forEach((m) => {
-      const show = this.on && m.mesh.visible && (narrow ? this.picked === m.key : true);
+    const size = narrow ? "8.5px" : "10px";
+    if (this.overlay && this.overlay.style.getPropertyValue("--sp-pct-size") !== size) this.overlay.style.setProperty("--sp-pct-size", size);
+    const taken: { x0: number; x1: number; y0: number; y1: number }[] = [];
+    const loss = (m: Mod) => (m.el.textContent ? parseInt(m.el.textContent, 10) || 0 : 0);
+    [...this.mods].sort((a, b) => loss(b) - loss(a)).forEach((m) => {
+      const show = this.on && m.mesh.visible;
       if (!show) { if (m.el.style.visibility !== "hidden") m.el.style.visibility = "hidden"; return; }
       m.mesh.updateWorldMatrix(true, false);
-      const c = m.centre.clone().applyMatrix4(m.mesh.matrixWorld), p = project(c);
-      const A = project(m.a.clone().applyMatrix4(m.mesh.matrixWorld)), B = project(m.b.clone().applyMatrix4(m.mesh.matrixWorld));
-      const big = Math.hypot(A.x - B.x, A.y - B.y) >= MIN_PX || (narrow && this.picked === m.key);
-      m.el.style.visibility = p.ok && big ? "visible" : "hidden";
+      const p = project(m.centre.clone().applyMatrix4(m.mesh.matrixWorld));
+      const w = narrow ? 18 : 22, h = narrow ? 9 : 11;
+      const r = { x0: p.x - w / 2, x1: p.x + w / 2, y0: p.y - h / 2, y1: p.y + h / 2 };
+      const free = p.ok && (this.picked === m.key || !taken.some((q) => r.x0 < q.x1 + 1 && q.x0 < r.x1 + 1 && r.y0 < q.y1 + 1 && q.y0 < r.y1 + 1));
+      if (free) taken.push(r);
+      m.el.style.visibility = free ? "visible" : "hidden";
       m.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)`;
     });
-    // Edge lengths only on the 2D plan, where they read as a drawing; in 3D the faces carry one chip each.
+    // Edge lengths on the roof faces wherever shading shows (the Panels view), small, like a drawing's dimensions.
     // They never stack: longest first, a tag that would touch one already shown stays hidden.
-    const shown: { x0: number; x1: number; y0: number; y1: number }[] = [];
+    const shown = [...taken];
     [...this.edges].sort((a, b) => b.len - a.len).forEach((e) => {
-      const show = this.on && mode === "2d";
+      const show = this.on;
       if (!show) { if (e.el.style.visibility !== "hidden") e.el.style.visibility = "hidden"; return; }
       const p = project(e.at);
       if (!e.w) { e.w = e.el.offsetWidth || 36; e.h = e.el.offsetHeight || 14; }

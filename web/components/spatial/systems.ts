@@ -1,7 +1,8 @@
 // Per-system layers on the model, driven by one call: scene.setSystem("panels" | "battery" | "wallbox" | "heatpump" | null).
 // Panels: the sun path over the house, the sun where the shading scrubber says (noon when it says nothing).
 // Battery: energy flowing roof to battery to house across a looping day (dots along pipes in the component colours).
-// Wallbox: the car arrives at the drive and charges overnight (dots from the house to the wallbox to the car).
+// Wallbox: the car arrives at the drive, the cable reaches it, and it charges overnight (dots from the house to the
+// wallbox to the car).
 // Heat pump: the envelope x-ray (xray.ts). Each system flies to its stage pose; the kit never changes (the panels,
 // their count and the design stay exactly as they are). Nothing here calls the engine.
 // Motion: the day clock runs linearly in a loop (a progress loop, the one place linear belongs); the car arrives on
@@ -11,6 +12,7 @@ import * as THREE from "three";
 import { POSES, springStep, type Pose } from "./camera";
 import type { ShadeAt } from "@/lib/shading";
 import type { Envelope } from "./types";
+import { CAR, CAR_PORT, WALLBOX, WALLBOX_OUTLET, cable, car } from "./kitMeshes";
 
 export type System = "panels" | "battery" | "wallbox" | "heatpump";
 
@@ -23,7 +25,7 @@ const DOT_R = 0.32;      // metres: about 6 px at the storage pose
 type V = THREE.Vector3;
 type Host = {
   scene: THREE.Scene; box: THREE.Box3; anchors: { roof: V; home: V; batt: V; grid: V };
-  sunGroup: THREE.Group; sunDot: THREE.Mesh; kit: THREE.Group; batteryBox: THREE.Mesh; wallbox: THREE.Mesh | null;
+  sunGroup: THREE.Group; sunDot: THREE.Mesh; kit: THREE.Group; batteryBox: THREE.Mesh; wallbox: THREE.Object3D | null; wbOn: boolean;
   panels: THREE.Group; opts: { reduce?: boolean }; shade: { at?: ShadeAt };
   sunPos: (h: number) => V; flyTo: (p: Pose) => void; xray: { set: (e: Envelope | null) => unknown };
   setLabels: (l: unknown[]) => void;
@@ -39,10 +41,10 @@ class Pipe {
   readonly line: THREE.Line;
   readonly dots: THREE.InstancedMesh;
   private u = 0;
-  constructor(private curve: THREE.Curve<V>, color: THREE.Color) {
+  constructor(private curve: THREE.Curve<V>, color: THREE.Color, r = DOT_R) {
     const g = new THREE.BufferGeometry().setFromPoints(curve.getPoints(48));
     this.line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: PIPE, transparent: true, opacity: 0.55 }));
-    this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(DOT_R, 10, 8), new THREE.MeshBasicMaterial({ color }), DOTS);
+    this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(r, 10, 8), new THREE.MeshBasicMaterial({ color }), DOTS);
     this.dots.frustumCulled = false;
     this.step(0, 0);
   }
@@ -83,6 +85,7 @@ export class Systems {
   private charge = new THREE.Group();
   private pipes: Partial<Record<"pvHome" | "pvBatt" | "battHome" | "gridBox" | "boxCar", Pipe>> = {};
   private car = new THREE.Group();
+  private plug: THREE.Mesh | null = null; // the charging cable from the wallbox to the parked car
   private carAt = new THREE.Vector3(); private carV = new THREE.Vector3(); private carGoal = new THREE.Vector3();
   private carMoving = false;
   private h = 6; private soc = 0.2;
@@ -101,26 +104,36 @@ export class Systems {
     this.onTop = false; // new panel meshes: override() applies the Heat pump draw order again
     Object.values(this.pipes).forEach((p) => p?.dispose());
     this.pipes = {};
-    this.battery.clear(); this.charge.clear(); this.car.clear();
+    this.battery.clear(); this.charge.clear(); // the car is disposed and rebuilt below
     const { anchors: A, box } = this.host;
     if (box.isEmpty()) return;
     const home = A.home.clone().setY(0.6);
-    const mk = (k: keyof Systems["pipes"], c: THREE.Curve<V>, col: THREE.Color, into: THREE.Group) => { const p = new Pipe(c, col); this.pipes[k] = p; into.add(p.line, p.dots); };
+    const mk = (k: keyof Systems["pipes"], c: THREE.Curve<V>, col: THREE.Color, into: THREE.Group, r = DOT_R) => { const p = new Pipe(c, col, r); this.pipes[k] = p; into.add(p.line, p.dots); return p; };
     mk("pvHome", route(A.roof, home, box), SOLAR, this.battery);
     mk("pvBatt", route(A.roof, A.batt.clone().setY(1.2), box, 0.55), SOLAR, this.battery);
     mk("battHome", straight(A.batt.clone().setY(1.2), home, 0.75), BATT, this.battery);
 
-    // The car: a plain massing model in the paper palette, parked alongside the wallbox by the drive.
-    const L = 4.4, W = 1.8, body = new THREE.Mesh(new THREE.BoxGeometry(W, 0.75, L), new THREE.MeshLambertMaterial({ color: "#d9dce6" }));
-    body.position.y = 0.55;
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(W * 0.9, 0.55, L * 0.5), new THREE.MeshLambertMaterial({ color: "#c3c8d6" }));
-    cabin.position.set(0, 1.2, -0.2);
-    [body, cabin].forEach((m) => m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: "#0A0C14", transparent: true, opacity: 0.5 }))));
-    this.car.add(body, cabin);
-    this.carGoal.set(box.max.x + 0.4 + W / 2 + 0.3, 0, box.max.z - 1.5);
-    const wb = this.host.wallbox?.position.clone() ?? new THREE.Vector3(box.max.x + 0.12, 1.3, box.max.z - 1.5);
-    mk("gridBox", straight(A.home.clone().setY(1.2).setX(box.max.x - 0.2), wb, 1.2), EV, this.charge);
-    mk("boxCar", straight(wb, this.carGoal.clone().setY(0.9).setX(this.carGoal.x - W / 2 + 0.1), 0.9), EV, this.charge);
+    // The car (kitMeshes.ts): a low-poly hatchback parked on the drive beside the wallbox, nose to the north, its
+    // charging flap level with the wall unit. The cable runs from the unit down the wall and across to the flap.
+    this.car.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); (m.material as THREE.Material | undefined)?.dispose?.(); });
+    this.car.clear();
+    this.car.add(car());
+    const wbObj = this.host.wallbox;
+    wbObj?.updateWorldMatrix(true, false);
+    const out = wbObj ? WALLBOX_OUTLET.clone().applyMatrix4(wbObj.matrixWorld) : new THREE.Vector3(box.max.x + 0.1, 1.05, box.max.z - 1.5);
+    this.carGoal.set(out.x + 0.9 + CAR.w / 2, 0, out.z - CAR_PORT.z);
+    const port = this.carGoal.clone().add(CAR_PORT);
+    // Power reaches the unit from inside: the house pipe stops in the wall behind it, and the car's dots run along
+    // the cable itself, small enough to sit on it, starting below the unit, so nothing covers the wallbox.
+    const P = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    const c = wbObj ? wbObj.position : out, behind = P(c.x - WALLBOX.d / 2 - 0.2, c.y + WALLBOX.h / 2, c.z); // inside, behind the unit
+    mk("gridBox", straight(A.home.clone().setY(1.2).setX(box.max.x - 0.2), behind, 1.2), EV, this.charge, 0.12);
+    // The cable: from the holster's foot straight down the wall a hand's width out, along the drive, up to the flap.
+    const path = [out, P(out.x + 0.06, out.y - 0.25, out.z), P(out.x + 0.08, 0.2, out.z), P(out.x + 0.3, 0.03, out.z), P(port.x - 0.4, 0.03, port.z), P(port.x - 0.12, 0.45, port.z), port];
+    mk("boxCar", new THREE.CatmullRomCurve3(path.slice(2)), EV, this.charge, 0.09).line.visible = false;
+    if (this.plug) { this.plug.removeFromParent(); this.plug.geometry.dispose(); (this.plug.material as THREE.Material).dispose(); }
+    this.plug = cable(path, 0.02);
+    this.g.add(this.plug);
     this.place(this.sys === "wallbox");
   }
 
@@ -130,6 +143,14 @@ export class Systems {
     else { this.carAt.copy(this.carGoal).add(new THREE.Vector3(0, 0, 12)); this.carMoving = true; }
     this.carV.set(0, 0, 0);
     this.car.position.copy(this.carAt);
+    this.plugged();
+  }
+  // The cable reaches the car once it is parked in the Wallbox view; until then it hangs in its loop on the unit.
+  private plugged() {
+    const on = this.sys === "wallbox" && !this.carMoving && this.host.wbOn;
+    if (this.plug) this.plug.visible = on;
+    const loop = this.host.wallbox?.getObjectByName("loop");
+    if (loop) loop.visible = !on;
   }
 
   set(sys: System | null) {
@@ -147,22 +168,20 @@ export class Systems {
     if (pose) H.flyTo(pose);
   }
 
-  // The design has a wallbox: the car and its charging line come with it.
-  wb = true;
-  setWb(on: boolean) { this.wb = on; this.charge.visible = this.car.visible = this.sys === "wallbox" && on; }
   // Applied after the scene's own show(): what each system must have on screen. The panels are never touched.
   override() {
     const H = this.host, s = this.sys;
     this.battery.visible = s === "battery";
-    this.charge.visible = s === "wallbox" && this.wb;
-    this.car.visible = s === "wallbox" && this.wb;
+    this.charge.visible = s === "wallbox" && H.wbOn;
+    this.car.visible = s === "wallbox" && H.wbOn;
     if (H.batteryBox) H.batteryBox.visible = s !== "wallbox" && s !== "panels" && s !== "heatpump";
     if (!s) { this.panelsOnTop(false); return; }
     H.panels.visible = true; // the kit is the same in every system
     this.panelsOnTop(s === "heatpump");
     H.sunGroup.visible = s === "panels" || s === "battery";
     H.kit.visible = s === "battery" || s === "wallbox";
-    if (H.wallbox) H.wallbox.visible = s === "wallbox" ? true : H.wallbox.visible;
+    if (H.wallbox) H.wallbox.visible = H.wbOn;
+    this.plugged();
   }
 
   // Heat pump: the x-ray roof fill sits 3 cm under the modules and wins the depth fight, and the far roof face hides its
@@ -206,6 +225,7 @@ export class Systems {
       if (this.carMoving) {
         this.carMoving = !springStep(this.carAt, this.carV, this.carGoal, dt);
         this.car.position.copy(this.carAt);
+        if (!this.carMoving) this.plugged();
       }
       // Charging runs once the car is in: overnight, from the house through the wallbox into the car.
       const rate = this.carMoving ? 0 : 0.8;
@@ -217,6 +237,7 @@ export class Systems {
   dispose() {
     Object.values(this.pipes).forEach((p) => p?.dispose());
     this.car.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); (m.material as THREE.Material | undefined)?.dispose?.(); });
+    if (this.plug) { this.plug.geometry.dispose(); (this.plug.material as THREE.Material).dispose(); }
     this.g.removeFromParent();
   }
 }

@@ -3,10 +3,10 @@
 import type { Design } from "@/lib/api";
 import KitSheet from "@/components/offer/KitSheet";
 
-export default function KitSlot({ design, total, modules }: { design: Design | null; total?: number | null; modules?: number | null }) {
+export default function KitSlot({ design, total, modules, assumptions }: { design: Design | null; total?: number | null; modules?: number | null; assumptions?: string[] | null }) {
   return (
     <div className="hk-slot" aria-hidden={design ? undefined : true}>
-      {design && <KitSheet kit={{ ...design, modules: modules ?? null }} total={total} />}
+      {design && <KitSheet kit={{ ...design, modules: modules ?? null }} total={total} assumptions={assumptions} />}
     </div>
   );
 }

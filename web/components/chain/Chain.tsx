@@ -2,6 +2,7 @@
 // The open card's reasoning chain: the house is the hero for the whole page, eight stages build on it.
 // Each stage adds one sentence to the rail, a working-shown bar or check list where the engine has one,
 // and moves the camera to the part of the house it explains. A change re-runs the chain from the stage it moved.
+import { call } from "@/lib/client";
 import { isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
@@ -16,7 +17,6 @@ import type { Variant } from "@/components/stage/Plan";
 import House from "@/components/stage/House";
 import Why from "@/components/stage/Why";
 import s from "./chain.module.css";
-import WhatsAppClient from "@/components/whatsapp/WhatsAppClient";
 import OfferPanel, { type OfferProps } from "@/components/offer/OfferPanel";
 import ShadingPanel from "@/components/spatial/ShadingScrubber";
 import { EnvelopeBar, HeatPumpStep } from "@/components/spatial/EnvelopeBar";
@@ -99,6 +99,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const [moved, setMoved] = useState<Set<number>>(new Set());
   const [spatial, setSpatial] = useState<boolean | null>(null);
   const [heatmap, setHeatmap] = useState(false);
+  // Panels: the sun heatmap is the roof layer under the modules, on by default; elsewhere the heatmap is its own layer.
+  const [panelHeat, setPanelHeat] = useState(true);
   const [why, setWhy] = useState<{ k: ComponentKey; level: number } | null>(null);
   const [whyStep, setWhyStep] = useState<number | null>(null);
   const lastLayers = useRef<Layers | null>(null);
@@ -151,8 +153,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   useEffect(() => {
     if (!flat) return;
     const ac = new AbortController();
-    fetch("/api/explain/layers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ inputs: { ...inputs, ...(address ? { address } : {}) }, design: res.design, ...(leadId ? { lead_id: leadId } : {}) }), signal: ac.signal })
-      .then((r) => (r.ok ? r.json() : null)).then((l) => { if (l) onLayers(l as Layers); }).catch(() => {});
+    // call() asks again quietly (2, 4, 8 s) when the engine is slow or answers 502; the canvas keeps its skeleton meanwhile.
+    call<Layers>("/api/explain/layers", { inputs: { ...inputs, ...(address ? { address } : {}) }, design: res.design, ...(leadId ? { lead_id: leadId } : {}) }, ac.signal)
+      .then((r) => { if (r.ok) onLayers(r.data); }).catch(() => {});
     return () => ac.abort();
   }, [flatKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -200,7 +203,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   useEffect(() => { if (FIVE && !onPanels) setShadeOn(false); }, [onPanels]);
   // The planner's pick on the model (3D or Photo over the plan) holds until the stage changes.
   const [pick, setPick] = useState<{ stage: number; layer: number } | null>(null);
-  const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : (SYS ? [3, 5, 5, hasEnv ? 7 : 3, 3] : FIVE ? [3, 5, 5, hasEnv ? 7 : 1, 3] : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, 3, 3])[stage - 1];
+  const heatLayer = heatmap && !onPanels;
+  const layer = heatLayer ? 2 : pick && pick.stage === stage ? pick.layer : (SYS ? [3, 5, 5, hasEnv ? 7 : 3, 3] : FIVE ? [3, 5, 5, hasEnv ? 7 : 1, 3] : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, 3, 3])[stage - 1];
   const bars = useMemo(() => Object.fromEntries((layers?.bars ?? []).map((b) => [BAR_AT[b.key], b])) as Record<number, Bar>, [layers]);
   // The four numbers come from the same run as the bars and checks when it is in; the design's own until then.
   const d0 = res.design as unknown as Record<string, unknown>;
@@ -291,7 +295,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   const tools = ({ view: v, setView, recentre, photo, zoom, north }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void }; zoom?: { can: { in: boolean; out: boolean }; by: (d: 1 | -1) => void }; north?: ReactNode }) => (
     <div className={s.toolbar} role="toolbar" aria-label="Model" data-cover>
-      <LayersMenu className={s.tb} up heatmap={{ on: heatmap, set: setHeatmap }} />
+      <LayersMenu className={s.tb} up heatmap={onPanels ? { on: panelHeat, set: setPanelHeat } : { on: heatmap, set: setHeatmap }} />
       {/* Reset view: back to the selected chip's pose (or the opening view) on the camera spring. View only: design Undo lives beside Approve. */}
       <button type="button" className={s.tb} onClick={recentre} title="Reset view" aria-label="Reset view"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
       <button type="button" className={s.tb} aria-pressed={expanded} title="Reasoning" aria-label="Reasoning" onClick={() => { setAuto(false); setExpanded((x) => !x); }}>
@@ -303,8 +307,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       </>}
       {north && <span className="tb-north">{north}</span>}
       <div className={s.seg} role="group" aria-label="View">
-        <button type="button" aria-pressed={v === "2d"} onClick={() => setView("2d")}>2D</button>
-        <button type="button" aria-pressed={v === "3d" && !photo?.on} onClick={() => setView("3d")}>3D</button>
+        <button type="button" aria-pressed={v === "2d"} onClick={() => { photo?.set(false); setView("2d"); }}>2D</button>
+        <button type="button" aria-pressed={v === "3d" && !photo?.on} onClick={() => { photo?.set(false); setView("3d"); }}>3D</button>
         {photo && <button type="button" aria-pressed={photo.on} onClick={() => photo.set(true)}>Photo</button>}
       </div>
     </div>
@@ -484,7 +488,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const cardNow = sysNow ? sysBody[sysNow] : null;
   const sysCard = sysNow && cardNow && (
     <SystemCard sys={sysNow} head={cardNow.head} label={cardNow.label} info={cardNow.info} pending={!!pending || !fresh}
-      extraLabel={shading ? <>Shading <b>{n1(shading.total.shade_share * 100)} %</b> <span className="sc-sub">{n0(shading.total.loss_kwh_year)} kWh a year</span></> : "Shading"} onMore={(o) => { if (!o) setShadeOn(false); }} extra={sysNow === "panels" && address && spatial !== false ? <ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /> : undefined}>
+      extra={sysNow === "panels" && address && spatial !== false ? <ShadingPanel address={address} kwp={d.pv_kwp} solarStage start={{ m: 6, h: 11 }} compact /> : undefined}>
       {cardNow.body}
     </SystemCard>
   );
@@ -501,8 +505,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   return (
     <div className={`${s.root} ${expanded ? "" : s.isCollapsed} ${SYS ? "sys-on" : ""}`} ref={rootRef}>
-      {/* WhatsApp copilot (v2.14): portals into the facts row above when it is there. */}
-      <WhatsAppClient leadId={leadId ?? null} />
       {/* The step strip: on a phone it is always there, pinned under the house; a tap moves the camera and scrolls
           to that step's card. On desktop it stands in for the cards when the eye folds them. */}
 
@@ -522,8 +524,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
       <div ref={heroRef} className={`${s.hero} ${onPanels && shading ? s.heroTall : ""}`}>
         {address && spatial !== false ? (
-          <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatmap ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
-            onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && !shading && !heatmap}
+          <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatLayer ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
+            onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && panelHeat}
             edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); dp.setOverride?.(f, v); } } : undefined}>
             {overlays}
           </SpatialDemo>
@@ -652,9 +654,9 @@ function Offer({ res }: { res: DesignResponse }) {
   const discharged = (a as { battery_discharged_kwh?: number }).battery_discharged_kwh ?? 0;
   const direct = Math.max(0, a.pv_yield_kwh - charged - a.fed_in_kwh);
   const flows = { direct, charged, fed: a.fed_in_kwh, discharged, imp: a.grid_import_kwh };
-  // Engine v2.7: cumulative series, or the yearly one summed here.
-  const ce = e as unknown as { cashflow_cumulative_eur?: number[]; cashflow_yearly_eur?: number[] };
-  const cash = ce.cashflow_cumulative_eur?.length ? ce.cashflow_cumulative_eur : ce.cashflow_yearly_eur?.reduce<number[]>((o, x) => [...o, (o.at(-1) ?? 0) + x], []);
+  // The engine's own cumulative series only (it carries the battery replacement); never a sum of the yearly flows here.
+  const ce = e as unknown as { cashflow_cumulative_eur?: number[] };
+  const cash = ce.cashflow_cumulative_eur?.length ? ce.cashflow_cumulative_eur : null;
   return (
     <div className={s.offer}>
       <div className={s.two}>

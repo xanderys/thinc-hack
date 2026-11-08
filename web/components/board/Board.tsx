@@ -14,7 +14,7 @@ import HousePhoto from "./HousePhoto";
 import ModelThumb from "./ModelThumb";
 import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
 import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
-import { PAST_LINE } from "@/components/proposal/Proposal";
+import { pastLine } from "@/lib/past";
 import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
 
 // The facts count is the verdict chip's tooltip, never part of the line.
@@ -25,7 +25,7 @@ const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 
 type Kept = NonNullable<ReturnType<typeof recallVerdict>>;
-type Card = { id: string; name: string; place: string; status: LeadT["status"]; updated: string; design?: Design; line: string; created?: string; decision?: LeadRow["decision"]; q: Kept | null };
+type Card = { id: string; name: string; place: string; status: LeadT["status"]; label?: string; updated: string; design?: Design; line: string; created?: string; decision?: LeadRow["decision"]; q: Kept | null };
 /** What the lead stands on: the approved design and its economics once approved or signed, else the stored draft. */
 const standing = (l: LeadT): DesignResponse => l.approved?.design ? { ...l.draft, design: l.approved.design, economics: l.approved.economics ?? l.draft.economics } : l.draft;
 
@@ -34,7 +34,7 @@ const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
 const isPc = (x?: string | null) => !x || /^\s*\d{5}\s*$/.test(x);
 type LiveRow = { lead_id?: string | null; status: string; started_at: number | null; customer_name?: string | null; address_or_postcode?: string | null };
 
-const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "Draft", approved: "Approved", signed: "Signed", declined: "Declined", question: "Question" };
+const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "Draft", approved: "Complete", sent: "Sent", signed: "Signed", declined: "Declined", question: "Question" };
 const DECIDED = new Set(["signed", "declined", "question"]);
 const hm = (iso?: string | null) => iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
 // Enquiry to decision, in the largest unit that reads well.
@@ -171,7 +171,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
     const out = (rows ?? []).map((r) => {
       const ext = r as LeadRow & { updated_at?: string };
       const d = designs[r.lead_id]?.d;
-      return { id: r.lead_id, name: r.customer_name ?? r.title.split(",")[0], place: r.address_or_postcode ?? "", status: r.status, updated: ext.updated_at ?? r.created_at ?? "", design: d, line: lineOf(d, r.title), created: r.created_at, decision: r.decision, q: verdicts[r.lead_id] ?? kept[r.lead_id] ?? null };
+      return { id: r.lead_id, name: r.customer_name ?? r.title.split(",")[0], place: r.address_or_postcode ?? "", status: r.status, label: r.status_label, updated: ext.updated_at ?? r.created_at ?? "", design: d, line: lineOf(d, r.title), created: r.created_at, decision: r.decision, q: verdicts[r.lead_id] ?? kept[r.lead_id] ?? null };
     });
     const isLive = (c: Card) => !!live[c.id] || c.status === "in_call";
     return [...out.filter(isLive), ...out.filter((c) => !isLive(c))];
@@ -292,7 +292,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
               if (!openCard && !calling && !ll) return null;
               const base = openCard?.status ?? ll?.status ?? "draft";
               const st = calling ? "in_call" : DECIDED.has(base) || base === "approved" ? base : approved[openId] ? "approved" : base;
-              return <span className={`b-st b-chip ${st}`}>{STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${hm(openCard.decision?.decided_at)}` : ""}</span>;
+              return <span className={`b-st b-chip ${st}`}>{(st === base && (openCard?.label ?? ll?.status_label)) || STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${hm(openCard.decision?.decided_at)}` : ""}</span>;
             })()}
           </div>
           <p className="b-l2">{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
@@ -335,7 +335,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
             <li key={c.id}>
               <button type="button" className={lv ? "b-card live" : "b-card"} style={{ viewTransitionName: `card-${c.id}` }} onClick={() => open(c.id)}>
                 {lv && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
-                <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{STATUS[st]}</span>{c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
+                <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{st === c.status && c.label ? c.label : STATUS[st]}</span>{c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
                 <span className="b-name">{c.name}</span>
                 <span className="b-place">{c.place}</span>
                 {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><ModelThumb lead={designs[c.id]?.lead} design={c.design} /></span>}
@@ -344,7 +344,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
                 {c.q ? <span className={`${qs.cardValue} num`}>{offerEur(c.q.expected_offer_eur)}</span> : !lv && <span className="b-skel b-skel-line short" aria-hidden />}
                 {c.q && c.q.verdict !== "visit" && <span className={qs.cardWhy}>{reasonOf(c.q)}</span>}
                 {dec && <span className={`b-dec ${c.status}`}>{STATUS[c.status]} {hm(dec.decided_at)}{c.status === "signed" && span(c.created, dec.decided_at) ? `, ${span(c.created, dec.decided_at)} from enquiry` : ""}</span>}
-                {dec && c.status === "signed" && <span className="b-today">{PAST_LINE}</span>}
+                {dec && c.status === "signed" && pastLine(designs[c.id]?.lead?.facts.installer_id) && <span className="b-today">{pastLine(designs[c.id]?.lead?.facts.installer_id)}</span>}
                 {dec && dec.matches_current === false && <span className="b-warn">Signed a different version than the one on file</span>}
               </button>
             </li>

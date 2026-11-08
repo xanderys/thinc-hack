@@ -42,8 +42,8 @@ export default function Refine(p: Props) {
       <div className="s-decide">
         <button className="btn ghost" onClick={p.onUndo} disabled={!p.canUndo}>Undo</button>
         {p.approvedAt
-          ? <span className="s-approved s-mark">Approved {p.approvedAt}<a href="/check">See what really happened</a></span>
-          : <button className="btn" onClick={p.onApprove}>Approve</button>}
+          ? <span className="s-approved s-mark">Complete<a href="/check">See what really happened</a></span>
+          : <button className="btn" onClick={p.onApprove}>Complete</button>}
       </div>
     </section>
   );

@@ -1,6 +1,6 @@
 // Usage: <KitSheet kit={design} total={economics.capex_eur} /> on any surface (planner Offer panel, homeowner pages).
 //   kit: the design's sizes (pv_kwp, inverter_kw, battery_kwh, wallbox_kw, heatpump_kw), plus modules when the roof layout knows the count.
-//   total: capex in euros, shown once as an estimate; omit it (or null) and the total line is left out. note: one small line under it.
+//   total: capex in euros, shown once as an estimate; assumptions: the engine's economics.assumptions, for the rate card "i" on it; omit it (or null) and the total line is left out. note: one small line under it.
 //   edit (planner only): (field, label, content) => node, wraps a row's name and spec in a control such as InlineOverride; omit for read-only.
 //   info (optional): per field, an "i" popover at the row's end (planner: DC/AC ratio on the inverter).
 //   changed + flash (optional): parts that just changed ring once; bump flash to ring again.
@@ -9,6 +9,7 @@
 import type { ReactNode } from "react";
 import { eur, n1, type Part } from "./format";
 import Num from "./Num";
+import RateCard from "./RateCard";
 import s from "./kitSheet.module.css";
 
 export type KitSheetKit = {
@@ -21,8 +22,8 @@ const MODULE_KWP = 0.45;   // the engine's standard module when the layout gives
 
 type Row = { key: string; field?: KitField; part?: Part; qty: number; name: string; spec?: string; icon: ReactNode };
 
-export default function KitSheet({ kit, total, note, edit, info, changed, flash = 0, className }: {
-  kit: KitSheetKit; total?: number | null; note?: string; info?: Partial<Record<KitField, ReactNode>>; edit?: (f: KitField, label: string, content: ReactNode) => ReactNode;
+export default function KitSheet({ kit, total, assumptions, note, edit, info, changed, flash = 0, className }: {
+  kit: KitSheetKit; total?: number | null; assumptions?: string[] | null; note?: string; info?: Partial<Record<KitField, ReactNode>>; edit?: (f: KitField, label: string, content: ReactNode) => ReactNode;
   changed?: Part[]; flash?: number; className?: string;
 }) {
   const rows: Row[] = [];
@@ -55,7 +56,7 @@ export default function KitSheet({ kit, total, note, edit, info, changed, flash 
         ))}
       </ol>
       {total != null && rows.length > 0 && (
-        <p className={s.total}><span>Total</span><b><Num v={eur(total)} /></b><em>estimate</em></p>
+        <p className={s.total}><span>Total</span><b><Num v={eur(total)} /></b><em>estimate</em>{assumptions && <RateCard design={kit} total={total} assumptions={assumptions} modules={kit.modules} />}</p>
       )}
       {note && total != null && rows.length > 0 && <p className={s.note}>{note}</p>}
     </div>
