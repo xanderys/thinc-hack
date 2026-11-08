@@ -15,12 +15,12 @@ import ModelThumb from "./ModelThumb";
 import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
 import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
 import { pastLine } from "@/lib/past";
-import { berlinStamp } from "@/lib/time";
 import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
 
 // The facts count is the verdict chip's tooltip, never part of the line.
 const factsTip = (q: { facts?: { stated: number; total: number }; confidence_line?: string }) => `${q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : q.confidence_line?.split(",")[0] ?? ""}. Estimates until the site visit.`.replace(/^\. /, "");
 import qs from "@/components/qualify/qualify.module.css";
+import { berlinStamp, berlinTime } from "@/lib/time";
 
 const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
@@ -37,7 +37,7 @@ type LiveRow = { lead_id?: string | null; status: string; started_at: number | n
 
 const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "Draft", approved: "Complete", sent: "Sent", signed: "Signed", declined: "Declined", question: "Question" };
 const DECIDED = new Set(["signed", "declined", "question"]);
-const hm = (iso?: string | null) => iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
+const hm = (iso?: string | null) => iso ? berlinTime(iso) : "";
 // Enquiry to decision, in the largest unit that reads well.
 function span(from?: string | null, to?: string | null) {
   if (!from || !to) return "";

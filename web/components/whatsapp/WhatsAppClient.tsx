@@ -6,6 +6,7 @@ import { call, send } from "@/lib/client";
 import { useDry } from "@/lib/dry";
 import { LEAD_LIVE, whatsappFields } from "@/lib/whatsapp";
 import s from "./whatsapp.module.css";
+import { berlinTime } from "@/lib/time";
 
 const POLL_MS = 5000;
 const LABEL: Record<string, string> = {
@@ -13,7 +14,7 @@ const LABEL: Record<string, string> = {
   num_inhabitants: "Household", house_size_sqm: "Floor area", house_built_year: "Built", heating_cost_per_year_eur: "Heating cost", heating_demand_kwh: "Heating demand",
   has_wallbox: "Wallbox", has_solar: "Existing solar", existing_solar_kwp: "Existing solar", has_storage: "Existing battery", existing_storage_kwh: "Existing battery",
 };
-const hm = (ts: string) => { const d = new Date(ts); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); };
+const hm = (ts: string) => berlinTime(ts);
 
 function Glyph() {
   return (
