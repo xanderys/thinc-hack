@@ -56,6 +56,7 @@ export default function Blocks({ text, onLead }: { text: string; onLead: (id: st
     }
     const para: string[] = [];
     while (i < lines.length && lines[i].trim() && !lines[i].trim().startsWith("|") && !/^\s*>/.test(lines[i]) && !/^\s*([-*]|\d+\.)\s+/.test(lines[i])) para.push(lines[i++].replace(/^#+\s*/, ""));
+    if (!para.length) para.push(lines[i++]);   // a lone "|" line that is not a table: plain text, never a stall
     out.push(<p key={k++} className={s.p}>{inline(para.join(" "), onLead)}</p>);
   }
   return <>{out}</>;

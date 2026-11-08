@@ -17,6 +17,7 @@
 .busy .field { opacity: 0.5; }
 .busy { animation: breathe 1.6s ease-in-out infinite; }
 @keyframes breathe { 50% { border-color: rgba(55, 75, 230, 0.4); } }
+.box .field:focus, .box .field:focus-visible { outline: none; }
 .rec { border-color: var(--accent); }
 .field { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; font: inherit; font-family: var(--font-sans), sans-serif; font-size: 15px; line-height: 22px; letter-spacing: -0.005em; padding: 7px 6px; max-height: 164px; color: var(--ink); }
 .field::placeholder { color: var(--ink-4); opacity: 1; }

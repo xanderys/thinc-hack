@@ -4,9 +4,12 @@
 // front face towards +z. Lambert boxes in the scene's paper colours, the modules' dark fill as on the roof.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { batteryModules } from "./kitBands";
 
 export const KIT = {
-  paper: "#FAF8F3", // battery housing (the scene's battery colour)
+  paper: "#FAF8F3", // the wallbox housing
+  housing: "#B7B1A5", // battery housing: a mid warm grey that still reads behind the frosted glass walls
+  led: "#24a148",   // the battery modules' status lights (the battery colour)
   slate: "#596070", // inverter housing
   unit: "#E9E6DF",  // heat pump and cabinet housings, a shade darker so they read against the wall
   dark: "#151826",  // module fill and displays, the roof panels' colour
@@ -39,17 +42,20 @@ export function moduleStack(layers: number): THREE.Group {
   return g;
 }
 
-// The battery as it stands beside the house: the scene's 0.9 by 0.6 m footprint. modules = 0 gives the scene's
-// single 1.5 m box (its colour changes when the battery step lights it); 1 to 6 gives a tower of 0.25 m modules
-// under a cap (the parts list's bands, KitSheet.tsx).
+// The battery: a tower of 0.25 m modules on the scene's 0.9 by 0.6 m footprint, one module per band of kWh
+// (kitBands.ts), on a plinth under a cap, standing on y = 0. The scene and the parts-list icon both build it here.
 export const BATTERY = { w: 0.9, h: 1.5, d: 0.6 };
-export function battery(modules = 0): THREE.Mesh | THREE.Group {
-  if (!modules) return box(BATTERY.w, BATTERY.h, BATTERY.d, lam(KIT.paper));
-  const g = new THREE.Group(), body = lam(KIT.paper), seam = lam(KIT.seam), mh = 0.25, sh = 0.018;
+export const batteryHeight = (modules: number) => 0.04 + modules * (0.25 + 0.018) + 0.08;
+export const batteryFor = (kwh: number) => battery(batteryModules(kwh));
+export function battery(modules: number): THREE.Group {
+  const g = new THREE.Group(), body = lam(KIT.housing), seam = lam(KIT.seam), mh = 0.25, sh = 0.018;
+  const led = () => new THREE.MeshBasicMaterial({ color: KIT.led }); // one per light, so a fill level can dim some
   let y = 0.04;
   g.add(box(BATTERY.w - 0.06, 0.04, BATTERY.d - 0.06, seam, 0, 0.02)); // plinth
   for (let i = 0; i < modules; i++) {
     g.add(box(BATTERY.w, mh, BATTERY.d, body, 0, y + mh / 2));
+    const l = box(0.16, 0.025, 0.01, led(), -BATTERY.w / 2 + 0.16, y + mh / 2, BATTERY.d / 2 + 0.005); // status light
+    l.name = "led"; l.userData.i = i; g.add(l);
     y += mh;
     g.add(box(BATTERY.w - 0.04, sh, BATTERY.d - 0.04, seam, 0, y + sh / 2));
     y += sh;
@@ -122,14 +128,14 @@ export function inverter(): THREE.Group {
 }
 
 // The heat pump outdoor unit: a housing on two feet, its fan grille on the left of the front face.
-export const HEATPUMP = { w: 1.0, h: 0.78, d: 0.4 };
+export const HEATPUMP = { w: 1.0, h: 1.2, d: 0.4 }; // a 1.0 x 1.2 x 0.4 m outdoor unit
 export function heatPump(): THREE.Group {
   const g = new THREE.Group(), body = lam(KIT.unit), seam = lam(KIT.seam), foot = 0.08;
   g.add(box(0.08, foot, HEATPUMP.d, seam, -0.36, foot / 2), box(0.08, foot, HEATPUMP.d, seam, 0.36, foot / 2));
   g.add(box(HEATPUMP.w, HEATPUMP.h - foot, HEATPUMP.d, body, 0, foot + (HEATPUMP.h - foot) / 2));
-  const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.02, 40), seam);
+  const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.02, 40), seam);
   fan.rotation.x = Math.PI / 2;
-  fan.position.set(-0.17, foot + (HEATPUMP.h - foot) / 2, HEATPUMP.d / 2 + 0.01);
+  fan.position.set(-0.12, foot + (HEATPUMP.h - foot) * 0.58, HEATPUMP.d / 2 + 0.01);
   const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 24), body);
   hub.rotation.x = Math.PI / 2;
   hub.position.copy(fan.position).setZ(HEATPUMP.d / 2 + 0.02);

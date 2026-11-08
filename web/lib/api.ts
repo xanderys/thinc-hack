@@ -204,7 +204,9 @@ export interface Lead {
   whatsapp?: LeadWhatsApp | null;   // v2.14
   sources?: Record<string, string>;   // v2.14 per fact: "stated" | "estimated" | "whatsapp"
   status_label?: string;
+  blockers?: LeadBlocker[];   // engine, ranked: the facts that move the design most
 }
+export interface LeadBlocker { field: string; label: string; state?: string; moves?: string; delta_eur?: number | null; delta_text?: string; asked_at?: string | null; answered_at?: string | null }
 // v2.14 WhatsApp copilot: one conversation per lead, both directions logged.
 export interface WhatsAppMessage { dir: "out" | "in"; kind?: "text" | "voice" | "dry" | string; text: string; at: string; facts?: Record<string, unknown>; stated?: string[]; unclear?: string[]; transcript?: string | null }
 export interface LeadWhatsApp { state: "open" | "closed" | "none" | "dry" | "superseded" | "expired"; round?: number; open_facts?: { field: string; label?: string; unit?: string }[]; last_error?: string | null; messages: WhatsAppMessage[] }

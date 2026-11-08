@@ -10,7 +10,7 @@
 // 5 s. Reduce Motion: the same opacity fade (a crossfade) and a still glow.
 import * as THREE from "three";
 import type { Envelope, RoofPlane, V3 } from "./types";
-import { elementsOf, type ElementKey } from "@/lib/envelope";
+import { elementsOf, kindOf, type ElementKey } from "@/lib/envelope";
 import { viewOpts } from "./whiteMode";
 
 type P = { x: number; y: number; ok: boolean };
@@ -71,14 +71,14 @@ export class Xray {
   // The glass shell's mesh (world coordinates), for raycasts against the house's own walls while it stands in.
   shellMesh(): THREE.Mesh | null { return this.shell ? (this.sg.children[1] as THREE.Mesh) : null; }
 
-  // env null: fade the x-ray out (the glass shell stays). Returns no on-model labels: the shares live in the card.
-  set(env: Envelope | null): never[] {
+  // env null: fade the x-ray out (the glass shell stays). Returns the three biggest losses as on-model labels.
+  set(env: Envelope | null): { key: string; at: THREE.Vector3; html: string; cls?: string; prio?: number }[] {
     if (!env || !env.faces?.length) { this.goal = 0; return []; }
     // A variant switch hands in an equal envelope as a new object: keep what is drawn.
     const same = (this.env === env || (!!this.env && JSON.stringify(this.env) === JSON.stringify(env))) && this.g.children.length > 0;
     this.env = env; this.goal = 1;
     if (!same) this.build();
-    return [];
+    return this.topLabels(env);
   }
 
   private clear() {
@@ -107,16 +107,46 @@ export class Xray {
     return m;
   }
 
+  // Thermal camera: each element tinted by its loss per square metre (loss_w / area_m2 over its faces) on an infrared
+  // ramp, cold blue to hot white, scaled to the hottest element (usually the windows, which have no mesh of their own
+  // and so set the top of the scale).
   private tints(env: Envelope) {
-    const { list, scale } = elementsOf(env);
-    const share = new Map(list.map((e) => [e.key, e.share]));
+    const w = new Map<ElementKey, number>(), a = new Map<ElementKey, number>();
+    env.faces.forEach((f) => { const k = kindOf(f.kind); if (!k || !(f.area_m2 > 0)) return; w.set(k, (w.get(k) ?? 0) + (f.loss_w || 0)); a.set(k, (a.get(k) ?? 0) + f.area_m2); });
+    const wm2 = new Map<ElementKey, number>([...w].map(([k, x]) => [k, x / (a.get(k) || 1)]));
+    const hi = Math.max(0.01, ...wm2.values());
     const c = (k: ElementKey) => {
-      const s = share.get(k);
-      if (s == null || s <= 0) return null;
-      const [r, g, b] = scale(s);
-      return { col: new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace), s };
+      const v = wm2.get(k);
+      if (v == null || v <= 0) return null;
+      const t = v / hi, [r, g, b] = thermal(t);
+      return { col: new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace), s: t };
     };
-    return { roof: c("roof") ?? c("ceiling"), wall: c("wall"), floor: c("floor"), hi: Math.max(0.01, ...list.map((e) => e.share)) };
+    return { roof: c("roof") ?? c("ceiling"), wall: c("wall"), floor: c("floor"), hi: 1 };
+  }
+
+  // The three elements losing most at the design temperature, as on-model labels in whole kW.
+  private topLabels(env: Envelope) {
+    const w = new Map<ElementKey, number>();
+    env.faces.forEach((f) => { const k = kindOf(f.kind); if (k) w.set(k, (w.get(k) ?? 0) + (f.loss_w || 0)); });
+    const box = this.host.box, cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2, my = (box.min.y + box.max.y) / 2;
+    const AT: Partial<Record<ElementKey, THREE.Vector3>> = {
+      roof: new THREE.Vector3(cx, box.max.y - 0.4, cz), ceiling: new THREE.Vector3(cx, box.max.y - 0.4, cz),
+      wall: new THREE.Vector3(box.max.x, my * 0.6, cz), window: new THREE.Vector3(cx, my * 0.5, box.max.z), floor: new THREE.Vector3(box.min.x, 0.3, box.max.z),
+    };
+    const NAME: Partial<Record<ElementKey, string>> = { roof: "Roof", ceiling: "Ceiling", wall: "Outer walls", window: "Windows", floor: "Floor" };
+    const t = env.design_outdoor_c ?? env.design?.outside_c;
+    return [...w].filter(([k, x]) => AT[k] && x > 0).sort((p, q) => q[1] - p[1]).slice(0, 3).map(([k, x]) => ({
+      key: `heat-${k}`, at: AT[k]!, cls: "chip", prio: 4e6 + x,
+      html: `<b>${NAME[k]}</b> ${Math.round(x / 1000)} kW lost${t != null ? ` at ${Math.round(t)} °C` : ""}`,
+    }));
+  }
+
+  // Outside temperature from the winter strip: the glow is full at the design temperature and fades as it warms
+  // (none at the inside temperature).
+  private heat = 1;
+  setOutdoorTemp(c: number) {
+    const env = this.env, inside = env?.design?.inside_c ?? 20, design = env?.design_outdoor_c ?? env?.design?.outside_c ?? -12;
+    this.heat = Math.max(0, Math.min(1.2, (inside - c) / Math.max(1, inside - design)));
   }
 
   private build() {
@@ -366,7 +396,7 @@ export class Xray {
   private apply() {
     const quiet = this.host.reduce();
     const breath = quiet ? 0.75 : 0.55 + 0.45 * (0.5 - 0.5 * Math.cos((2 * Math.PI * this.t) / BREATH_S));
-    this.mats.forEach(({ m, k, glow }) => { m.opacity = glow != null ? this.f * glow * breath : this.f * k; m.visible = m.opacity > 0.003; });
+    this.mats.forEach(({ m, k, glow }) => { m.opacity = glow != null ? this.f * glow * breath * this.heat : this.f * k; m.visible = m.opacity > 0.003; });
     this.g.visible = this.f > 0.005;
     const s = this.shell;
     if (s) {
@@ -428,4 +458,15 @@ function inside(q: { x: number; y: number }, poly: { x: number; y: number }[]): 
     if ((a.y > q.y) !== (b.y > q.y) && q.x < ((b.x - a.x) * (q.y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
   }
   return hit;
+}
+
+// Infrared ramp, cold to hot: deep blue, violet, red, orange, near white.
+const IR: [number, [number, number, number]][] = [[0, [27, 31, 107]], [0.35, [123, 42, 140]], [0.6, [232, 64, 42]], [0.8, [245, 154, 35]], [1, [255, 241, 168]]];
+function thermal(t: number): [number, number, number] {
+  const x = Math.max(0, Math.min(1, t));
+  for (let i = 1; i < IR.length; i++) {
+    const [a, ca] = IR[i - 1], [b, cb] = IR[i];
+    if (x <= b) { const u = (x - a) / (b - a); return [0, 1, 2].map((j) => Math.round(ca[j] + (cb[j] - ca[j]) * u)) as [number, number, number]; }
+  }
+  return IR[IR.length - 1][1];
 }

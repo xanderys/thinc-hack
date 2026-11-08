@@ -2,7 +2,7 @@
 // Chip "Shading", its card (Shading X %, Y kWh a year loss, source) and the month and hour scrubber.
 // Renders nothing until GET /api/roof/shading is ready for this address and kWp.
 import { useEffect, useRef, useState } from "react";
-import { dayHours, SHADE_GRADIENT, setShadeAt, setShadeOn, useShadeView, useShading, type ShadeAt } from "@/lib/shading";
+import { dayHours, periodLoss, SHADE_GRADIENT, setShadeAt, setShadeOn, useShadeView, useShading, type ShadeAt } from "@/lib/shading";
 import s from "./ShadingScrubber.module.css";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -50,7 +50,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
     <div className={s.strip}>
       <div className={s.stripHead}>
         <button type="button" className={s.chip} aria-pressed={on} onClick={() => setShadeOn(!on)}>Shading</button>
-        <p className={s.head}><b>{pct1(data.total.shade_share)}</b>, <b>{n0(data.total.loss_kwh_year)}</b> kWh a year loss</p>
+        <p className={s.head}><b>{pct1(periodLoss(data, at))}</b>, <b>{n0(data.total.loss_kwh_year)}</b> kWh a year loss</p>
         <button type="button" className={s.srcBtn} aria-expanded={src} onClick={() => setSrc((x) => !x)}>Source</button>
       </div>
       {on && (
@@ -61,7 +61,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
               <button key={m} type="button" aria-pressed={!!at && at.m === i + 1} aria-label={m} onClick={() => { const [a, b] = span(i + 1); setShadeAt({ m: i + 1, h: Math.min(b, Math.max(a, at?.h ?? 13)) }); }}>{m[0]}</button>
             ))}
           </div>
-          <input type="range" min={lo + 0.5} max={hi + 0.5} step={1} value={hour + 0.5} aria-valuetext={hh(hour)} aria-label="Hour of the day" onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)) })} />
+          <input type="range" min={lo + 0.5} max={hi + 0.5} step={1} value={hour + 0.5} aria-valuetext={hh(hour)} aria-label="Hour of the day" onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)), moment: true })} />
         </div>
       )}
       {on && <span className={s.whenC}>{at ? `15 ${MONTHS[at.m - 1]}, ${hh(at.h)}${litShare != null ? `, ${Math.round(litShare * 100)} % in sun` : ", no direct sun"}` : "Solar access over the year"}</span>}
@@ -74,7 +74,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
       <button type="button" className={s.chip} aria-pressed={on} onClick={() => setShadeOn(!on)}>Shading</button>
       {on && (
         <div className={s.card}>
-          <p className={s.head}>Shading <b>{pct1(data.total.shade_share)}</b>, <b>{n0(data.total.loss_kwh_year)}</b> kWh a year loss</p>
+          <p className={s.head}>Shading <b>{pct1(periodLoss(data, at))}</b>, <b>{n0(data.total.loss_kwh_year)}</b> kWh a year loss</p>
           <div className={s.scale} aria-hidden="true"><i style={{ background: SHADE_GRADIENT }} /><span>60 %</span><span>100 % sun</span></div>
           <div className={s.months} role="group" aria-label="Month">
             <button type="button" className={s.year} aria-pressed={!at} onClick={() => setShadeAt(null)}>Across the year</button>
@@ -84,7 +84,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
           </div>
           <div className={s.hour}>
             <input type="range" min={lo + 0.5} max={hi + 0.5} step={1} value={hour + 0.5} aria-valuetext={hh(hour)} aria-label="Hour of the day"
-              onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)) })} />
+              onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)), moment: true })} />
             <span className={s.when}>{at ? `15 ${MONTHS[at.m - 1]}, ${hh(at.h)}${litShare != null ? `, ${Math.round(litShare * 100)} % in sun` : ", no direct sun"}` : "Solar access over the year"}</span>
           </div>
           <p className={s.src}>{data.source}</p>
