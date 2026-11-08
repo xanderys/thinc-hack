@@ -3,11 +3,12 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import House from "@/components/stage/House";
-import { INSTALLER_NAME, type ComponentKey, type Design, type DesignResponse, type Lead, type LeadStatus, type Variant, type WriteResponse } from "@/lib/api";
-import { buildFacts, KEYS, n0, n2 } from "@/lib/stage";
+import type { ComponentKey, Design, DesignResponse, Lead, LeadStatus, Variant } from "@/lib/api";
+import { KEYS, n0, n2 } from "@/lib/stage";
 import { decide } from "@/lib/proposal";
 import Signature, { type SignatureHandle } from "./Signature";
 import KitSlot from "@/components/home/KitSlot";
+import RoofNote from "@/components/home/RoofNote";
 import "./proposal.css";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
@@ -39,11 +40,6 @@ export function offered(lead: Lead): { key: Key; design: Design; economics: Desi
   return { key: v ? key : "expert", design: v?.design ?? lead.draft.design, economics: v?.economics ?? lead.draft.economics };
 }
 
-const writes = new Map<string, WriteResponse | "failed">();
-
-// Planner checks (battery cycles, DC/AC ratio, payback sanity band, roof area) stay out of the facts sent; /api/write in homeowner mode drops the rest.
-const TECH = /full cycles|DC\/AC|sanity band|usable roof|clipped/i;
-
 // The planner's four offers, in the planner's order and names (web/components/offer/VariantTabs.tsx). Best value is not offered here.
 const ROWS: { key: Variant["key"]; name: string }[] = [
   { key: "expert", name: "Planners' pick" }, { key: "independence", name: "Most independence" },
@@ -67,24 +63,6 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const street = hasStreet(address);
   const [spatial, setSpatial] = useState<boolean | null>(null);
   const [layer, setLayer] = useState(3);
-
-  // One sentence per component from /api/write, homeowner voice; the draft's explanation if that fails.
-  const hash = lead.proposal_hash ?? JSON.stringify(design);
-  const [write, setWrite] = useState<WriteResponse | "failed" | null>(writes.get(hash) ?? null);
-  useEffect(() => {
-    if (writes.has(hash)) { setWrite(writes.get(hash)!); return; }
-    const ctl = new AbortController();
-    const facts = buildFacts(lead.facts, { ...lead.draft, design, economics: e })
-      .filter((f) => !TECH.test(f))
-      .map((f) => f.replace(/autarky (\d+)%/i, "$1% of the home's electricity supplied by the system"))
-      .map((f) => Object.values(INSTALLER_NAME).reduce((s, n) => s.split(n).join(brand), f));
-    fetch("/api/write", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ facts, mode: "homeowner", lead_id: lead.lead_id }), signal: ctl.signal })
-      .then(async (r) => (r.ok ? ((await r.json()) as WriteResponse) : "failed" as const))
-      .catch((err) => ((err as Error).name === "AbortError" ? null : ("failed" as const)))
-      .then((w) => { if (w) { writes.set(hash, w); setWrite(w); } });
-    return () => ctl.abort();
-  }, [hash]); // eslint-disable-line react-hooks/exhaustive-deps
-  const lines = write && write !== "failed" ? write.lines : null;
 
   const yieldKwh = e.annual?.pv_yield_kwh;
   const be = e.break_even_year !== undefined ? e.break_even_year : e.payback_years == null ? null : Math.ceil(e.payback_years);
@@ -116,6 +94,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
           )}
           {(!street || spatial === false) && <div className="pp-drawing"><House design={design} /></div>}
         </div>
+        <RoofNote draft={lead.draft} className="pp-roofnote" />
       </section>
 
       <section className="pp-kpis" aria-label="Key figures">
@@ -159,8 +138,6 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
               <li key={k} className={v == null ? "off" : undefined}>
                 <span className={`pp-dot ${k}`} aria-hidden />
                 <span className="pp-pname"><b>{NAME[k]}</b>{v == null && <span className="pp-size">Not included</span>}</span>
-                {lines?.[k] && <p>{lines[k]}</p>}
-                {!write && <span className="pp-wait" aria-hidden />}
               </li>
             );
           })}
@@ -293,16 +270,16 @@ export function ProposalSkeleton() {
           <polygon points="165,100 390,26 390,80 205,134" />
           <polygon points="0,78 112,50 112,88 0,116" />
         </svg>
-        <p className="pp-brand"><span className="pp-skt">Isarwerk Solar</span></p>
+        <p className="pp-brand"><Bar w="13ch" /></p>
         <div className="pp-title">
           <h1>Your proposal</h1>
-          <p><span className="pp-skt">Name, Street 5, 82008 Town</span></p>
+          <p><Bar w="26ch" /></p>
         </div>
       </header>
       <section className="pp-house" aria-hidden><div className="pp-housebox pp-skb" /></section>
       <section className="pp-kpis" aria-hidden>
-        {[["Yield a year", "10,000 kWh"], ["Supplied by your system", "70 %"], ["Investment estimate", "€20,000"], ["Break-even", "10 years"]].map(([l, x], i) => (
-          <div key={l} className="pp-kpi"><span>{l}</span><b className="pp-skt">{x}</b>{i === 2 && <small className="pp-skt">An estimate until the site visit.</small>}</div>
+        {[["Yield a year", "10ch"], ["Supplied by your system", "4ch"], ["Investment estimate", "7ch"], ["Break-even", "8ch"]].map(([l, w], i) => (
+          <div key={l} className="pp-kpi"><span>{l}</span><b><Bar w={w} /></b>{i === 2 && <small><Bar w="30ch" /></small>}</div>
         ))}
       </section>
       <section className="pp-card" aria-hidden>
@@ -311,8 +288,8 @@ export function ProposalSkeleton() {
           {v.slice(1).map((x) => (
             <li key={x}>
               <span className="pp-vname"><span className="pp-skt">{x}</span></span>
-              <span className="pp-chips"><span className="pp-pill pp-skt">10.24 kWp</span><span className="pp-pill pp-skt">10 kWh</span></span>
-              <span className="pp-vnum"><span className="pp-skt">€20,000</span><small className="pp-skt">estimate</small></span>
+              <span className="pp-chips"><span className="pp-pill pp-skt" style={{ width: "9ch" }}>{"\u00a0"}</span><span className="pp-pill pp-skt" style={{ width: "6ch" }}>{"\u00a0"}</span></span>
+              <span className="pp-vnum"><Bar w="7ch" /><small><Bar w="8ch" /></small></span>
             </li>
           ))}
         </ul>
@@ -325,7 +302,6 @@ export function ProposalSkeleton() {
             <li key={k}>
               <span className="pp-dot pp-skb" aria-hidden />
               <span className="pp-pname"><b className="pp-skt">{NAME[k]}</b></span>
-              <span className="pp-wait" aria-hidden />
             </li>
           ))}
         </ul>
@@ -333,4 +309,9 @@ export function ProposalSkeleton() {
       <section className="pp-card pp-sign pp-signsk" aria-hidden><h2>Sign</h2></section>
     </article>
   );
+}
+
+// A blank shimmer bar of a fixed width: no placeholder text, so nothing readable if the shimmer style is missing.
+function Bar({ w }: { w: string }) {
+  return <span className="pp-skt" style={{ width: w }}>{"\u00a0"}</span>;
 }
