@@ -285,7 +285,7 @@ export function homeFacts(a: HomeAnswers): Record<string, unknown> {
   const f: Record<string, unknown> = {};
   const p = known(a.people); if (p) f.num_inhabitants = Number(p);
   const h = known(a.heating); if (h) f.heating_type = h === "Electric" ? "OtherNonRenewable" : h === "Other" ? "Unknown" : h;
-  const ev = known(a.ev); if (ev) { f.has_ev = ev !== "none"; if (ev !== "none") f.ev_annual_km = 15000; }
+  const ev = known(a.ev); if (ev) { f.has_ev = ev !== "none"; if (ev !== "none") f.ev_annual_km = 12000; }
   const b = known(a.bill_band) as keyof typeof BILL_EUR | undefined; if (b) { f.annual_demand_kwh = kwhFromBill(BILL_EUR[b]); f.electricity_price_ct_kwh = PRICE_CT; }
   if (p === "4") f.load_profile = "FamilyOfFour";
   const r = known(a.roof); if (r) Object.assign(f, ROOF_FACTS[r as keyof typeof ROOF_FACTS]);

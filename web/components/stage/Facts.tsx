@@ -109,7 +109,7 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
             <button type="button" aria-pressed={false} onClick={() => set(true)}>Planned</button>
             <button type="button" aria-pressed={kind === "no"} onClick={() => set(false)}>No</button>
           </div>
-          {i.has_ev && <NumRange value={i.ev_annual_km ?? 15000} min={1000} max={40000} step={500} unit="km a year" label="Kilometres a year" onSet={(n) => onFact("ev_annual_km", n, "Electric car km")} />}
+          {i.has_ev && <NumRange value={i.ev_annual_km ?? 12000} min={1000} max={40000} step={500} unit="km a year" label="Kilometres a year" onSet={(n) => onFact("ev_annual_km", n, "Electric car km")} />}
         </>
       );
     }

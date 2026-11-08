@@ -66,7 +66,7 @@ export function mockGetLead(id: string): Lead | null {
   const history: Lead["history"] = [];
   for (let k = 0; k < steps; k++) {
     const s = SCRIPT[k];
-    facts = { ...facts, [s.field]: s.value, ...(s.field === "has_ev" ? { ev_annual_km: 15000 } : {}) };
+    facts = { ...facts, [s.field]: s.value, ...(s.field === "has_ev" ? { ev_annual_km: 12000 } : {}) };
     const after = mockDesign(facts).design;
     const changed: LeadChange[] = (Object.keys(after) as (keyof Design)[]).filter((f) => after[f] !== before[f])
       .map((f) => ({ component: NAME[f], from: before[f], to: after[f], why: s.why }));

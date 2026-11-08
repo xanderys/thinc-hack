@@ -417,8 +417,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   // A fact chip changed in the open card: same path as a sentence, and the lead hears it.
   function onFact(f: keyof HomeInputs, v: unknown, label: string) {
     remember(`${label} changed:`);
-    setChanged((c) => ({ ...c, [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) }));
-    void writeLead("hand-change", { [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) } as Partial<HomeInputs>);
+    setChanged((c) => ({ ...c, [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 12000 } : {}) }));
+    void writeLead("hand-change", { [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 12000 } : {}) } as Partial<HomeInputs>);
   }
 
   // Several kit fields as one edit (one history step, one lead write): the on-model layout sends pv_kwp with
