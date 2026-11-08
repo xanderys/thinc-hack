@@ -107,14 +107,18 @@ function Page({ agentId, installerId, test }: Props) {
     addEventListener("pagehide", on); return () => removeEventListener("pagehide", on);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Each fact Rina hears goes to the engine at once; the design re-runs and the call screen redraws in place.
-  useConversationClientTool("record_fact", async (p: { field?: string; value?: unknown }) => {
+  const recordFact = async (p: { field?: string; value?: unknown }) => {
     const id = leadIdRef.current, f = String(p?.field ?? "");
     if (!id || !FACT_FIELDS.has(f)) return "ignored";
     const r = await fetch("/api/intake/step", { method: "POST", headers: { "content-type": "application/json", "X-Client-Route": "start-call-fact" },
       body: JSON.stringify({ lead_id: id, facts_so_far: { [f]: factValue(f, p.value) }, source: "call" }) }).catch(() => null);
     pull.current();
     return r?.ok ? "ok" : `not saved (${r?.status ?? "offline"})`;
-  });
+  };
+  // Rina never waits on the engine (a step takes 0.3 to 4 s): the answer is "ok" at once and the scene catches up.
+  useConversationClientTool("record_fact", (p: { field?: string; value?: unknown }) => { void recordFact(p); return "ok"; });
+  // Test leads only: the headless check calls the same handler the agent calls.
+  useEffect(() => { if (test) (window as unknown as { __recordFact?: typeof recordFact }).__recordFact = recordFact; });
   const conversation = useConversation({
     onConnect: ({ conversationId }) => {
       connected.current = true; ended.current = false; setSince(Date.now());
