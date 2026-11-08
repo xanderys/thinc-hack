@@ -391,7 +391,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
               {FIVE && open && n <= 4 && (
                 <div className={s.three}>
                   {multi && (n === 1 || n === 4) ? (
-                    <p className={s.l2}>{n === 1 ? "Shared roof, apartment building: the single-family design does not apply." : "The walls and roof are the whole building's, so no heat pump size for one flat."}</p>
+                    <p className={s.l2}>{n === 1 ? "Large building: this design assumes one household, confirm on the call." : "The walls and roof are the whole building's, so no heat pump size for one flat."}</p>
                   ) : (
                     <>
                       {line2[n] && <p className={s.l2} data-pending={waiting || !fresh}>{line2[n]}</p>}
@@ -474,7 +474,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       return {
         head: nMod ? <Head main={`${nMod} panels`} sub={`${n2(d.pv_kwp ?? 0)} kWp`} /> : <Head main={`${n2(d.pv_kwp ?? 0)} kWp`} />,
         label: `${nMod ? `${nMod} panels, ` : ""}${n2(d.pv_kwp ?? 0)} kWp`,
-        body: multi ? <p>Shared roof, apartment building: the single-family design does not apply.</p>
+        body: multi ? <p>Large building: this design assumes one household, confirm on the call.</p>
           : a ? <PairBars roof={a.pv_yield_kwh} share={e.autarky_share ?? null} parts={[{ k: "Household", v: inputs.annual_demand_kwh ?? 0 }, ...(layers?.ev ? [{ k: "Car", v: layers.ev.annual_kwh }] : [])]} /> : null,
         info: <>
           {usePara}
