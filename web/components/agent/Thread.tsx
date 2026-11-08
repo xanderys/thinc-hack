@@ -85,7 +85,7 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
       {sugs.length > 0 && !busy && <div className={s.sugs}>{sugs.map((x) => <button key={x.label} type="button" className={s.sug} onClick={() => tap(x)}>{x.label}</button>)}</div>}
       <div className={s.fieldWrap}>
         <ComposerField value={text} onChange={setText} onSend={submit} onAttach={pick} onMicStart={() => void startRec()} onMicStop={() => void stopRec()}
-          busy={busy || voicing} recording={rec} trailing={fieldTrailing ?? trailing} fieldRef={field} />
+          busy={busy || voicing} recording={rec} trailing={fieldTrailing ?? trailing} fieldRef={field} placeholder={ctx.name ? `Ask about ${ctx.name}` : "New enquiry or a question"} />
       </div>
     </div>
   );
