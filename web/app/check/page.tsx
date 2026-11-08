@@ -1,4 +1,5 @@
 "use client";
+import { SeedDemo } from "@/components/autopilot/Autopilot"; // autopilot mount
 import { VERDICT_WORD } from "@/lib/qualify";
 import { useEffect, useMemo, useState } from "react";
 import StepHead from "@/components/stage/StepHead";
@@ -469,6 +470,7 @@ export default function Check() {
       </>}
       {ev && <Synthetic ev={ev} />}
       <ResetDemo />
+      <SeedDemo /> {/* autopilot mount */}
     </div>
   );
 }

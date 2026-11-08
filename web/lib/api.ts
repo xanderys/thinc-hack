@@ -32,6 +32,7 @@ export interface RoofResult {
   segments: { azimuth: number; pitch: number; area_m2: number }[];
   max_panels: number | null; max_kwp: number | null;
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
+  capacity_source?: string;   // "layout" when the 3D model is built
   pending?: boolean;   // the LoD2 measurement is still running; ask again in a few seconds
   floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";   // v1.6.1, upper bound
   geometry?: { footprint_m2?: number | null; storeys?: number | null; height_m?: number | null; large_building?: boolean | null; source?: string; note?: string } | null; // v2.11: LoD2, outranks dwellings_class
