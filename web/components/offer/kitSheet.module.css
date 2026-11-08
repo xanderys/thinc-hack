@@ -6,6 +6,9 @@
 .icon { width: 36px; height: 36px; display: block; }
 .icon img { display: block; width: 100%; height: 100%; }
 .label { min-width: 0; font-size: 13.5px; color: var(--ink); }
+/* Name in the primary ink, bold; the spec after it regular, in the facts row's secondary ink. */
+.name { font-weight: 600; color: var(--ink); }
+.spec { font-weight: 400; color: var(--ink-3); }
 /* The planner's chooser inside a row: no glyph indent, the menu wraps under the label. */
 .label button[aria-expanded] { padding-left: 6px; margin-left: -6px; }
 .label [role="menu"] { padding-left: 0; }
