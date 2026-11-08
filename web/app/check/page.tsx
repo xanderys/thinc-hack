@@ -1,4 +1,5 @@
 "use client";
+import { VERDICT_WORD } from "@/lib/qualify";
 import { useEffect, useMemo, useState } from "react";
 import StepHead from "@/components/stage/StepHead";
 import { CONST, human } from "@/components/stage/Rules";
@@ -413,7 +414,7 @@ function Backtest({ ev }: { ev: EvalX }) {
   const pc = (x: number) => Math.round(x * 100);
   return (
     <section className={s.sec}>
-      <h2>Priority / Call first / Decline: {pc(q.priority_share)} / {pc(q.call_first_share)} / {pc(q.decline_share)} % on {n0(q.n)} unseen homes</h2>
+      <h2>{VERDICT_WORD.visit} / {VERDICT_WORD.call_first} / {VERDICT_WORD.decline}: {pc(q.priority_share)} / {pc(q.call_first_share)} / {pc(q.decline_share)} % on {n0(q.n)} unseen homes</h2>
       <p className={s.src}>{q.population}. {q.source}</p>
       <Src><Api path="/api/eval" /> (<code>qualification_backtest</code>)</Src>
     </section>
