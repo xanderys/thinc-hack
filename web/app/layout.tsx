@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Noto_Serif } from "next/font/google";
 import Masthead from "@/components/Masthead";
+import CopilotShell from "@/components/copilot/CopilotShell";
 import "./globals.css";
 
 // Reonic's type: Geist for UI and headings, Geist Mono for figures, Noto Serif used sparingly (all SIL OFL).
@@ -16,6 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Masthead />
         <main>{children}</main>
+        <CopilotShell />
       </body>
     </html>
   );
