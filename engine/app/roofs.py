@@ -47,8 +47,34 @@ def to_contract(d: dict) -> dict:
             "zensus_confidence": d.get("zensus_confidence")}
 
 
+_CAP: dict = {}
+
+
+def _capacity(address: str, res: dict) -> dict:
+    """One roof capacity everywhere: when the 3D model is built, the modules its layout actually fits (every face in sun,
+    filled), else the area estimate, labelled as such."""
+    if not res or res.get("source") in ("none", "postcode"):
+        return res
+    n = _CAP.get(address)
+    if n is None:
+        try:
+            from . import shading
+            counts = shading.chosen_counts(address, None)
+            n = sum(counts.values()) if counts else None
+        except Exception:
+            n = None
+        if n is not None:
+            _CAP[address] = n
+    if n:
+        return {**res, "max_panels": n, "max_kwp": round(n * PANEL_KW, 2), "capacity_source": "layout"}
+    return {**res, "capacity_source": "area estimate"}
+
+
+PANEL_KW = 0.45
+
+
 def lookup(address: str) -> dict:
-    res = _lookup(address)
+    res = _capacity(address, _lookup(address))
     if res.get("source") not in ("none", "postcode") and model_available():
         res = {**res, "model_url": model_url(address)}  # v2.1: the 3D house, built on first request
     if res.get("source") not in ("none", "postcode"):
@@ -78,6 +104,7 @@ def cached(address: str):
     path = CACHE / f"{key}.json"
     if path.exists():
         r = json.loads(path.read_text())
+        r = _capacity(address, r)
         return {**r, "model_url": model_url(address)} if r.get("source") not in ("none", "postcode") and model_available() else r
     if key not in _warming:
         _warming.add(key)

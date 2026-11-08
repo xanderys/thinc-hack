@@ -218,6 +218,7 @@ class HomeInputs(BaseModel):
     num_inhabitants: Optional[float] = None
     house_size_sqm: Optional[float] = None
     house_built_year: Optional[float] = None
+    house_built_range: Optional[str] = None  # v2.14: a stated decade ("1980 to 1989"); house_built_year is its middle
     has_ev: bool = False
     ev_planned: bool = False  # v2.14: the car is planned, not here yet; sized like has_ev
     ev_annual_km: Optional[float] = None
@@ -841,14 +842,14 @@ def create_lead(req: LeadReq, request: Request, x_intake_secret: Optional[str] =
     eng = engine()
     if not _key_ok(x_intake_secret) and not _rate_ok(request.client.host if request.client else "?"):
         return err(429, "Too many new leads from this address; try again in a minute.")
+    if req.phone and not wa.e164(req.phone):  # checked before anything is saved: a refused lead leaves nothing behind
+        return err(422, f"phone {req.phone!r} is not a phone number (E.164, 8 to 15 digits).")
     mapped, meta = leads.map_intake(req.facts or {})
     raw = {"installer_id": req.installer_id or mapped.get("installer_id") or "2a8ba8e2",
            **leads.where(req.address_or_postcode), **mapped}
     raw["_given"] = [k for k in raw if k != "installer_id"] + (["installer_id"] if req.installer_id else [])
     lead = _new_lead(eng, raw, req.customer_name, req.address_or_postcode, req.source, block=False)
     if req.phone:
-        if not wa.e164(req.phone):
-            return err(422, f"phone {req.phone!r} is not a phone number (E.164, 8 to 15 digits).")
         lead["phone"] = wa.e164(req.phone)
     if req.test:
         lead["test"] = True
@@ -1127,6 +1128,21 @@ def pin_lead(lead_id: str, req: Optional[PinReq] = None, x_intake_secret: Option
     return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "pinned": lead["pinned"]}
 
 
+@app.post("/api/leads/hide-unpinned")
+def hide_unpinned(x_intake_secret: Optional[str] = Header(None)):
+    """Board tidy for the demo: every lead that is not pinned and not already a test lead is marked test (hidden from the
+    board, still reachable by its URL). Nothing is deleted. Leads created after this call show as usual."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    hidden = []
+    for l in list(leads.LEADS.values()):
+        if not l.get("pinned") and not l.get("test"):
+            l["test"] = True
+            leads.save(l)
+            hidden.append({"lead_id": l["lead_id"], "customer_name": l.get("customer_name")})
+    return {"hidden": hidden, "count": len(hidden)}
+
+
 DEMO_KEYS = ("status", "inputs", "draft", "draft_stamp", "unknown", "next_question", "next_spread", "questions_asked", "history", "decision",
              "approved", "approved_at", "approved_variant", "approved_hash", "overrides", "sent", "meta", "fact_sources", "whatsapp")
 
@@ -1253,6 +1269,7 @@ class WaAskReq(BaseModel):
     facts: Optional[list[str]] = None  # ask about these fields; default: missing or estimated facts by design impact
     base_version: Optional[int] = None
     dry: bool = False  # compose and log as kind "dry", send nothing
+    origin: Optional[str] = None  # the web's request origin: the proposal link is built on it
 
 
 @app.post("/api/leads/{lead_id}/whatsapp/ask")
@@ -1270,16 +1287,33 @@ def whatsapp_ask(lead_id: str, req: Optional[WaAskReq] = None, dry: bool = False
     if bad:
         return err(422, f"Cannot ask about {', '.join(bad)}. Askable: {', '.join(wa.ASK)}.")
     try:
-        out = wa.ask(lead, req.facts, dry=req.dry or dry)
+        out = wa.ask(lead, req.facts, dry=req.dry or dry, origin=req.origin)
     except wa.ConversationError as e:
         return err(e.code, str(e))
     return {**out, "version": int(lead.get("version") or 0), "whatsapp": wa.public(lead)}
+
+
+@app.get("/api/leads/{lead_id}/whatsapp/preview")
+def whatsapp_preview(lead_id: str, kind: Literal["ask", "send"] = "ask", origin: Optional[str] = None,
+                     x_intake_secret: Optional[str] = Header(None)):
+    """Exactly what ask or send would send now (same templates); nothing is logged or sent."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = _find_lead(lead_id)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    try:
+        return wa.preview(lead, kind, origin)
+    except wa.ConversationError as e:
+        return err(e.code, str(e))
 
 
 class SendReq(BaseModel):
     channel: Literal["whatsapp", "copy"]
     base_version: Optional[int] = None
     dry: bool = False  # compose and log as kind "dry", send nothing, status unchanged
+    text: Optional[str] = None  # the planner's previewed message, sent exactly; default: Rina's template with the proposal link
+    origin: Optional[str] = None  # the web's request origin: the proposal link is built on it
 
 
 @app.post("/api/leads/{lead_id}/send")
@@ -1294,7 +1328,7 @@ def send_proposal(lead_id: str, req: SendReq, dry: bool = False, x_intake_secret
         return stale
     if req.dry or dry:
         try:
-            out = wa.send_proposal(lead, req.channel, dry=True)
+            out = wa.send_proposal(lead, req.channel, dry=True, text=req.text, origin=req.origin)
         except wa.ConversationError as e:
             return err(e.code, str(e))
         return {"version": int(lead.get("version") or 0), "status": lead["status"], "status_label": STATUS_LABEL.get(lead["status"], lead["status"]),
@@ -1302,7 +1336,9 @@ def send_proposal(lead_id: str, req: SendReq, dry: bool = False, x_intake_secret
     if lead.get("status") not in ("approved", "sent"):
         return err(409, "Complete the design before sending the proposal.")
     try:
-        sent = wa.send_proposal(lead, req.channel)
+        if req.text and len(req.text) > 4000:
+            return err(422, "text must be at most 4,000 characters.")
+        sent = wa.send_proposal(lead, req.channel, text=req.text, origin=req.origin)
     except wa.ConversationError as e:
         return err(e.code, str(e))
     return {"version": int(lead.get("version") or 0), "status": lead["status"], "status_label": STATUS_LABEL["sent"], "sent": sent}

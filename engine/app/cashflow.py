@@ -1,5 +1,6 @@
 """Reonic's cashflow chart from the hourly economics: the same undiscounted flows break_even_year counts
-(avoided purchases rise with prices, feed-in fixed, both degrade with the PV, upkeep each year; battery replacement not counted)."""
+(avoided purchases rise with prices, feed-in fixed, both degrade with the PV, upkeep each year; the battery replacement and
+its year-20 residual counted as the NPV counts them)."""
 from .hourly import sim as S
 
 
@@ -16,7 +17,7 @@ def add(inputs: dict, design: dict, econ: dict) -> dict:
         income = (a.get("feed_in_income_eur") or 0) - inc_b
         energy = (a.get("bill_before_eur") or 0) - (a.get("bill_after_eur") or 0) - income
         opex = S.OPEX_SHARE * S._capex(inputs, design)[1]
-        flows = S._flows_by_year(energy, income, opex)
+        flows = S._flows_by_year(energy, income, opex) + S.replacement_flows(econ.get("battery_replacement"))
         yearly = [-round(capex)] + [round(float(x)) for x in flows]
         cum, run = [], 0
         for x in yearly:
