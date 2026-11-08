@@ -71,6 +71,9 @@ function useReduce() {
 export default function Chain({ res, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, refine, decide, redraft }: Props) {
   const reduce = useReduce();
   const causeRef = useRef(cause); causeRef.current = cause;
+  // A change made from the Offer panel or Undo keeps the planner in the Offer: no stage or camera move on the re-run.
+  const hold = useRef(0);
+  const holdOffer = () => { hold.current = Date.now(); };
   // Draft first: the chain plays once, on the first open of a lead; after that the design is there at once and the
   // chain waits as a collapsed strip under the model.
   const [first] = useState(() => {
@@ -147,7 +150,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     // A refinement redrafts in place: the changed layers light up and the camera goes to the first; no replay.
     setMoved(m);
     // A variant switch stays on the Offer; the strip lights what changed, the view does not move.
-    if (!/^Switched to/.test(causeRef.current ?? "")) setStage(Math.min(...m));
+    if (!/^(Switched to|Undone)/.test(causeRef.current ?? "") && Date.now() - hold.current > 15000) setStage(Math.min(...m));
     setAuto(false);
     setUpdated(Date.now());
   }
@@ -228,7 +231,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       <Inert label="Pan"><path d="M7 11V5.5a1.5 1.5 0 013 0V10m0-1.5V4a1.5 1.5 0 013 0v5m0-3a1.5 1.5 0 013 0v6c0 3.5-2.5 6-6 6s-5-1.5-6.5-4L3 11.5a1.5 1.5 0 012.5-1.5L7 12" /></Inert>
       <Inert label="Measure"><path d="M3 14L14 3l3 3L6 17zM6 11l1.5 1.5M8.5 8.5L10 10M11 6l1.5 1.5" /></Inert>
       <span className={s.sep} />
-      <button type="button" className={s.tb} onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
+      <button type="button" className={s.tb} onClick={() => { holdOffer(); onUndo(); }} disabled={!canUndo} title="Undo" aria-label="Undo"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
       <span className={s.sep} />
       <LayersMenu className={s.tb} up heatmap={{ on: heatmap, set: setHeatmap }} />
       <button type="button" className={s.tb} aria-pressed={expanded} title="Reasoning" aria-label="Reasoning" onClick={() => { setAuto(false); setExpanded((x) => !x); }}>
@@ -249,8 +252,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const narrow = useNarrow();
   const offer = (docked: boolean) => (
     <OfferPanel docked={docked} res={res} economics={e} breakEven={breakEven} cause={cause} pending={!!pending}
-      variants={variants} onVariant={onVariant} checks={layers?.checks ?? null} model={model} leadId={leadId}
-      overrides={dp?.overrides ?? {}} setOverride={dp?.setOverride ?? (() => {})} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
+      variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={layers?.checks ?? null} model={model} leadId={leadId}
+      overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
   );
   const overlays = (
     <>

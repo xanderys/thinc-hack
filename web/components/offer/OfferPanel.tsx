@@ -9,7 +9,7 @@ import { facing } from "@/components/spatial/facing";
 import { eur, n0, n1, n2, pc, type Part } from "./format";
 import Tiles, { type TileMode } from "./Tiles";
 import KitDiagram from "./KitDiagram";
-import VariantTabs, { rowsOf } from "./VariantTabs";
+import VariantTabs, { rowsOf, type Row } from "./VariantTabs";
 import InlineOverride, { type LineField } from "./InlineOverride";
 import Approve from "./Approve";
 import s from "./offer.module.css";
@@ -97,7 +97,19 @@ export default function OfferPanel(p: OfferProps) {
   if (d.heatpump_kw) lines.push({ f: "heatpump_kw", text: `${n1(d.heatpump_kw)} kW heat pump` });
   else if (handSet("heatpump_kw") === null) lines.push({ f: "heatpump_kw", text: "No heat pump" });
 
-  const rows = useMemo(() => rowsOf(p.variants), [p.variants]);
+  // The four offers come from the last run without fixed sizes (none, or only "include" from a sentence): a refine
+  // with a variant's or a hand-set size reports the offers relative to those sizes, which would turn the planners'
+  // pick into the edit. With fixed sizes the offers stay as they were and only the selection follows the screen.
+  const fixedSizes = Object.values(overrides).some((v) => v !== "include" && v !== undefined);
+  const frozen = useRef<Row[]>([]);
+  const rows = useMemo(() => {
+    const same = (x: Design) => (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (x[k] ?? null) === (d[k] ?? null));
+    const fresh = rowsOf(p.variants);
+    if (!fixedSizes || !frozen.current.length) frozen.current = fresh.filter((r) => r.key !== "edit");
+    const four = (fixedSizes ? frozen.current : fresh.filter((r) => r.key !== "edit")).map((r) => ({ ...r, selected: same(r.design) }));
+    if (!four.length || four.some((r) => r.selected)) return four;
+    return [...four, { key: "edit" as const, name: "Your edit", line: "as you changed it", design: d, e, pick: null, selected: true }];
+  }, [p.variants, fixedSizes, d, e]); // eslint-disable-line react-hooks/exhaustive-deps
   const tiles = [
     { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
     { k: "Autarky", v: pc(e.autarky_share) },
