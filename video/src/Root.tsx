@@ -5,6 +5,7 @@ import { PlaceholderDemo, PlaceholderIntro } from "./Placeholders";
 import { FPS, H, TOTAL, W } from "./timeline";
 import { Launch, launchDuration } from "./launch/Launch";
 import { defaultLaunchProps, LaunchProps } from "./launch/config";
+import { HOLO_FRAMES, HoloIntro } from "./holo/HoloIntro";
 
 export const Root: React.FC = () => (
   <>
@@ -19,6 +20,7 @@ export const Root: React.FC = () => (
       defaultProps={defaultLaunchProps}
       calculateMetadata={({ props }: { props: LaunchProps }) => ({ durationInFrames: launchDuration(props) })}
     />
+    <Composition id="HoloIntro" component={HoloIntro} fps={30} width={1080} height={1920} durationInFrames={HOLO_FRAMES} />
     <Still id="PlaceholderIntro" component={PlaceholderIntro} width={W} height={H} />
     <Still id="PlaceholderDemo" component={PlaceholderDemo} width={W} height={H} />
   </>

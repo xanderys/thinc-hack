@@ -9,3 +9,5 @@ capture/
 # Launch: capture stills and clips are linked, not copied
 public/capture
 public/music/
+public/model3d/
+public/holo/
