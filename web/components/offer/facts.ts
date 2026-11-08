@@ -53,7 +53,7 @@ export function variantFacts(e: Economics | null | undefined, d0: Partial<Design
   const d = d0 ?? {};
   const out: Fact[] = [];
   if (e) {
-    out.push({ label: "Price", value: eur(e.capex_eur), note: "estimate" });
+    out.push({ label: "Price", value: eur(e.capex_eur) });
     const be = breakEvenOf(e);
     out.push({ label: "Break-even", value: be == null ? "20+ years" : `${n0(be)} years` });
   }

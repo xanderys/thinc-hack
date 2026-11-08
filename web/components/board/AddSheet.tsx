@@ -62,7 +62,7 @@ export default function AddSheet({ onClose, onCreated, sample, voice }: { onClos
               {read.found.map((f) => (
                 <div key={`${f.field}${f.quote}`}><dt>{FIELD[f.field] ?? f.field}</dt><dd>{typeof f.value === "boolean" ? (f.value ? "Yes" : "No") : String(f.value)}<span className="src">&ldquo;{f.quote}&rdquo;</span></dd></div>
               ))}
-              {read.found.length === 0 && <p className="s-quiet">{read.postcode ? `Postcode ${read.postcode}; the rest is asked or estimated.` : "Nothing specific in it; the rest is asked or estimated."}</p>}
+              {read.found.length === 0 && <p className="s-quiet">{read.postcode ? `Postcode ${read.postcode}; the rest is asked.` : "Nothing specific in it; the rest is asked."}</p>}
             </dl>
             <label className="b-name-f">Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="The homeowner's name" /></label>
             <div className="b-row">

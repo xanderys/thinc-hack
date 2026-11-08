@@ -6,7 +6,7 @@ import { CONST, human } from "./Rules";
 
 const SRC: Record<string, string> = {
   lead: "lead", answer: "you answered", pvgis: "PVGIS", lod2: "3D roof model", iwu: "IWU",
-  "installer history": "installer history", catalogue: "catalogue", default: "assumed",
+  "installer history": "installer history", catalogue: "catalogue", default: "",
 };
 const SNAP: Partial<Record<ComponentKey, string>> = { pv: "snapped to whole modules", battery: "snapped to the installer's package" };
 

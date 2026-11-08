@@ -176,13 +176,13 @@ export default function OfferPanel(p: OfferProps) {
     <aside ref={box} className={`${s.panel} ${p.docked ? s.docked : s.under}`} aria-label="Offer" data-cover={p.docked ? "" : undefined}>
       <Tiles items={p.inPass ? tiles.slice(3) : tiles} mode={reduce ? "fade" : mode} pending={pending} />
       <VariantTabs rows={rows} pending={pending || offersPending} onPick={(r) => { if (!r.pick) return; setHand(new Set()); p.onVariant(r.pick); }} />
-      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} assumptions={e.assumptions} rates={(res as { rates?: Rates }).rates} skus={skus} info={dcac ? { inverter_kw: <Info label="DC/AC ratio"><InfoRows rows={[dcac]} /></Info> } : undefined} note="Estimates until the site visit" changed={hl.parts} flash={hl.n}
+      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} assumptions={e.assumptions} rates={(res as { rates?: Rates }).rates} skus={skus} info={dcac ? { inverter_kw: <Info label="DC/AC ratio"><InfoRows rows={[dcac]} /></Info> } : undefined} changed={hl.parts} flash={hl.n}
         edit={(f, label, content) => (
           <InlineOverride field={f} text={label} content={content} unit={UNIT[f]} sizes={sizes[f] ?? []} current={d[f]} set={handSet(f)} fixed={overrides[f] !== undefined}
             canNone={f !== "pv_kwp" && f !== "inverter_kw"} onChoose={choose}
             brands={brandsOf(PART_SKU[f] && skus[PART_SKU[f]!])} brand={brandFor(f)} onBrand={(b) => pickBrand(f, b)} />
         )} />
-      <p className={s.confirm}>The visit confirms roof condition, shade (estimated from the 3D model), meter and grid connection, and battery location.</p>
+      <p className={s.confirm}>The visit confirms roof condition, shade, meter and grid connection, and battery location.</p>
       <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} onApproved={setApproved} undo={p.undo} />
     </aside>
   );

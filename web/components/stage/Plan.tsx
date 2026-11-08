@@ -76,7 +76,6 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
             <Est k="Investment" v={`€${n0(e.capex_eur)}`} u="" was={was(e.capex_eur, pe?.capex_eur, (x) => `€${n0(x)}`)} />
             <Est k="Payback" v={e.payback_years == null ? "None" : n2(Math.round(e.payback_years * 10) / 10)} u={e.payback_years == null ? "" : "years"} was={e.payback_years == null ? null : was(e.payback_years, pe?.payback_years, (x) => n2(Math.round(x * 10) / 10))} />
           </dl>
-          <p className="s-estnote">{e.method === "hourly-simulation" ? "Estimates from an hourly simulation of a typical Munich year." : "Estimates from annual averages."}</p>
           <Flow e={e} design={res.design} hasEv={inputs.has_ev} moved={moved} />
         </div>
       </div>

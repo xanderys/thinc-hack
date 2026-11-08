@@ -532,10 +532,9 @@ function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: L
       <dl className="h-nums">
         <div><dt>Solar a year</dt><dd>{e ? (e.annual ? `${n0(e.annual.pv_yield_kwh)} kWh` : "None") : <Bar w="9ch" />}</dd></div>
         <div><dt>Supplied by your system</dt><dd>{e ? `${pct(e.autarky_share)} %` : <Bar w="4ch" />}</dd></div>
-        <div><dt>Investment estimate</dt><dd>{e ? `€${n0(e.capex_eur)}` : <Bar w="10ch" />}</dd></div>
+        <div><dt>Investment</dt><dd>{e ? `€${n0(e.capex_eur)}` : <Bar w="10ch" />}</dd></div>
         <div><dt>Payback</dt><dd>{e ? (e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`) : <Bar w="8ch" />}</dd></div>
       </dl>
-      <p className="h-est">Prices are an estimate until the site visit.</p>
       <ul className="h-parts">
         {say ? say.map((x, i) => <li key={i}>{x}{i === 0 && lead && <RoofNote draft={lead.draft} className="h-roofnote" />}</li>)
           : SK_PARTS.map((w, i) => <li key={i} style={{ width: w }}>{nb}</li>)}

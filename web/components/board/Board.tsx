@@ -21,7 +21,7 @@ import { ClientChevron } from "@/components/stage/clientCard";
 import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
 
 // The facts count is the verdict chip's tooltip, never part of the line.
-const factsTip = (q: { facts?: { stated: number; total: number }; confidence_line?: string }) => `${q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : q.confidence_line?.split(",")[0] ?? ""}. Estimates until the site visit.`.replace(/^\. /, "");
+const factsTip = (q: { facts?: { stated: number; total: number }; confidence_line?: string }) => `${q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : q.confidence_line?.split(",")[0] ?? ""}`.replace(/^\. /, "");
 import qs from "@/components/qualify/qualify.module.css";
 import { berlinStamp, berlinTime } from "@/lib/time";
 import { undoLast, useCanUndo } from "@/lib/edits";

@@ -6,8 +6,8 @@ import s from "./offer.module.css";
 export default function RateCard({ calc }: { calc: string[] }) {
   if (!calc.length) return null;
   return (
-    <Info label="How the price is estimated">
-      <p className={s.rateH}>Market estimate, not the installer&rsquo;s price list</p>
+    <Info label="How the price is worked out">
+      <p className={s.rateH}>Not the installer&rsquo;s price list</p>
       <ul className={s.rateCalc}>{calc.map((c) => <li key={c}>{c}</li>)}</ul>
     </Info>
   );

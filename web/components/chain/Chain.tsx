@@ -59,7 +59,6 @@ const bandText = (b: string) => {
   const last = items.pop();
   return `Reonic's planners rate ${items.length ? `${items.join(", ")} and ${last}` : last}.`;
 };
-const TAG: Record<string, string> = { lead: "from the enquiry", rina: "stated by the homeowner", address: "from the address", default: "estimated" };
 // One muted palette for every bar, in Reonic's heat-load order; component colours where the segment is a component.
 const PALETTE = ["#f5c35a", "#5b8def", "#4fb477", "#a58bea", "#e3634f", "#f0924a", "#a1a1aa", "#71717b"];
 const SEG_COLOUR: Record<string, string> = {
@@ -298,13 +297,13 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     `${n2(d.pv_kwp ?? 0)} kWp${mods}${multi ? ", shared roof" : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh` : "None",
     d.wallbox_kw ? `${n1(d.wallbox_kw)} kW` : inputs.has_ev ? "None" : "None, no EV",
-    multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : SYS ? "No heat pump in this design" : "None",
+    multi ? "No heat load figure for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : SYS ? "No heat pump in this design" : "None",
     `${eur(e.capex_eur)}${breakEven ? `, break-even in ${breakEven} years` : ""}`,
   ];
   const head8: string[] = [
-    bars[1] ? (() => { const f = bars[1].segments.filter((g) => g.unit === "kWp").length; return `${n2(bars[1].total)} kWp on ${f} face${f === 1 ? "" : "s"}${multi ? ", shared roof" : ""}`; })() : address && spatial !== false ? "Roof being measured" : address ? "No 3D model here, roof assumed standard face" : "No street given, roof assumed standard face",
+    bars[1] ? (() => { const f = bars[1].segments.filter((g) => g.unit === "kWp").length; return `${n2(bars[1].total)} kWp on ${f} face${f === 1 ? "" : "s"}${multi ? ", shared roof" : ""}`; })() : address && spatial !== false ? "Roof being measured" : address ? "No 3D model here, standard roof face" : "No street given, standard roof face",
     `${n0(inputs.annual_demand_kwh ?? 0)} kWh a year${layers?.ev ? ` plus ${n0(layers.ev.annual_kwh)} kWh for the car` : ""}`,
-    `${inputs.has_ev ? `Electric car${inputs.ev_annual_km ? `, ${n0(inputs.ev_annual_km)} km a year` : ""}` : "No electric car planned"}${multi ? "; heat load not estimated for flats" : model?.envelope ? `; heat load up to ${n1(model.envelope.design_heat_load_kw)} kW` : ""}`,
+    `${inputs.has_ev ? `Electric car${inputs.ev_annual_km ? `, ${n0(inputs.ev_annual_km)} km a year` : ""}` : "No electric car planned"}${multi ? "; no heat load figure for flats" : model?.envelope ? `; heat load up to ${n1(model.envelope.design_heat_load_kw)} kW` : ""}`,
     `${n2(d.pv_kwp ?? 0)} kWp${mods}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh battery` : "No battery",
     [d.wallbox_kw ? `${n1(d.wallbox_kw)} kW wallbox` : "No wallbox", d.heatpump_kw ? `${n1(d.heatpump_kw)} kW heat pump` : "no heat pump"].join(", "),
@@ -567,7 +566,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       const hpBound = (res.components.heatpump as unknown as { heat_load_upper_bound_kw?: number | null }).heat_load_upper_bound_kw ?? null;
       return {
         head: multi ? <Head main="No heat load" sub="for flats" /> : adding?.part === "heatpump" ? <Head main="Heat pump" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : hp ? <Head main={`Heat pump ${n1(hp)} kW`} /> : <Head main="No heat pump" />,
-        label: multi ? "Heat load not estimated for flats" : hp ? `${n1(hp)} kW heat pump` : "No heat pump",
+        label: multi ? "No heat load figure for flats" : hp ? `${n1(hp)} kW heat pump` : "No heat pump",
         body: multi ? null : hp && leadId && dayOn ? <HeatpumpDay leadId={leadId} sizes={daySizes} version={dayVer} fuel={inputs.heating_type} /> : <>
           {!hp && adding?.part !== "heatpump" && why0("heatpump")}
           {shares.length > 0 && <SplitBar label="Heat loss" unit="" total={100} parts={shares.map((x) => ({ k: x.name, v: Math.round(x.share * 100), c: x.colour }))} />}
@@ -636,7 +635,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
           <div className={s.flat}>
             <House design={d} />
             {overlays}
-            <p className={s.flatNote}>{address ? "No 3D model for this address; the drawing stands in." : "No street given, roof assumed standard face."}</p>
+            <p className={s.flatNote}>{address ? "No 3D model for this address; the drawing stands in." : "No street given, standard roof face."}</p>
           </div>
         )}
       </div>
@@ -685,13 +684,13 @@ function BarView({ bar, bare }: { bar: Bar; bare?: boolean }) {
         <>
           <div className={s.track}>{segs.map((g, i) => <span key={g.name} title={g.citation} style={{ flex: g.value / sum, background: SEG_COLOUR[g.name] ?? PALETTE[i % PALETTE.length] }} />)}</div>
           <ul className={s.legend}>
-            {segs.map((g, i) => <li key={g.name} title={g.citation}><i style={{ background: SEG_COLOUR[g.name] ?? PALETTE[i % PALETTE.length] }} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
-            {extra.map((g) => <li key={g.name} title={g.citation}><i className={s.noDot} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
+            {segs.map((g, i) => <li key={g.name} title={g.citation}><i style={{ background: SEG_COLOUR[g.name] ?? PALETTE[i % PALETTE.length] }} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b></li>)}
+            {extra.map((g) => <li key={g.name} title={g.citation}><i className={s.noDot} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b></li>)}
           </ul>
         </>
       ) : (
         <ul className={s.steps}>
-          {all.map((g) => <li key={g.name} title={g.citation}><span>{cap(g.name)}</span><b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
+          {all.map((g) => <li key={g.name} title={g.citation}><span>{cap(g.name)}</span><b>{fmt(g.value, g.unit)}</b></li>)}
         </ul>
       )}
       {!bare && <p className={s.barS}>{bar.sentence}</p>}

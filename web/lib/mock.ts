@@ -86,7 +86,7 @@ function respond(i: HomeInputs, d: Design, fixed: Partial<Design> = {}): DesignR
         isFixed("battery_kwh") ? "Fixed by the planner." : d.battery_kwh ? `Roughly 1 kWh per kWp, matching evening and morning use.` : i.has_storage ? "Existing storage already covers the evening load." : `Demand under 2,500 kWh rarely justifies a battery.`,
         neighbours(n, 0.71, d.battery_kwh ?? 10, 0.25), [{ size: null, label: "No battery", share: 0.29 }]),
       heatpump: detail("kW", d.heatpump_kw, isFixed("heatpump_kw") ? 1 : 0.58,
-        isFixed("heatpump_kw") ? "Fixed by the planner." : d.heatpump_kw ? `Heat load estimated from floor area and build year, plus 1 kW for hot water.` : `Heating is already renewable or unknown, so no heat pump is proposed.`,
+        isFixed("heatpump_kw") ? "Fixed by the planner." : d.heatpump_kw ? `Heat load from floor area and build year, plus 1 kW for hot water.` : `Heating is already renewable or unknown, so no heat pump is proposed.`,
         neighbours(Math.round(n * 0.4), 0.34, d.heatpump_kw ?? 9, 0.2), [{ size: null, label: "Keep current heating", share: 0.66 }]),
       wallbox: detail("kW", d.wallbox_kw, isFixed("wallbox_kw") ? 1 : 0.9,
         isFixed("wallbox_kw") ? "Fixed by the planner." : d.wallbox_kw ? `11 kW is the standard size that needs only registration.` : i.has_ev ? "A wallbox is already installed." : "No EV, so no wallbox.",

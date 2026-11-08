@@ -31,7 +31,7 @@ export function EnvelopeBar({ env, bare }: { env: Envelope; bare?: boolean }) {
           <li key={e.key} title={e.note ?? undefined}><i style={{ background: e.colour }} />{e.name} <b>{pc(e.share)}</b><span className={s.w}>{n0(e.w)} W{e.key === "window" && win ? `, ${win}` : e.w === 0 && e.note ? `, ${e.note}` : ""}</span></li>
         ))}
       </ul>
-      <p className={s.tag}>Upper bound from the envelope, {n1(total / 1000)} kW at {deg(c.design_outdoor_c)}; estimated from address{env.build_year ? `, built ${env.build_year}` : ""}</p>
+      <p className={s.tag}>Upper bound from the envelope, {n1(total / 1000)} kW at {deg(c.design_outdoor_c)}{env.build_year ? `, built ${env.build_year}` : ""}</p>
       <details className={s.consts}>
         <summary>Constants</summary>
         <p title={c.bivalence_source ?? undefined}>Bivalence point <b>{deg(c.bivalence_c)}</b></p>

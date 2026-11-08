@@ -63,18 +63,18 @@ export default function Lead(p: Props) {
     if (q) return `"${q}"`;
     if (read?.source === "call" && f in read.inputs) {
       const o = read.origin ?? {}, tag = o[f] ?? (f === "has_ev" || f === "ev_annual_km" ? o.ev : f === "electricity_price_ct_kwh" ? o.monthly_bill_eur && "estimated" : undefined);
-      return tag === "form" ? "From the form" : tag === "estimated" ? "Estimated" : "From the call";
+      return tag === "form" ? "From the form" : "From the call";
     }
     if (f === p.question?.field && p.answer !== undefined) return fromBill && f === "annual_demand_kwh" ? `About ${n0(fromBill.kwh)} kWh from €${n0(fromBill.eur)} a month at ${price} ct` : "You answered";
-    return f === "annual_demand_kwh" && !p.asking && p.question?.field !== f ? "Assumed: not in the lead" : "Not in the lead";
+    return f === "annual_demand_kwh" && !p.asking && p.question?.field !== f ? "Not in the lead" : "Not in the lead";
   };
   const evWas = "has_ev" in p.changed && read && read.inputs.has_ev !== p.changed.has_ev ? (read.inputs.has_ev ? "yes" : "no") : undefined;
   const addr = read?.inputs.address ? (p.roof && p.roof.source !== "none" ? `${read.inputs.address} (matched)` : read.inputs.address) : null;
   const more = [
     addr,
     // Stated in the lead wins; otherwise the address estimate, labelled as one.
-    read?.inputs.house_size_sqm ? `${n0(read.inputs.house_size_sqm)} m²` : p.roof?.floor_area_m2 ? `about ${n0(Math.round(p.roof.floor_area_m2 / 10) * 10)} m², estimated from the address, upper bound` : null,
-    read?.inputs.house_built_year && !(p.roof?.build_year_class && p.roof.build_year_estimate != null && Math.abs(read.inputs.house_built_year - p.roof.build_year_estimate) < 0.5) ? `built ${read.inputs.house_built_year}` : p.roof?.build_year_estimate ? `built about ${p.roof.build_year_estimate}${p.roof.build_year_class ? ` (${p.roof.build_year_class.replace(/\s*[-–]\s*/, " to ")})` : ""}, estimated from the address` : null,
+    read?.inputs.house_size_sqm ? `${n0(read.inputs.house_size_sqm)} m²` : p.roof?.floor_area_m2 ? `about ${n0(Math.round(p.roof.floor_area_m2 / 10) * 10)} m², upper bound` : null,
+    read?.inputs.house_built_year && !(p.roof?.build_year_class && p.roof.build_year_estimate != null && Math.abs(read.inputs.house_built_year - p.roof.build_year_estimate) < 0.5) ? `built ${read.inputs.house_built_year}` : p.roof?.build_year_estimate ? `built about ${p.roof.build_year_estimate}${p.roof.build_year_class ? ` (${p.roof.build_year_class.replace(/\s*[-–]\s*/, " to ")})` : ""}` : null,
     i.has_solar ? `solar ${i.existing_solar_kwp ?? ""} kWp already` : "no solar",
     i.has_storage ? `battery ${i.existing_storage_kwh ?? ""} kWh already` : "no battery",
   ].filter(Boolean).join("; ");

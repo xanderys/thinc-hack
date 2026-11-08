@@ -32,7 +32,7 @@ import { berlinStamp } from "./time";
 const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-GB");
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
-export const offerEur = (x: number | null) => x == null ? "No offer" : `${eur(x)}, estimate`;
+export const offerEur = (x: number | null) => x == null ? "No offer" : eur(x);
 
 const isPostcode = (s: string | undefined | null) => !!s && /^\s*\d{5}\s*$/.test(s);
 // A roof face is usable when it is flat enough to tilt panels on, or not facing north (more than 60 degrees off north).
@@ -70,13 +70,13 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
 
   const roofWords = !hasStreet ? "roof not measured"
     : roof?.pending ? "roof being measured"
-    : measuredRoof(roof) ? (roof.confidence === "measured" ? "roof measured from the address" : "roof estimated from the footprint")
+    : measuredRoof(roof) ? (roof.confidence === "measured" ? "roof measured" : "roof from the footprint")
     : roof ? "roof not found at the address" : "roof being looked up";
-  const useWords = fromBill ? "consumption from the bill" : useStated ? "consumption stated" : `consumption assumed at ${n0(DEFAULT_ANNUAL_KWH)} kWh`;
+  const useWords = fromBill ? "consumption from the bill" : useStated ? "consumption stated" : `consumption ${n0(DEFAULT_ANNUAL_KWH)} kWh`;
   const confidence_line = `${stated} of ${total} facts stated, ${roofWords}, ${useWords}`;
 
   const confirm_on_site = [
-    hasStreet && measuredRoof(roof) ? "roof condition and shade (estimated from the 3D model)" : "roof size, condition and shade (not measured yet)",
+    hasStreet && measuredRoof(roof) ? "roof condition and shade" : "roof size, condition and shade (not measured yet)",
     "meter and grid connection",
     ...(d?.battery_kwh ? ["battery location"] : []),
     ...(d?.heatpump_kw ? ["heat pump location and the radiators"] : []),

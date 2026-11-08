@@ -80,7 +80,7 @@ export default function KitSheet({ kit, total, assumptions, rates, skus, note, e
         ))}
       </ol>
       {total != null && rows.length > 0 && (
-        <p className={s.total}><span>Total</span><b><Num v={eur(sum ?? total)} /></b><em>estimate</em>{inv && <RateCard calc={inv.calc} />}</p>
+        <p className={s.total}><span>Total</span><b><Num v={eur(sum ?? total)} /></b>{inv && <RateCard calc={inv.calc} />}</p>
       )}
       {note && total != null && rows.length > 0 && <p className={s.note}>{note}</p>}
     </div>

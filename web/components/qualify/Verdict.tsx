@@ -37,7 +37,6 @@ export function OfferValue({ q }: { q: Qualification | null }) {
     <div className={s.value}>
       <p className={s.vH}><span>Expected offer</span><b>{offerEur(q.expected_offer_eur)}</b></p>
       <p className={s.conf}>{q.confidence_line}</p>
-      <p className={s.est}>Every number here is an estimate until the site visit.</p>
     </div>
   );
 }
