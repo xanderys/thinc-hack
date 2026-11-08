@@ -1,26 +1,38 @@
-/* One shell: the agent's dock and card, plus the glass circle. Only transform and opacity animate. */
-.shell[data-off] { display: none; }
+/* One shell: the composer line, one card, one glass circle. Only transform and opacity animate. */
+.shell[data-off], .circle[data-off] { display: none; }
 .shell[data-lead] { --cs-tx: var(--cs-x); --cs-ty: var(--cs-y); --cs-tsx: var(--cs-sx); --cs-tsy: var(--cs-sy); }
 
-/* Lead page: the dock travels to the corner and fades; the card opens from the corner. */
-.shell[data-lead] > div:first-child, .shell[data-lead] > button { pointer-events: none; }
-.shell[data-lead] > div:first-child { opacity: 0; transition: opacity 250ms var(--spring-snappy-350); }
-.shell[data-lead] > button { opacity: 0; }
+/* Board: the composer line stays under the card while it is open. Lead page: the line travels to the corner and fades. */
+.dockWrap { transition: opacity 250ms var(--spring-snappy-350); }
+.shell[data-lead] .dockWrap { opacity: 0; pointer-events: none; }
+.shell[data-lead] .dockWrap > div > div[aria-hidden] { display: none; }   /* the board's bottom spacer */
+.shell[data-open]:not([data-lead]) .dockWrap { opacity: 0; pointer-events: none; }
 
-.shell > section {
+.expand { position: fixed; z-index: 42; bottom: calc(var(--composer-h, 96px) - 34px); right: calc(50% - max(25%, 260px)); width: 32px; height: 32px; display: grid; place-items: center; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; border-radius: 50%; }
+.expand:hover, .collapse:hover { color: var(--ink); }
+@media (max-width: 900px) { .expand { right: 12px; } }
+.collapse { flex: 0 0 40px; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--ink-2); cursor: pointer; }
+
+.scrim { position: fixed; inset: 0; z-index: 43; background: rgba(27, 29, 32, 0.08); opacity: 0; pointer-events: none; transition: opacity 400ms var(--spring-smooth-500); }
+.shell[data-open] .scrim { opacity: 1; pointer-events: auto; }
+
+.card {
+  position: fixed; z-index: 44; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom)); width: min(760px, calc(100vw - 32px)); height: 50vh; margin-left: calc(min(760px, calc(100vw - 32px)) / -2);
+  display: flex; flex-direction: column; border-radius: 22px;
+  background: rgba(253, 253, 251, 0.8); border: 1px solid rgba(255, 255, 255, 0.7);
   -webkit-backdrop-filter: blur(44px) saturate(1.8); backdrop-filter: blur(44px) saturate(1.8);
-  background: rgba(253, 253, 251, 0.8); border-color: rgba(255, 255, 255, 0.7);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 0 0 1px rgba(27, 29, 32, 0.05);
+  opacity: 0; transform: translateY(24px); visibility: hidden; pointer-events: none;
+  transition: transform 767ms var(--spring-smooth-500), opacity 300ms var(--spring-smooth-500), visibility 0s linear 767ms;
 }
-.shell[data-lead] > section {
-  left: auto; right: 16px; margin-left: 0; bottom: calc(16px + env(safe-area-inset-bottom));
-  width: min(420px, calc(100vw - 32px)); height: min(560px, 62vh);
-  transform-origin: 100% 100%; transform: scale(0.133); opacity: 0;
-}
-.shell[data-lead] > section[aria-hidden="false"] { transform: none; opacity: 1; }
-@media (max-width: 600px) { .shell[data-lead] > section { height: min(50vh, 460px); } }
+.shell[data-open] .card { opacity: 1; transform: none; visibility: visible; pointer-events: auto; transition: transform 767ms var(--spring-smooth-500), opacity 200ms var(--spring-smooth-500), visibility 0s; }
+/* Lead page: a 420 px card with space on every side, opening from the circle's corner. */
+.shell[data-lead] .card { left: auto; right: 16px; margin-left: 0; bottom: calc(16px + env(safe-area-inset-bottom)); width: min(420px, calc(100vw - 32px)); height: min(560px, 62vh); transform-origin: 100% 100%; transform: scale(0.133); }
+.shell[data-lead][data-open] .card { transform: none; }
+@media (max-width: 600px) { .shell[data-lead] .card { height: min(50vh, 460px); } }
 
-.chip { position: absolute; z-index: 2; top: 3px; left: 16px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 10px; border-radius: 999px; background: var(--sheet-2); font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink-2); pointer-events: none; }
+.chip { position: absolute; z-index: 2; top: 8px; left: 16px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 10px; border-radius: 999px; background: var(--sheet-2); font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink-2); pointer-events: none; }
+.card > div { padding-top: 26px; }
 
 .circle {
   position: fixed; z-index: 42; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); width: 56px; height: 56px; border-radius: 50%;
@@ -31,11 +43,11 @@
   opacity: 0; transform: scale(0.4); transform-origin: 100% 100%; pointer-events: none;
   transition: transform 767ms var(--spring-smooth-500), opacity 250ms var(--spring-snappy-350);
 }
-.circle[data-off] { display: none; }
-.circleOn { opacity: 1; transform: none; pointer-events: auto; }
-.circle:active { transform: scale(0.94); transition-duration: 200ms; }
+.circle[data-on] { opacity: 1; transform: none; pointer-events: auto; }
+.circle[data-on]:active { transform: scale(0.94); transition-duration: 200ms; }
 
 @media (prefers-reduced-motion: reduce) {
-  .circle, .circleOn { transform: none; transition: opacity 200ms linear; }
-  .shell[data-lead] > section, .shell[data-lead] > section[aria-hidden="false"] { transform: none; }
+  .circle, .circle[data-on] { transform: none; transition: opacity 200ms linear; }
+  .card, .shell[data-open] .card, .shell[data-lead] .card, .shell[data-lead][data-open] .card { transform: none; transition: opacity 200ms linear, visibility 0s linear 200ms; }
+  .shell[data-open] .card { transition: opacity 200ms linear, visibility 0s; }
 }

@@ -1,14 +1,17 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import Agent from "@/components/agent/Agent";
+import Composer from "@/components/composer/Composer";
+import Thread from "@/components/agent/Thread";
 import { Ctx, type CopilotContext } from "./context";
 import s from "./copilot.module.css";
 
 const leadOf = (p: string) => p.match(/^\/h\/([^/]+)/)?.[1];
 const shown = (p: string) => p === "/" || p.startsWith("/h/");
+const Chev = ({ up }: { up?: boolean }) => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={up ? undefined : { transform: "rotate(180deg)" }}><path d="M4.5 11 9 6.5l4.5 4.5" /></svg>
+);
 
-/** One copilot for the whole app: a floating card on the board, a glass circle on a lead page, the card again from the circle. */
+/** One copilot for the whole app: the composer line on the board, a glass circle on a lead page, one floating card from either. */
 export default function CopilotShell() {
   const [path, setPath] = useState("/");
   const [name, setName] = useState<string | undefined>();
@@ -17,7 +20,7 @@ export default function CopilotShell() {
   const lead = leadOf(path) ? decodeURIComponent(leadOf(path)!) : undefined;
   const asCircle = !!lead;
 
-  // The path follows pushState on the same tick, so the circle starts moving on the frame the card zooms.
+  // The path follows pushState on the same tick, so the circle starts moving on the frame the board card zooms.
   useEffect(() => {
     const sync = () => setPath(location.pathname);
     sync();
@@ -41,17 +44,9 @@ export default function CopilotShell() {
     return () => { stop = true; };
   }, [lead]);
 
-  const card = () => wrap.current?.querySelector(":scope > section") as HTMLElement | null;
-  // The agent lane owns the card's open state; the shell watches it and drives its own buttons.
-  useEffect(() => {
-    const el = card(); if (!el) return;
-    const read = () => setOpen(el.getAttribute("aria-hidden") === "false");
-    read(); const mo = new MutationObserver(read); mo.observe(el, { attributes: true, attributeFilter: ["aria-hidden"] });
-    return () => mo.disconnect();
-  }, []);
-  const press = useCallback((expanded: boolean) => { (wrap.current?.querySelector(`button[aria-expanded="${expanded}"]`) as HTMLButtonElement | null)?.click(); }, []);
+  useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); }; addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, [open]);
 
-  // The composer's measured travel to the corner: its right edge to 16 px from the right, its bottom to 16 px up, shrunk to 56 px.
+  // The composer's measured travel to the corner: right edge to 16 px from the right, bottom 16 px up, shrunk to 56 px.
   useEffect(() => {
     const el = wrap.current; if (!el) return;
     const set = () => {
@@ -61,37 +56,42 @@ export default function CopilotShell() {
       el.style.setProperty("--cs-y", "-16px");
       el.style.setProperty("--cs-sx", String(56 / w)); el.style.setProperty("--cs-sy", String(56 / h));
     };
-    set(); addEventListener("resize", set);
-    const t = setTimeout(set, 600);
+    set(); addEventListener("resize", set); const t = setTimeout(set, 600);
     return () => { removeEventListener("resize", set); clearTimeout(t); };
   }, [path]);
 
-  // Touching the 3D canvas or scrolling down puts the card back in its corner.
+  // Touching the 3D canvas or scrolling the page down puts the card back in its corner.
+  const close = useCallback(() => setOpen(false), []);
   useEffect(() => {
     if (!asCircle || !open) return;
     let y = scrollY, down = 0;
-    const onDown = (e: PointerEvent) => { if ((e.target as HTMLElement | null)?.closest?.("canvas")) press(true); };
+    const onDown = (e: PointerEvent) => { if ((e.target as HTMLElement | null)?.closest?.("canvas")) close(); };
     const onScroll = (e: Event) => {
       const t = e.target as HTMLElement | Document;
-      if (t instanceof HTMLElement && wrap.current?.contains(t)) return;   // the thread scrolling is not the page
+      if (t instanceof HTMLElement && t.closest("[data-copilot-card]")) return;   // the thread scrolling is not the page
       const now = t instanceof HTMLElement ? t.scrollTop : scrollY;
       down = now > y ? down + (now - y) : 0; y = now;
-      if (down > 40) press(true);
+      if (down > 40) close();
     };
     document.addEventListener("pointerdown", onDown, true); document.addEventListener("scroll", onScroll, true);
     return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("scroll", onScroll, true); };
-  }, [asCircle, open, press]);
+  }, [asCircle, open, close]);
 
   const ctx = useMemo<CopilotContext>(() => ({ leadId: lead, name }), [lead, name]);
-  const el = card();
+  const off = shown(path) ? undefined : "1";
+  const goLead = (id: string) => { setOpen(false); history.pushState({ h: id }, "", `/h/${id}`); dispatchEvent(new PopStateEvent("popstate")); };
   return (
     <Ctx.Provider value={ctx}>
-      <div ref={wrap} className={s.shell} data-lead={asCircle ? "1" : undefined} data-off={shown(path) ? undefined : "1"}>
-        <Agent />
+      <div ref={wrap} className={s.shell} data-lead={asCircle ? "1" : undefined} data-open={open ? "1" : undefined} data-off={off}>
+        <div className={s.dockWrap}><Composer /></div>
+        {!asCircle && !open && <button type="button" className={s.expand} aria-label="Expand" aria-expanded={false} onClick={() => setOpen(true)}><Chev up /></button>}
+        <div className={s.scrim} onClick={close} aria-hidden />
+        <section className={s.card} data-copilot-card aria-hidden={!open} aria-label="Copilot">
+          {lead && name && <span className={s.chip}>{name}</span>}
+          {open && <Thread onLead={goLead} trailing={<button type="button" className={s.collapse} aria-label="Collapse" aria-expanded onClick={close}><Chev /></button>} />}
+        </section>
       </div>
-      {el && lead && name && createPortal(<span className={s.chip}>{name}</span>, el)}
-      <button type="button" className={`${s.circle} ${asCircle && !open ? s.circleOn : ""}`} aria-label="Open the copilot" tabIndex={asCircle && !open ? 0 : -1}
-        data-off={shown(path) ? undefined : "1"} onClick={() => press(false)}>
+      <button type="button" className={s.circle} aria-label="Open the copilot" data-on={asCircle && !open ? "1" : undefined} data-off={off} tabIndex={asCircle && !open ? 0 : -1} onClick={() => setOpen(true)}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3.5" y="6" width="17" height="12" rx="6" /><path d="M8 12h5" /></svg>
       </button>
     </Ctx.Provider>
