@@ -157,10 +157,10 @@ export default function ProposedCard({ kwp, kwh, price = 0, pending, children, i
   const tiles = labels ? figs.length > 0 : figs.length === 3 && figs.every((f, i) => f.k === (["kwp", "kwh", "price"] as const)[i]);
   const tile = (f: Fig) => (
     <span key={f.k} className="pc-tile"><span className="pc-tl">{labels?.[f.k] ?? TILE[f.k]}</span>
-      {pending ? <b className="pc-skel" aria-hidden="true">{f.v}</b> : <b><Num v={f.v} lit /></b>}</span>
+      {pending ? <b className="pc-skel" aria-hidden="true">{"\u00a0".repeat(Math.max(5, f.v.length))}</b> : <b><Num v={f.v} lit /></b>}</span>
   );
   const figure = (f: Fig) => pending
-    ? <span key={f.k} className="pc-fig pc-skel" aria-hidden="true">{f.v}</span>
+    ? <span key={f.k} className="pc-fig pc-skel" aria-hidden="true">{"\u00a0".repeat(Math.max(5, f.v.length))}</span>
     : <span key={f.k} className="pc-fig"><Num v={f.v} lit /></span>;   // springs to the new figure and lights briefly
 
   return (

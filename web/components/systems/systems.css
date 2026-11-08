@@ -411,3 +411,8 @@
 .sb-row { display: grid; gap: 2px; margin: 0; font-size: 14px; line-height: 1.4; }
 .sb-row b { font-weight: 600; }
 .sb-row span { color: var(--muted, #5a6478); }
+/* The kit lines while a refine is out: no value shows through, the line waits as a shimmer and lands once. */
+[data-kit-pending] [class*="kitSheet_spec__"], [data-kit-pending] [class*="kitSheet_name__"], [data-kit-pending] [class*="kitSheet_price__"], [data-kit-pending] [class*="kitSheet_total__"] b {
+  color: transparent !important; border-radius: 4px; background: linear-gradient(90deg, var(--sheet-2) 0%, #e6e9f2 50%, var(--sheet-2) 100%) 0 0 / 200% 100%; animation: skel 1.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { [data-kit-pending] [class*="kitSheet_spec__"], [data-kit-pending] [class*="kitSheet_name__"], [data-kit-pending] [class*="kitSheet_price__"], [data-kit-pending] [class*="kitSheet_total__"] b { animation: none; } }

@@ -250,6 +250,9 @@ export default function Chain({ res: res0, prev, inputs, leadId, pending = null,
   const ovKey = JSON.stringify(ovNow);
   const [opt, setOpt] = useState<Record<string, unknown> | null>(null);
   const optBase = useRef<unknown>(null);   // the design on screen when the edit was made
+  const [snap, setSnap] = useState<{ k: string; picked: number; got: number } | null>(null);
+  useEffect(() => { if (opt) setSnap(null); }, [opt]);
+  const snapNote = (k: string, unit: string) => snap?.k === k ? <p className="sc-why">{n1(snap.picked)} {unit} snaps to the {n1(snap.got)} {unit} package.</p> : null;
   const sizeOf = (v: unknown) => (typeof v === "number" ? v : v === null ? 0 : undefined);
   useEffect(() => {
     if (!opt) return;
@@ -257,7 +260,12 @@ export default function Chain({ res: res0, prev, inputs, leadId, pending = null,
     if (Object.entries(opt).every(([k, v]) => sizeOf(v) === undefined || (Number(rd[k]) || 0) === sizeOf(v))) { setOpt(null); return; }
     // Any design that lands after the edit answers it, also when the engine snapped the size (7 kWh to its package):
     // the overlay goes and the card and the pass show the engine's own figures at once.
-    if (optBase.current && res !== optBase.current && !pending) { setOpt(null); return; }
+    if (optBase.current && res !== optBase.current && !pending) {
+      // The engine snapped the pick to a catalogue size: say so once, on the card ("15 kWh snaps to the 18 kWh package").
+      const sn = Object.entries(opt).map(([k, v]) => ({ k, picked: sizeOf(v), got: Number(rd[k]) || 0 })).find((x) => x.picked != null && x.picked > 0 && x.got > 0 && Math.abs(x.picked - x.got) > 0.01);
+      setSnap(sn ? { k: sn.k, picked: sn.picked!, got: sn.got } : null);
+      setOpt(null); return;
+    }
     const t = setTimeout(() => setOpt(null), 20000);
     return () => clearTimeout(t);
   }, [res, res.design, opt, pending]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -536,7 +544,7 @@ export default function Chain({ res: res0, prev, inputs, leadId, pending = null,
         head: adding?.part === "battery" ? <Head main="Battery" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : kwh ? <Head main={`Battery ${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
         label: kwh ? `${n1(kwh)} kWh battery` : "No battery",
         // Views' BatteryDay when the day is available; otherwise the year's split from the refine (follows each refine).
-        body: kwh && leadId && dayOn ? <BatteryDay leadId={leadId} sizes={daySizes} version={dayVer} /> : !kwh && adding?.part !== "battery" ? <>{why0("battery")}{yearSplit}</> : yearSplit,
+        body: <>{snapNote("battery_kwh", "kWh")}{kwh && leadId && dayOn ? <BatteryDay leadId={leadId} sizes={daySizes} version={dayVer} /> : !kwh && adding?.part !== "battery" ? <>{why0("battery")}{yearSplit}</> : yearSplit}</>,
         info: <>
           {snapLine("battery", "kWh")}
           {day && roof != null && <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p>}
