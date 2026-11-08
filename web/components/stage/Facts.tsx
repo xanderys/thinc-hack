@@ -120,7 +120,7 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
 }
 
 /** The facts row. An explicit edit calls onFact (the existing intake-step path); opening a chip never writes. slot: room for a button at the row's end. */
-export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phone, onPhone, sources }: { sources?: Record<string, string>; phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
+export default function Facts({ inputs, roof, onFact, hidden, flash, slot, origin, phone, onPhone, sources }: { sources?: Record<string, string>; phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; flash?: Field | null; slot?: ReactNode }) {
   const [open, setOpen] = useState<Field | "phone" | null>(null);
   const card = useClientCard();
   useEffect(() => () => setClientCard(false), []);
@@ -131,15 +131,15 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
   // A fact that changes while the card is up (a live call, a WhatsApp reply) gets one soft highlight.
   const shown = specs.map((s) => { const b = s.state(inputs, roof); return [s.f, `${b === "missing" ? "" : s.value(inputs, roof)}|${sources?.[s.f] ?? b}`] as const; });
   const last = useRef<Map<string, string> | null>(null);
-  const [flash, setFlash] = useState<{ fields: Set<string>; n: number }>({ fields: new Set(), n: 0 });
+  const [live, setLive] = useState<{ fields: Set<string>; n: number }>({ fields: new Set(), n: 0 });
   const sig = shown.map(([f, v]) => f + "=" + v).join(";");
   useEffect(() => {
     const prev = last.current; last.current = new Map(shown);
     if (!prev) return;
     const changed = new Set(shown.filter(([f, v]) => prev.has(f) && prev.get(f) !== v).map(([f]) => f));
     if (!changed.size) return;
-    setFlash((x) => ({ fields: changed, n: x.n + 1 }));
-    const t = setTimeout(() => setFlash((x) => ({ ...x, fields: new Set() })), 1200);
+    setLive((x) => ({ fields: changed, n: x.n + 1 }));
+    const t = setTimeout(() => setLive((x) => ({ ...x, fields: new Set() })), 1200);
     return () => clearTimeout(t);
   }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
   const cur = specs.find((s) => s.f === open);
@@ -149,7 +149,7 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
     addEventListener("keydown", on); return () => removeEventListener("keydown", on);
   }, [open]);
   const cell = (key: string, g: Glyph, label: string, st: string, value: string | null, via: boolean, field: Field | "phone", mark?: string) => (
-    <button key={key} type="button" className="fq" data-state={st} data-flash={flash.fields.has(field) ? "" : undefined} aria-expanded={open === field} aria-controls="fc-panel" onClick={() => setOpen((o) => o === field ? null : field)}>
+    <button key={key} type="button" className="fq" data-flash={flash === field || live.fields.has(field) ? "" : undefined} data-state={st} aria-expanded={open === field} aria-controls="fc-panel" onClick={() => setOpen((o) => o === field ? null : field)}>
       <Glyph g={g} />
       {st === "missing"
         ? <span className="fq-need">Needs: {label.toLowerCase()}</span>

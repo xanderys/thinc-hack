@@ -22,7 +22,7 @@ Intents:
 - "I'm visiting <name>": find the lead with list_leads by first or last name (include_test if none match); several matches: one line of lead chips to pick from; then site_visit, and answer with the lead chip, a numbered list of questions (fact, then the figure at stake in bold when given) and a list of site checks. Write nothing.
 - Design questions ("why 10 kWh", "what if no battery"): answer from design (the component's reason and figures) and, for what-if, a refine comparison in a small table. Read only unless the planner asks for the change.
 - Client facts ("she has 5 people") go to propose_facts. "Draft a WhatsApp" calls whatsapp_draft and quotes the draft as a blockquote; it is sent only through ask_whatsapp and Apply.
-- Heat pump price: one sourced whole-job market price whatever the size, €33,500 installed (reduco 2026), less the 30 % BEG subsidy, less €10,000 for an avoided gas or oil boiler: €25,100 net without a fossil boiler to replace, €15,100 with one. Never imply the price scales with kW; when sizes differ, say it is the same installed job. Take every price from the tools, which read the same rates as the kit sheet.
+- Heat pump price: one sourced whole-job market price whatever the size, €33,500 installed (reduco 2026), less the 30 % BEG subsidy, capped at €8,400 (30 % of €28,000), less €10,000 for an avoided gas or oil boiler: €25,100 net without a fossil boiler to replace, €15,100 with one. Never imply the price scales with kW; when sizes differ, say it is the same installed job. Take every price from the tools, which read the same rates as the kit sheet.
 - "The one I asked about earlier" resolves from the lead chips in the earlier conversation.`;
 
 type Msg = { role: "user" | "assistant"; content: string };

@@ -13,9 +13,10 @@ import { poseOffset, springStep, type Focus, type Pose, releaseRate, startCoast,
 import { ShadeLayer } from "./shading";
 import { neighbourEdges, outlineMesh, registerGlb } from "./whiteContext";
 import { Xray } from "./xray";
-import { Systems, type System } from "./systems";
+import { Systems, type Flow, type System } from "./systems";
 import { googleGround, sharpen } from "./satGround";
-import { BATTERY, HEATPUMP, INVERTER, WALLBOX, battery, heatPump, inverter, wallbox, withEdges } from "./kitMeshes";
+import { BATTERY, HEATPUMP, INVERTER, WALLBOX, battery, batteryHeight, heatPump, inverter, wallbox } from "./kitMeshes";
+import { batteryModules } from "./kitBands";
 import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
@@ -51,7 +52,8 @@ export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string
 const GAP = 24;
 // On-model chips: one line each, never more than four on screen; a chip that would overlap another tries below,
 // left and right of its anchor before it hides.
-const MAX_CHIPS = 4, CHIP_GAP = 6;
+const XRAY_WARM = new THREE.Color("#F7E3CF"), XRAY_COOL = new THREE.Color("#DCE6F2"); // the x-ray glass by day and by night
+const MAX_CHIPS = 4, CHIP_GAP = 6, STUB = 10; // STUB: px of leader between a unit and its pill
 const kwpS = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 2 });
 
 
@@ -145,6 +147,8 @@ export class SpatialScene {
   // Live anchors for the size pills: the same vectors are re-projected every frame, so a pill follows its unit
   // when snapUnits moves it onto the wall after the building model loads.
   private wbAt = new THREE.Vector3();
+  private baseMinD = 0;   // the house-wide zoom limit (fit), lowered only while a unit's close view is on
+  private eaveY = 0;      // height of the target roof's lowest edge, for framing the unit close views
   private battAt = new THREE.Vector3();
   private occRay = new THREE.Raycaster();
   private gridPole = new THREE.Group(); // the grid connection, shown only with the day flow's "Grid" label
@@ -156,7 +160,8 @@ export class SpatialScene {
   private spin: { a: number; v: number; h: number; y: number } | null = null;   // compass turn to north
   private vPos = new THREE.Vector3();
   private vTgt = new THREE.Vector3();
-  private batteryBox!: THREE.Mesh;
+  private batteryBox!: THREE.Object3D;
+  private battN = 3; // battery modules on the model, one per band of kWh (kitBands.ts)
   private labels: Label[] = [];
   private labelEls = new Map<string, HTMLDivElement>();
   private panelAnim: { g: THREE.Object3D; from: THREE.Vector3; delay: number; mats: THREE.Material[] }[] = [];
@@ -184,6 +189,27 @@ export class SpatialScene {
   private plan: Plan | null = null;
   private planG: SVGGElement | null = null;
   private shade = new ShadeLayer();
+  // What can shade a module, for the moment shading in shading.ts: the house's walls and roof and the neighbours at
+  // their full height (the drawn neighbours lie flat), as unseen meshes fixed where the model sits. Built once per glb.
+  private occCache: THREE.Mesh[] | null = null;
+  private rayOccluders = (): THREE.Mesh[] => {
+    if (this.occCache) return this.occCache;
+    const root = this.glbRoot;
+    if (!root) return [];
+    root.updateMatrixWorld(true);
+    const mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    const out: THREE.Mesh[] = [];
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !/^(roof|walls|context)/.test((m.name || m.parent?.name || "").toLowerCase())) return;
+      const g = (m.userData.fullGeo as THREE.BufferGeometry | undefined) ?? m.geometry;
+      const x = new THREE.Mesh(g, mat);
+      x.matrixAutoUpdate = false; x.matrix.copy(m.matrixWorld); x.matrixWorld.copy(m.matrixWorld);
+      out.push(x);
+    });
+    this.occCache = out;
+    return out;
+  };
   private ctxLines = new THREE.Group(); // neighbours' footprints on the white ground
   private xray = new Xray({ walls: () => this.wallMesh, box: this.box, planes: () => this.targets.map((t) => t.p), root: this.scene,
     overlay: () => this.overlay ?? null, project: (v) => this.project(v), camera: () => this.camera, reduce: () => !!this.opts?.reduce });
@@ -238,8 +264,10 @@ export class SpatialScene {
     el.addEventListener("pointerdown", this.onFlickDown);
     el.addEventListener("pointermove", this.onFlickMove);
     el.addEventListener("pointerup", this.onFlickUp);
-    window.addEventListener(SYSTEM_EVENT, this.onSystemPick); // a Systems chip tap, even on the chip already showing
+    window.addEventListener(SYSTEM_EVENT, this.onSystemPick);
+    exposeScene(this, true); // a Systems chip tap, even on the chip already showing
     this.shade.mount(overlay, this.renderer.domElement);
+    this.shade.setOccluders(this.rayOccluders);
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
@@ -350,7 +378,8 @@ export class SpatialScene {
     this.fitD = d;
     // The opening view and every pose: the house box framed into the free rect (framed()); the zoom limits span both.
     const open = this.framed(new THREE.Vector3(0.42, 0.62, 0.66)), df = open.pos.distanceTo(open.tgt);
-    this.controls.minDistance = Math.min(d, df) * 0.55;
+    this.baseMinD = Math.min(d, df) * 0.55;
+    if (!this.pose?.unit) this.controls.minDistance = this.baseMinD;
     this.controls.maxDistance = Math.max(d, df) * 1.8;
     if (reset || !this.fitted) {
       this.persp.position.copy(open.pos);
@@ -373,7 +402,28 @@ export class SpatialScene {
   // A pose keeps its angle (azimuth, elevation); its target and distance come from the fit: the house's box centred in
   // the free rect (canvas minus the card, the tucked pass and the toolbar), all eight corners inside it with a margin.
   private goalOf(p: Pose) {
-    return this.framed(poseOffset(p));
+    return (p.unit && this.unitGoal(p.unit)) || this.framed(poseOffset(p));
+  }
+  // A close view of a unit on its wall: the camera stands out from that wall (south for the battery and the heat pump,
+  // east for the wallbox), turned 15 degrees for depth, at 1.7 m, and aims a little above the unit so the unit sits in
+  // the lower part of the frame, clear of the Proposed Design bar. 15 m out for the 1.2 m battery and heat pump, aimed
+  // 2.8 m under the eaves, so the eave line and a strip of roof sit in the top fifth of the 8 m tall frame and the
+  // unit draws about 100 px or more at 1440; 8 m for the 0.4 m wallbox.
+  private unitGoal(kind: "battery" | "wallbox" | "heatpump") {
+    const b = this.unitBox(kind);
+    if (!b || this.box.isEmpty()) return null;
+    const c = b.getCenter(new THREE.Vector3());
+    // Heat pump 12 m out, battery 15 m, wallbox 8 m. The aim sets where the ground falls in the frame (the frame is
+    // 2 d tan(fov / 2) tall): a quarter of the way up on a desktop, 40 % up on a phone, so the unit and its pill always
+    // clear the Proposed Design bar and the toolbar along the canvas foot, whatever the eave height.
+    const small = kind === "wallbox", narrow = this.host.clientWidth < 600;
+    const d = small ? 8 : kind === "heatpump" ? 12 : 15;
+    const n = small ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+    n.applyAxisAngle(new THREE.Vector3(0, 1, 0), (small ? 1 : -1) * (15 * Math.PI) / 180);
+    const H = d * Math.tan((this.persp.fov * Math.PI) / 360), ground = narrow ? 0.4 : 0.25;
+    const tgt = new THREE.Vector3(c.x, small ? Math.max(c.y, H * (1 - 2 * ground)) : H * (1 - 2 * ground), c.z);
+    const pos = tgt.clone().addScaledVector(n, d).setY(1.7);
+    return { tgt, pos };
   }
   private framed(dir: THREE.Vector3) {
     const tgt = this.box.isEmpty() ? this.centre.clone() : this.box.getCenter(new THREE.Vector3());
@@ -422,8 +472,13 @@ export class SpatialScene {
   // Moves the camera to a stage's pose on one smooth spring (0.6 s, bounce 0) from wherever it is now, keeping
   // its velocity if a new stage arrives mid-flight. A top-down pose ends in the 2D plan. Reduce Motion: a cut.
   flyTo(p: Pose) {
-    this.pose = p; this.home = p; this.spin = null; this.cancelMomentum();
+    // A chip can switch while the view is being rebuilt: with no live canvas there is nothing to move (never throw).
+    if (!this.alive || !this.renderer?.domElement || !this.controls) return;
+    // A unit's close view is not home: Re-centre goes back to the normal fit.
+    this.pose = p; if (!p.unit) this.home = p; this.spin = null; this.cancelMomentum();
     const { pos, tgt } = this.goalOf(p);
+    // The close view sits nearer than the house-wide zoom limit allows; any other pose puts the limit back.
+    this.controls.minDistance = p.unit ? Math.min(this.baseMinD, pos.distanceTo(tgt) * 0.7) : this.baseMinD;
     if (this.mode === "2d" && !p.topDown) { this.setView("3d"); this.opts.onView?.("3d"); }
     this.controls.minPolarAngle = p.topDown ? 0 : Math.PI * 0.08;
     if (this.opts.reduce) {
@@ -485,14 +540,15 @@ export class SpatialScene {
     if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(0, 4, 0), new THREE.Vector3(12, 8, 12));
     box.expandByPoint(new THREE.Vector3(box.min.x, 0, box.min.z));
     this.box.copy(box);
+    this.eaveY = target.length ? Math.min(...target.flatMap((p) => p.polygon.map((q) => toV(q).y))) : 0;
     if (this.glbRoot && !this.box.isEmpty()) this.flattenNeighbours(this.glbRoot);
     const size = box.getSize(new THREE.Vector3());
     // Battery: indoors against the south wall, seen through the glass walls (snapUnits puts it on the wall's inner
     // face once the building model is in); grid: a pole at the edge of the plot, only with the day flow.
     const bx = box.min.x + 1.6, bz = box.max.z - 1.2;
     // The parts come from kitMeshes.ts, the same objects the parts list shows as icons.
-    this.batteryBox = withEdges(battery() as THREE.Mesh, INK);
-    this.batteryBox.position.set(bx, 0.75, bz);
+    this.batteryBox = battery(this.battN);
+    this.batteryBox.position.set(bx, 0, bz);
     const gx = box.max.x + 5, gz = box.min.z + 3;
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 7.5, 8), new THREE.MeshLambertMaterial({ color: "#4A4C55" }));
     pole.position.set(gx, 3.75, gz);
@@ -526,14 +582,14 @@ export class SpatialScene {
     this.wallbox.visible = false;
     this.kit.add(this.wallbox);
     // Inverter: indoors on the south wall beside the battery, at head height. Heat pump: the outdoor unit on the
-    // ground by the west wall, its fan facing out. Each shows only when the design has one (setUnits).
-    this.inverterUnit = withEdges(inverter(), INK);
+    // ground outside the south wall, 2 m east of the battery, its fan facing out, where the Heat pump view looks.
+    // Each shows only when the design has one (setUnits).
+    this.inverterUnit = inverter();
     this.inverterUnit.position.set(bx + BATTERY.w / 2 + 0.2 + INVERTER.w / 2, 1.0, bz);
     this.inverterUnit.visible = false;
     this.kit.add(this.inverterUnit);
-    const hp = withEdges(heatPump(), INK);
-    hp.position.set(box.min.x - 0.45, 0, box.max.z - 2.2);
-    hp.rotation.y = -Math.PI / 2;
+    const hp = heatPump();
+    hp.position.set(bx + BATTERY.w / 2 + 2.2 + HEATPUMP.w / 2, 0, box.max.z + HEATPUMP.d / 2 + 0.25); // clear of the battery behind the wall
     this.hpGroup.add(hp);
     this.hpGroup.visible = false;
     this.hpUnit = hp;
@@ -579,7 +635,7 @@ export class SpatialScene {
         else if (old && old.map) { m.material = new THREE.MeshLambertMaterial({ map: old.map, side: THREE.DoubleSide }); }
       });
       // The target footprint comes with the roof model; until it is in, flatten later.
-      this.glbRoot = gltf.scene; this.flattened = false;
+      this.glbRoot = gltf.scene; this.flattened = false; this.occCache = null;
       if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene);
       sharpen(gltf.scene, this.renderer);
       this.ctxOff.push(registerGlb(gltf.scene, this.ctxLines));
@@ -617,6 +673,7 @@ export class SpatialScene {
         for (let i = t; i < t + 3; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld); v.y = ground + 0.02; v.applyMatrix4(inv); pos.setXYZ(i, v.x, v.y, v.z); }
       }
       pos.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
+      if (!m.userData.fullGeo) m.userData.fullGeo = m.geometry; // full height, for the shading rays (rayOccluders)
       m.geometry = g;
     });
   }
@@ -818,6 +875,63 @@ export class SpatialScene {
   }
 
   setBattery(on: boolean) { this.battOn = on; this.fadeTo(this.batteryBox ?? null, on); }
+  // Component views (docs/briefs/component-views.md): three cheap, idempotent hooks; never called, nothing changes.
+  // Battery charge 0..1: that share of the tower's lights stays lit (bottom up) and a green band on its front rises.
+  private battFill: number | null = null;
+  setBatteryFill(f: number) {
+    this.battFill = Math.max(0, Math.min(1, f));
+    this.applyFill();
+  }
+  private applyFill() {
+    const o = this.batteryBox, f = this.battFill;
+    if (!o || f == null) return;
+    const lit = Math.round(f * this.battN);
+    o.traverse((x) => { if (x.name === "led") ((x as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set((x.userData.i as number) < lit ? "#24a148" : "#5a5d66"); });
+    let band = o.getObjectByName("fill") as THREE.Mesh | undefined;
+    if (!band) {
+      band = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 1), new THREE.MeshBasicMaterial({ color: "#24a148" }));
+      band.name = "fill"; band.position.set(BATTERY.w / 2 - 0.07, 0, BATTERY.d / 2 + 0.006);
+      o.add(band);
+    }
+    const h = Math.max(0.001, f * (batteryHeight(this.battN) - 0.12));
+    band.scale.y = h; band.position.y = 0.04 + h / 2; band.visible = f > 0.001;
+  }
+  // The car's charge 0..1, as a small battery glyph over its roof (systems.ts).
+  setCarCharge(c: number) { this.systems.setCharge(Math.max(0, Math.min(1, c))); }
+  // The strips' scrubbed hour in kW (systems.ts Flow): the battery and wallbox flow lines follow it.
+  setFlow(f: Flow | null) { this.systems.setFlow(f); }
+  // Outside temperature from the winter strip: the heat pump view's thermal glow fades as it warms (xray.ts).
+  setOutdoorTemp(c: number) { if (Number.isFinite(c)) this.xray.setOutdoorTemp(c); }
+  // The heat pump x-ray's glass follows the hour: warmer by day, cooler at night (applied each frame while set).
+  private xrayHour: number | null = null;
+  setXrayHour(h: number) { this.xrayHour = ((h % 24) + 24) % 24; }
+  private applyXrayHour() {
+    if (this.xrayHour == null) return;
+    const m = this.xray.shellMesh()?.material as THREE.MeshLambertMaterial | undefined;
+    if (!m) return;
+    const day = Math.max(0, Math.sin((Math.PI * (this.xrayHour - 6)) / 12)); // 0 at night, 1 at noon
+    m.color.copy(XRAY_COOL).lerp(XRAY_WARM, day);
+    m.emissive.copy(m.color).multiplyScalar(0.45);
+  }
+
+  // The battery tower grows with the design's kWh, one module per band, the same tower as its parts-list icon.
+  setBatteryKwh(kwh: number | null) {
+    const n = batteryModules(kwh && kwh > 0 ? kwh : 9);
+    if (n === this.battN || !this.batteryBox) { this.battN = n; return; }
+    this.battN = n;
+    const old = this.batteryBox, next = battery(n);
+    next.position.copy(old.position); next.rotation.copy(old.rotation);
+    const parent = old.parent;
+    parent?.remove(old);
+    parent?.add(next);
+    old.traverse((x) => { const m = x as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } });
+    this.fades.delete(old);
+    this.batteryBox = next;
+    this.fadeTo(next, this.battOn);
+    this.applyFill();
+    this.pillAnchors();
+    this.systems.rebuild(); // the flow into the battery ends on the tower's new top
+  }
 
   setShading(d: Shading | null, on: boolean, at: ShadeAt) { this.shade.set(d, on, at); }
   // Heat pump step: envelope x-ray (xray.ts); null fades it out.
@@ -828,6 +942,7 @@ export class SpatialScene {
 
   // One call for the Systems chips: the system's layer on the model and its camera pose; null hands back to layers.
   setSystem(s: System | null) {
+    if (!this.alive) return;
     this.systems.set(s);
     if (!s) this.show(this.lastShow);
     this.applyUnits();
@@ -888,7 +1003,7 @@ export class SpatialScene {
   }
   // The roof box includes the eaves, so a unit placed from it misses the wall: once the building model is in,
   // move the battery and inverter onto the inner face of the south wall (the ray starts inside the house), the
-  // wallbox onto the outer face of the east wall by the drive, and the heat pump to a hand's width outside the west
+  // wallbox onto the outer face of the east wall by the drive, and the heat pump to a hand's width outside the south
   // wall. The glass shell stands in for the house's own walls. The Systems pipes and the car's cable start at the
   // wallbox and the battery, so they are rebuilt after.
   private snapUnits() {
@@ -920,20 +1035,21 @@ export class SpatialScene {
     this.systems.rebuild();
     const hp = this.hpUnit;
     if (hp) {
-      ray.set(new THREE.Vector3(this.box.min.x - 10, 0.5, hp.position.z), new THREE.Vector3(1, 0, 0));
-      const hit = ray.intersectObject(w, false)[0];
-      if (hit && hit.point.x >= this.box.min.x - 0.5) hp.position.x = hit.point.x - HEATPUMP.d / 2 - 0.25;
+      // A hand's width out from the south wall's outer face.
+      ray.set(new THREE.Vector3(hp.position.x, 0.6, this.box.max.z + 10), new THREE.Vector3(0, 0, -1));
+      const hit = ray.intersectObjects(walls, false)[0];
+      if (hit && hit.point.z <= this.box.max.z + 0.5) hp.position.z = hit.point.z + HEATPUMP.d / 2 + 0.25;
     }
   }
 
   // inverter, heatpump: the design has one. layer: the stepper's layer shows the kit. In a System view the heat pump
-  // unit stands with the Heat pump and Battery systems instead.
+  // unit shows with the Heat pump system only (it would stand in front of the battery).
   private units = { inverter: false, heatpump: false, layer: false };
   setUnits(o: { inverter: boolean; heatpump: boolean; layer: boolean }) { this.units = o; this.applyUnits(); }
   private applyUnits() {
     const u = this.units, sys = this.systems.sys;
     if (this.inverterUnit) this.inverterUnit.visible = u.inverter;
-    this.hpGroup.visible = u.heatpump && (sys ? sys === "heatpump" || sys === "battery" : u.layer);
+    this.hpGroup.visible = u.heatpump && (sys ? sys === "heatpump" : u.layer);
   }
 
   show(o: { outlines: boolean; panels: boolean; kit: boolean; sun: boolean; battery: "plain" | "lit" }) {
@@ -941,7 +1057,6 @@ export class SpatialScene {
     this.panels.visible = o.panels;
     this.kit.visible = o.kit;
     this.sunGroup.visible = o.sun;
-    if (this.batteryBox) (this.batteryBox.material as THREE.MeshLambertMaterial).color.set(o.battery === "lit" ? "#24a148" : "#FAF8F3");
     if (!o.sun) this.setFlows(null);
     this.lastShow = o;
     this.systems.override();
@@ -1126,7 +1241,7 @@ export class SpatialScene {
     this.pillAnchors();
     const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
     if (batt) out.push({ key: "kit-batt", at: this.battAt, html: `<b>${batt}</b>`, cls: "chip c-bat", prio: 5e6,
-      unit: this.batteryBox ? { obj: this.batteryBox, top: V(0, BATTERY.h / 2, 0), mid: V(0, 0, 0) } : undefined });
+      unit: this.batteryBox ? { obj: this.batteryBox, top: V(0, batteryHeight(this.battN), 0), mid: V(0, batteryHeight(this.battN) / 2, 0) } : undefined });
     if (wb && this.wallbox) out.push({ key: "kit-wb", at: this.wbAt, html: `<b>${wb}</b>`, cls: "chip c-ev", prio: 5e6,
       unit: { obj: this.wallbox, top: V(0, WALLBOX.h, 0), mid: V(0, WALLBOX.h / 2, 0) } });
     return out;
@@ -1155,8 +1270,17 @@ export class SpatialScene {
     });
   }
 
-  // The roof or a wall stands between the camera and this point, more than 0.6 m in front of it (so the glass wall a
-  // part is mounted on, or stands behind, does not count). 3D only: the plan view looks straight down.
+  // The roof or a wall stands between the camera and this point, more than 1.5 m in front of it (so the glass wall a
+  // part is mounted on, or stands behind, does not count even on a steep ray; a ray through the house still does). 3D only: the plan view looks straight down.
+  // The unit's box on screen (its eight corners projected), for placing its pill beside it.
+  private screenRect(o: THREE.Object3D) {
+    const b = new THREE.Box3().setFromObject(o), r = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
+    for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
+      const q = this.project(new THREE.Vector3(x, y, z));
+      r.x0 = Math.min(r.x0, q.x); r.x1 = Math.max(r.x1, q.x); r.y0 = Math.min(r.y0, q.y); r.y1 = Math.max(r.y1, q.y);
+    }
+    return r;
+  }
   private behindHouse(pt: THREE.Vector3) {
     // What is drawn for the house: the roof model's planes and the glass shell (the glb's own roof and walls do not
     // take the ray here).
@@ -1164,7 +1288,7 @@ export class SpatialScene {
     if (this.camera !== this.persp || !occ.length) return false;
     const from = this.persp.position, d = from.distanceTo(pt);
     this.occRay.set(from, pt.clone().sub(from).normalize());
-    this.occRay.far = d - 0.6;
+    this.occRay.far = d - 1.5;
     return this.occRay.intersectObjects(occ, false).length > 0;
   }
 
@@ -1201,13 +1325,14 @@ export class SpatialScene {
     if (!e.isPrimary || !f) return;
     this.flick = null;
     if (!f.ok || this.mode !== "3d") return;
+    if (!this.alive || !this.renderer?.domElement) return;
     const w = releaseRate(f.s, e.timeStamp, this.renderer.domElement.clientHeight || 1);
     this.coast = startCoast(w, !!this.opts.reduce);
   };
   // Drives the turn through OrbitControls' own pending rotation, so its damping tail is replaced, not added to.
   private stepCoast(dt: number) {
-    const c = this.coast!;
-    if (this.mode !== "3d") { this.coast = null; return; }
+    const c = this.coast;
+    if (!c || !this.controls || this.mode !== "3d") { this.coast = null; return; }
     const alive = stepCoast(c, dt);
     const d = (this.controls as unknown as { _sphericalDelta: THREE.Spherical })._sphericalDelta;
     d.theta = (c.w * dt) / (this.controls.enableDamping ? this.controls.dampingFactor : 1);
@@ -1419,21 +1544,29 @@ export class SpatialScene {
         if (!el) return;
         if (x.key.startsWith("node-") && el.innerHTML !== x.html) { el.innerHTML = x.html; this.labelSize.delete(x.key); }
         const p = this.project(x.unit ? x.unit.obj.localToWorld(x.unit.top.clone()) : x.at);
+        // A unit's pill stands beside the unit, never over it: right of its screen box if that is free, else left,
+        // centred on its height, with a short leader stub (data-side, CSS) back to the unit.
+        const ur = x.unit ? this.screenRect(x.unit.obj) : null;
+        let ux = 0, uy = 0, side = "";
         const batt = x.key === "node-batt", chip = !!x.cls?.includes("chip");
         let ok = p.ok && (!x.tap || x.tap === this.tapped) && (!chip || chips < MAX_CHIPS) && (!x.unit || (x.unit.obj.visible && !this.behindHouse(x.unit.obj.localToWorld(x.unit.mid.clone()))));
         let dx = 0, dy = 0;
         if (ok) {
           let sz = this.labelSize.get(x.key);
           if (!sz || !sz.w) { sz = { w: el.offsetWidth, h: el.offsetHeight }; this.labelSize.set(x.key, sz); }
-          const base = { x0: p.x - sz.w / 2, x1: p.x + sz.w / 2, y0: batt ? p.y + 10 : p.y - sz.h, y1: batt ? p.y + 10 + sz.h : p.y };
-          const tries: [number, number][] = chip ? [[0, 0], [0, sz.h + 10], [-(sz.w / 2 + 10), sz.h / 2], [sz.w / 2 + 10, sz.h / 2], [0, -(sz.h + 6)]] : [[0, 0]];
+          const my = ur ? (ur.y0 + ur.y1) / 2 : 0;
+          const base = ur ? { x0: ur.x1 + STUB, x1: ur.x1 + STUB + sz.w, y0: my - sz.h / 2, y1: my + sz.h / 2 }
+            : { x0: p.x - sz.w / 2, x1: p.x + sz.w / 2, y0: batt ? p.y + 10 : p.y - sz.h, y1: batt ? p.y + 10 + sz.h : p.y };
+          const tries: [number, number][] = ur ? [[0, 0], [-(ur.x1 - ur.x0) - 2 * STUB - sz.w, 0]]
+            : chip ? [[0, 0], [0, sz.h + 10], [-(sz.w / 2 + 10), sz.h / 2], [sz.w / 2 + 10, sz.h / 2], [0, -(sz.h + 6)]] : [[0, 0]];
           const hit = (r: typeof base, c: boolean) => shown.some((q) => { const g = c && q.chip ? CHIP_GAP : GAP; return r.x0 < q.x1 + g && q.x0 < r.x1 + g && r.y0 < q.y1 + g && q.y0 < r.y1 + g; });
           const at = tries.map(([ox, oy]) => ({ ox, oy, r: { x0: base.x0 + ox, x1: base.x1 + ox, y0: base.y0 + oy, y1: base.y1 + oy } }))
             .find(({ r }) => !hit(r, chip) && (!chip || (r.x0 >= 2 && r.x1 <= VW - 2 && r.y0 >= 2 && r.y1 <= VH - 2)));
           if (!at) ok = false;
-          else { dx = at.ox; dy = at.oy; shown.push({ ...at.r, chip }); if (chip) chips++; }
+          else { dx = at.ox; dy = at.oy; shown.push({ ...at.r, chip }); if (chip) chips++; if (ur) { ux = at.r.x0; uy = at.r.y0; side = at.ox === 0 ? "r" : "l"; } }
         }
-        el.style.transform = `translate(${(p.x + dx).toFixed(1)}px, ${(p.y + dy).toFixed(1)}px) ${batt ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
+        if (ur) { el.style.transform = `translate(${ux.toFixed(1)}px, ${uy.toFixed(1)}px)`; if (el.dataset.side !== side) el.dataset.side = side; }
+        else el.style.transform = `translate(${(p.x + dx).toFixed(1)}px, ${(p.y + dy).toFixed(1)}px) ${batt ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
         el.style.visibility = ok ? "visible" : "hidden";
       });
 
@@ -1449,6 +1582,7 @@ export class SpatialScene {
       this.opts.compass.style.transform = `rotate(${ang.toFixed(3)}rad)`;
     }
     this.systems.frame(dt);
+    this.applyXrayHour();
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -1466,6 +1600,7 @@ export class SpatialScene {
     this.renderer.domElement.removeEventListener("pointermove", this.onFlickMove);
     this.renderer.domElement.removeEventListener("pointerup", this.onFlickUp);
     window.removeEventListener(SYSTEM_EVENT, this.onSystemPick);
+    exposeScene(this, false);
     this.labelEls.forEach((el) => el.remove());
     Object.values(this.flowPaths).forEach((el) => el.remove());
     this.planG?.remove();
@@ -1501,4 +1636,28 @@ function giveRenderer(r: THREE.WebGLRenderer) {
   c.removeAttribute("style");
   if (spare.length < 2 && !r.getContext().isContextLost()) spare.push(r);
   else { r.dispose(); r.forceContextLoss(); }
+}
+
+// The component-view strips (docs/briefs/component-views.md) drive the newest live scene: window.__marqueeScene has
+// setBatteryFill, setCarCharge and setXrayHour, and the window event "marquee:scene-day" { name, value } calls the same.
+// Off-screen scenes (thumbnails) come and go; the list keeps the hooks on the newest one still alive.
+type SceneHooks = { setBatteryFill: (v: number) => void; setCarCharge: (v: number) => void; setXrayHour: (h: number) => void; setFlow: (f: Flow | null) => void; setOutdoorTemp: (c: number) => void };
+const liveScenes: SpatialScene[] = [];
+const hooksOf = (sc: SpatialScene): SceneHooks => ({ setBatteryFill: (v) => sc.setBatteryFill(v), setCarCharge: (v) => sc.setCarCharge(v), setXrayHour: (h) => sc.setXrayHour(h), setFlow: (f) => sc.setFlow(f), setOutdoorTemp: (c) => sc.setOutdoorTemp(c) });
+const onSceneDay = (e: Event) => {
+  const d = (e as CustomEvent<{ name?: unknown; value?: unknown }>).detail, sc = liveScenes[liveScenes.length - 1];
+  if (!sc || !d) return;
+  if (d.name === "setFlow") { hooksOf(sc).setFlow(d.value && typeof d.value === "object" ? (d.value as Flow) : null); return; }
+  if (typeof d.value !== "number" || !Number.isFinite(d.value)) return;
+  if (d.name === "setBatteryFill" || d.name === "setCarCharge" || d.name === "setXrayHour" || d.name === "setOutdoorTemp") hooksOf(sc)[d.name](d.value);
+};
+function exposeScene(sc: SpatialScene, on: boolean) {
+  if (typeof window === "undefined") return;
+  const i = liveScenes.indexOf(sc);
+  if (on && i < 0) liveScenes.push(sc);
+  if (!on && i >= 0) liveScenes.splice(i, 1);
+  const top = liveScenes[liveScenes.length - 1], w = window as unknown as { __marqueeScene?: SceneHooks };
+  if (top) w.__marqueeScene = hooksOf(top); else delete w.__marqueeScene;
+  window.removeEventListener("marquee:scene-day", onSceneDay);
+  if (top) window.addEventListener("marquee:scene-day", onSceneDay);
 }

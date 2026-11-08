@@ -110,12 +110,19 @@
 
 /* No browser ring on the fact editors: keyboard focus tints the field's own border, no glow. */
 .fc-num input:focus, .fc-num input:focus-visible, .fc-phone input:focus, .fc-phone input:focus-visible, .fc-panel select:focus, .fc-panel select:focus-visible { outline: none; border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
-/* A fact confirmed live (call or WhatsApp): one soft highlight, then rest. */
-@media (prefers-reduced-motion: no-preference) {
-  .fq[data-flash] { animation: fq-flash 1100ms var(--spring-snappy-350) both; }
-  @keyframes fq-flash { 0% { background: color-mix(in srgb, var(--accent) 22%, transparent); transform: scale(1.02); } 35% { transform: none; } 100% { background: transparent; } }
-}
+
+/* The next question: facts-style pills in the body font, folding away once answered. */
+.tq { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows 500ms var(--spring-smooth), opacity 500ms var(--spring-smooth); }
+.tq[data-gone] { grid-template-rows: 0fr; opacity: 0; }
+.tq-in { min-height: 0; overflow: hidden; }
+.tq .t-ask { border: 0; background: var(--sheet-2); border-radius: 12px; font: inherit; font-size: 15px; color: var(--ink); }
+.tq .seg { border: 0; border-radius: 0; overflow: visible; gap: 6px; flex-wrap: wrap; background: transparent; padding: 0; margin: 0; }
+.tq .seg button { font: inherit; font-size: 14px; min-height: 36px; padding: 0 14px; border: 1px solid var(--rule-2); border-radius: 18px; background: var(--sheet); color: var(--ink); }
+.tq .seg button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.tq .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fq[data-flash] { animation: fq-flash 1400ms var(--spring-smooth) 1; }
+@keyframes fq-flash { from { background: var(--sheet); box-shadow: inset 0 0 0 1px var(--ink-3); } to { background: transparent; box-shadow: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .fq[data-flash] { animation: fq-flash-r 900ms linear both; }
-  @keyframes fq-flash-r { 0% { background: color-mix(in srgb, var(--accent) 18%, transparent); } 100% { background: transparent; } }
+  .tq { transition: opacity 200ms linear; }
+  .tq[data-gone] { grid-template-rows: 0fr; }
 }

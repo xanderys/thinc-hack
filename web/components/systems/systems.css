@@ -403,3 +403,5 @@
    on-model pill (EditLayer's pending pill, aria-live) the same way. */
 .sc-skel-fig { display: inline-block; vertical-align: -2px; width: 52px; height: 14px; border-radius: 4px; margin-left: 4px; }
 .b-skel-pill > .b-skel { display: inline-block; width: 44px; height: 12px; vertical-align: middle; }
+/* The rule result leads each popover. */
+.sc-pop .sc-rule { color: var(--ink); font-weight: 600; }

@@ -13,6 +13,7 @@ import Num from "./Num";
 import { invoiceOf, skuShort, type Rates, type RowKey2, type Sku, type SkuPart } from "./facts";
 import RateCard from "./RateCard";
 import s from "./kitSheet.module.css";
+import { batteryModules, moduleLayers } from "@/components/spatial/kitBands";
 
 export type KitSheetKit = {
   modules?: number | null; pv_kwp: number | null; inverter_kw: number | null;
@@ -30,11 +31,21 @@ export default function KitSheet({ kit, total, assumptions, rates, skus, note, e
 }) {
   if (!kit) return null;   // the design is not in yet
   const rows: Row[] = [];
+  let moduleFits = false;   // the engine's module is the one that makes this kWp (else the row keeps a generic name)
   if (kit.pv_kwp) {
-    // The module's own watts where the engine names it (23 x 463 W = 10.65 kWp), else the standard module.
-    const unitW = skus?.module?.size && (skus.module.unit ?? "W").toUpperCase().startsWith("W") ? skus.module.size : null;
-    const count = kit.modules && kit.modules > 0 ? kit.modules : Math.max(1, Math.round((kit.pv_kwp * 1000) / (unitW ?? MODULE_KWP * 1000)));
-    const wp = unitW ?? Math.round((kit.pv_kwp * 1000) / count / 5) * 5;
+    // The count and watts that actually make the kWp. The engine's module where it fits (23 x 463 W = 10.65 kWp); a
+    // stored count whose product does not fit (an approval made with the older 450 W module) keeps its count and the
+    // watts its kWp implies, under a generic name; else the standard module. Never today's module for a design it did not make.
+    const W = kit.pv_kwp * 1000, m = skus?.module;
+    const unitW = m?.size && (m.unit ?? "W").toUpperCase().startsWith("W") ? m.size : null;
+    const fits = (n: number, w: number) => n > 0 && Math.abs(n * w - W) <= 0.02 * W;
+    let count: number, wp: number;
+    if (kit.modules && kit.modules > 0) { count = kit.modules; wp = unitW && fits(count, unitW) ? unitW : Math.round(W / count); }
+    else if (unitW && m?.modules && fits(m.modules, unitW)) { count = m.modules; wp = unitW; }
+    else if (unitW && fits(Math.round(W / unitW), unitW)) { count = Math.round(W / unitW); wp = unitW; }
+    else if (m?.modules) { count = m.modules; wp = Math.round(W / count); }
+    else { count = Math.max(1, Math.round(W / (MODULE_KWP * 1000))); wp = Math.round(W / count / 5) * 5; }
+    moduleFits = !!unitW && wp === unitW;
     rows.push({ key: "pv", field: "pv_kwp", part: "pv", qty: count, name: "Solar module", spec: `${wp} Wp`, icon: <Modules n={count} /> });
   }
   if (kit.inverter_kw) rows.push({ key: "inv", field: "inverter_kw", part: "inverter", qty: 1, name: kit.battery_kwh ? "Hybrid inverter" : "Inverter", spec: `${n1(kit.inverter_kw)} kW`, icon: <Inverter /> });
@@ -43,11 +54,11 @@ export default function KitSheet({ kit, total, assumptions, rates, skus, note, e
   if (kit.heatpump_kw) rows.push({ key: "hp", field: "heatpump_kw", part: "heatpump", qty: 1, name: "Heat pump", spec: `${n1(kit.heatpump_kw)} kW`, icon: <HeatPump /> });
   // The product name from the data where the engine sends one (engine v2.15), else the generic part name.
   const SKU_OF: Record<string, SkuPart> = { pv: "module", inv: "inverter", bat: "battery", wb: "wallbox", hp: "heatpump" };
-  for (const r of rows) { const k = SKU_OF[r.key], s = k && skus?.[k]; if (s) r.name = skuShort(s, k); }
+  for (const r of rows) { const k = SKU_OF[r.key], s = k && skus?.[k]; if (s && (k !== "module" || moduleFits)) r.name = skuShort(s, k); }
   if (rows.length) rows.push({ key: "inst", qty: 1, name: "Installation and services", icon: <Cabinet /> });
   // Each row's price and the total as their exact sum (no rounding line); the rate card shows the arithmetic.
   const pvRow = rows.find((r) => r.key === "pv");
-  const inv = invoiceOf(kit, rates, assumptions, total, pvRow?.qty, { pv: skus?.module?.name, bat: skus?.battery?.name });
+  const inv = invoiceOf(kit, rates, assumptions, total, pvRow?.qty, { pv: moduleFits ? skus?.module?.name : undefined, bat: skus?.battery?.name });
   const sum = inv ? inv.total : total;
   const hot = new Set(changed ?? []);
 
@@ -81,9 +92,9 @@ export default function KitSheet({ kit, total, assumptions, rates, skus, note, e
 // so the list needs no WebGL context of its own (Safari caps them) and the homeowner page loads no three.js.
 const Img = ({ name }: { name: string }) => <img src={`/kit/${name}.png`} width={36} height={36} alt="" draggable={false} />;
 // A stack of modules: one more layer per band of eight, up to five.
-const Modules = ({ n }: { n: number }) => <Img name={`modules-${n <= 8 ? 1 : n <= 16 ? 2 : n <= 24 ? 3 : n <= 32 ? 4 : 5}`} />;
+const Modules = ({ n }: { n: number }) => <Img name={`modules-${moduleLayers(n)}`} />;
 // The battery tower: one module per 3 kWh, one to six, under a cap.
-const Battery = ({ kwh }: { kwh: number }) => <Img name={`battery-${Math.min(6, Math.max(1, Math.ceil(kwh / 3)))}`} />;
+const Battery = ({ kwh }: { kwh: number }) => <Img name={`battery-${batteryModules(kwh)}`} />; // the same tower as on the house
 const Inverter = () => <Img name="inverter" />;
 const Wallbox = () => <Img name="wallbox" />;
 const HeatPump = () => <Img name="heatpump" />;
