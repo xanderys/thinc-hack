@@ -161,7 +161,7 @@ function Page({ agentId, installerId, test }: Props) {
     if (!id) { log("no lead"); return "error: no lead yet; carry on and ask again in a moment"; }
     if (!FACT_FIELDS.has(f)) { log("unknown field"); return `error: unknown field "${p?.field}"; use one of ${[...FACT_FIELDS].join(", ")}`; }
     if (val === undefined) { log("empty value"); return `error: no usable value for ${f} in "${p?.value ?? ""}"; ask the homeowner again`; }
-    const n = Date.now();
+    const n = ++turnSeq.current;
     setHeard({ text: `${factLabel(f, val)}, from the call`, n });
     setRedesigns((x) => x + 1);
     const before = callLeadRef.current?.draft;
@@ -177,8 +177,8 @@ function Page({ agentId, installerId, test }: Props) {
       const same = before?.design && after?.design && (["pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"] as const).every((k) => (before.design[k] ?? null) === (after.design[k] ?? null));
       const a0 = before?.economics?.autarky_share, a1 = after?.economics?.autarky_share;
       const aut = a0 != null && a1 != null && Math.round(a0 * 100) !== Math.round(a1 * 100) ? `, autarky ${Math.round(a0 * 100)} % to ${Math.round(a1 * 100)} %` : "";
-      if (same) setHeard({ text: `${factLabel(f, val)}: kit unchanged${aut}`, n });
-      else if (aut) setHeard({ text: `${factLabel(f, val)}, from the call${aut}`, n });
+      if (same) setHeard((h) => (h?.n === n ? { text: `${factLabel(f, val)}: kit unchanged${aut}`, n } : h));
+      else if (aut) setHeard((h) => (h?.n === n ? { text: `${factLabel(f, val)}, from the call${aut}`, n } : h));
       await pull.current().catch(() => {});
     }
     else setHeard((h) => (h?.n === n ? null : h));   // the line goes if the engine did not take the fact
@@ -189,6 +189,7 @@ function Page({ agentId, installerId, test }: Props) {
   };
   // Claude reads each homeowner answer against Rina's question (/api/call/extract) and writes only the facts it is sure of.
   const turns = useRef<{ role: string; text: string }[]>([]);
+  const turnSeq = useRef(0);   // each heard line belongs to one turn; later turns win
   const extract = async (question: string, answer: string) => {
     const id = leadIdRef.current;
     if (!id || !answer.trim()) return null;
@@ -211,7 +212,7 @@ function Page({ agentId, installerId, test }: Props) {
           const facts = m.facts as Record<string, unknown>;
           console.info("call/extract facts", { question, answer, facts, ms: Math.round(performance.now() - t0) });
           if (Object.keys(facts).length) {
-            n = Date.now();
+            n = ++turnSeq.current;
             said = Object.entries(facts).map(([f, v]) => (f === "ev" ? (v === "planned" ? "A car planned" : v === "now" ? "An electric car" : "No electric car") : factLabel(f, v))).join(", ");
             setHeard({ text: `${said}, from the call`, n }); setRedesigns((x) => x + 1);
           }
@@ -224,7 +225,8 @@ function Page({ agentId, installerId, test }: Props) {
           const same = before?.design && after?.design && (["pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"] as const).every((k) => (before.design[k] ?? null) === (after.design[k] ?? null));
           const a0 = before?.economics?.autarky_share, a1 = after?.economics?.autarky_share;
           const aut = a0 != null && a1 != null && Math.round(a0 * 100) !== Math.round(a1 * 100) ? `, autarky ${Math.round(a0 * 100)} % to ${Math.round(a1 * 100)} %` : "";
-          setHeard({ text: same ? `${said}: kit unchanged${aut}` : `${said}, from the call${aut}`, n });
+          const turn = n, text = same ? `${said}: kit unchanged${aut}` : `${said}, from the call${aut}`;
+          setHeard((h) => (h?.n === turn ? { text, n: turn } : h));   // a later turn's line is never overwritten
           console.info("call/extract redesign", { summary: m.summary, ms: Math.round(performance.now() - t0) });
           void pull.current().catch(() => {});
         }
