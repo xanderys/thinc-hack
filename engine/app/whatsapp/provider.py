@@ -25,7 +25,7 @@ class BridgeProvider:
 
     def __init__(self, base: str | None = None, pinned: str | None = None):
         self.base = (base or os.environ.get("WA_BRIDGE_URL") or "http://127.0.0.1:8013").rstrip("/")
-        self.pinned = digits(pinned or os.environ.get("WA_BRIDGE_TO") or "6586936789")
+        self.pinned = digits(pinned or os.environ.get("WA_BRIDGE_TO") or "")  # the bridge's pinned number, from env only
 
     def number(self) -> str:
         return self.pinned
@@ -46,6 +46,8 @@ class BridgeProvider:
             raise ProviderError(f"WhatsApp bridge unreachable at {self.base}: {e}")
 
     def send(self, phone: str, text: str) -> str:
+        if not self.pinned:
+            raise ProviderError("WA_BRIDGE_TO is not set on this engine, so the WhatsApp line has no number it may reach.")
         if digits(phone) != self.pinned:
             raise ProviderError("The WhatsApp bridge can only reach its own pinned number; this lead's phone is a different number.")
         return self._call("POST", "/send", {"text": text}).get("id") or ""

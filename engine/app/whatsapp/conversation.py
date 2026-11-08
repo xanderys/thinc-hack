@@ -22,7 +22,8 @@ log = logging.getLogger("whatsapp")
 LOCK = threading.RLock()
 POLL_S = 5
 MAX_ROUNDS = 3
-IDLE_EXPIRE_S = 30 * 60
+IDLE_EXPIRE_S = 2 * 60 * 60     # a conversation with no reply for 2 hours shows as expired
+REOPEN_S = 24 * 60 * 60         # an expired conversation still reads replies for 24 hours and reopens on one
 WEB_URL = (os.environ.get("WEB_URL") or "https://marquee-reonic.vercel.app").rstrip("/")
 HOME_URL = (os.environ.get("HOME_URL") or "https://marquee-home.vercel.app").rstrip("/")  # the homeowner host
 INSTALLER = os.environ.get("INSTALLER_NAME") or "Isarwerk Solar"
@@ -169,13 +170,14 @@ def ask(lead: dict, facts: list[str] | None = None, dry: bool = False, origin: s
             _drop_dry(w, "question")
             conv = uuid.uuid4().hex[:10]
             _log(lead, conv, "out", "dry", compose_ask(lead, asking), purpose="question")
-            w.update(state="dry", conversation_id=conv, round=0, open_facts=open_facts, asking=asking, last_error=None)
+            if w.get("state") not in ("open", "expired"):  # a dry run never stops a real conversation from listening
+                w.update(state="dry", conversation_id=conv, round=0, open_facts=open_facts, asking=asking, last_error=None)
             lead["updated_at"] = leads.now()
             leads.save(lead)
             return {"conversation_id": conv, "sent": False, "dry": True, "open_facts": open_facts, "asking": asking, "text": compose_ask(lead, asking)}
         for other in leads.LEADS.values():  # one line per number: a newer ask on the same phone supersedes the older one
             ow = other.get("whatsapp") or {}
-            if other is not lead and ow.get("state") == "open" and P.digits(other.get("phone")) == P.digits(lead["phone"]):
+            if other is not lead and ow.get("state") in ("open", "expired") and P.digits(other.get("phone")) == P.digits(lead["phone"]):
                 ow.update(state="superseded", closed_at=leads.now())
                 leads.save(other)
         _drop_dry(w, "question")  # the real ask replaces its dry run
@@ -333,15 +335,25 @@ def _handle(lead: dict, entry: dict):
 
 def poll_once():
     with LOCK:
-        open_ = [l for l in leads.LEADS.values() if (l.get("whatsapp") or {}).get("state") == "open"]
+        now = time.time()
+        live = [l for l in leads.LEADS.values() if (l.get("whatsapp") or {}).get("state") == "open"]
+        busy = {P.digits(l.get("phone")) for l in live}
+        late = [l for l in leads.LEADS.values() if (l.get("whatsapp") or {}).get("state") == "expired"
+                and now - ((l.get("whatsapp") or {}).get("updated_ts") or 0) < REOPEN_S and P.digits(l.get("phone")) not in busy]
+        newest: dict = {}  # one expired conversation per phone listens: the most recent one
+        for l in late:
+            k = P.digits(l.get("phone"))
+            if k not in newest or (l["whatsapp"].get("updated_ts") or 0) > (newest[k]["whatsapp"].get("updated_ts") or 0):
+                newest[k] = l
+        open_ = live + list(newest.values())  # expired but recent: a late reply reopens the conversation and is read like any other
         if not open_:
             return
         for l in open_:
             w = l["whatsapp"]
-            if time.time() - (w.get("updated_ts") or 0) > IDLE_EXPIRE_S:
+            if w.get("state") == "open" and time.time() - (w.get("updated_ts") or 0) > IDLE_EXPIRE_S:
                 w.update(state="expired", closed_at=leads.now())
                 leads.save(l)
-        open_ = [l for l in open_ if l["whatsapp"]["state"] == "open"]
+        open_ = [l for l in open_ if l["whatsapp"]["state"] in ("open", "expired")]
         prov = P.get()
         for lead in open_:
             w = lead["whatsapp"]
@@ -350,6 +362,9 @@ def poll_once():
             except P.ProviderError as e:
                 w["last_error"] = str(e)
                 continue
+            if entries and lead["whatsapp"].get("state") == "expired":
+                lead["whatsapp"].update(state="open", reopened_at=leads.now(), closed_at=None)
+                leads.save(lead)
             for e in entries:
                 if lead["whatsapp"].get("state") != "open":
                     break
@@ -374,4 +389,7 @@ def loop():
 
 
 def start():
+    if os.environ.get("WA_POLL") == "0":  # a spare engine on the same lead files must never answer the live line's replies
+        log.warning("whatsapp poll off (WA_POLL=0)")
+        return
     threading.Thread(target=loop, daemon=True, name="whatsapp-poll").start()
