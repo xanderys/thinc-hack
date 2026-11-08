@@ -390,15 +390,15 @@ export class SpatialScene {
     const b = this.unitBox(kind);
     if (!b || this.box.isEmpty()) return null;
     const c = b.getCenter(new THREE.Vector3());
-    // Heat pump 11 m out (about 140 px tall at 1440, eave still in the frame), battery 15 m, wallbox 8 m. On a phone
-    // the aim drops 1 m, so the unit and its pill sit above the toolbar along the canvas foot.
+    // Heat pump 12 m out, battery 15 m, wallbox 8 m. The aim sets where the ground falls in the frame (the frame is
+    // 2 d tan(fov / 2) tall): a quarter of the way up on a desktop, 40 % up on a phone, so the unit and its pill always
+    // clear the Proposed Design bar and the toolbar along the canvas foot, whatever the eave height.
     const small = kind === "wallbox", narrow = this.host.clientWidth < 600;
-    const d = small ? 8 : kind === "heatpump" ? 11 : 15;
+    const d = small ? 8 : kind === "heatpump" ? 12 : 15;
     const n = small ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
     n.applyAxisAngle(new THREE.Vector3(0, 1, 0), (small ? 1 : -1) * (15 * Math.PI) / 180);
-    const eave = this.eaveY > 0 ? this.eaveY : 5.5;
-    const y = small ? 1.5 : kind === "heatpump" ? THREE.MathUtils.clamp(eave - 2.3, 1.6, 3.0) : THREE.MathUtils.clamp(eave - 2.8, 1.8, 2.8);
-    const tgt = new THREE.Vector3(c.x, Math.max(1.0, y - (narrow ? 1.0 : 0)), c.z);
+    const H = d * Math.tan((this.persp.fov * Math.PI) / 360), ground = narrow ? 0.4 : 0.25;
+    const tgt = new THREE.Vector3(c.x, small ? Math.max(c.y, H * (1 - 2 * ground)) : H * (1 - 2 * ground), c.z);
     const pos = tgt.clone().addScaledVector(n, d).setY(1.7);
     return { tgt, pos };
   }
