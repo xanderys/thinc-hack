@@ -14,6 +14,7 @@ export default function Composer() {
   const [fail, setFail] = useState<Fail | null>(null);
   const [rec, setRec] = useState(false);
   const field = useRef<HTMLTextAreaElement | null>(null);
+  const voiced = useRef(false);   // the field holds a transcript
   const kept = useRef<Facts | null>(null);   // facts kept while the address is still missing
   const media = useRef<{ r: MediaRecorder; chunks: Blob[]; stream: MediaStream } | null>(null);
   useEffect(() => () => { media.current?.stream.getTracks().forEach((t) => t.stop()); }, []);
@@ -28,7 +29,7 @@ export default function Composer() {
     setFail({ src: r.src, msg: r.msg, retry: () => void run(input, source) });
   }, []);
 
-  const submit = () => { const t = text.trim(); if (t && !busy) void run(t, sourceOf(t)); };
+  const submit = () => { const t = text.trim(); if (t && !busy) { const src = sourceOf(t); const v = voiced.current; voiced.current = false; void run(t, src === "planner" && v ? "voice" : src); }; };
 
   async function startRec() {
     if (busy || rec) return;
@@ -54,7 +55,7 @@ export default function Composer() {
       const out = await transcribe(blob);
       setBusy(false);
       if ("error" in out) { setFail({ src: "Transcriber said", msg: out.error, retry: go }); return; }
-      setText((t) => (t.trim() ? `${t.trim()} ${out.text}` : out.text)); field.current?.focus();
+      voiced.current = true; setText((t) => (t.trim() ? `${t.trim()} ${out.text}` : out.text)); field.current?.focus();
     };
     await go();
   }

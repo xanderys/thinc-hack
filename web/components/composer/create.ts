@@ -31,9 +31,11 @@ export async function createLeadFromText(text: string, source: Source, opts: { k
   const id = made.data.lead_id;
   const facts: Record<string, unknown> = { customer_name: name };
   for (const k of ["address", "postcode", "num_inhabitants", "heating_type", "heating_stated", "has_ev", "ev_planned", "annual_demand_kwh"] as const) if (f[k] !== undefined) facts[k] = f[k];
-  // The engine's intake step takes whatsapp, call, form or planner (v2.14); it refuses "email" and "voice" with 422, and "call" would open "On a call", so a transcript goes as planner.
-  const wire = source === "email" ? "form" : "planner";
-  const step = await send("/api/intake/step", { lead_id: id, facts_so_far: facts, source: wire }, "composer-step");
+  // The engine's intake step takes email and voice as sources since 8 Nov 2026 (10:59 restart).
+  const wire = source;
+  let step = await send("/api/intake/step", { lead_id: id, facts_so_far: facts, source: wire }, "composer-step");
+  // An engine that predates the 10:59 restart refuses them with 422: fall back to form and planner.
+  if (!step.ok && step.status === 422 && wire !== "planner") step = await send("/api/intake/step", { lead_id: id, facts_so_far: facts, source: wire === "email" ? "form" : "planner" }, "composer-step");
   if (!step.ok) return { ok: false, src: "Engine said", msg: errOf(step.error) };
   dispatchEvent(new CustomEvent("marquee:lead-created", { detail: id }));
   return { ok: true, lead_id: id, name, place };

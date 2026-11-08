@@ -16,6 +16,14 @@ export type ComposerFieldProps = {
 export default function ComposerField({ value, onChange, onSend, onAttach, onMicStart, onMicStop, busy, recording, line, trailing, fieldRef }: ComposerFieldProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
   const files = useRef<HTMLInputElement>(null);
+  const dock = useRef<HTMLDivElement>(null);
+  // --composer-h: the dock's height with the safe area, for the panel that sits above it.
+  useEffect(() => {
+    const el = dock.current; if (!el) return;
+    const set = () => document.documentElement.style.setProperty("--composer-h", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    set(); const ro = new ResizeObserver(set); ro.observe(el);
+    return () => { ro.disconnect(); document.documentElement.style.removeProperty("--composer-h"); };
+  }, []);
   const grow = useCallback(() => {
     const el = own.current; if (!el) return;
     el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 6 * 24 + 20)}px`;
@@ -23,7 +31,7 @@ export default function ComposerField({ value, onChange, onSend, onAttach, onMic
   useEffect(grow, [value, grow]);
   const setRef = (el: HTMLTextAreaElement | null) => { own.current = el; if (typeof fieldRef === "function") fieldRef(el); else if (fieldRef) (fieldRef as { current: HTMLTextAreaElement | null }).current = el; };
   return (
-    <div className={s.dock}>
+    <div ref={dock} className={s.dock}>
       <div className={s.line} aria-live="polite">{line}</div>
       <form className={`${s.box} ${busy ? s.busy : ""} ${recording ? s.rec : ""}`} onSubmit={(e) => { e.preventDefault(); onSend(); }}>
         <button type="button" className={s.glyph} aria-label="Attach a text or email file" onClick={() => files.current?.click()} disabled={busy}>
