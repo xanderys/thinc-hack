@@ -647,12 +647,8 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 @media (max-width: 640px) {
   .t-pref { grid-template-columns: 1fr 1fr; width: 100%; }
   .t-go { margin-left: 0; width: 100%; justify-content: flex-end; }
-  .t-edit { position: static; margin-top: 4px; white-space: normal; }
 }
 @media (max-width: 640px) {
-  .t-chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 0 16px 4px; scrollbar-width: none; }
-  .t-chip summary { white-space: nowrap; }
-  .t-chip[open] { position: static; }
   .t-go { width: auto; margin-left: auto; }
 }
 .b-open-h { position: relative; overflow: hidden; }
@@ -816,9 +812,4 @@ input, select, textarea { border-radius: 8px; }
 /* Phone: fact chips and their edit box stay inside the screen (no sideways scroll); the box spans the chip row. */
 @media (max-width: 760px) {
   .t-row { position: relative; }
-  .t-chip { position: static; max-width: 100%; min-width: 0; }
-  .t-chip summary { max-width: 100%; white-space: normal; }
-  .t-edit { left: 0; right: 0; white-space: normal; }
-  .t-edit form { flex-wrap: wrap; }
-  .t-edit input { flex: 1 1 110px; min-width: 0; }
 }
