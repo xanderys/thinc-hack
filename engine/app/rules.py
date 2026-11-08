@@ -213,8 +213,10 @@ def plausibility(inp, design, econ):
         msgs.append({"level": "warn", "message": "Wallbox with no EV recorded: confirm a car is planned."})
     if inp.get("has_ev") and not wb and not inp.get("has_wallbox"):
         msgs.append({"level": "warn", "message": "EV recorded but no wallbox, existing or planned."})
-    pb = econ.get("payback_years")
-    if pb is not None:
+    pb, be = econ.get("payback_years"), econ.get("break_even_year")
+    if be is not None:  # break-even is the one "pays back" figure a reader sees; simple payback stays a field
+        msgs.append({"level": "ok" if 5 <= be <= 15 else "warn", "message": f"Breaks even in year {be} (sanity band 5 to 15)."})
+    elif pb is not None:
         msgs.append({"level": "ok" if 5 <= pb <= 15 else "warn", "message": f"Payback about {pb:.0f} years (sanity band 5 to 15)."})
     seen, out = set(), []
     for m in msgs:

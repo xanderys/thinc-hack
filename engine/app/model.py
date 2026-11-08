@@ -749,13 +749,17 @@ class Engine:
         return sorted(qs, key=lambda q: (not (no_use and q["field"] == "annual_demand_kwh"), -q["spread"], -PRIORS.get(q["field"], 0.0)))[:3]
 
     def inbox(self, limit: int = 20) -> list:
-        """Held-out new-system jobs in demo order: a PV and battery hit first, then varied installers and kinds."""
+        """Held-out new-system jobs: homes neither the ML board nor the rules-4 fit ever saw (the ML test board intersected
+        with the planner rules' sealed half). Order by kind and installer only, never by whether the draft matched."""
         if getattr(self, "_inbox", None) is None:
+            from .planner_rules.split import test_ids
+            sealed = test_ids()
             te = self.test
+            te = te[te.project_id.astype(str).isin(sealed)]
             te = te[(te.pv_kwp > 0) | te.has_solar]
             # show real new-system homes with real inputs: no sub-2 kWp leftovers, no untouched 4,500 kWh defaults
             te = te[~((te.pv_kwp < 2) & ~te.has_solar) & ~((te.annual_demand_kwh == 4500) & (te.heating_type == "Unknown"))]
-            te = te.reset_index(drop=True)
+            te = te.sort_values("project_id").reset_index(drop=True)
             rows = te.to_dict("records")
             drafts = self.sizes_batch([row_inputs(r) for r in rows])
             items = []
@@ -763,9 +767,6 @@ class Engine:
                 w = {c: bool(rules.within(c, [d[TARGET[c]] or 0.0], [r[TARGET[c]]])[0]) for c in COMPONENTS}
                 w["all"] = all(w.values())
                 items.append((r, d, w))
-            first = [x for x in items if x[2]["all"] and x[0]["installer_id"] == "2a8ba8e2" and x[0]["battery_kwh"] > 0
-                     and (x[0]["heating_type"] in ("Gas", "Oil") or x[0]["has_ev"])]
-            first = first or [x for x in items if x[2]["pv"] and x[2]["battery"] and x[0]["battery_kwh"] > 0]
             def kind(r):
                 if r["heatpump_kw"] > 0 or r["heating_type"] != "Unknown":
                     return "heating"
@@ -774,11 +775,9 @@ class Engine:
                 return "battery" if r["battery_kwh"] > 0 else "pv_only"
             buckets = {}
             for x in items:
-                if first and x is first[0]:
-                    continue
-                buckets.setdefault((kind(x[0]), x[0]["installer_id"], x[2]["all"]), []).append(x)
-            keys = sorted(buckets, key=lambda k: (["battery", "ev", "heating", "pv_only"].index(k[0]), k[1], not k[2]))
-            ordered = first[:1]
+                buckets.setdefault((kind(x[0]), x[0]["installer_id"]), []).append(x)
+            keys = sorted(buckets, key=lambda k: (["battery", "ev", "heating", "pv_only"].index(k[0]), k[1]))
+            ordered = []
             while any(buckets[k] for k in keys):
                 for k in keys:
                     if buckets[k]:
@@ -1070,7 +1069,9 @@ class Engine:
             inc = comps[c]["decision"] == "include"
             if inc or c == "battery" or (c == "wallbox" and inp.get("has_ev")) or (c == "pv" and not inc):
                 out.append(comps[c]["reason"])
-        if econ["payback_years"]:
+        if econ.get("break_even_year"):
+            out.append(f"Breaks even in year {econ['break_even_year']} at {econ['autarky_share'] * 100:.0f}% autarky (simulated).")
+        elif econ["payback_years"]:
             how = "Simulated" if econ.get("method") == "hourly-simulation" else "Rough"
             out.append(f"{how} payback {econ['payback_years']:.0f} years at {econ['autarky_share'] * 100:.0f}% autarky.")
         return out[:5]
@@ -1431,10 +1432,10 @@ def variant_note(d, e, d0, e0) -> str:
     da = round((e["autarky_share"] - e0["autarky_share"]) * 100)
     if da:
         parts.append(f"{abs(da)} point{'s' if abs(da) > 1 else ''} {'more' if da > 0 else 'less'} independence")
-    if e.get("payback_years") and e0.get("payback_years"):
-        dp = e["payback_years"] - e0["payback_years"]
-        if abs(dp) >= 0.1:
-            parts.append(f"pays back {abs(dp):.1f} years {'later' if dp > 0 else 'sooner'}")
+    if e.get("break_even_year") and e0.get("break_even_year"):  # the one "pays back" figure: break-even year
+        dp = e["break_even_year"] - e0["break_even_year"]
+        if dp:
+            parts.append(f"breaks even {abs(dp)} year{'s' if abs(dp) > 1 else ''} {'later' if dp > 0 else 'sooner'}")
     return f"{_kit(d)}: " + (", ".join(parts) if parts else "about the same as the planners' design") + "."
 
 
