@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import dynamic from "next/dynamic";
-import type { Design, DesignResponse, Health, Lead as LeadT, LeadRow, ReadResponse } from "@/lib/api";
+import type { Design, DesignResponse, Health, Lead as LeadT, LeadRow, ReadResponse, RoofResult } from "@/lib/api";
 import { call } from "@/lib/client";
 import { HERO_LEAD } from "@/lib/demo";
 import House from "@/components/stage/House";
@@ -103,6 +103,8 @@ export default function Board({ openId: initial }: { openId?: string }) {
           if (!g.ok) { fetching.current.delete(row.lead_id); return; }
           // A draft stored by an earlier engine: show a fresh design for the lead's facts until the lead refreshes.
           let d = g.data.draft.design, res = g.data.draft;
+          // The stored draft first, so the verdict never waits on the redesign below.
+          setDesigns((x) => { if (x[row.lead_id]?.lead) return x; const n = { ...x, [row.lead_id]: { at: "", d, lead: g.data, res } }; designsRef.current = n; return n; });
           const h = await health();
           const dv = g.data.draft as DesignResponse & { rules_version?: string | null };
           if (h && (dv.model_version !== h.model_version || (dv.rules_version != null && dv.rules_version !== h.rules_version))) {
@@ -132,19 +134,31 @@ export default function Board({ openId: initial }: { openId?: string }) {
   }, []);
 
   // Verdicts: the roof per street address (4 in flight), the last verdict per lead kept for the session so a reopen does not flicker.
-  const roofs = useRoofs((rows ?? []).map((r) => isPc(r.address_or_postcode) ? null : r.address_or_postcode));
+  // The open lead's own address too: test leads and older leads are not on the list but their card still needs a verdict.
+  const openAddr = liveLead && liveLead.lead_id === openId && !isPc(liveLead.address_or_postcode) ? liveLead.address_or_postcode : null;
+  const roofs = useRoofs([...(rows ?? []).map((r) => isPc(r.address_or_postcode) ? null : r.address_or_postcode), openAddr]);
   useEffect(() => { setKept(Object.fromEntries((rows ?? []).map((r) => [r.lead_id, recallVerdict(r.lead_id)]).filter(([, v]) => v)) as Record<string, Kept>); }, [rows?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A roof still being looked up after 10 s settles the verdict as Call first with its reason; it never stays on Checking.
+  const firstSeen = useRef<Record<string, number>>({});
+  const [clock, setClock] = useState(0);
+  useEffect(() => { const t = setInterval(() => setClock(Date.now()), 2000); return () => clearInterval(t); }, []);
   const verdicts = useMemo(() => {
     const out: Record<string, Kept> = {};
+    const now = Date.now();
     for (const r of rows ?? []) {
       const g = designs[r.lead_id];
       if (!g?.lead) continue;
-      const pc = isPc(r.address_or_postcode), roof = pc ? null : roofs[r.address_or_postcode!];
-      if (!pc && roof === undefined) continue;
+      const pc = isPc(r.address_or_postcode);
+      let roof = pc ? null : roofs[r.address_or_postcode!];
+      firstSeen.current[r.lead_id] ??= now;
+      if (!pc && roof === undefined) {
+        if (now - firstSeen.current[r.lead_id] < 10_000) continue;
+        roof = { pending: true } as RoofResult;
+      }
       out[r.lead_id] = qualify({ ...g.lead, status: r.status, decision: r.decision ?? g.lead.decision }, g.res, roof);
     }
     return out;
-  }, [rows, designs, roofs]);
+  }, [rows, designs, roofs, clock]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { for (const [id, q] of Object.entries(verdicts)) keepVerdict(id, q); }, [verdicts]);
 
   const cards: Card[] = useMemo(() => {
@@ -222,8 +236,21 @@ export default function Board({ openId: initial }: { openId?: string }) {
   }, []);
   useEffect(() => { setShared(null); }, [openId]);
 
-  const openCard = cards.find((c) => c.id === openId);
   const ll = liveLead?.lead_id === openId ? liveLead : null;   // test leads and old leads are not on the board list
+  const listed = cards.find((c) => c.id === openId);
+  // Off the list: the verdict from the lead's own facts, draft and roof (a roof unresolved after 10 s counts as pending).
+  const offQ = (() => {
+    if (listed || !ll) return null;
+    const pc = isPc(ll.address_or_postcode);
+    let roof = pc ? null : roofs[ll.address_or_postcode!];
+    firstSeen.current[ll.lead_id] ??= Date.now();
+    if (!pc && roof === undefined) {
+      if (Date.now() - firstSeen.current[ll.lead_id] < 10_000) return null;
+      roof = { pending: true } as RoofResult;
+    }
+    return qualify(ll, ll.draft, roof);
+  })();
+  const openCard = listed ?? (offQ ? { q: offQ } as Partial<Card> as Card : undefined);
 
   if (openId) return (
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>

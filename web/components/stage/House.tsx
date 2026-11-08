@@ -37,7 +37,7 @@ export default function House({ design }: { design: Design }) {
   ];
   const cx = 1.6, cy = D + 1.6, cl = 4.4, cwd = 1.9, ch = 1.1, k0 = cx + 1.1, k1 = cx + 3.2, y0 = cy + 0.2, y1 = cy + cwd - 0.2, z1 = ch + 0.75;
   const [a1, b1] = P([0.8, D, 1.0]), [a2, b2] = P([cx + 0.6, cy + cwd, 0.6]);
-  const label = [pv ? `${n2(pv)} kWp` : "No solar", bat ? `${n2(bat)} kWh` : "No battery", hp ? `${n2(hp)} kW` : "No heat pump", wb ? `${n2(wb)} kW` : "No charger"].join(", ");
+  const label = [pv ? `${n2(pv)} kWp of solar` : "", bat ? `${n2(bat)} kWh battery` : "", hp ? `${n2(hp)} kW heat pump` : "", wb ? `${n2(wb)} kW wallbox` : ""].filter(Boolean).join(", ") || "House";
   return (
     <svg className="house" viewBox="0 0 540 420" role="img" aria-label={`The home: ${label}`}>
       <Poly c="h-ground" a={[[-1.5, -1, 0], [L + 5.5, -1, 0], [L + 5.5, D + 5, 0], [-1.5, D + 5, 0]]} />
@@ -63,10 +63,10 @@ export default function House({ design }: { design: Design }) {
           <path className="h-cable" d={`M${a1},${b1} C${a1},${b1 + 30} ${a2 + 10},${b2 + 4} ${a2},${b2}`} />
         </>}
       </g>
-      <Tag p={[L / 2 + 2, D - 1.2, H + 1.6]} dx={120} dy={-96} text={pv ? `${n2(pv)} kWp` : "No solar"} off={!pv} />
-      <Tag p={[L, 5.2, 1.1]} dx={92} dy={-6} text={bat ? `${n2(bat)} kWh` : "No battery"} off={!bat} />
-      <Tag p={[L + 1.6, 4.9, 1.3]} dx={70} dy={26} text={hp ? `${n2(hp)} kW` : "No heat pump"} off={!hp} />
-      <Tag p={[0.8, D, 2.0]} dx={-30} dy={-40} text={wb ? `${n2(wb)} kW` : "No charger"} off={!wb} />
+      {!!pv && <Tag p={[L / 2 + 2, D - 1.2, H + 1.6]} dx={120} dy={-96} text={`${n2(pv)} kWp`} off={false} />}
+      {!!bat && <Tag p={[L, 5.2, 1.1]} dx={92} dy={-6} text={`${n2(bat)} kWh`} off={false} />}
+      {!!hp && <Tag p={[L + 1.6, 4.9, 1.3]} dx={70} dy={26} text={`${n2(hp)} kW`} off={false} />}
+      {!!wb && <Tag p={[0.8, D, 2.0]} dx={-30} dy={-40} text={`${n2(wb)} kW`} off={false} />}
     </svg>
   );
 }
