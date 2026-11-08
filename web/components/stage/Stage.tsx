@@ -25,7 +25,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 // A house opened from the board: the lead's id (refinements write back to it) and what was read.
 export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null; approved?: LeadT["approved"]; overrides?: Overrides | null };   // draft: shown at once, before the first design call returns
 // While Rina's call runs: the lead's facts so far, the step count, what the last answer changed and what she is asking.
-export type Live = { version?: number | null; step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null };
+export type Live = { version?: number | null; step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null; via?: string; origin?: Record<string, "whatsapp"> };
 
 export default function Stage({ seed, onApproved, live }: { seed?: Seed; onApproved?: (id: string) => void; live?: Live | null }) {
   const [lead, setLead] = useState(HERO_LEAD);
@@ -152,9 +152,14 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     liveSeen.current = true;
     if (live.version != null) baseVersion.current = live.version;
     const { installer_id: _i, ...facts } = live.facts as Partial<HomeInputs> & { installer_id?: string }; void _i;
-    if (Object.entries(facts).every(([k, v]) => JSON.stringify((read.inputs as Record<string, unknown>)[k]) === JSON.stringify(v))) return;
-    cause.current = replay ? null : "From the call:"; liveWhy.current = replay ? null : live.changed;
-    setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts } });
+    // Facts a WhatsApp reply stated carry that origin, so their chips can say so.
+    const tagged = Object.entries(live.origin ?? {}).filter(([k, v]) => read.origin?.[k] !== v);
+    if (Object.entries(facts).every(([k, v]) => JSON.stringify((read.inputs as Record<string, unknown>)[k]) === JSON.stringify(v))) {
+      if (tagged.length) setRead((r) => r && { ...r, origin: { ...r.origin, ...live.origin } });
+      return;
+    }
+    cause.current = replay ? null : live.via ?? "From the call:"; liveWhy.current = replay ? null : live.changed;
+    setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts }, ...(tagged.length ? { origin: { ...r.origin, ...live.origin } } : {}) });
   }, [live?.step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null, approved: LeadT["approved"] = null, kit: Overrides | null = null) {

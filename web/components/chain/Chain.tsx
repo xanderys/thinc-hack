@@ -16,6 +16,7 @@ import type { Variant } from "@/components/stage/Plan";
 import House from "@/components/stage/House";
 import Why from "@/components/stage/Why";
 import s from "./chain.module.css";
+import WhatsAppClient from "@/components/whatsapp/WhatsAppClient";
 import OfferPanel, { type OfferProps } from "@/components/offer/OfferPanel";
 import ShadingPanel from "@/components/spatial/ShadingScrubber";
 import { EnvelopeBar, HeatPumpStep } from "@/components/spatial/EnvelopeBar";
@@ -491,6 +492,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   return (
     <div className={`${s.root} ${expanded ? "" : s.isCollapsed} ${SYS ? "sys-on" : ""}`} ref={rootRef}>
+      {/* WhatsApp copilot (v2.14): portals into the facts row above when it is there. */}
+      <WhatsAppClient leadId={leadId ?? null} />
       {/* The step strip: on a phone it is always there, pinned under the house; a tap moves the camera and scrolls
           to that step's card. On desktop it stands in for the cards when the eye folds them. */}
 

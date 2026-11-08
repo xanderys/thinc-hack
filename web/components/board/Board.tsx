@@ -8,6 +8,7 @@ import { HERO_LEAD } from "@/lib/demo";
 import House from "@/components/stage/House";
 import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Live, Seed } from "@/components/stage/Stage";
+import { LEAD_LIVE, whatsappOrigin } from "@/lib/whatsapp";
 import AddSheet from "./AddSheet";
 import HousePhoto from "./HousePhoto";
 import ModelThumb from "./ModelThumb";
@@ -64,11 +65,12 @@ function seedOf(l: LeadT): Seed {
   let stored: { read: ReadResponse; text: string } | null = null;
   try { stored = JSON.parse(sessionStorage.getItem(`marquee.read.${l.lead_id}`) ?? "null"); } catch { /* storage blocked */ }
   // The lead's own facts win over the read stored at creation: they carry every change made since.
-  if (stored) return { leadId: l.lead_id, read: { ...stored.read, inputs: { ...stored.read.inputs, ...l.facts } }, text: stored.text, draft: l.draft, version: l.version ?? null, approved: l.approved ?? null, overrides: l.overrides ?? null };
+  const wa = whatsappOrigin(l);
+  if (stored) return { leadId: l.lead_id, read: { ...stored.read, inputs: { ...stored.read.inputs, ...l.facts }, origin: { ...stored.read.origin, ...wa } }, text: stored.text, draft: l.draft, version: l.version ?? null, approved: l.approved ?? null, overrides: l.overrides ?? null };
   const place = l.address_or_postcode, pc = /^\d{5}$/.test(place.trim()) ? place.trim() : undefined;
   const inputs = { ...l.facts, ...(pc ? {} : { address: l.facts.address ?? place }) };
   const unknown = l.status === "draft" && l.next_question ? [l.next_question.field as keyof LeadT["facts"]] : [];
-  return { leadId: l.lead_id, draft: l.draft, version: l.version ?? null, approved: l.approved ?? null, overrides: l.overrides ?? null, read: { inputs, found: [], unknown, postcode: pc, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
+  return { leadId: l.lead_id, draft: l.draft, version: l.version ?? null, approved: l.approved ?? null, overrides: l.overrides ?? null, read: { inputs, found: [], unknown, postcode: pc, origin: wa, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
 }
 
 export default function Board({ openId: initial }: { openId?: string }) {
@@ -191,6 +193,12 @@ export default function Board({ openId: initial }: { openId?: string }) {
   }, [openId]);
   useEffect(() => { if (!staleNote) return; const t = setTimeout(() => setStaleNote(false), 8000); return () => clearTimeout(t); }, [staleNote]);
 
+  // The WhatsApp chip polls the lead while a conversation is open; each new version lands here like a call answer.
+  useEffect(() => {
+    const on = (e: Event) => { const l = (e as CustomEvent<LeadT>).detail; if (l?.lead_id === openId) setLiveLead((p) => p && p.lead_id === l.lead_id && (p.version ?? -1) > (l.version ?? -1) ? p : l); };
+    addEventListener(LEAD_LIVE, on); return () => removeEventListener(LEAD_LIVE, on);
+  }, [openId]);
+
   // While the call runs, the open card keeps converging: poll the lead every 2.5 s until it is done.
   const calling = liveLead?.lead_id === openId && liveLead?.status === "in_call";
   useEffect(() => {
@@ -201,6 +209,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
   const liveFeed: Live | null = useMemo(() => !liveLead || liveLead.lead_id !== openId || !liveLead.history.length && liveLead.status !== "in_call" ? null : {
     version: liveLead.version ?? null, step: liveLead.history.length, facts: liveLead.facts, changed: liveLead.history.at(-1)?.changed ?? [],
     asking: liveLead.status === "in_call" ? liveLead.next_question?.question ?? null : null,
+    ...(liveLead.history.at(-1)?.source === "whatsapp" ? { via: "From WhatsApp:" } : {}), origin: whatsappOrigin(liveLead),
   }, [liveLead, openId]);
 
   const open = useCallback((id: string) => {
