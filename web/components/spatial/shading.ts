@@ -85,8 +85,10 @@ export class ShadeLayer {
   // 3 x 3 grid on the module towards the sun (15th of the month, h:30, Munich), against the house and its neighbours.
   // null: the sun is down or behind the module. Cached per moment.
   private momentShare(m: Mod, s: { hourly: (number | null)[][] }): number | null {
+    // The engine's value whenever it sends one (a 0..1 fraction since its sampling change); the rays only stand in
+    // when the engine has no value for that hour.
     const at = this.at!, e = s.hourly[at.m - 1]?.[at.h];
-    if (e != null && e > 0.001 && e < 0.999) return e;
+    if (e != null) return e;
     const key = `${at.m}:${at.h}`;
     if (key !== this.fracKey) { this.frac.clear(); this.fracKey = key; }
     if (this.frac.has(m.key)) { const f = this.frac.get(m.key)!; return f < 0 ? null : f; }

@@ -89,3 +89,5 @@
 .sug:hover { border-color: var(--accent); color: var(--accent); }
 .table th.num { text-align: right; }
 .thread { scroll-padding-top: 24px; -webkit-mask-image: linear-gradient(transparent 0, #000 18px); mask-image: linear-gradient(transparent 0, #000 18px); }
+
+.event { margin: 0; font-size: 13px; color: var(--ink-3); }

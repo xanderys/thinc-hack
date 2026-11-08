@@ -53,9 +53,9 @@ export default function Blocking({ leadId }: { leadId: string }) {
   const line = (b: LeadBlocker) => {
     const v0 = answeredAt.current[b.field];
     if (b.answered_at) return v0 != null && (lead.version ?? 0) > v0 ? "Updated" : `Answered ${berlinTime(b.answered_at)}`;
-    // A round the engine has composed (a dry run) or has open stamps no asked_at on the blocker: the last outgoing message gives the time.
+    // Only an open round (never a dry run) stamps no asked_at on the blocker: the last outgoing message gives the time.
     const st = lead.whatsapp?.state, out = [...(lead.whatsapp?.messages ?? [])].reverse().find((m) => m.dir === "out");
-    const at = b.asked_at ?? (out && (st === "dry" || st === "open") ? out.at : null);
+    const at = b.asked_at ?? (out && st === "open" ? out.at : null);
     return at ? `Asked ${berlinTime(at)}` : "";
   };
   return (

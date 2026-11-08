@@ -45,6 +45,11 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
   const hour = at ? Math.min(hi, Math.max(lo, at.h)) : Math.round((lo + hi) / 2);
   const lit = at ? data.modules.map((m) => m.hourly[at.m - 1]?.[at.h]).filter((v): v is number => v != null) : [];
   const litShare = lit.length ? lit.reduce((a, b) => a + b, 0) / lit.length : null;
+  // One meaning with the module figures: % shaded. A moved hour slider shows that moment's module average; a month or
+  // the year shows the period's loss, as the figures do.
+  const caption = at?.moment
+    ? `15 ${MONTHS[at.m - 1]}, ${hh(at.h)}, ${litShare != null ? `${Math.round((1 - litShare) * 100)} % shaded` : "no direct sun"}`
+    : at ? `${MONTHS[at.m - 1]}, ${Math.round(periodLoss(data, at) * 100)} % shaded` : `Over the year, ${Math.round(data.total.shade_share * 100)} % shaded`;
 
   if (compact) return (
     <div className={s.strip}>
@@ -64,7 +69,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
           <input type="range" min={lo + 0.5} max={hi + 0.5} step={1} value={hour + 0.5} aria-valuetext={hh(hour)} aria-label="Hour of the day" onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)), moment: true })} />
         </div>
       )}
-      {on && <span className={s.whenC}>{at ? `15 ${MONTHS[at.m - 1]}, ${hh(at.h)}${litShare != null ? `, ${Math.round(litShare * 100)} % in sun` : ", no direct sun"}` : "Solar access over the year"}</span>}
+      {on && <span className={s.whenC}>{caption}</span>}
       {src && <p className={s.src}>{data.source}</p>}
     </div>
   );
@@ -85,7 +90,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
           <div className={s.hour}>
             <input type="range" min={lo + 0.5} max={hi + 0.5} step={1} value={hour + 0.5} aria-valuetext={hh(hour)} aria-label="Hour of the day"
               onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)), moment: true })} />
-            <span className={s.when}>{at ? `15 ${MONTHS[at.m - 1]}, ${hh(at.h)}${litShare != null ? `, ${Math.round(litShare * 100)} % in sun` : ", no direct sun"}` : "Solar access over the year"}</span>
+            <span className={s.when}>{caption}</span>
           </div>
           <p className={s.src}>{data.source}</p>
         </div>

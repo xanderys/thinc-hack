@@ -54,6 +54,8 @@
   .ds-svg { height: 30px; } .ds-band { height: 8px; } .ds-skel { height: 52px; }
   .ds-axis { height: 5px; } .ds-axis span { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .ds-skel, .dv-skel { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ds-skel, .dv-skel, .dv-skelrow { animation: none; } }
 .dv-figs .dv-was { font-size: inherit; font-weight: 600; color: var(--ink-2); }
 .dv-note { margin: -4px 0 0; font-size: 12px; color: var(--ink-3); } .dv-note b { font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.dv-figs .dv-skelrow { display: inline-block; color: transparent; border-radius: 6px; }
+.dv-figs .dv-skelrow b { color: transparent; }

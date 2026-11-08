@@ -80,3 +80,11 @@
 @media (prefers-reduced-motion: reduce) { :global(html:has(.pc-bottom.pc-open)) .circle[data-on] { transform: none; } }
 /* Narrow: the map toolbar sits on top of the pass, so the circle clears that too. */
 @media (max-width: 600px) { .circle { bottom: calc(var(--pc-peek, 0px) + 76px + env(safe-area-inset-bottom)); } }
+
+/* Fewer live backdrop layers over the WebGL canvas: a lighter blur while the card is open, none on anything hidden. */
+.shell[data-open] .glass { -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); background: rgba(253, 253, 251, 0.9); }
+.shell[data-open] .dockWrap form, .shell[data-lead] .dockWrap form, .circle:not([data-on]) { -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* Closed: the card box goes to opacity 0 and visibility hidden once the glass has faded. */
+.card { opacity: 0; transition: opacity 0s linear 767ms, visibility 0s linear 767ms; }
+.shell[data-open] .card { opacity: 1; transition: opacity 0s, visibility 0s; }
+@media (prefers-reduced-motion: reduce) { .card { transition: opacity 0s linear 200ms, visibility 0s linear 200ms; } }

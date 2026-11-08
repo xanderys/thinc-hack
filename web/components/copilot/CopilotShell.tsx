@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ComposerField from "@/components/composer/ComposerField";
 import Thread from "@/components/agent/Thread";
 import * as agentStore from "@/components/agent/store";
+import { suggest, type SuggestLead } from "@/components/agent/suggest";
 import { Ctx, type CopilotContext } from "./context";
 import s from "./copilot.module.css";
 
@@ -18,6 +19,7 @@ export default function CopilotShell() {
   const [path, setPath] = useState("/");
   const [name, setName] = useState<string | undefined>();
   const [open, setOpen] = useState(false);
+  const [leadSug, setLeadSug] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const cardEl = useRef<HTMLElement>(null);
   const noop = () => {};
@@ -51,14 +53,21 @@ export default function CopilotShell() {
   }, []);
 
   useEffect(() => {
-    setName(undefined);
+    setName(undefined); setLeadSug(false);
     if (!lead) return;
     let stop = false;
-    fetch(`/api/leads/${encodeURIComponent(lead)}`).then((r) => r.json()).then((j) => { if (!stop && j?.customer_name) setName(j.customer_name); }).catch(() => {});
+    // The circle's dot: the same suggest() the card's chips use, so it shows whenever a chip waits, even with the card closed.
+    fetch(`/api/leads/${encodeURIComponent(lead)}`).then((r) => r.json()).then((j) => { if (stop || !j?.customer_name) return; setName(j.customer_name); setLeadSug(suggest({ leadId: lead, name: j.customer_name }, j as SuggestLead).length > 0); }).catch(() => {});
     return () => { stop = true; };
   }, [lead]);
 
-  useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); }; addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, [open]);
+  // Escape closes the open card first: a window capture listener added when the shell mounts (in the layout, so before
+  // any page's own capture listeners), which stops there so the pass or a chooser underneath does not also react.
+  const openNow = useRef(open); openNow.current = open;
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key !== "Escape" || !openNow.current) return; e.stopImmediatePropagation(); e.preventDefault(); setOpen(false); };
+    addEventListener("keydown", k, true); return () => removeEventListener("keydown", k, true);
+  }, []);
 
   // Where the card morphs from: the board's field or the lead page's circle, as a transform of the card's own box (FLIP).
   useEffect(() => {
@@ -66,7 +75,7 @@ export default function CopilotShell() {
     const set = () => {
       const w = card.offsetWidth, h = card.offsetHeight; if (!w || !h) return;
       let r: { left: number; top: number; width: number; height: number } | null = null;
-      if (asCircle) r = { left: innerWidth - 16 - 56, top: innerHeight - 16 - 56 - safe(), width: 56, height: 56 };
+      if (asCircle) { const c = document.querySelector<HTMLElement>("[data-copilot-circle]"); r = c ? { left: c.offsetLeft, top: c.offsetTop, width: 56, height: 56 } : { left: innerWidth - 16 - 56, top: innerHeight - 16 - 56 - safe(), width: 56, height: 56 }; }
       else { const f = el.querySelector("form")?.getBoundingClientRect(); if (f && f.width) r = { left: f.left, top: f.top, width: f.width, height: f.height }; }
       if (!r) return;
       el.style.setProperty("--from", `translate(${r.left - card.offsetLeft}px, ${r.top - card.offsetTop}px) scale(${r.width / w}, ${r.height / h})`);
@@ -82,7 +91,14 @@ export default function CopilotShell() {
     };
     set(); addEventListener("resize", set); const t = setTimeout(set, 600);
     return () => { removeEventListener("resize", set); clearTimeout(t); };
-  }, [path, asCircle]);
+  }, [path, asCircle, open]);
+  // The open card covers the 3D scene: its render loop rests until the card closes (hook guarded until the scene has it).
+  useEffect(() => {
+    if (!open) return;
+    const sc = () => (window as unknown as { __marqueeScene?: { pause?: () => void; resume?: () => void } }).__marqueeScene;
+    sc()?.pause?.();
+    return () => { sc()?.resume?.(); };
+  }, [open]);
   // Opening by focus or tap puts the cursor in the Thread's own field.
   useEffect(() => { if (open) { const t = setTimeout(() => (cardEl.current?.querySelector("textarea") as HTMLTextAreaElement | null)?.focus(), 120); return () => clearTimeout(t); } }, [open]);
 
@@ -123,8 +139,8 @@ export default function CopilotShell() {
           </div>
         </section>
       </div>
-      <button type="button" className={s.circle} aria-label="Open the copilot" title={sug.line || undefined} data-on={asCircle && !open ? "1" : undefined} data-off={off} tabIndex={asCircle && !open ? 0 : -1} onClick={() => setOpen(true)}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}<img src="/copilot/friday.png" alt="Copilot" width={56} height={56} draggable={false} />{sug.dot && <span className={s.dot} aria-hidden />}
+      <button type="button" className={s.circle} data-copilot-circle aria-label="Open the copilot" title={sug.line || undefined} data-on={asCircle && !open ? "1" : undefined} data-off={off} tabIndex={asCircle && !open ? 0 : -1} onClick={() => setOpen(true)}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}<img src="/copilot/friday.png" alt="Copilot" width={56} height={56} draggable={false} />{(sug.dot || leadSug) && <span className={s.dot} aria-hidden />}
       </button>
     </Ctx.Provider>
   );

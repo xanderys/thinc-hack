@@ -44,7 +44,7 @@ export async function middleware(req: NextRequest) {
     if (await released(req)) return NextResponse.next();
     return new NextResponse("Not found", { status: 404 });
   }
-  if (p === "/api/health" && req.method === "GET") return NextResponse.next();
+  if ((p === "/api/health" || p === "/api/version") && req.method === "GET") return NextResponse.next();
   if (p === "/spatial-demo/glb" && req.method === "GET") return NextResponse.next();
   // Satellite ground, photo mesh and house photo: read-only Google proxies (no engine calls, the key stays server side).
   if ((/^\/api\/tiles\//.test(p) || p === "/api/photo") && req.method === "GET") return NextResponse.next();

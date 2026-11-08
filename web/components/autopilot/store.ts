@@ -8,7 +8,8 @@ export type ApEvent = {
   at: string; lead_id: string | null; name: string | null; step: Step | string; text: string; glyph?: string;
   state: "active" | "done" | "needs_you" | "error"; summary?: { sent: number; needs_you: number; asked: number };
 };
-export type Run = { phase: "idle" | "running" | "done" | "error"; events: ApEvent[]; error: string | null; open: boolean };
+export type Run = { phase: "idle" | "confirm" | "running" | "done" | "error"; events: ApEvent[]; error: string | null; open: boolean; sends?: number | null };
+type Body = { lead_ids?: string[]; dry?: boolean; mock?: boolean; wait_s?: number; confirm?: boolean };
 
 let run: Run = { phase: "idle", events: [], error: null, open: false };
 const subs = new Set<() => void>();
@@ -31,11 +32,30 @@ async function refetch(id: string) {
 }
 
 let ctl: AbortController | null = null;
-export async function startRun(body: { lead_ids?: string[]; dry?: boolean; mock?: boolean; wait_s?: number }) {
+// A real run first says how many WhatsApps it sends; one more tap runs it. Dry and mock runs skip this (?confirm=1 forces it).
+let pending: Body | null = null;
+const still = (): Run["phase"] => run.phase;   // read after an await, past TS narrowing
+export async function askRun(body: Body) {
+  if (run.phase === "running" || run.phase === "confirm") return;
+  const { confirm, ...rest } = body;
+  if ((body.dry || body.mock) && !confirm) return startRun(rest);
+  pending = rest;
+  set({ phase: "confirm", events: [], error: null, open: true, sends: null });
+  try {
+    const r = await fetch("/api/autopilot/plan", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...(rest.lead_ids ? { lead_ids: rest.lead_ids } : {}), ...(rest.mock ? { mock: true } : {}) }) });
+    const b = await r.json().catch(() => null) as { n?: number; error?: string } | null;
+    if (still() !== "confirm") return;
+    if (r.ok && typeof b?.n === "number") set({ sends: b.n }); else set({ phase: "error", error: b?.error ?? `Autopilot answered ${r.status}` });
+  } catch (e) { if (still() === "confirm") set({ phase: "error", error: (e as Error).message }); }
+}
+export const confirmRun = () => { if (run.phase === "confirm" && pending) { const b = pending; pending = null; startRun(b); } };
+export const cancelRun = () => { if (run.phase === "confirm") { pending = null; set({ phase: "idle", open: false, sends: null }); } };
+
+export async function startRun(body: Body) {
   if (run.phase === "running") return;
   ctl = new AbortController();
   mock = body.mock === true;
-  set({ phase: "running", events: [], error: null, open: true });
+  set({ phase: "running", events: [], error: null, open: true, sends: null });
   try {
     const res = await fetch("/api/autopilot/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctl.signal });
     if (!res.ok || !res.body) {
