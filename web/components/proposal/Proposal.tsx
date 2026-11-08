@@ -2,7 +2,6 @@
 // v2.5: the homeowner's one-page proposal and sign step. Every number comes from the lead the engine serves.
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
-import House from "@/components/stage/House";
 import type { ComponentKey, Design, DesignResponse, Lead, LeadStatus, Variant } from "@/lib/api";
 import { KEYS, n0, n2 } from "@/lib/stage";
 import { decide } from "@/lib/proposal";
@@ -15,10 +14,10 @@ import Tiles from "@/components/offer/Tiles";
 import type { SystemName } from "@/components/systems/system";
 import type { Layers } from "@/components/spatial/types";
 import RoofNote from "@/components/home/RoofNote";
-import { LINE, VariantRows, type RowKey } from "@/components/offer/VariantTabs";
-import { skusOf, years } from "@/components/offer/facts";
 import { pastLine } from "@/lib/past";
+import { skusOf, years } from "@/components/offer/facts";
 import "./proposal.css";
+import { VARIANT_LINE, type VariantLineKey } from "@/lib/variants";
 import { berlinStamp } from "@/lib/time";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
@@ -51,9 +50,9 @@ const ROWS: { key: Variant["key"]; name: string }[] = [
   { key: "expert", name: "Planners' pick" }, { key: "payback", name: "Best payback" },
   { key: "upfront", name: "Lowest upfront cost" }, { key: "independence", name: "Most independence" },
 ];
-// The other offers, for the installer to talk through; the proposed one is the page itself.
-function rowsOf(variants: Variant[], key: Key) {
-  return ROWS.flatMap((r) => { const v = variants.find((x) => x.key === r.key); return v && r.key !== key ? [{ ...r, v }] : []; });
+// Every offer in the engine's order, the proposed one included and none marked, so the choice cannot be worked out.
+function rowsOf(variants: Variant[]) {
+  return variants.flatMap((v) => { const r = ROWS.find((x) => x.key === v.key); return r ? [{ ...r, v }] : []; });
 }
 
 type Props = {
@@ -75,10 +74,11 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const yieldKwh = e.annual?.pv_yield_kwh;
   const be = e.break_even_year !== undefined ? e.break_even_year : e.payback_years == null ? null : Math.ceil(e.payback_years);
   const name = lead.customer_name?.trim();
-  const alts = rowsOf(variants, key);
+  const alts = rowsOf(variants);
   const own = e.annual ? Math.max(0, e.annual.load_kwh - e.annual.grid_import_kwh) : null;
 
-  const mark = lead.status === "declined" ? "Declined" : lead.approved ? `Approved: ${key === "edit" ? "Planner's adjusted design" : ROWS.find((r) => r.key === key)?.name ?? "Planners' pick"}` : null;
+  // The homeowner sees the installer and a neutral state only: never variant names or which one the planner chose.
+  const mark = lead.status === "signed" ? "Signed" : lead.status === "declined" ? "Declined" : null;   // "Proposed Design" below already names the page
   const figs = [
     { k: "kwp" as const, v: design.pv_kwp ? `${n2(design.pv_kwp)} kWp` : "No solar" },
     { k: "kwh" as const, v: design.battery_kwh ? `${n2(design.battery_kwh)} kWh` : "No battery" },
@@ -106,15 +106,22 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
               <HomeSystems sys={sys} design={design} economics={e} layers={layers} demandKwh={lead.facts.annual_demand_kwh} pending={!layers} note={<RoofNote draft={lead.draft} />} />
             </SpatialDemo>
           </div>
-        ) : <div className="pp-drawing"><House design={design} /></div>}
+        ) : <div className="pp-skb" style={{ height: "100%", borderRadius: 20 }} aria-hidden />}
       </section>
       <ProposedCard title="Proposed Design" figs={figs} pending={false} lift={76}>
         <div className="pp-open">
           <Tiles items={tiles} mode="fade" />
           {alts.length > 0 && (
             <section className="pp-card" aria-labelledby="pp-alts">
-              <h2 id="pp-alts">Alternatives for your installer to discuss</h2>
-              <VariantRows label="Alternatives" rows={alts.map(({ key: k, name: label }) => ({ key: k as RowKey, name: label, line: LINE[k as RowKey], selected: false }))} />
+              <h2 id="pp-alts">Options to discuss with your installer</h2>
+              <ul className="pp-vars">
+                {alts.map(({ key: k, name: label }) => (
+                  <li key={k}>
+                    <span className="pp-vname">{label}</span>
+                    <p className="pp-vline">{VARIANT_LINE[k as VariantLineKey]}.</p>
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
           <section className="pp-card" aria-label="Your system">
@@ -190,7 +197,7 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
     return <section className="pp-card pp-done" aria-live="polite"><h2>Declined</h2><p>{when(new Date(shown.at))}</p></section>;
 
   const asked = status === "question" && shown?.action === "question";
-  const open = status === "approved";
+  const open = status === "approved" || status === "sent";   // the Complete sheet sends the link: signing opens as for approved
   const ready = open && name.trim().length > 1 && inked && tick && !busy;
 
   return (
@@ -204,7 +211,7 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
         <div className="pp-l pp-sighead"><span id="pp-sig-l">Signature</span><button type="button" className="pp-link" onClick={() => { sig.current?.clear(); setInked(false); }} disabled={!inked}>Clear</button></div>
         <Signature ref={sig} labelledBy="pp-sig-l" onInk={setInked} />
         <label className="pp-tick"><input type="checkbox" checked={tick} onChange={(ev) => setTick(ev.target.checked)} /><span>I accept this proposal</span></label>
-        <button type="button" className="pp-go" disabled={!ready} onClick={() => send("sign")}>{busy === "sign" ? "Signing" : "Sign"}</button>
+        <button type="button" className="pp-go" disabled={!ready} onClick={() => send("sign")}>{busy === "sign" ? <span className="pp-skt">Sign</span> : "Sign"}</button>
       </fieldset>
       {error && <p className="pp-err" role="alert">{error.text} <button type="button" className="pp-link" onClick={() => send(error.act)}>Try again</button></p>}
 
@@ -216,12 +223,12 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
         <div className="pp-more">
           <label className="pp-l" htmlFor="pp-q">Your question</label>
           <textarea id="pp-q" className="pp-input pp-area" rows={3} value={question} onChange={(ev) => setQuestion(ev.target.value)} />
-          <button type="button" className="pp-go" disabled={!question.trim() || !!busy} onClick={() => send("question")}>{busy === "question" ? "Sending" : "Send question"}</button>
+          <button type="button" className="pp-go" disabled={!question.trim() || !!busy} onClick={() => send("question")}>{busy === "question" ? <span className="pp-skt">Send question</span> : "Send question"}</button>
         </div>
       )}
       {mode === "decline" && (
         <div className="pp-more">
-          <button type="button" className="pp-go pp-no" disabled={!!busy} onClick={() => send("decline")}>{busy === "decline" ? "Declining" : "Decline this proposal"}</button>
+          <button type="button" className="pp-go pp-no" disabled={!!busy} onClick={() => send("decline")}>{busy === "decline" ? <span className="pp-skt">Decline this proposal</span> : "Decline this proposal"}</button>
         </div>
       )}
       <p className="pp-small">Demo acceptance, not a qualified e-signature.</p>

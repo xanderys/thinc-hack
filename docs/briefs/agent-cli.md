@@ -1,0 +1,14 @@
+# Brief: Agent CLI over the board (P0, Xander, Sun 8 Nov 2026 10:52 Munich)
+
+Extends the composer (docs/briefs/autopilot.md section B). Lane: Opus, branch `agent-cli`, worktree `~/Projects/thinc-hack-wt/agent-cli`, owns `web/components/agent/**` and `web/app/api/agent/**`. The composer lane (branch `composer`) owns `web/components/composer/**` and the create-lead flow; the agent lane imports its field component and never edits it. Merge by 12:10 at the latest, previewed the moment it is green.
+
+## Shape
+1. Collapsed: the composer line at the bottom of the board (text, paste, WalaoFlow mic) gains an expand chevron.
+2. Expanded: a floating glass card at 50 % of the page height (Sill style: rounded, frosted, drag handle, apple-motion springs, Reduce Motion crossfade), a chat thread above the composer. Borrow Sill's composer and sheet chrome (`~/Projects/Sill`, styling only, not code paths).
+3. The agent is Claude Sonnet 5.5 (`claude-sonnet-5-5`, the key already on Vercel and in `web/.env.local`) behind `POST /api/agent` (server route, streaming). It has tools over the engine, each a thin server-side call to the existing web routes or `ENGINE_URL` with the secret: `list_leads`, `get_lead(id)`, `design(id)`, `refine(id, overrides)`, `ask_whatsapp(id, facts)`, `complete(id)`, `send(id, channel)`, `create_lead(text)` (the composer's extract path), `stats()` (eval aggregates). No LLM inside the engine; the model only decides which tool to call and how to phrase the answer.
+4. Answers are rich blocks rendered in the thread: GitHub tables, `[[ok: ...]]` / `[[warn: ...]]` badges, lead chips (every lead name is a tappable chip opening its hero `/h/{id}`), figures as bold value plus light unit. Example: "who has the most upsell potential" → a table of leads ranked by the price and autarky delta a battery or heat pump adds (computed by calling `refine` with the override per lead, cached per lead version).
+5. Writes are propose then apply: "add a heat pump to everyone" → the agent lists the affected leads with price and verdict deltas and an Apply button. Apply runs the batch as overrides through the existing per-lead write queue, persisted, one Undo for the whole batch (the edit stack), pinned demo leads included only when the planner names them. The thread shows result lines as they land.
+6. Creating a lead from a scrap, email or voice is the first tool; the composer's existing flow stays and the thread shows its result.
+
+## Rules
+Secret and key server-side only. Never write a pinned lead unless the planner names it in the message. British English, no em dashes, no loading captions (shimmers), essential text. Headless checks only under `/tmp/marquee-browser.lock`, tsc once per push, merge `origin/main` (6656afc or later) before pushing. CoS test: create a lead by text; "who has the most upsell potential"; "add a 10 kWh battery to Lindner" propose, apply, undo. Report ends "closed: <list>".
