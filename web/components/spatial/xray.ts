@@ -24,7 +24,10 @@ const FROST = new THREE.Color("#F3F1EC");
 const INK = "#2A2C33";
 const OMEGA = (2 * Math.PI) / 0.5;
 const BREATH_S = 5;
-const SHELL_K = 0.4, EDGE_K = 0.38;
+const SHELL_K = 0.4, EDGE_K = 0.38, FAR_K = 0.2, PATCH_K = 0.5;
+// A neutral wash over the aerial photo inside the footprint: the photo there is the house's own roof seen from
+// above, which through the glass reads as a solid block from the high poses. Translucent, so the ground stays.
+const PATCH = new THREE.Color("#6F6C66");
 // The four shares on the card, in this order; roof falls back to the top ceiling when the roof space is unheated.
 const CARD: ElementKey[] = ["roof", "wall", "window", "floor"];
 
@@ -36,7 +39,7 @@ type Facade = { n: THREE.Vector3; pts: THREE.Vector3[]; area: number };
 // The glass shell: the house's triangles, taken out of the shared wall mesh while it shows.
 type Shell = {
   mesh: THREE.Mesh; orig: THREE.BufferGeometry; key: string; mine: THREE.Vector3[]; facades: Facade[]; box: THREE.Box3;
-  glass: THREE.MeshLambertMaterial; edge: THREE.LineBasicMaterial; depth: THREE.MeshBasicMaterial;
+  glass: THREE.MeshLambertMaterial; edge: THREE.LineBasicMaterial; depth: THREE.MeshBasicMaterial; far: THREE.LineBasicMaterial; patch: THREE.MeshBasicMaterial;
 };
 
 // One step of a critically damped spring towards goal.
@@ -93,7 +96,7 @@ export class Xray {
     if (!s) return;
     s.mesh.geometry = s.orig;
     this.sg.children.forEach((o) => (o as THREE.Mesh).geometry?.dispose());
-    this.sg.clear(); s.glass.dispose(); s.edge.dispose(); s.depth.dispose();
+    this.sg.clear(); s.glass.dispose(); s.edge.dispose(); s.depth.dispose(); s.far.dispose(); s.patch.dispose();
     this.shell = null; this.sg.visible = false;
   }
 
@@ -187,6 +190,17 @@ export class Xray {
     const edge = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0, depthWrite: false });
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), edge);
     edges.renderOrder = 6; this.sg.add(edges);
+    // The same edges drawn before the depth pass: the far walls' edges show faintly through the near glass.
+    const far = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0, depthWrite: false });
+    const farEdges = new THREE.LineSegments(edges.geometry, far); farEdges.renderOrder = 3.4; this.sg.add(farEdges);
+    const patch = new THREE.MeshBasicMaterial({ color: PATCH, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+    const foot = convexHull(mine.filter((p) => p.y < box.min.y + 0.4).map((p) => new THREE.Vector2(p.x, p.z)));
+    if (foot.length >= 3) {
+      const py = box.min.y + 0.04;
+      const pg = new THREE.BufferGeometry().setFromPoints(foot.map((p) => new THREE.Vector3(p.x, py, p.y)));
+      pg.setIndex(THREE.ShapeUtils.triangulateShape(foot, []).flat());
+      const pm = new THREE.Mesh(pg, patch); pm.renderOrder = 1; this.sg.add(pm);
+    }
     // Facades (vertical faces grouped by plane), for the x-ray's leader targets and glow sheets.
     const ctr = box.getCenter(new THREE.Vector3());
     const groups = new Map<string, Facade>();
@@ -202,7 +216,7 @@ export class Xray {
       const gq = groups.get(k) ?? { n, pts: [], area: 0 };
       gq.pts.push(p, q, r); gq.area += area; groups.set(k, gq);
     }
-    this.shell = { mesh: wm, orig, key, mine, facades: [...groups.values()], box: new THREE.Box3().setFromPoints(mine), glass, edge, depth };
+    this.shell = { mesh: wm, orig, key, mine, facades: [...groups.values()], box: new THREE.Box3().setFromPoints(mine), glass, edge, depth, far, patch };
   }
 
   // The x-ray's wall and floor sheets, on the shell's geometry.
@@ -359,7 +373,7 @@ export class Xray {
       const o = Math.max(this.gf, this.f);
       s.glass.color.copy(FROST); if (this.wallTint) s.glass.color.lerp(this.wallTint, 0.4 * this.f);   // a tint on the glass, same alpha
       s.glass.emissive.copy(s.glass.color).multiplyScalar(0.45);
-      s.glass.opacity = SHELL_K * o; s.edge.opacity = EDGE_K * o;
+      s.glass.opacity = SHELL_K * o; s.edge.opacity = EDGE_K * o; s.far.opacity = FAR_K * o; s.patch.opacity = PATCH_K * o;
       this.sg.visible = o > 0.005;
     }
   }
