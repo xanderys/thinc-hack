@@ -1,87 +1,83 @@
 # Marquee
 
-Marquee drafts the system an experienced planner would design from a few facts about a home, shows the proof next to every number, and runs the homeowner's intake call, so the installer's pipeline from enquiry to signed deal moves faster.
+Marquee speeds up the installer's pipeline from enquiry to signed deal. A lead arrives by form, pasted email or a call with a voice agent. Marquee drafts the system an experienced planner would design (panels, battery, heat pump, wallbox, each possibly "none"), gives the reason for every size, and lets the planner change a fact and see the design re-sized. The approved design goes to the homeowner's page, where they sign or decline. The drafting rules are read out of real expert designs, and we publish how often they agree with the experts on homes they never saw.
 
-Team Marquee, thinc! hack MUC, 7 to 8 Nov 2026, Reonic case.
+Team Marquee, thinc! hack MUC, 7 to 8 Nov 2026, Reonic case. Team: Zi Yuan, Xander, Jamon.
 
 - Planner: https://marquee-reonic.vercel.app
 - Homeowner: https://marquee-home.vercel.app
 - Engine: runs on one machine behind a Tailscale Funnel; the web apps reach it through `ENGINE_URL`.
 
-## What it does
+## Setup
 
-For the installer's planner inside Reonic, Marquee turns a lead into a complete design (PV, battery, heat pump, wallbox, each possibly "none"), with a reason per component, alternatives, and a check against what experts actually designed. The planner changes a sentence ("the family buys an EV next year") and the design re-sizes around it. The homeowner gets the same engine as a short form plus a voice call.
-
-What is different:
-
-- One computed question. The engine re-sizes the home for every answer to each open question and asks only the one that moves the design most.
-- Proof on every number. Each component carries a derivation (one physical axiom with this home's numbers), the physics checks, and the most similar past homes.
-- Rules a planner can read. A short list of named rules with printed constants is measured against 1,619 real expert designs, next to the learned model as a black box.
-- Hourly physics. Every design is simulated hour by hour (weather, load, battery, tariff, feed-in) for autarky, payback and the economic optimum.
-- Roof from open data. Bavarian LoD2 gives roof planes from a street address, with no sketch before the first offer.
-- The engine runs the homeowner call. The intake agent asks only what the form missed, and the lead arrives with a design ready.
-
-## How it was built
-
-| Folder | Content |
-|---|---|
-| `engine/` | Python parsing, rules, learned chain, hourly physics, evaluation, FastAPI |
-| `web/` | Next.js planner and homeowner apps; talks only to the engine |
-| `roof/` | Address to roof area and planes (LoD2, Google Solar, OpenStreetMap) |
-| `voice/` | ElevenLabs intake agent, script, prompt, tests |
-| `docs/` | API contract (`api.md`), sizing rules, physics, synthetic suite, data insights |
-| `deck/` | Slides (PDF) |
-
-Stack: Python 3.12, FastAPI, scikit-learn, pvlib, demandlib; Next.js 15, TypeScript; an ElevenLabs agent for the call. The Claude API is used only at the edges in `web/` (turning a sentence into input changes, writing prose). There is no LLM inside the engine.
-
-Setup (Reonic's data pack is not in the repo; point `REONIC_DATA_DIR` at it):
+Reonic's data pack is not in the repo; point `REONIC_DATA_DIR` at it.
 
 ```bash
 # engine
-cd engine && uv sync
-REONIC_DATA_DIR="/path/to/Project Data" RECOMMENDER=rules \
-  uv run uvicorn app.main:app --port 8000   # RECOMMENDER=rules|ml, default ml
+cd engine && uv sync && REONIC_DATA_DIR="/path/to/Project Data" uv run uvicorn app.main:app --port 8000
+
 # web (new terminal)
-cd web && npm install
-# web/.env.local: ENGINE_URL, ANTHROPIC_API_KEY, ELEVENLABS_API_KEY,
-#   NEXT_PUBLIC_ELEVENLABS_AGENT_ID, INTAKE_SECRET (names only)
-npm run dev   # http://localhost:3000
+cd web && npm install && npm run dev   # http://localhost:3000
 ```
 
-The first engine start trains (about 35 s); later starts load a cache. Roof lookups need no key; `GOOGLE_SOLAR_API_KEY` is optional.
+`web/.env.local` needs `ENGINE_URL` and `ANTHROPIC_API_KEY`. The voice intake also reads `ELEVENLABS_API_KEY`, `NEXT_PUBLIC_ELEVENLABS_AGENT_ID` and `INTAKE_SECRET`. Keys live in `.env.local`, which is gitignored. The first engine start trains (about 35 s); later starts load a cache. Roof lookups need no key; `GOOGLE_SOLAR_API_KEY` is optional. Deploy: `cd web && vercel`. The API contract between engine and web is `docs/api.md`.
 
 ## Approach
 
+**Statistics plus physics, no LLM in the engine.** The Claude API is used only at the edges in `web/`: turning a planner's sentence or a pasted enquiry into input changes, and writing prose. Every size comes from the engine.
+
 **The chain.** PV, then battery given PV, then heat pump, then wallbox, each snapped to what that installer actually sells. A planner override replaces a stage and the later stages re-size around it. A battery needs PV.
 
-**The physics.** An hourly year with pvlib (PVGIS weather), a BDEW H25 load profile, a greedy battery, heat pump and EV load, EEG feed-in and 20-year NPV. Plausibility checks flag oversized batteries, clipping and odd heat pump hours. Method and sources: `docs/physics.md`.
+**Rules readout.** After a steer from Reonic staff, the recommendation moved to short named rules read out of each installer's own signed designs, such as PV sized to annual use at the installer's typical array, a battery pack above a use threshold, a heat pump only for an old gas or oil boiler, a wallbox when there is a car. Every constant is printed in the UI, so a planner can check and overrule it. The learned chained model stays in the engine as a comparison (`RECOMMENDER` switches between them). Details: `docs/rules-readout.md` and `engine/README.md`.
 
-**The rules engine and the switch.** After a steer from Reonic staff we moved the recommendation to named planner rules: PV sized to annual use at the roof's yield with an installer oversize ratio, a battery for one evening's use, a heat pump for an old gas or oil boiler, 11 kW wallbox for an EV, inverter at 0.85 of PV. At most five constants are fitted, on one half of each installer's projects, and every constant is printed in the UI. `RECOMMENDER=rules|ml` switches between rules and the learned chain; both are scored side by side.
+**Roof from open data.** Bavarian LoD2 gives roof planes from a street address, so there is a measured roof before any site visit. Sources: LoD2, Google Solar and OpenStreetMap, in `roof/`.
 
-**The evaluation.**
-- Held-out board: the expert design is the lowest-numbered option of each project, scored within tolerance (PV 1 kWp or 15%, battery 2 kWh, heat pump and wallbox decisions) on homes never used for fitting.
-- Near-identical homes: how often the most similar past homes agree with the expert, as the ceiling for what the inputs allow.
-- Two baselines: a textbook rule (1.3 kWp per MWh, plus 2.5 kWp with an EV) and a floor-slope fit.
-- Synthetic suite: 10,000 generated homes checked against the hourly physics for plausibility, monotonicity and energy balance (`docs/synthetic.md`).
-- Live numbers: `GET /api/eval`. The deviation analysis counts where ours or the expert's design is better on payback and autarky.
+**Hourly economics.** Each design runs through an hourly year (pvlib with PVGIS weather, a BDEW H25 load profile, a greedy battery, heat pump and EV load, EEG feed-in, 20-year NPV) for autarky and payback. Plausibility checks flag oversized batteries and clipping. Method and sources: `docs/physics.md`.
 
-**Data rules.** The Reonic pack lives outside the repo and is read through `REONIC_DATA_DIR`. No rows, derived tables with rows or model files containing rows are committed; only aggregates.
+**One computed question.** The engine re-sizes the home for each answer to each open question and asks only the one that moves the design most.
+
+## How we measure against the experts
+
+The expert design is the lowest-numbered option of each project. We sealed half of Reonic's data before fitting and scored once on that test half: 633 homes the rules never saw. A home counts as a whole-design match when PV, battery, heat pump and wallbox are all within tolerance of the expert's (PV 1 kWp or 15%, battery 2 kWh, heat pump and wallbox as decisions).
+
+| Share within tolerance, 633 test homes | Marquee | Textbook rule |
+|---|---|---|
+| Whole design (all four) | 18.6% | 6.8% |
+| PV | 40.9% | 19.4% |
+| Battery | 50.1% | 43.6% |
+| Heat pump | 99.5% | 99.5% |
+| Wallbox | 78.8% | 78.7% |
+
+The heat pump and wallbox rows are near ties because almost no home has a heat pump and most wallbox decisions follow the EV flag. On the 126 test homes a black box model could also be scored on, the readable rules and the black box are statistically tied (McNemar p 0.33 to 1.00), which is why the readable rules ship.
+
+Excluded from this scoreboard: 26 of 1,619 projects have no parts at all, and a further 312 have parts but no PV in the expert design (battery or wallbox add-ons). Neither can be scored as a new system. `engine/README.md` has the full tables and the sources. Live figures are served at `GET /api/eval`.
 
 ## Known limits
 
-- Inputs explain about 15 percent of PV size. The roof and the budget are not recorded, so near-identical homes agree with each other only 39 to 43 percent of the time.
-- Heat pump decisions are too rare to score: 13 sold in the whole pack. We never headline that number.
-- Neighbour agreement only weakly predicts where we miss, so the confidence figure is a guide, not a guarantee.
-- The physics sits within 2 to 5 points of the HTW Berlin calculator for homes without a heat pump. Heat pump and EV load are unchecked against a reference.
-- Costs are 2026 German averages, not the installer's prices, which the pack lacks.
-- The "8 days" on the homeowner summary is the installer 23c108b7 figure and is calendar time including waiting, not planner hours.
+- The records hold no roof and no budget. Inputs explain only part of PV size, and near-identical homes agree with each other on the whole design only about 39 to 43 percent of the time, so the match rate has a ceiling.
+- When a home has no bill on record, the engine uses a default of 4,500 kWh a year. About one home in six in the pack carries such a default.
+- The wallbox follows a prior: a quarter of wallboxes in the pack went to homes with no car on record.
+- Heat pump decisions are too rare in the pack to score meaningfully (13 sold). We never headline that number.
+- The synthetic suite (10,000 generated homes) tests plausibility and energy balance, not accuracy against real homes.
+- Costs are 2026 German averages, not the installer's prices, which the pack lacks. The physics sits within 2 to 5 points of the HTW Berlin calculator for homes without a heat pump; heat pump and EV load are unchecked against a reference.
+- The demo installer on the homeowner page, Isarwerk Solar, is fictional. Installers A and B in the slides are the two anonymised installers in the data pack.
+- The WhatsApp copilot reaches WhatsApp through a local bridge on one machine, so it works only while that machine is up.
 - The voice agent was tested in a few calls and some text-only simulations.
 - The engine runs on one machine; if it is offline the apps show the engine's own error.
 
-## Slides, video, data use
+## Repo map
 
-Slides are in `deck/` and the demo video in `video/`.
+| Folder | Content |
+|---|---|
+| `engine/` | Python (uv): parsing, rules, learned chain, hourly physics, evaluation, FastAPI |
+| `web/` | Next.js (TypeScript) planner and homeowner apps; talk only to the engine |
+| `roof/` | Address to roof area and planes |
+| `voice/` | ElevenLabs intake agent: script, prompt, tests |
+| `docs/` | API contract (`api.md`), sizing rules, physics, synthetic suite, data insights, pitch notes |
+| `deck/` | Slides (`marquee-reonic.pdf`) |
 
-Reonic's project data was used only for this hackathon and is not in this repository.
+Stack: Python 3.12, FastAPI, scikit-learn, pvlib, demandlib; Next.js, TypeScript; an ElevenLabs agent for the call.
 
-Two lists of opaque project id hashes used for the train and test split appeared briefly in the repository history; they carry no project attributes.
+## Data use
+
+Reonic's project data was used only for this hackathon and is not in this repository. No rows, derived tables with rows or model files containing rows are committed; only aggregates. Two lists of opaque project id hashes used for the train and test split appeared briefly in the repository history; they carry no project attributes.

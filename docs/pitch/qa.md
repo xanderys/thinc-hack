@@ -38,7 +38,7 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
 
 **How do you know it is not overfitting?** Half the data was sealed with a fixed seed before any rule was fitted. Every score on the deck is from that half. The rules were fitted on the other half (654 new-system homes) with 5-fold cross-validation.
 
-**Where is the AI?** No language model sizes anything. The engine is readable rules fitted on the data plus hourly physics. Claude only turns a planner's sentence into input changes in the web layer, and ElevenLabs carries Rina's voice.
+**Where is the AI?** No language model sizes anything. The engine is readable rules fitted on the data plus hourly physics. Claude only reads a pasted enquiry into facts in the web layer, and ElevenLabs carries Rina's voice.
 
 **Why does the Check page say 17.1% on 258 homes?** That was the earlier board population. The Check page now shows the sealed figure, 18.6% on 633, and nothing else.
 

@@ -47,9 +47,9 @@ footer: Marquee
 <div class="cols">
 <div>
 
-# “The family buys an EV next year.”
+# The family plans an electric car, and the chain runs again.
 
-<div class="data">the real house: Bavarian LoD2 roof, aerial photo, shade per panel<br>four decisions in a chain, then the offer<br>one sentence changes the facts and the chain runs again<br>intake by form, pasted email, or a call with Rina</div>
+<div class="data">the real house: Bavarian LoD2 roof, aerial photo, shade per panel<br>four decisions in a chain, then the offer<br>one chip changes a fact and the chain runs again: the wallbox appears<br>intake by form, pasted email, or a call with Rina</div>
 
 </div>
 <div>

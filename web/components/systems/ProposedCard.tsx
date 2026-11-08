@@ -4,6 +4,7 @@
 // every width: full width over the page on a phone, 520 px centred over the model above the sentence bar on desktop,
 // where a clip hides the tucked body. Approve stays pinned at the bottom of the open card. While tucked, a change above shimmers the figures until the engine answers, then lights the ones that moved.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import Num from "@/components/offer/Num";
 import "./systems.css";
 
 type Fig = { k: "kwp" | "kwh" | "price"; v: string };
@@ -14,7 +15,6 @@ type Props = {
 };
 
 const n = (x: number, d: number) => (Math.round(x * 10 ** d) / 10 ** d).toLocaleString("en-GB");
-let shown: { id: string; figs: Record<string, string> } | null = null;   // the last settled figures, across remounts
 const OMEGA = (2 * Math.PI) / 0.5;   // Apple's smooth spring, 0.5 s, bounce 0 (critically damped)
 
 function useReduce() {
@@ -33,19 +33,7 @@ export default function ProposedCard({ kwp, kwh, price, pending, children, id, n
     { k: "price", v: `€${Math.round(price).toLocaleString("en-GB")}` },
   ];
 
-  // The figures that moved since the last settled design light once; a counter restarts the highlight.
-  // Kept outside the component: a remount mid-edit (the chain re-renders the canvas) must still see what moved.
-  const last = useRef<Record<string, string> | null>(shown && shown.id === (id ?? "") ? shown.figs : null);
-  const [lit, setLit] = useState<{ ks: Set<string>; n: number }>({ ks: new Set(), n: 0 });
-  const sig = figs.map((f) => f.v).join("|");
-  useEffect(() => {
-    if (pending) return;
-    const now = Object.fromEntries(figs.map((f) => [f.k, f.v]));
-    const was = last.current; last.current = now; shown = { id: id ?? "", figs: now };
-    if (!was) return;
-    const ks = new Set(Object.keys(now).filter((k) => was[k] !== now[k]));
-    if (ks.size) setLit((x) => ({ ks, n: x.n + 1 }));
-  }, [sig, pending]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A figure that moves springs to its new value and lights once (Num); no render of the pass is needed for it.
 
   // Spring state: pos 0 is open, max is tucked; written straight to the transform each frame.
   const root = useRef<HTMLDivElement>(null), mover = useRef<HTMLDivElement>(null), scrim = useRef<HTMLDivElement>(null);
@@ -85,9 +73,12 @@ export default function ProposedCard({ kwp, kwh, price, pending, children, id, n
   useLayoutEffect(() => {
     const el = mover.current, r = root.current;
     if (!el || !r) return;
+    // The peek is the tucked pass: measured only while tucked, because the open pass drops its figure line.
+    let tuckedPeek = 0;
     const measure = () => {
       const s = st.current;
-      const peek = r.querySelector<HTMLElement>(".pc-pass")?.getBoundingClientRect().height ?? 72;
+      if (!r.classList.contains("pc-open") || !tuckedPeek) tuckedPeek = r.querySelector<HTMLElement>(".pc-pass")?.getBoundingClientRect().height ?? 72;
+      const peek = tuckedPeek;
       document.documentElement.style.setProperty("--pc-peek", `${Math.round(peek)}px`);
       const max = side === "bottom" ? Math.max(0, el.getBoundingClientRect().height - peek) : el.getBoundingClientRect().width + 24;
       const wasTucked = !s.init || s.goal === s.max;
@@ -157,7 +148,7 @@ export default function ProposedCard({ kwp, kwh, price, pending, children, id, n
 
   const figure = (f: Fig) => pending
     ? <span key={f.k} className="pc-fig pc-skel" aria-hidden="true">{f.v}</span>
-    : <span key={`${f.k}-${lit.ks.has(f.k) ? lit.n : 0}`} className={`pc-fig${lit.ks.has(f.k) ? " pc-lit" : ""}`}>{f.v}</span>;
+    : <span key={f.k} className="pc-fig"><Num v={f.v} lit /></span>;   // springs to the new figure and lights briefly
 
   return (
     <div ref={root} className={`pc pc-${side}${open ? " pc-open" : ""}${reduce ? " pc-reduce" : ""}`}>

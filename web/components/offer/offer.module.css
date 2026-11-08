@@ -145,3 +145,4 @@
 .tiles div[data-info] { position: relative; padding-right: 26px; }
 .tileInfo { position: absolute; top: 4px; right: 4px; }
 .tileInfo .info :global(.sc-i) { margin: 0; width: 24px; height: 24px; }
+.num { border-radius: 5px; padding: 0 2px; margin: 0 -2px; font-variant-numeric: tabular-nums; }
