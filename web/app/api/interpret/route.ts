@@ -131,10 +131,55 @@ async function whatsapp(req: NextRequest, body: { lead_id?: string; text?: strin
   return NextResponse.json({ facts, confidence: Number.isFinite(c) ? Math.min(1, Math.max(0, c)) : 0, unclear: [...unclear] });
 }
 
+// Autopilot composer: a scrap, a pasted email or a voice transcript becomes the facts of a new lead. Nothing is guessed.
+const CF = ["name", "address", "postcode", "num_inhabitants", "heating_type", "heating_stated", "has_ev", "ev_planned", "annual_demand_kwh", "phone", "note"] as const;
+const composerSchema = {
+  type: "object", additionalProperties: false, required: [...CF],
+  properties: {
+    name: { anyOf: [{ type: "string" }, { type: "null" }] },
+    address: { anyOf: [{ type: "string" }, { type: "null" }] },
+    postcode: { anyOf: [{ type: "string" }, { type: "null" }] },
+    num_inhabitants: { anyOf: [{ type: "number" }, { type: "null" }] },
+    heating_type: { anyOf: [{ type: "string", enum: [...ENUMS.heating_type] }, { type: "null" }] },
+    heating_stated: { anyOf: [{ type: "string" }, { type: "null" }] },
+    has_ev: { anyOf: [{ type: "boolean" }, { type: "null" }] },
+    ev_planned: { anyOf: [{ type: "boolean" }, { type: "null" }] },
+    annual_demand_kwh: { anyOf: [{ type: "number" }, { type: "null" }] },
+    phone: { anyOf: [{ type: "string" }, { type: "null" }] },
+    note: { anyOf: [{ type: "string" }, { type: "null" }] },
+  },
+};
+const COMPOSER_SYSTEM = `You read one scrap of text from a solar installer's planner: a few words, a pasted customer email (German or English) or a voice transcript. You pull out a new lead's facts.
+Return only what the text states or plainly implies; null for everything else. Never guess, never fill typical values.
+name is the homeowner (the email's sender or signature, not the installer). address is street and house number plus town, as written. postcode is the 5 digit German postcode. num_inhabitants is the household size. annual_demand_kwh is yearly household electricity in kWh (convert MWh). phone is the homeowner's number as written.
+Heating: heating_stated is the word as stated, capitalised ("Gas", "Oil", "Heat pump", "District", "Electric", "Wood"). heating_type is the kind sizing uses: gas is Gas, oil is Oil, heat pump is Heatpump, district or electric heating is OtherNonRenewable, wood or pellets is OtherRenewable.
+has_ev is true when they own an electric car now. ev_planned is true when they plan to buy one (then has_ev is true as well). note is under 12 words, British English, anything else a planner should see, or null.`;
+
+async function composer(body: { text?: string }) {
+  const text = String(body.text ?? "").trim();
+  if (!text) return NextResponse.json({ error: "Write a few words about the house first." }, { status: 400 });
+  const r = await structured<Record<(typeof CF)[number], unknown>>(COMPOSER_SYSTEM, text.slice(0, 8000), composerSchema, 2048);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const out: Record<string, unknown> = {};
+  for (const k of CF) {
+    let v = r.data[k];
+    if (v == null || v === "") continue;
+    if (k === "num_inhabitants" || k === "annual_demand_kwh") { v = Number(v); if (!Number.isFinite(v as number) || (v as number) <= 0) continue; }
+    else if (k === "has_ev" || k === "ev_planned") { if (typeof v !== "boolean") continue; }
+    else if (k === "heating_type") { if (!(ENUMS.heating_type as readonly string[]).includes(String(v))) continue; }
+    else if (k === "postcode") { const m = String(v).match(/\b\d{5}\b/); if (!m) continue; v = m[0]; }
+    else v = String(v).trim();
+    out[k] = v;
+  }
+  if (out.ev_planned === true) out.has_ev = true;
+  return NextResponse.json(out);
+}
+
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Body is not JSON" }, { status: 400 }); }
   if (body?.mode === "whatsapp") return whatsapp(req, body as Parameters<typeof whatsapp>[1]);
+  if (body?.mode === "composer") return composer(body as { text?: string });
   return refine(body);
 }
 
