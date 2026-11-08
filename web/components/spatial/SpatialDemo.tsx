@@ -20,7 +20,7 @@ import { isMultiUnit } from "@/lib/building";
 import { setImagery, type Imagery } from "./whiteMode";
 import s from "./spatial.module.css";
 import EditLayer from "./EditLayer";
-import { MODULE_WP, countOf, kwpKey, loadPicks, savePicks, slotsOf, withPicks, type Picks } from "./editing";
+import { MODULE_WP, countOf, idsOf, kwpKey, loadPicks, picksOf, savePicks, slotsOf, withPicks, type Picks } from "./editing";
 import ShadingPanel from "./ShadingScrubber";
 import { useShadeView, useShading } from "@/lib/shading";
 
@@ -44,7 +44,9 @@ type Props = {
   children?: ReactNode;               // overlays drawn over the canvas
   system?: System | null;             // the Systems chip: its layer on the model and its camera (systems.ts)
   onScene?: (sc: SpatialScene | null) => void; // the live scene, for callers that drive it directly (scene.setSystem)
-  edit?: { setOverride: (f: keyof Design, v: OverrideValue | undefined) => void }; // the planner's on-model editing (EditLayer.tsx); never on the homeowner page
+  // The planner's on-model editing (EditLayer.tsx); never on the homeowner page. setKit sends several fields as one
+  // edit (pv_kwp with layout_slots); slots is the lead's stored layout_slots.
+  edit?: { setOverride: (f: keyof Design, v: OverrideValue | undefined) => void; setKit?: (p: Record<string, OverrideValue | string[] | undefined>) => void; slots?: string[] | null };
 };
 
 // Layer ids are fixed (7 Heat, 8 Plan); a step shows only when its data is present.
@@ -129,9 +131,17 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   useEffect(() => { if (editLead) setPicksAll(loadPicks(editLead)); }, [editLead]);
   const [live, setLive] = useState<{ kwp: number; picks: Picks; until: number } | null>(null);
   const wantN = Math.round(((design.pv_kwp ?? 0) * 1000) / MODULE_WP);
+  // Order: a tap still on its way to the engine, then the lead's layout_slots, then this browser's copy.
+  const faceIds = useMemo(() => {
+    const m = layers ? modelOf(layers.planes) : null;
+    return m ? m.planes.filter((p) => p.is_target).map((p) => p.id) : [];
+  }, [layers]);
+  const fromLead = edit?.slots?.length && faceIds.length ? picksOf(edit.slots, faceIds) : null;
+  const local = picksAll[kwpKey(design.pv_kwp)];
   const picks: Picks | null = !editLead ? null
     : live && live.until > Date.now() && kwpKey(live.kwp) !== kwpKey(design.pv_kwp) ? live.picks
-    : picksAll[kwpKey(design.pv_kwp)] && countOf(picksAll[kwpKey(design.pv_kwp)]) === wantN ? picksAll[kwpKey(design.pv_kwp)] : null;
+    : fromLead && countOf(fromLead) === wantN ? fromLead
+    : local && countOf(local) === wantN ? local : null;
   const picksKey = picks ? JSON.stringify(picks) : "";
   const model = useMemo(() => {
     const m = layers ? modelOf(layers.planes) : null;
@@ -323,7 +333,8 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     savePicks(editLead, kwp, now);
     setPicksAll((a) => ({ ...a, [kwpKey(kwp)]: now }));
     setLive({ kwp, picks: now, until: Date.now() + 20000 });
-    edit.setOverride("pv_kwp", kwp);
+    if (edit.setKit) edit.setKit({ pv_kwp: kwp, layout_slots: idsOf(now) });
+    else edit.setOverride("pv_kwp", kwp);
   }, [edit, editLead, faces]);
   const setUnit = useCallback((f: keyof Design, v: OverrideValue) => edit?.setOverride(f, v), [edit]);
 

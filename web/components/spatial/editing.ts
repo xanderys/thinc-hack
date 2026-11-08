@@ -1,9 +1,10 @@
 // On-model editing, the data side: every slot a module can take on a roof face, which of them the design uses, and
-// the planner's own picks. The slot grid is roof/model/layout.py's slots() ported as is (portrait 1.134 x 1.762 m,
+// the planner's own picks. The engine sends the slot grid with the layers (api v2.14, planes[].slots); when it does
+// not, roof/model/layout.py's slots() is ported here as is (portrait 1.134 x 1.762 m,
 // 2 cm gaps, 30 cm setback, eaves row first, capped at the face's max_panels), so an empty slot sits on the same
 // grid as the modules the engine placed. A slot's id is "<face id>:<index in that order>".
-// The engine does not store the chosen slots yet (layout_slots is coming as an opaque override field), so the picks
-// live in this browser per lead and per kWp (localStorage); pv_kwp itself goes through the chooser's override path.
+// The picks go to the lead as layout_slots (slot ids, stored opaque) with pv_kwp in one edit, and come back from it on
+// load; this browser keeps a copy per lead and kWp (localStorage) for an engine without layout_slots.
 import type { PanelRect, RoofPlane, V3 } from "./types";
 
 export const MODULE_WP = 450;
@@ -80,6 +81,10 @@ export function slotsOf(p: RoofPlane): FaceSlots {
   const ring = p.polygon as Vec[];
   if (ring.length < 3) return { plane: p, slots: [], placed: [] };
   const { o, u, v, n } = frameOf(ring);
+  if (p.slots?.length) return withPlaced(p, p.slots.map((x, k) => {
+    const i = Number(x.id.slice(x.id.lastIndexOf(":") + 1));
+    return { id: x.id, plane: p.id, i: Number.isFinite(i) ? i : k, corners: x.corners, c: centre(x.corners) as V3, n: n as V3 };
+  }));
   const uv: P2[] = ring.map((q) => { const d = sub(q, o); return [dot(d, u), dot(d, v)]; });
   const ins = inset(uv, EDGE);
   let minx = Math.min(...ins.map((q) => q[0])), miny = Math.min(...ins.map((q) => q[1]));
@@ -104,12 +109,17 @@ export function slotsOf(p: RoofPlane): FaceSlots {
       out.push({ id: `${p.id}:${out.length}`, plane: p.id, i: out.length, corners: cs, c: centre(cs) as V3, n: n as V3 });
     }
   }
-  // The engine's own modules take the slot they sit on (same grid, so the nearest centre within half a module).
+  return withPlaced(p, out);
+}
+
+// The modules on the face take the slot they sit on (same grid, so the nearest centre within half a module).
+function withPlaced(p: RoofPlane, out: Slot[]): FaceSlots {
+  const chosen = (p.chosen_panels ?? []).map(corners).filter((r): r is V3[] => !!r && r.length === 4);
   const placed: number[] = [];
   chosen.forEach((r) => {
     const c = centre(r); let best = -1, bd = 0.5;
     out.forEach((s, k) => { const dd = Math.hypot(s.c[0] - c[0], s.c[1] - c[1], s.c[2] - c[2]); if (dd < bd && !placed.includes(k)) { bd = dd; best = k; } });
-    if (best >= 0) { placed.push(best); out[best].corners = r; out[best].c = c as V3; }
+    if (best >= 0) { placed.push(out[best].i); out[best] = { ...out[best], corners: r, c: c as V3 }; }
   });
   return { plane: p, slots: out, placed: placed.sort((a, b) => a - b) };
 }
@@ -119,6 +129,13 @@ export function slotsOf(p: RoofPlane): FaceSlots {
 export type Picks = Record<string, number[]>;
 export const kwpKey = (kwp: number | null | undefined) => (kwp ?? 0).toFixed(2);
 export const countOf = (p: Picks) => Object.values(p).reduce((s, x) => s + x.length, 0);
+export const idsOf = (p: Picks) => Object.entries(p).flatMap(([f, is]) => is.map((i) => `${f}:${i}`));
+export function picksOf(ids: string[], faces: string[]): Picks {
+  const out: Picks = Object.fromEntries(faces.map((f) => [f, [] as number[]]));
+  ids.forEach((id) => { const k = id.lastIndexOf(":"), f = id.slice(0, k), i = Number(id.slice(k + 1)); if (f in out && Number.isFinite(i)) out[f].push(i); });
+  Object.values(out).forEach((x) => x.sort((a, b) => a - b));
+  return out;
+}
 const store = (lead: string) => `marquee:slots:${lead}`;
 export function loadPicks(lead: string): Record<string, Picks> {
   try { return JSON.parse(localStorage.getItem(store(lead)) || "{}") as Record<string, Picks>; } catch { return {}; }
@@ -131,7 +148,7 @@ export function savePicks(lead: string, kwp: number, picks: Picks) {
 export function withPicks(planes: RoofPlane[], picks: Picks): RoofPlane[] {
   return planes.map((p) => {
     if (!p.is_target || !(p.id in picks)) return p.is_target ? { ...p, chosen_panels: [] } : p;
-    const f = slotsOf(p);
-    return { ...p, chosen_panels: picks[p.id].filter((i) => f.slots[i]).map((i) => f.slots[i].corners) };
+    const f = slotsOf(p), byI = new Map(f.slots.map((x) => [x.i, x]));
+    return { ...p, chosen_panels: picks[p.id].filter((i) => byI.has(i)).map((i) => byI.get(i)!.corners) };
   });
 }

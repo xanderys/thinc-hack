@@ -61,6 +61,7 @@ type Props = {
   res: DesignResponse; prev: DesignResponse | null; inputs: HomeInputs; leadId?: string | null;
   pending?: number | null; cause?: string | null;   // an edit waiting on the engine (since); what made the design on screen
   variants: Variant[]; onVariant: (v: Variant) => void; canUndo: boolean; onUndo: () => void; decide?: ReactNode;
+  setKit?: (patch: Record<string, number | null | "include" | string[] | undefined>) => void;   // several kit fields as one edit (the on-model layout)
   redraft?: unknown;   // changes on every refinement (sentence, hand change, call step); a new design without one is not a redraft
   answered: boolean;
 };
@@ -78,7 +79,7 @@ function useReduce() {
   return r;
 }
 
-export default function Chain({ res, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, decide, redraft }: Props) {
+export default function Chain({ res, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, decide, redraft, setKit }: Props) {
   const reduce = useReduce();
   const causeRef = useRef(cause); causeRef.current = cause;
   // A change made from the Offer panel or Undo keeps the planner in the Offer: no stage or camera move on the re-run.
@@ -530,7 +531,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         {address && spatial !== false ? (
           <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatLayer ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && panelHeat}
-            edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); dp.setOverride?.(f, v); } } : undefined}>
+            edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); dp.setOverride?.(f, v); }, setKit: setKit ? (p) => { holdOffer(); setKit(p); } : undefined,
+              slots: Array.isArray((ovNow as { layout_slots?: unknown }).layout_slots) ? (ovNow as { layout_slots: string[] }).layout_slots : null } : undefined}>
             {overlays}
           </SpatialDemo>
         ) : (
