@@ -222,10 +222,30 @@ export class Xray {
     if (!card || !svg || !ov) return;
     const cs = getComputedStyle(card);
     const num = (v: string, d: number) => { const x = parseFloat(cs.getPropertyValue(v)); return Number.isFinite(x) ? x : d; };
-    const fl = num("--free-l", 0), ft = num("--free-t", 0);
-    // Top left of the free area, clear of the step cards and the house in the middle.
-    const cw = card.offsetWidth, ch = card.offsetHeight;
-    const x = fl + 12, y = ft + 12;
+    const fl = num("--free-l", 0), ft = num("--free-t", 0), fw = num("--free-w", ov.clientWidth), fh = num("--free-h", ov.clientHeight);
+    const phone = ov.clientWidth < 560;
+    card.style.fontSize = phone ? "11.5px" : "12.5px";
+    card.style.minWidth = phone ? "128px" : "148px";
+    // Beside the house on screen, so the leaders stay short and cross no other building: to the right of the
+    // building on a wide view (left if there is no room), below it on a phone; always inside the free area.
+    const bx = this.host.box, hs = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    for (const cx of [bx.min.x, bx.max.x]) for (const cy of [bx.min.y, bx.max.y]) for (const cz of [bx.min.z, bx.max.z]) {
+      const q = this.host.project(new THREE.Vector3(cx, cy, cz));
+      hs.x0 = Math.min(hs.x0, q.x); hs.x1 = Math.max(hs.x1, q.x); hs.y0 = Math.min(hs.y0, q.y); hs.y1 = Math.max(hs.y1, q.y);
+    }
+    const cw = card.offsetWidth, ch = card.offsetHeight, G = 20;
+    const clampX = (v: number) => Math.max(fl + 8, Math.min(fl + fw - cw - 8, v)), clampY = (v: number) => Math.max(ft + 8, Math.min(ft + fh - ch - 8, v));
+    let x: number, y: number;
+    if (phone) {
+      x = clampX((hs.x0 + hs.x1) / 2 - cw / 2);
+      y = hs.y1 + G + ch <= ft + fh - 8 ? hs.y1 + G : ft + fh - ch - 8;
+      if (y < hs.y1 && x + cw > hs.x0 - 4) x = fl + 8;   // no room below: bottom left, off the house
+      y = clampY(y);
+    } else {
+      x = hs.x1 + G + cw <= fl + fw - 8 ? hs.x1 + G : hs.x0 - G - cw;
+      x = clampX(x);
+      y = clampY((hs.y0 + hs.y1) / 2 - ch / 2);
+    }
     card.style.transform = `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px)`;
     const o = this.f;
     card.style.opacity = o.toFixed(3);
