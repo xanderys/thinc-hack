@@ -192,6 +192,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null, approved: LeadT["approved"] = null, kit: Overrides | null = null) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
+    frozen.current = false;
     seedDraft.current = draft;   // the lead's stored draft answers the first design read (no call on open)
     const r = { data };
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(draft); setPrev(null); last.current = draft;
@@ -201,7 +202,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (approved?.design && draft) {
       const d = approved.design;
       setOverrides(approved.overrides && Object.keys(approved.overrides).length ? approved.overrides : { pv_kwp: d.pv_kwp, battery_kwh: d.battery_kwh, wallbox_kw: d.wallbox_kw, heatpump_kw: d.heatpump_kw });
-      const shown = { ...draft, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
+      // The frozen proposal, priced from its own figures (no live rates): the homeowner's page shows the same.
+      const shown = { ...draft, rates: undefined, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
+      frozen.current = true;
       setRes(shown); last.current = shown;
     } else if (kit && Object.keys(kit).length) setOverrides(kit);   // the planner's kit edits, as the lead stores them
     persisted.current = !approved?.design && kit ? kit : {};
@@ -239,6 +242,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   // version without changing any variant). A variant tab whose design is here switches at once, with no pending state.
   const designs = useRef(new Map<string, DesignResponse | RefineResponse>());
   const seedDraft = useRef<DesignResponse | null>(null);
+  const frozen = useRef(false);   // a Complete lead opened as approved: no re-run until the planner changes something
   const keyOf = (i: HomeInputs, o: Overrides) => JSON.stringify([i, Object.fromEntries(Object.entries(o).sort(([x], [y]) => x.localeCompare(y)))]);
   const keep = (k: string, r: DesignResponse | RefineResponse) => { const m = designs.current; m.delete(k); m.set(k, r); if (m.size > 32) m.delete(m.keys().next().value!); };
 
@@ -248,6 +252,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const ctl = new AbortController();
     const asked = inputs, why = cause.current, fixed = Object.keys(overrides).length > 0;
     const k = keyOf(inputs, overrides);
+    // A Complete lead shows the proposal as it was approved and sent; the engine is asked again only after an edit.
+    if (frozen.current && !cause.current) return;
+    frozen.current = false;
     const hit = designs.current.get(k);
     if (hit) { land({ ok: true, data: hit }, asked, why, fixed, null); return; }
     if (cause.current) setPending((p) => p ?? Date.now());
