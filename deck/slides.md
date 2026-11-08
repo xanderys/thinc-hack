@@ -38,13 +38,13 @@ footer: Marquee
 
 <p>The installer can see which leads deserve a visit before they spend a planner’s afternoon on one. And the planner arrives already knowing the likely answer, so the scan confirms the design instead of starting it.</p>
 
-<div class="data">258 held-out sales replayed: Visit <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b></div>
+<div class="data">258 held-out sales replayed: Priority <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b></div>
 
 ![h:240](img/board-verdicts.png)
 
 [UNCONFIRMED: Decline shown is Markus Lindner (homeowner declined); Moser, the shed, left off; Xander's pick. Screenshot retaken with Lindner f6e838cd85 at 6.3 kWp; the Decline count reads 2 while Moser stays on the board]
 
-[UNCONFIRMED: replay shares, engine/lab/qualification_backtest.md 1186795]
+[UNCONFIRMED: replay shares, engine/lab/qualification_backtest.md 1186795; Visit renamed Priority, board screenshot to be retaken when the web release lands]
 
 <p class="brief">Estimates until the site visit; offer values from stated cost assumptions, not quotes.</p>
 
