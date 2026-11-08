@@ -83,6 +83,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const [glbOk, setGlbOk] = useState(false);
   const [ready, setReady] = useState(false);
   const [sysNow, setSysNow] = useState<System | null>(null);   // the Systems chip on screen, for the edit layer
+  const editSys = (system ?? sysNow) as "panels" | "battery" | "wallbox" | "heatpump" | null;
   const [hour, setHour] = useState<{ h: number; playing: boolean }>({ h: 12, playing: false });
   const [view, setView] = useState<"3d" | "2d">("3d");
 
@@ -273,13 +274,15 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     else if (L === 5) {
       // Battery step: the battery carries its size; Wallbox step: the wallbox does, or nothing.
       const f = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
-      const bt = stage !== "extras" && design.battery_kwh ? `${f(design.battery_kwh)} kWh` : null;
-      const wb = stage !== "storage" && design.wallbox_kw ? `${f(design.wallbox_kw)} kW` : null;
+      // While the planner edits a unit on the model, its own control carries the size: no second label.
+      const own = (k: string) => !!edit && !homeowner && editSys === k;
+      const bt = stage !== "extras" && design.battery_kwh && !own("battery") ? `${f(design.battery_kwh)} kWh` : null;
+      const wb = stage !== "storage" && design.wallbox_kw && !own("wallbox") ? `${f(design.wallbox_kw)} kW` : null;
       sc.setLabels(sc.kitLabels(bt, wb));
     }
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, design.battery_kwh, design.inverter_kw, design.heatpump_kw, stage, sunTint]);
+  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, design.battery_kwh, design.inverter_kw, design.heatpump_kw, stage, sunTint, editSys]);
 
   // The plan layer is always top-down; the other layers keep the planner's choice.
   useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);
@@ -321,7 +324,6 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     edit.setOverride("pv_kwp", kwp);
   }, [edit, editLead, faces]);
   const setUnit = useCallback((f: keyof Design, v: OverrideValue) => edit?.setOverride(f, v), [edit]);
-  const editSys = (system ?? sysNow) as "panels" | "battery" | "wallbox" | "heatpump" | null;
 
   const seek = useCallback((h: number) => { scene.current?.seek(h); setHour({ h, playing: false }); }, []);
 
