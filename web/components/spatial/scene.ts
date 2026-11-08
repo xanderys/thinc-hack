@@ -698,6 +698,9 @@ export class SpatialScene {
     const own: Record<string, number> = {};
     this.panels.children.forEach((g) => { const id = g.userData?.plane; if (id) own[id] = (own[id] ?? 0) + 1; });
     const cnt = (id: string) => counts?.[id] ?? own[id] ?? 0;
+    // With modules on more than one face each chip carries the total, so "20 modules" never stands against 23 alone.
+    const used = this.targets.filter(({ p }) => cnt(p.id) > 0), total = used.reduce((a, { p }) => a + cnt(p.id), 0);
+    const of = used.length > 1 ? ` of ${total}` : "";
     return this.targets.map(({ p, c, n }) => {
       const at = c.clone().addScaledVector(n, 0.4), k = cnt(p.id);
       const face = p.pitch < 3 ? "flat roof" : `${facing(p.azimuth)} face, ${Math.round(p.pitch)}° pitch`;
@@ -708,7 +711,7 @@ export class SpatialScene {
           : (() => {
             // Panels: one chip per face, "East face · 9 kWp · 20 modules"; an empty face shows its chip on tap.
             const name = p.pitch < 3 ? "Flat roof" : `${facing(p.azimuth).replace(/^./, (x) => x.toUpperCase())} face`;
-            if (k > 0) return `${name} · ${kwpPerModule ? `<b>${kwpS(k * kwpPerModule)} kWp</b> · ` : ""}${k} modules`;
+            if (k > 0) return `${name} · ${kwpPerModule ? `<b>${kwpS(k * kwpPerModule)} kWp</b> · ` : ""}${k}${of} modules`;
             return skipOf(p) ? `${name} · no modules, ${skipOf(p)}` : `${name} · no modules`;
           })();
       return { key: `${kind}-${p.id}`, at, html, cls: kind === "panels" ? `chip ${k > 0 ? "c-pv" : ""}` : undefined, prio: k * 1000 + p.area_m2, ...(k > 0 ? {} : { tap: p.id }) };

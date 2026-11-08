@@ -260,7 +260,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const go = (n: number) => { setAuto(false); setStage(n); setWhy(null); setWhyStep(null); };
 
   const tools = ({ view: v, setView, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
-    <div className={s.toolbar} role="toolbar" aria-label="Model">
+    <div className={s.toolbar} role="toolbar" aria-label="Model" data-cover>
       <Inert label="Select"><path d="M5 3l12 7-5 1.5L9.5 17z" /></Inert>
       <Inert label="Pan"><path d="M7 11V5.5a1.5 1.5 0 013 0V10m0-1.5V4a1.5 1.5 0 013 0v5m0-3a1.5 1.5 0 013 0v6c0 3.5-2.5 6-6 6s-5-1.5-6.5-4L3 11.5a1.5 1.5 0 012.5-1.5L7 12" /></Inert>
       <Inert label="Measure"><path d="M3 14L14 3l3 3L6 17zM6 11l1.5 1.5M8.5 8.5L10 10M11 6l1.5 1.5" /></Inert>
