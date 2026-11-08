@@ -61,10 +61,15 @@ export default function GapChips({ lead, address, onChanged }: { lead?: LeadLike
   const gaps = gapsOf(lead, address);
   if (!gaps.length) return null;
   return (
-    <div className="gp" onClick={(e) => e.stopPropagation()}>
+    <div className="gp" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => {
+      if (e.key !== "Escape" || !open) return;
+      e.stopPropagation();
+      const f = open; setOpen(null);
+      requestAnimationFrame(() => (e.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(`.gp-chip[data-f="${f}"]`)?.focus());
+    }}>
       <div className="gp-row">
         {gaps.map((f) => (
-          <button key={f} type="button" className="gp-chip" aria-expanded={open === f} onClick={() => setOpen(open === f ? null : f)}>
+          <button key={f} type="button" className="gp-chip" data-f={f} aria-expanded={open === f} onClick={() => setOpen(open === f ? null : f)}>
             <svg viewBox="0 0 20 20" aria-hidden="true">{PATHS[GLYPH[f]]}</svg><span>Needs: {GAP_LABEL[f]}</span>
           </button>
         ))}

@@ -25,3 +25,7 @@
 .b-wrapcard { display: grid; }
 .b-wrapcard > .b-card { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .b-wrapcard > .gp { border-radius: 0 0 12px 12px; }
+/* Big card picture: a fixed 16:9 box, the render cropped to fit, never squeezed by the flex column. */
+.b-wrapcard .b-card .b-house { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; min-height: 0; margin: 6px 0; overflow: hidden; border-radius: 8px; }
+.b-wrapcard .b-card .b-house .h-photo { object-fit: cover; }
+.b-wrapcard .b-card { min-height: 0; }
