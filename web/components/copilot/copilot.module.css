@@ -91,3 +91,12 @@
 
 /* The board dock only opens the card and never takes text itself: no caret bar in it. */
 .dockWrap textarea { caret-color: transparent; }
+
+/* Phones: the open card sits on the keyboard (the shell sets --kb-bottom and --vvh from visualViewport), inside the visual viewport. */
+@media (max-width: 600px) {
+  .card, .shell[data-lead] .card {
+    left: 16px; right: auto; margin-left: 0; box-sizing: border-box; width: calc(100vw - 32px); max-width: calc(var(--vvw, 100vw) - 32px);
+    bottom: var(--kb-bottom, calc(8px + env(safe-area-inset-bottom)));
+    height: min(calc(var(--vvh, 100dvh) - 56px), 680px);
+  }
+}

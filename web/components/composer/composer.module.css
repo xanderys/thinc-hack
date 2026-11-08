@@ -53,3 +53,5 @@
   .box { padding: 6px; gap: 0; }
   .field { padding: 5px 4px; }
 }
+/* iOS zooms into any field under 16 px on focus: 16 px on phones, the same box through line-height and padding. */
+@media (max-width: 600px) { .field { font-size: 16px; line-height: 22px; padding: 5px 4px; } }

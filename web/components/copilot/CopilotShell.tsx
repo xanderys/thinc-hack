@@ -102,6 +102,20 @@ export default function CopilotShell() {
     return () => { sc()?.resume?.(); };
   }, [open]);
   // Opening by focus or tap puts the cursor in the Thread's own field.
+  // While open: the page behind stays still, and on a phone the card rides on the keyboard (visualViewport).
+  useEffect(() => {
+    if (!open) return;
+    const b = document.body.style, was = b.overflow; b.overflow = "hidden";
+    const vv = window.visualViewport, el = wrap.current;
+    const fit = () => {
+      if (!vv || !el) return;
+      const gap = innerHeight - (vv.height + vv.offsetTop);   // the keyboard and the form bar; under 40 px it is only the toolbar
+      if (gap > 40) el.style.setProperty("--kb-bottom", `${gap + 8}px`); else el.style.removeProperty("--kb-bottom");
+      el.style.setProperty("--vvh", `${vv.height}px`); el.style.setProperty("--vvw", `${vv.width}px`);
+    };
+    fit(); vv?.addEventListener("resize", fit); vv?.addEventListener("scroll", fit);
+    return () => { b.overflow = was; vv?.removeEventListener("resize", fit); vv?.removeEventListener("scroll", fit); for (const k of ["--kb-bottom", "--vvh", "--vvw"]) el?.style.removeProperty(k); };
+  }, [open]);
   useEffect(() => { if (open) { const t = setTimeout(() => (cardEl.current?.querySelector("textarea") as HTMLTextAreaElement | null)?.focus(), 120); return () => clearTimeout(t); } }, [open]);
 
   // Touching the 3D canvas or scrolling the page down puts the card back in its corner.
