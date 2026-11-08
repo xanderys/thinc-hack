@@ -47,7 +47,10 @@ export async function POST(req: NextRequest) {
 
   return stream(async (emit) => {
     const client = new Anthropic();
-    const messages: Anthropic.MessageParam[] = history.map((m) => ({ role: m.role, content: m.content }));
+    // Earlier turns travel as one transcript in a single user message: replayed assistant text without its thinking
+    // made Sonnet 5.5 end the next turn empty.
+    const earlier = history.slice(0, -1).map((m) => `${m.role === "user" ? "Planner" : "You"}: ${m.content}`).join("\n\n");
+    const messages: Anthropic.MessageParam[] = [{ role: "user", content: earlier ? `Earlier in this conversation:\n\n${earlier}\n\nThe planner now says:\n\n${said}` : said }];
     let retried = false;
     for (let turn = 0; turn < 8; turn++) {
       const s = client.messages.stream({
