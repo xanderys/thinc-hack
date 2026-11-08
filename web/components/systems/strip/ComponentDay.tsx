@@ -81,8 +81,8 @@ export function WallboxDay({ leadId, sizes, version }: Props) {
     <div className="dv">
       <Figs loading={!at || !w} items={[
         { v: w ? n0(w.ev_kwh_year) : "0", u: "kWh a year" },
-        { v: at ? pc(at.solar_share_of_charging) : "0 %", u: "from own solar a year" },
-        ...(sc ? [{ v: pc(sc.solar_share_of_charging), u: "a year with solar charging" }] : []),
+        { v: at ? pc(at.solar_share_of_charging) : "0 %", u: "of charging from own solar" },
+        ...(sc ? [{ v: pc(sc.solar_share_of_charging), u: "of charging on solar" }] : []),
         { v: at ? `${n1(at.full_charge_hours)} h` : "0 h", u: kw ? `full charge at ${n0(kw)} kW` : "full charge" },
       ]} />
       <DayStrip label="A typical day" loading={!data} hour={hour} onHour={(x) => { scrubbed.current = true; setHour(x); }} season={season} onSeason={setSeason}
