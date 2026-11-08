@@ -16,10 +16,11 @@
 .pp-title p { margin: 8px 0 0; font-size: 15px; line-height: 1.4; min-height: 2.8em; color: rgba(255, 255, 255, 0.78); }
 
 .pp-house { margin: 16px 16px 0; container-type: inline-size; }
-/* The spatial view's measured box (layer strip 55 px, canvas 16:10, or 4:5 up to 700 px wide, caption about 146 px, 217 px on phones),
-   reserved before its code loads; the fallback drawing and the skeleton take the same box. */
-.pp-housebox { min-height: calc(55px + 62.5cqw + 146px); border-radius: 12px; }
-@media (max-width: 700px) { .pp-housebox { min-height: calc(55px + 125cqw + 217px); } }
+/* The spatial view's measured box in homeowner mode (layer strip 55 px, canvas 16:10, or 4:5 up to 700 px wide,
+   caption of sentence and licence about 80 px, 114 px on phones), reserved before its code loads; the fallback drawing
+   and the skeleton take the same box. */
+.pp-housebox { min-height: calc(55px + 62.5cqw + 80px); border-radius: 12px; }
+@media (max-width: 700px) { .pp-housebox { min-height: calc(55px + 125cqw + 114px); } }
 .pp-housebox > .pp-drawing { height: 100%; box-sizing: border-box; display: grid; place-items: center; }
 .pp-housebox > .pp-drawing svg { max-height: 100%; width: auto; max-width: 100%; }
 .pp-spatial { border: 1px solid var(--pp-rule); border-radius: 12px; overflow: hidden; background: var(--pp-card); }
@@ -59,7 +60,7 @@
 .pp-dot.pv { background: var(--pp-pv); } .pp-dot.battery { background: var(--pp-bat); } .pp-dot.heatpump { background: var(--pp-hp); } .pp-dot.wallbox { background: var(--pp-ev); }
 .pp-parts li.off .pp-dot { background: transparent; border: 1.5px solid var(--pp-rule); }
 .pp-pname { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
-.pp-size { font-family: var(--font-mono), ui-monospace, monospace; font-size: 14px; }
+.pp-size { font-size: 14px; }
 /* The written line arrives later: its slot holds two lines from the start, as do the lines themselves. */
 .pp-parts p { min-height: calc(2 * 1.4em); }
 .pp-wait { grid-column: 2; display: block; height: calc(2 * 1.4 * 14.5px); margin-top: 2px; border-radius: 6px; width: 80%;
@@ -122,3 +123,10 @@
   .pp-skt, .pp-skb, .pp-wait, .pp-sk .hk-slot { animation: pp-shimmer 1.4s linear infinite; }
   @keyframes pp-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 }
+
+/* The house view in homeowner mode. SpatialDemo has no homeowner prop yet, so the planner's working is hidden here:
+   the numbers tile (it repeats Key figures and says Payback), the run check, the equation line, plan notes and sources.
+   The licence line stays. One typeface across the page. */
+.pp-spatial [class*="_nwrap__"], .pp-spatial [class*="_check__"], .pp-spatial [class*="_eq__"],
+.pp-spatial [class*="_items__"], .pp-spatial [class*="_sources__"] { display: none !important; }
+.pp-spatial, .pp-spatial *, .pp-spatial text { font-family: var(--font-sans), system-ui, sans-serif !important; }
