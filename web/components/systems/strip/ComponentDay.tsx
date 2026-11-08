@@ -94,24 +94,19 @@ export function HeatpumpDay({ leadId, sizes, version, fuel }: Props) {
   useEffect(() => () => sceneDay("setXrayHour", null), []);
   if (error && !data) return <Err error={error} retry={() => setTries((t) => t + 1)} />;
   const bill = fuel === "Gas" ? "gas" : fuel === "Oil" ? "oil" : "boiler";
-  // Optional engine fields (next ENGINE restart): read from the size's by_size entry first, then the heat pump itself.
-  // Shown only when present; the web works none of them out.
-  const pick = (...ks: string[]) => { for (const o of [at, h] as unknown as (Record<string, unknown> | null)[]) for (const k of ks) { const v = o?.[k]; if (typeof v === "number" && isFinite(v)) return v; } return null; };
-  const cover = pick("heat_covered_share", "share_of_heat_covered", "covered_share", "heat_share_covered");
-  const biv = pick("bivalent_temp_c", "bivalent_c", "bivalent_point_c");
-  const co2 = pick("co2_saved_kg_year");
-  const ct = (() => { const c = pick("gas_price_ct_kwh", "gas_ct_kwh"); if (c != null) return c; const e = pick("gas_price_eur_kwh", "gas_eur_kwh"); return e != null ? e * 100 : null; })();
+  // Engine fields from the 11:45 restart, shown only when present: coverage and the bivalent point per size
+  // (bivalent null when the unit never falls short), and the price of a kWh of heat including boiler losses.
+  const num = (o: unknown, k: string) => { const v = (o as Record<string, unknown> | null)?.[k]; return typeof v === "number" && isFinite(v) ? v : null; };
+  const cover = num(at, "heat_covered_share"), biv = num(at, "bivalent_temp_c"), ct = num(h, "heat_price_ct_kwh");
   return (
     <div className="dv">
-      <Figs loading={!h || !at} items={[
-        { v: h ? `${n1(h.heat_load_kw)} kW` : "0 kW", u: "heat load" },
-      ]} />
+      <Figs loading={!h} items={[{ v: `${n1(sizes.heatpump_kw ?? h?.kw ?? 0)} kW`, u: "design" }]} />
+      {h && <p className="dv-note"><b>{n1(h.heat_load_kw)} kW</b> at most (building envelope)</p>}
       {cover != null && <p className="dv-note">Covers <b>{pc(cover)}</b> of the year&rsquo;s heat{biv != null ? <>, backup below <b>{n1(biv)} °C</b></> : null}</p>}
       <Figs loading={!h || !at} items={[
         { v: h ? n0(h.heating_kwh_year) : "0", u: "kWh heat a year" },
         { v: at ? n0(at.electricity_kwh_year) : "0", u: h ? `kWh power at COP ${n1(h.cop)}` : "kWh power" },
-        { v: at ? `€${n0(at.cost_eur_year)}` : "€0", u: h ? <>a year, {bill} <b className="dv-was">€{n0(h.boiler_cost_eur_year)}</b>{ct != null ? ` at ${n1(ct)} ct` : ""}</> : "a year" },
-        ...(co2 != null ? [{ v: `${n1(co2 / 1000)} t`, u: "CO₂ saved a year" }] : []),
+        { v: at ? `€${n0(at.cost_eur_year)}` : "€0", u: h ? <>a year, {bill} <b className="dv-was">€{n0(h.boiler_cost_eur_year)}</b>{ct != null ? `, heat at ${n1(ct)} ct` : ""}</> : "a year" },
       ]} />
       <DayStrip label="A winter day" loading={!data} hour={hour} onHour={setHour}
         sunrise={data?.sunrise_h} sunset={data?.sunset_h}
