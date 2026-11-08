@@ -15,10 +15,10 @@ import "./proposal.css";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
 
-// docs/data-insights.md, installer 23c108b7 medians: enquiry to offer 8.2 days, offer to signature 28.7 days.
+// docs/data-insights.md, installer 23c108b7 medians (calendar time): enquiry to offer 8.2 days (n 260), offer to signature 28.7 days (n 320). The only place these figures live; they describe past projects, not a promise.
 export const TODAY_OFFER_DAYS = 8;
 export const TODAY_SIGN_DAYS = 29;
-export const TODAY_LINE = `Today: ${TODAY_OFFER_DAYS} days to an offer, ${TODAY_SIGN_DAYS} more to a signature`;
+export const PAST_LINE = `This installer's past projects: about ${TODAY_OFFER_DAYS} days to an offer, then about ${TODAY_SIGN_DAYS} days to a signature.`;
 
 const NAME: Record<ComponentKey, string> = { pv: "Solar panels", battery: "Battery", heatpump: "Heat pump", wallbox: "Wallbox" };
 const FIELD: Record<ComponentKey, keyof Design> = { pv: "pv_kwp", battery: "battery_kwh", heatpump: "heatpump_kw", wallbox: "wallbox_kw" };
@@ -191,8 +191,8 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
         <p>{shown.name ? `${shown.name}, ` : ""}{when(new Date(shown.at))}</p>
         <dl className="pp-clock">
           <div><dt>Enquiry to signature</dt><dd>{span(shown.at - t0)}</dd></div>
-          <div><dt>{TODAY_LINE.split(": ")[0]}</dt><dd>{TODAY_LINE.split(": ")[1]}</dd></div>
         </dl>
+        <p className="pp-past">{PAST_LINE}</p>
       </section>
     );
   if (status === "declined" && shown?.action === "decline")

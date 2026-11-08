@@ -145,3 +145,4 @@
 .pp-vars .pp-facts div:last-child dd { white-space: normal; }
 
 .pp-sk .hk-slot { min-height: 280px; }
+.pp-done p.pp-past { margin-top: 12px; font-size: 14px; color: var(--pp-ink-2); }
