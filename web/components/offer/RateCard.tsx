@@ -6,7 +6,8 @@ import Info from "./Info";
 import s from "./offer.module.css";
 
 export default function RateCard({ design, total, assumptions, modules, skus }: { design: Partial<Design>; total: number; assumptions?: string[] | null; modules?: number | null; skus?: Partial<Record<SkuPart, Sku>> }) {
-  const card = rateCard(design, total, assumptions, modules);
+  const unitW = skus?.module?.size;
+  const card = rateCard(design, total, assumptions, modules ?? (unitW && design.pv_kwp ? Math.round((design.pv_kwp * 1000) / unitW) : null));
   if (!card) return null;
   // Lines name the product where the engine sends one; the rate stays the market rate per kWp or kWh.
   const LABEL_SKU: Record<string, SkuPart> = { Solar: "module", "Solar modules and inverter": "module", Battery: "battery", "Battery storage": "battery" };

@@ -31,8 +31,10 @@ export default function KitSheet({ kit, total, assumptions, skus, note, edit, in
   if (!kit) return null;   // the design is not in yet
   const rows: Row[] = [];
   if (kit.pv_kwp) {
-    const count = kit.modules && kit.modules > 0 ? kit.modules : Math.max(1, Math.round(kit.pv_kwp / MODULE_KWP));
-    const wp = Math.round((kit.pv_kwp * 1000) / count / 5) * 5;
+    // The module's own watts where the engine names it (23 x 463 W = 10.65 kWp), else the standard module.
+    const unitW = skus?.module?.size && (skus.module.unit ?? "W").toUpperCase().startsWith("W") ? skus.module.size : null;
+    const count = kit.modules && kit.modules > 0 ? kit.modules : Math.max(1, Math.round((kit.pv_kwp * 1000) / (unitW ?? MODULE_KWP * 1000)));
+    const wp = unitW ?? Math.round((kit.pv_kwp * 1000) / count / 5) * 5;
     rows.push({ key: "pv", field: "pv_kwp", part: "pv", qty: count, name: "Solar module", spec: `${wp} Wp`, icon: <Modules n={count} /> });
   }
   if (kit.inverter_kw) rows.push({ key: "inv", field: "inverter_kw", part: "inverter", qty: 1, name: kit.battery_kwh ? "Hybrid inverter" : "Inverter", spec: `${n1(kit.inverter_kw)} kW`, icon: <Inverter /> });

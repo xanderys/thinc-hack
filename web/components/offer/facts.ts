@@ -108,7 +108,8 @@ export function skusOf(r: unknown): Partial<Record<SkuPart, Sku>> {
   const o = (r ?? {}) as { skus?: Record<string, Sku>; design?: { skus?: Record<string, Sku> }; components?: Record<string, { sku?: Sku } | undefined> };
   const out: Partial<Record<SkuPart, Sku>> = {};
   (Object.keys(COMP_OF) as SkuPart[]).forEach((p) => {
-    const s = o.skus?.[p] ?? o.design?.skus?.[p] ?? COMP_OF[p].map((c) => o.components?.[c]?.sku).find(Boolean);
+    const top = o.skus ?? o.design?.skus;   // when the engine sends skus, they are the whole answer
+    const s = top ? top[p] : COMP_OF[p].map((c) => o.components?.[c]?.sku).find(Boolean);
     if (s && typeof s.brand === "string" && typeof s.name === "string") out[p] = s;
   });
   return out;
