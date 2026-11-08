@@ -348,7 +348,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
           <p className="b-l2">{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
           <p className={`${qs.head} b-l3`}><VerdictChip verdict={openCard?.q?.verdict ?? null} tip={openCard?.q ? `${reasonOf(openCard.q)} ${factsTip(openCard.q)}`.trim() : undefined} /></p>
           {shared && <p className="b-shared" title={shared.reason}>Large building, check the address</p>}
-          {ll && ll.draft?.design && !shared && (!ll.draft.roof || (ll.draft.roof as { capacity_source?: string }).capacity_source === "typical house") && <p className="b-shared">Roof from typical house</p>}
+          {ll && ll.draft?.design && !shared && (ll.draft.roof as { capacity_source?: string } | null | undefined)?.capacity_source === "typical house" && <p className="b-shared">Roof from typical house</p>}
         </div>
         <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
       </div>
