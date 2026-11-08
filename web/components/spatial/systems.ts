@@ -50,8 +50,9 @@ class Pipe {
   }
   // rate: 0 (nothing flows, dots hidden) to 1 (full flow, dots travel the pipe in about 2.5 s).
   step(dt: number, rate: number, still = false) {
-    if (!still) this.u = (this.u + (dt * rate) / 2.5) % 1;
-    const m = new THREE.Matrix4(), s = rate > 0.04 ? 0.55 + 0.45 * Math.min(1, rate) : 0;
+    // A negative rate runs the dots backwards (import on the grid line); the dot size follows the flow's size.
+    if (!still) this.u = (((this.u + (dt * rate) / 2.5) % 1) + 1) % 1;
+    const a = Math.abs(rate), m = new THREE.Matrix4(), s = a > 0.04 ? 0.55 + 0.45 * Math.min(1, a) : 0;
     for (let i = 0; i < DOTS; i++) {
       const p = this.curve.getPointAt((this.u + i / DOTS) % 1);
       m.makeScale(s, s, s).setPosition(p);
@@ -70,12 +71,17 @@ function straight(a: V, b: V, y = 0.35): THREE.CurvePath<V> {
 }
 
 
+export type Flow = { pv_kw?: number; battery_kw?: number; house_kw?: number; grid_kw?: number; car_kw?: number };
+
 export class Systems {
   sys: System | null = null;
   private g = new THREE.Group();
   private battery = new THREE.Group();
   private charge = new THREE.Group();
-  private pipes: Partial<Record<"pvHome" | "pvBatt" | "battHome" | "gridBox" | "boxCar", Pipe>> = {};
+  private pipes: Partial<Record<"pvHome" | "pvBatt" | "battHome" | "gridBox" | "boxCar" | "homeGrid" | "pvCar", Pipe>> = {};
+  // The strips' scrubbed hour (setFlow): when set, the flows follow it instead of the built-in day.
+  private flow: Flow | null = null;
+  setFlow(f: Flow | null) { this.flow = f; }
   private car = new THREE.Group();
   private plug: THREE.Mesh | null = null; // the charging cable from the wallbox to the parked car
   private glyph: THREE.Group | null = null; // the car's charge, a small battery over its roof (setCharge)
@@ -114,6 +120,8 @@ export class Systems {
     mk("pvHome", line([A.roof.clone(), Q(home.x, eave, zIn), homeIn]), SOLAR, this.battery);
     mk("pvBatt", line([A.roof.clone(), Q(side, eave, zIn), Q(side, top + 0.45, zIn), Q(bx, top + 0.45, zIn), Q(bx, top + 0.1, zIn)]), SOLAR, this.battery);
     mk("battHome", line([Q(side, 0.75, zIn), homeIn.clone().setY(0.75), homeIn]), BATT, this.battery);
+    // House to grid (setFlow only): out of the house at the meter and along the ground to the grid connection.
+    mk("homeGrid", line([homeIn.clone().setY(0.5), Q(box.max.x + 0.3, 0.5, zIn), Q(A.grid.x, 0.5, A.grid.z)]), GRID, this.battery, 0.12);
 
     // The car (kitMeshes.ts): a low-poly hatchback parked on the drive beside the wallbox, nose to the north, its
     // charging flap level with the wall unit. The cable runs from the unit down the wall and across to the flap.
@@ -135,6 +143,8 @@ export class Systems {
     // The cable: from the holster's foot straight down the wall a hand's width out, along the drive, up to the flap.
     const path = [out, P(out.x + 0.06, out.y - 0.25, out.z), P(out.x + 0.08, 0.2, out.z), P(out.x + 0.3, 0.03, out.z), P(port.x - 0.4, 0.03, port.z), P(port.x - 0.12, 0.45, port.z), port];
     mk("boxCar", new THREE.CatmullRomCurve3(path.slice(2)), EV, this.charge, 0.09).line.visible = false;
+    // Roof to car (setFlow only, while the car charges from the sun).
+    mk("pvCar", straight(A.roof.clone(), port.clone().setY(port.y + 0.3), 3.2), SOLAR, this.charge, 0.12);
     if (this.plug) { this.plug.removeFromParent(); this.plug.geometry.dispose(); (this.plug.material as THREE.Material).dispose(); }
     this.plug = cable(path, 0.02);
     this.g.add(this.plug);
@@ -229,6 +239,16 @@ export class Systems {
       const h = H.shade.at?.h ?? 13;
       H.sunDot.visible = h > 6 && h < 20;
       H.sunDot.position.copy(H.sunPos(h));
+    } else if (s === "battery" && this.flow) {
+      // The strip's hour: roof to house is the direct use, roof to battery the charging, battery to house the
+      // discharging, house to grid the export (backwards on import); each line's dots sized by its kW.
+      const f = this.flow, pv = Math.max(0, f.pv_kw ?? 0), bat = f.battery_kw ?? 0, grid = f.grid_kw ?? 0;
+      const charge = Math.max(0, bat), discharge = Math.max(0, -bat), exp = Math.max(0, -grid);
+      const norm = Math.max(1, pv, Math.abs(bat), Math.abs(grid), f.house_kw ?? 0) / 1.2;
+      this.pipes.pvHome?.step(dt, Math.max(0, pv - charge - exp) / norm, still);
+      this.pipes.pvBatt?.step(dt, charge / norm, still);
+      this.pipes.battHome?.step(dt, discharge / norm, still);
+      this.pipes.homeGrid?.step(dt, -grid / norm, still);
     } else if (s === "battery") {
       if (still) this.h = 13; else {
         this.h += (dt * 24) / DAY_S;
@@ -249,10 +269,13 @@ export class Systems {
         this.car.position.copy(this.carAt);
         if (!this.carMoving) this.plugged();
       }
-      // Charging runs once the car is in: overnight, from the house through the wallbox into the car.
-      const rate = this.carMoving ? 0 : 0.8;
+      // Charging runs once the car is in: overnight, from the house through the wallbox into the car; with the strip's
+      // hour set, at its car_kw, and the sun's share of it from the roof straight to the car.
+      const f = this.flow, car = f ? Math.max(0, f.car_kw ?? 0) : null;
+      const rate = this.carMoving ? 0 : car == null ? 0.8 : Math.min(1.2, car / 9);
       this.pipes.gridBox?.step(dt, rate, still);
       this.pipes.boxCar?.step(dt, rate, still);
+      this.pipes.pvCar?.step(dt, this.carMoving || car == null ? 0 : Math.min(1.2, Math.min(car, Math.max(0, f!.pv_kw ?? 0)) / 9), still);
     }
   }
 

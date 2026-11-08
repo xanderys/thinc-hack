@@ -13,7 +13,7 @@ import { poseOffset, springStep, type Focus, type Pose, releaseRate, startCoast,
 import { ShadeLayer } from "./shading";
 import { neighbourEdges, outlineMesh, registerGlb } from "./whiteContext";
 import { Xray } from "./xray";
-import { Systems, type System } from "./systems";
+import { Systems, type Flow, type System } from "./systems";
 import { googleGround, sharpen } from "./satGround";
 import { BATTERY, HEATPUMP, INVERTER, WALLBOX, battery, batteryHeight, heatPump, inverter, wallbox } from "./kitMeshes";
 import { batteryModules } from "./kitBands";
@@ -898,6 +898,10 @@ export class SpatialScene {
   }
   // The car's charge 0..1, as a small battery glyph over its roof (systems.ts).
   setCarCharge(c: number) { this.systems.setCharge(Math.max(0, Math.min(1, c))); }
+  // The strips' scrubbed hour in kW (systems.ts Flow): the battery and wallbox flow lines follow it.
+  setFlow(f: Flow | null) { this.systems.setFlow(f); }
+  // Outside temperature from the winter strip: the heat pump view's thermal glow fades as it warms (xray.ts).
+  setOutdoorTemp(c: number) { if (Number.isFinite(c)) this.xray.setOutdoorTemp(c); }
   // The heat pump x-ray's glass follows the hour: warmer by day, cooler at night (applied each frame while set).
   private xrayHour: number | null = null;
   setXrayHour(h: number) { this.xrayHour = ((h % 24) + 24) % 24; }
@@ -1637,13 +1641,15 @@ function giveRenderer(r: THREE.WebGLRenderer) {
 // The component-view strips (docs/briefs/component-views.md) drive the newest live scene: window.__marqueeScene has
 // setBatteryFill, setCarCharge and setXrayHour, and the window event "marquee:scene-day" { name, value } calls the same.
 // Off-screen scenes (thumbnails) come and go; the list keeps the hooks on the newest one still alive.
-type SceneHooks = { setBatteryFill: (v: number) => void; setCarCharge: (v: number) => void; setXrayHour: (h: number) => void };
+type SceneHooks = { setBatteryFill: (v: number) => void; setCarCharge: (v: number) => void; setXrayHour: (h: number) => void; setFlow: (f: Flow | null) => void; setOutdoorTemp: (c: number) => void };
 const liveScenes: SpatialScene[] = [];
-const hooksOf = (sc: SpatialScene): SceneHooks => ({ setBatteryFill: (v) => sc.setBatteryFill(v), setCarCharge: (v) => sc.setCarCharge(v), setXrayHour: (h) => sc.setXrayHour(h) });
+const hooksOf = (sc: SpatialScene): SceneHooks => ({ setBatteryFill: (v) => sc.setBatteryFill(v), setCarCharge: (v) => sc.setCarCharge(v), setXrayHour: (h) => sc.setXrayHour(h), setFlow: (f) => sc.setFlow(f), setOutdoorTemp: (c) => sc.setOutdoorTemp(c) });
 const onSceneDay = (e: Event) => {
   const d = (e as CustomEvent<{ name?: unknown; value?: unknown }>).detail, sc = liveScenes[liveScenes.length - 1];
-  if (!sc || !d || typeof d.value !== "number" || !Number.isFinite(d.value)) return;
-  if (d.name === "setBatteryFill" || d.name === "setCarCharge" || d.name === "setXrayHour") hooksOf(sc)[d.name](d.value);
+  if (!sc || !d) return;
+  if (d.name === "setFlow") { hooksOf(sc).setFlow(d.value && typeof d.value === "object" ? (d.value as Flow) : null); return; }
+  if (typeof d.value !== "number" || !Number.isFinite(d.value)) return;
+  if (d.name === "setBatteryFill" || d.name === "setCarCharge" || d.name === "setXrayHour" || d.name === "setOutdoorTemp") hooksOf(sc)[d.name](d.value);
 };
 function exposeScene(sc: SpatialScene, on: boolean) {
   if (typeof window === "undefined") return;
