@@ -62,7 +62,10 @@
 .vtMark { margin-left: 8px; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #1b7a39; background: #e3f4e8; vertical-align: 1px; }
 .vtName { font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .vtLine { font-size: 12px; color: var(--ink-3); }
-.facts { margin: 4px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, max-content)); gap: 2px 14px; }
+.facts { margin: 4px 0 0; display: grid; grid-template-columns: max-content max-content; gap: 4px 14px; width: 100%; }
+/* Change takes its own row under price and break-even and wraps inside the card rather than clipping. */
+.facts div:nth-child(3) { grid-column: 1 / -1; min-width: 0; }
+.facts div:nth-child(3) dd { white-space: normal; overflow-wrap: anywhere; }
 .facts dt { font-size: 11px; color: var(--ink-3); }
 .facts dd { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .facts dd em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--ink-3); }
