@@ -20,7 +20,7 @@ import { isMultiUnit } from "@/lib/building";
 import { setImagery, type Imagery } from "./whiteMode";
 import s from "./spatial.module.css";
 import EditLayer from "./EditLayer";
-import { MODULE_WP, countOf, idsOf, kwpKey, loadPicks, picksOf, savePicks, slotsOf, withPicks, type Picks } from "./editing";
+import { MODULE_WP, countOf, dropStoredPicks, idsOf, kwpKey, picksOf, slotsOf, withPicks, type Picks } from "./editing";
 import ShadingPanel from "./ShadingScrubber";
 import { useShadeView, useShading } from "@/lib/shading";
 
@@ -129,24 +129,22 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   // stored picks for this kWp take over when the engine's answer for the new count is in. Undo finds the picks
   // stored for the kWp it returns to.
   const editLead = edit && !homeowner ? leadId ?? "demo" : null;
-  const [picksAll, setPicksAll] = useState<Record<string, Picks>>({});
-  useEffect(() => { if (editLead) setPicksAll(loadPicks(editLead)); }, [editLead]);
+  useEffect(() => { dropStoredPicks(); }, []);
   const [live, setLive] = useState<{ kwp: number; picks: Picks; until: number } | null>(null);
   // The tap's own layout stands in only until the engine's design reaches its kWp; after that the lead's layout_slots
   // lead (so an Undo, which lands on another kWp, shows the layout it restored).
   useEffect(() => { if (live && kwpKey(design.pv_kwp) === kwpKey(live.kwp)) setLive(null); }, [design.pv_kwp, live]);
   const wantN = Math.round(((design.pv_kwp ?? 0) * 1000) / MODULE_WP);
-  // Order: a tap still on its way to the engine, then the lead's layout_slots, then this browser's copy.
+  // Order: a tap still on its way to the engine, then the lead's layout_slots. The lead is the only stored source; a
+  // layout whose module count is not the design's is discarded (the engine's own layout shows).
   const faceIds = useMemo(() => {
     const m = layers ? modelOf(layers.planes) : null;
     return m ? m.planes.filter((p) => p.is_target).map((p) => p.id) : [];
   }, [layers]);
   const fromLead = edit?.slots?.length && faceIds.length ? picksOf(edit.slots, faceIds) : null;
-  const local = picksAll[kwpKey(design.pv_kwp)];
   const picks: Picks | null = !editLead ? null
     : live && live.until > Date.now() && kwpKey(live.kwp) !== kwpKey(design.pv_kwp) ? live.picks
-    : fromLead && countOf(fromLead) === wantN ? fromLead
-    : local && countOf(local) === wantN ? local : null;
+    : fromLead && countOf(fromLead) === wantN ? fromLead : null;
   const picksKey = picks ? JSON.stringify(picks) : "";
   const model = useMemo(() => {
     const m = layers ? modelOf(layers.planes) : null;
@@ -335,8 +333,6 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     const n = countOf(now);
     if (n < 1) return; // the design keeps at least one module; the chooser's None is not offered for solar either
     const kwp = Math.round(n * MODULE_WP) / 1000;
-    savePicks(editLead, kwp, now);
-    setPicksAll((a) => ({ ...a, [kwpKey(kwp)]: now }));
     setLive({ kwp, picks: now, until: Date.now() + 20000 });
     if (edit.setKit) edit.setKit({ pv_kwp: kwp, layout_slots: idsOf(now) });
     else edit.setOverride("pv_kwp", kwp);

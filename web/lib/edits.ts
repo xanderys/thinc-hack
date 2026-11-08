@@ -1,10 +1,9 @@
 // The planner's kit edits, one stack per lead: each on-model edit, chooser pick or offer tab pushes the overrides it
 // replaced; Undo pops one and puts those back (the open card registers how, and writes them through the lead's write
-// queue). The stack lives for the browser tab (sessionStorage), so a reload or a re-opened card still undoes one step.
+// queue). The stack lives in memory for this page only: nothing from an earlier session can be applied.
 import { useSyncExternalStore } from "react";
 
 type Entry = { prev: Record<string, unknown>; at: number };
-const KEY = (lead: string) => `marquee:edits:${lead}`;
 const stacks = new Map<string, Entry[]>();
 const appliers = new Map<string, (prev: Record<string, unknown>) => void>();
 const subs = new Set<() => void>();
@@ -12,13 +11,11 @@ const emit = () => subs.forEach((f) => f());
 
 function get(lead: string): Entry[] {
   let s = stacks.get(lead);
-  if (!s) {
-    try { s = JSON.parse(sessionStorage.getItem(KEY(lead)) || "[]") as Entry[]; } catch { s = []; }
-    stacks.set(lead, s);
-  }
+  if (!s) { s = []; stacks.set(lead, s); }
   return s;
 }
-function save(lead: string) { try { sessionStorage.setItem(KEY(lead), JSON.stringify(get(lead).slice(-50))); } catch { /* private mode: this tab only */ } }
+// Earlier builds kept the stack in sessionStorage: removed, never read.
+function save(lead: string) { try { sessionStorage.removeItem(`marquee:edits:${lead}`); } catch { /* storage off */ } const s = get(lead); if (s.length > 50) s.splice(0, s.length - 50); }
 
 // An edit replaced these overrides.
 export function pushEdit(lead: string, prev: Record<string, unknown>) {

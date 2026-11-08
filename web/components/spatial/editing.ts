@@ -4,7 +4,7 @@
 // 2 cm gaps, 30 cm setback, eaves row first, capped at the face's max_panels), so an empty slot sits on the same
 // grid as the modules the engine placed. A slot's id is "<face id>:<index in that order>".
 // The picks go to the lead as layout_slots (slot ids, stored opaque) with pv_kwp in one edit, and come back from it on
-// load; this browser keeps a copy per lead and kWp (localStorage) for an engine without layout_slots.
+// load. The lead is the only source: nothing about the layout is kept in the browser.
 import type { PanelRect, RoofPlane, V3 } from "./types";
 
 export const MODULE_WP = 450;
@@ -136,12 +136,9 @@ export function picksOf(ids: string[], faces: string[]): Picks {
   Object.values(out).forEach((x) => x.sort((a, b) => a - b));
   return out;
 }
-const store = (lead: string) => `marquee:slots:${lead}`;
-export function loadPicks(lead: string): Record<string, Picks> {
-  try { return JSON.parse(localStorage.getItem(store(lead)) || "{}") as Record<string, Picks>; } catch { return {}; }
-}
-export function savePicks(lead: string, kwp: number, picks: Picks) {
-  try { const all = loadPicks(lead); all[kwpKey(kwp)] = picks; localStorage.setItem(store(lead), JSON.stringify(all)); } catch { /* private mode: the picks last this session */ }
+// Layouts an earlier build kept in this browser (marquee:slots:<lead>): removed, never read.
+export function dropStoredPicks() {
+  try { Object.keys(localStorage).filter((k) => k.startsWith("marquee:slots:")).forEach((k) => localStorage.removeItem(k)); } catch { /* storage off */ }
 }
 
 // The planes with the planner's picks as their modules (the engine's corners kept for any module it placed itself).
