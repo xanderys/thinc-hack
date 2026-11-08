@@ -80,7 +80,7 @@ const euros = (x: string) => Number(x.replace(/,/g, ""));
 // SKUs (engine v2.15): the product behind each part, read from the design response wherever the engine puts it
 // (skus.<part>, design.skus.<part> or components.<c>.sku). Absent on an older engine: the rows keep their generic names.
 export type SkuPart = "module" | "inverter" | "battery" | "wallbox" | "heatpump";
-export type Sku = { brand: string; name: string; size?: number; unit?: string; share?: number; brands?: ({ brand: string; share?: number } | string)[] };
+export type Sku = { brand: string; name: string; size?: number; unit?: string; share?: number; modules?: number; brands?: ({ brand: string; share?: number } | string)[] };
 const COMP_OF: Record<SkuPart, string[]> = { module: ["pv", "module"], inverter: ["inverter"], battery: ["battery"], wallbox: ["wallbox"], heatpump: ["heatpump"] };
 export function skusOf(r: unknown): Partial<Record<SkuPart, Sku>> {
   const o = (r ?? {}) as { skus?: Record<string, Sku>; design?: { skus?: Record<string, Sku> }; components?: Record<string, { sku?: Sku } | undefined> };

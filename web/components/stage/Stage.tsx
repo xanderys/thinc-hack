@@ -203,7 +203,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       const d = approved.design;
       setOverrides(approved.overrides && Object.keys(approved.overrides).length ? approved.overrides : { pv_kwp: d.pv_kwp, battery_kwh: d.battery_kwh, wallbox_kw: d.wallbox_kw, heatpump_kw: d.heatpump_kw });
       // The frozen proposal, priced from its own figures (no live rates): the homeowner's page shows the same.
-      const shown = { ...draft, rates: undefined, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
+      const shown = { ...draft, rates: undefined, frozen: true, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
       frozen.current = true;
       setRes(shown); last.current = shown;
     } else if (kit && Object.keys(kit).length) setOverrides(kit);   // the planner's kit edits, as the lead stores them
