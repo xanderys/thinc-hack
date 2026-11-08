@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 import os
@@ -116,6 +116,10 @@ def startup():
             leads.save(l)
     wa.configure(_wa_order, _wa_step)
     wa.start()
+    from .agent import autopilot
+    autopilot.configure(refresh=_ap_refresh, sources=_sources, find=_find_lead, complete=_ap_complete, create=_ap_create,
+                        delete=lambda i: delete_lead(i, True, os.environ.get("INTAKE_SECRET")))
+    autopilot.start()
     leads.expire_stale()
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
     threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models(), roofs.warm_venue(), refresh_all_leads()),
@@ -1161,6 +1165,107 @@ def pin_lead(lead_id: str, req: Optional[PinReq] = None, x_intake_secret: Option
     lead["pinned"] = req.pinned if req else True
     leads.save(lead)
     return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "pinned": lead["pinned"]}
+
+
+def _ap_refresh(lead: dict) -> dict:
+    """The roof measured (blocking) and the draft current, for the autopilot's measure and draft steps."""
+    inp = lead.get("inputs") or {}
+    if inp.get("address") and not inp.get("roof"):
+        full = _facts({k: v for k, v in inp.items() if k not in ("roof", "envelope")}, block=True)
+        lead.update(inputs=full, draft=engine().predict(dict(full)), draft_stamp=engine_stamp(), updated_at=leads.now())
+        leads.save(lead)
+        return lead
+    return refresh_lead(lead)
+
+
+def _ap_complete(lead: dict):
+    out = approve_lead(lead["lead_id"], ApproveReq(variant="expert", design_hash=(lead.get("draft") or {}).get("design_hash")),
+                       os.environ.get("INTAKE_SECRET"))
+    if isinstance(out, JSONResponse):
+        raise RuntimeError(json.loads(out.body).get("error") or "could not complete the design")
+    return out
+
+
+def _ap_create(name: str, place: str, facts: dict, phone: Optional[str]) -> dict:
+    eng = engine()
+    mapped, meta = leads.map_intake(facts or {})
+    raw = {"installer_id": "2a8ba8e2", **leads.where(place or ""), **mapped}
+    raw["_given"] = [k for k in raw if k != "installer_id"]
+    lead = _new_lead(eng, raw, name, place or "", "form", block=True)
+    if phone and wa.e164(phone):
+        lead["phone"] = wa.e164(phone)
+    if meta:
+        lead["meta"] = {**(lead.get("meta") or {}), **meta}
+    return lead
+
+
+class AutopilotReq(BaseModel):
+    lead_ids: Optional[list[str]] = None  # default: every open enquiry that is not pinned (seeded test enquiries included)
+    dry: bool = False                     # compose and log asks and sends as dry runs; nothing goes out
+    wait_s: Optional[int] = None          # how long to wait for WhatsApp replies before the second look (default 45)
+
+
+@app.post("/api/autopilot/run")
+def autopilot_run(req: Optional[AutopilotReq] = None, x_intake_secret: Optional[str] = Header(None)):
+    """v2.17: a text/event-stream of the autopilot's steps, one JSON object per event."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    from .agent import autopilot
+    req = req or AutopilotReq()
+    if autopilot.STATUS["running"]:
+        return err(409, "Autopilot is already running.")
+
+    def stream():
+        for e in autopilot.run(req.lead_ids, req.dry, req.wait_s):
+            yield f"data: {json.dumps(e, ensure_ascii=False)}\n\n"
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/autopilot/status")
+def autopilot_status():
+    from .agent import autopilot
+    return autopilot.status()
+
+
+@app.post("/api/autopilot/seed")
+def autopilot_seed(x_intake_secret: Optional[str] = Header(None)):
+    """Six test enquiries on real addresses for the shoot (test: true, the demo phone); re-seeding replaces them."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    from .agent import autopilot
+    return {"leads": autopilot.seed()}
+
+
+@app.post("/api/leads/transcribe")
+async def transcribe_audio(request: Request, x_intake_secret: Optional[str] = Header(None)):
+    """Multipart audio (field "file") or a raw audio body -> {text}, by the WhatsApp voice-note path (ElevenLabs, Whisper)."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    import tempfile
+    from email.parser import BytesParser
+    from starlette.concurrency import run_in_threadpool
+    ct = request.headers.get("content-type") or ""
+    body = await request.body()
+    if not body:
+        return err(422, "No audio received.")
+    data, mime = body, ct.split(";")[0] or "audio/ogg"
+    if ct.startswith("multipart/"):
+        msg = BytesParser().parsebytes(b"Content-Type: " + ct.encode() + b"\r\n\r\n" + body)
+        part = next((p for p in msg.walk() if p.get_filename() or (p.get_content_maintype() == "audio")), None)
+        if part is None:
+            return err(422, "No audio file in the form.")
+        data, mime = part.get_payload(decode=True), part.get_content_type()
+    if len(data) > 25 * 1024 * 1024:
+        return err(413, "Audio over 25 MB.")
+    ext = {"audio/webm": ".webm", "audio/mp4": ".m4a", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav"}.get(mime, ".ogg")
+    with tempfile.NamedTemporaryFile(suffix=ext) as f:
+        f.write(data)
+        f.flush()
+        try:
+            text = await run_in_threadpool(wa.transcribe, f.name, mime)
+        except Exception as e:
+            return err(502, f"Transcription failed: {e}")
+    return {"text": text}
 
 
 @app.post("/api/leads/hide-unpinned")
