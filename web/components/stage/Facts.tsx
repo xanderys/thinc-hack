@@ -22,12 +22,15 @@ const PATHS: Record<Glyph, ReactNode> = {
 };
 const Glyph = ({ g }: { g: Glyph }) => <svg viewBox="0 0 20 20" aria-hidden="true">{PATHS[g]}</svg>;
 
-// The engine knows five heating kinds besides Unknown; District and Electric ride on its two "other" kinds.
-const HEAT: { label: string; value: HeatingType }[] = [
-  { label: "Gas", value: "Gas" }, { label: "Oil", value: "Oil" }, { label: "Heat pump", value: "Heatpump" },
-  { label: "District", value: "OtherNonRenewable" }, { label: "Electric", value: "OtherRenewable" },
+// The planner's words go to the engine as words ("electric", "district"); it maps each to the kind sizing uses and keeps the
+// word in heating_stated. District and Electric share a kind, so the stated word is what tells their buttons apart.
+export const HEAT: { label: string; word: string; value: HeatingType }[] = [
+  { label: "Gas", word: "gas", value: "Gas" }, { label: "Oil", word: "oil", value: "Oil" }, { label: "Heat pump", word: "heat pump", value: "Heatpump" },
+  { label: "District", word: "district", value: "OtherNonRenewable" }, { label: "Electric", word: "electric", value: "OtherNonRenewable" },
 ];
-const heatWord = (h: HeatingType) => HEAT.find((x) => x.value === h)?.label ?? "Not known";
+const heatWord = (i: HomeInputs) => i.heating_stated ? i.heating_stated.charAt(0).toUpperCase() + i.heating_stated.slice(1) : HEAT.find((x) => x.value === i.heating_type)?.label ?? "Not known";
+// The selected button: the stated word, else the kind when only one button has it.
+const heatOn = (i: HomeInputs, h: (typeof HEAT)[number]) => i.heating_stated ? i.heating_stated.toLowerCase() === h.word : i.heating_type === h.value && HEAT.filter((x) => x.value === h.value).length === 1;
 const DECADES = [1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020];
 const near = (v: number, est?: number | null) => est != null && Math.abs(v - est) < 0.5;
 
@@ -38,7 +41,7 @@ type Spec = {
 };
 const SPECS: Spec[] = [
   { f: "annual_demand_kwh", label: "Household use", glyph: "bolt", state: () => "stated", value: (i) => `${n0(i.annual_demand_kwh)} kWh` },
-  { f: "heating_type", label: "Heating", glyph: "flame", state: (i) => i.heating_type === "Unknown" ? "missing" : "stated", value: (i) => heatWord(i.heating_type) },
+  { f: "heating_type", label: "Heating", glyph: "flame", state: (i) => i.heating_type === "Unknown" ? "missing" : "stated", value: (i) => heatWord(i) },
   { f: "electricity_price_ct_kwh", label: "Price", glyph: "tag", state: (i) => i.electricity_price_ct_kwh != null ? "stated" : "estimated", value: (i) => i.electricity_price_ct_kwh != null ? `${i.electricity_price_ct_kwh} ct/kWh` : "37 ct/kWh" },
   { f: "has_ev", label: "Electric car", glyph: "car", state: () => "stated", value: (i) => i.has_ev ? (i.ev_annual_km ? `${n0(i.ev_annual_km)} km a year` : "Yes") : "No" },
   { f: "num_inhabitants", label: "Household", glyph: "people", state: (i) => i.num_inhabitants ? "stated" : "missing", value: (i) => `${i.num_inhabitants ?? 0} people` },
@@ -87,7 +90,7 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
       return <div className="fc-step"><button type="button" aria-label="One fewer" disabled={n <= 1} onClick={() => set(n - 1)}>−</button><output aria-live="polite">{n || "–"}</output><button type="button" aria-label="One more" disabled={n >= 10} onClick={() => set(Math.max(1, n + 1))}>+</button></div>;
     }
     case "heating_type":
-      return <div className="fc-seg" role="group" aria-label="Heating">{HEAT.map((h) => <button key={h.value} type="button" aria-pressed={i.heating_type === h.value} onClick={() => set(h.value)}>{h.label}</button>)}</div>;
+      return <div className="fc-seg" role="group" aria-label="Heating">{HEAT.map((h) => <button key={h.word} type="button" aria-pressed={heatOn(i, h)} onClick={() => set(h.word)}>{h.label}</button>)}</div>;
     case "annual_demand_kwh":
       return <NumRange value={i.annual_demand_kwh} min={500} max={30000} step={100} unit="kWh a year" label="Household use" onSet={set} />;
     case "house_size_sqm":

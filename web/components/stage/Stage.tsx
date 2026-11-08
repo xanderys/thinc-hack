@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { HEAT } from "./Facts";
 import Lead, { type Pref } from "@/components/stage/Lead";
 import dynamic from "next/dynamic";
 import type { CallLead } from "@/components/stage/Calls";
@@ -417,7 +418,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   // A fact chip changed in the open card: same path as a sentence, and the lead hears it.
   function onFact(f: keyof HomeInputs, v: unknown, label: string) {
     remember(`${label} changed:`);
-    setChanged((c) => ({ ...c, [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 12000 } : {}) }));
+    // A heating word goes to the engine as the word; the card holds the kind it maps to and the word as stated.
+    const hw = f === "heating_type" && typeof v === "string" ? HEAT.find((h) => h.word === v) : undefined;
+    setChanged((c) => ({ ...c, ...(hw ? { heating_type: hw.value, heating_stated: hw.label } : { [f]: v }), ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 12000 } : {}) }));
     void writeLead("hand-change", { [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 12000 } : {}) } as Partial<HomeInputs>);
   }
 

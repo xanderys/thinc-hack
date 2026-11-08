@@ -15,6 +15,7 @@ export interface HomeInputs {
   ev_annual_km?: number;
   has_wallbox: boolean;
   heating_type: HeatingType;
+  heating_stated?: string;   // v2.14: the word as stated ("Electric", "District"); heating_type is the kind sizing uses
   heating_cost_per_year_eur?: number;
   heating_demand_kwh?: number;
   electricity_price_ct_kwh?: number;
