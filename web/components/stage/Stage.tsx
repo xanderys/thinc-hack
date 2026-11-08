@@ -9,6 +9,7 @@ import Plan, { type Variant } from "@/components/stage/Plan";
 import Chain from "@/components/chain/Chain";
 import Refine, { type Moved } from "@/components/stage/Refine";
 import TopBar, { Decide } from "@/components/stage/TopBar";
+import WhatsAppClient from "@/components/whatsapp/WhatsAppClient";
 import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, OverrideValue, Overrides, ReadResponse, RefineResponse } from "@/lib/api";
 import { call, send } from "@/lib/client";
@@ -434,6 +435,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   if (seed && read) return (
     <div className="st st-open b-card-in" ref={openRef}>
       <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} phone={phone} onPhone={seed ? onPhone : undefined} setInstaller={setInstaller}
+        factsSlot={seed ? <WhatsAppClient leadId={leadRef.current ?? seed.leadId} phone={phone} /> : undefined}
         question={question ?? null} answer={answer} onAnswer={onAnswer} askError={askErr} asking={question === undefined} liveAsking={live?.asking ?? null}
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
         canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
