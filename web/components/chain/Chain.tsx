@@ -51,6 +51,14 @@ const SYS = FIVE && process.env.NEXT_PUBLIC_SYSTEMS !== "0";
 const CHECK_AT = FIVE ? 5 : 7;
 const STEP_COLOUR = ["#ffc043", "#24a148", "#1c71ef", "#e3634f", "#071b71"];
 const stepStyle = (i: number) => ({ ["--step" as string]: STEP_COLOUR[i], ["--step-ink" as string]: i === 0 ? "#071b71" : "#fff" }) as CSSProperties;
+// "Reonic: south 98 to 100%, east 81%" as a sentence: "Reonic's planners rate south at 98 to 100 % and east at 81 %."
+const bandText = (b: string) => {
+  const m = b.match(/^Reonic:\s*(.*)$/);
+  if (!m) return b.replace(/(\d)%/g, "$1 %");
+  const items = m[1].split(/,\s*/).map((x) => x.replace(/\s+(\d+(?: to \d+)?)\s?%$/, " at $1 %"));
+  const last = items.pop();
+  return `Reonic's planners rate ${items.length ? `${items.join(", ")} and ${last}` : last}.`;
+};
 const TAG: Record<string, string> = { lead: "from the enquiry", rina: "stated by the homeowner", address: "from the address", default: "assumed" };
 // One muted palette for every bar, in Reonic's heat-load order; component colours where the segment is a component.
 const PALETTE = ["#f5c35a", "#5b8def", "#4fb477", "#a58bea", "#e3634f", "#f0924a", "#a1a1aa", "#71717b"];
@@ -721,7 +729,7 @@ function Checks({ checks }: { checks: Check[] }) {
               <span className={s.cn}>{cap(c.name)}</span>
               <b>{val(c)}</b>
               {pill ? <span className={{ info: s.info, pass: s.pass, ref: s.ref, fail: s.flag }[tone]}>{pill}</span> : <span />}
-              <span className={s.band}>{c.band?.replace(/^Reonic:\s*/, "Reonic planners: ").replace(/(\d)%/g, "$1 %")}</span>
+              <span className={s.band}>{c.band ? bandText(c.band) : null}</span>
               {(() => {
                 const num = typeof c.value === "number" ? n2(c.value) : String(c.value);
                 const m = c.message ?? (isRef(c) && /battery/i.test(c.name) ? (!refOut(c) ? `${num}, inside the guide` : `Battery ${num} kWh per kWh of daily use: above Reonic's 0.6 guide`) : null);
