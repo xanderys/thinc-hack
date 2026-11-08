@@ -21,6 +21,7 @@ export type Hologram = {
   focusX: number; // push-in focus, 0 to 1 of the frame
   focusY: number;
   pushStart: number; // film seconds where the push into the house begins
+  pushScale: number; // extra zoom at the end of the push (0.35 = 1.35x)
 };
 
 export type LaunchProps = {
@@ -47,10 +48,12 @@ export const defaultLaunchProps: LaunchProps = {
     start: 0,
     len: 10.0,
     rate: 1,
-    // The house sits between the can and the plant, at about (0.17, 0.72) of the frame from 8.5 s.
-    focusX: 0.17,
+    // Bigger house on the paper: centre at about (0.33, 0.73) at 8.5 s drifting to (0.46, 0.71) by 9.9 s.
+    // It fills about 40% of the width, so the push is gentler than for the small house.
+    focusX: 0.38,
     focusY: 0.72,
     pushStart: 8.5,
+    pushScale: 0.35,
   },
   musicSrc: "music/moon-cut.mp3",
   musicVolume: 1,

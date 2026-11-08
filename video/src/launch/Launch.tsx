@@ -193,7 +193,7 @@ const Intro: React.FC<{ p: LaunchProps }> = ({ p }) => {
   // Slow push into the hologram, then the room gives way to paper.
   const push = interpolate(t, [h.pushStart, end + 0.3], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
   const paper = interpolate(t, [end - 0.7, end + 0.2], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.quad) });
-  const scale = 1 + 0.75 * push;
+  const scale = 1 + h.pushScale * push;
   // Scale from the top left and slide so the house drifts towards the centre,
   // clamped so the footage always covers the frame.
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
