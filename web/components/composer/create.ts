@@ -17,16 +17,19 @@ export const REPLY = {
   ask: "Got it. Which address?",
 };
 
+// Check leads: a name starting with "Test" (or ?test=1 on the page) creates a test lead, hidden from the board.
+const isTest = (name: string) => /^test\b/i.test(name.trim()) || (typeof location !== "undefined" && new URLSearchParams(location.search).get("test") === "1");
+
 /** Read a scrap, email or transcript, create a lead and run the first intake step. `kept` carries facts from an earlier scrap that lacked an address. */
-export async function createLeadFromText(text: string, source: Source, opts: { kept?: Facts | null; onRoof?: (place: string) => void } = {}): Promise<Created> {
+export async function createLeadFromText(text: string, source: Source, opts: { kept?: Facts | null; onRoof?: (place: string, name: string) => void } = {}): Promise<Created> {
   const read = await call<Facts>("/api/interpret", { mode: "composer", text });
   if (!read.ok) return { ok: false, src: "Reader said", msg: read.error };
   const f: Facts = { ...(opts.kept ?? {}), ...read.data };
   const place = f.address ?? f.postcode;
   if (!place) return { ok: false, ask: true, facts: f };
   const name = f.name?.trim() || place;
-  opts.onRoof?.(place);
-  const made = await send<{ lead_id: string }>("/api/leads", { customer_name: name, address_or_postcode: place, installer_id: "2a8ba8e2", source: "form", ...(f.phone ? { phone: f.phone } : {}) }, "composer-lead");
+  opts.onRoof?.(place, name);
+  const made = await send<{ lead_id: string }>("/api/leads", { customer_name: name, address_or_postcode: place, installer_id: "2a8ba8e2", source: "form", ...(isTest(name) ? { test: true } : {}), ...(f.phone ? { phone: f.phone } : {}) }, "composer-lead");
   if (!made.ok) return { ok: false, src: "Engine said", msg: errOf(made.error) };
   const id = made.data.lead_id;
   const facts: Record<string, unknown> = { customer_name: name };
