@@ -168,7 +168,7 @@ function Page({ agentId, installerId, test }: Props) {
     const r = await fetch("/api/intake/step", { method: "POST", headers: { "content-type": "application/json", "X-Client-Route": "start-call-fact" },
       body: JSON.stringify({ lead_id: id, facts_so_far: { [f]: val }, source: "call" }) }).catch(() => null);
     const b = r ? await r.json().catch(() => null) : null;
-    const dropped: string[] = Array.isArray(b?.dropped) ? b.dropped : [];
+    const dropped: string[] = Array.isArray(b?.dropped) ? b.dropped.map((d: unknown) => (typeof d === "string" ? d : String((d as { field?: string })?.field ?? "a fact"))) : [];
     const ok = !!r?.ok && !dropped.length;
     if (ok) {
       // The step's own redesign goes on screen at once; the lead read after it brings the rest.
@@ -195,19 +195,43 @@ function Page({ agentId, installerId, test }: Props) {
     const before = callLeadRef.current?.draft, t0 = performance.now();
     const r = await fetch("/api/call/extract", { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ lead_id: id, question, answer, turns: turns.current.slice(-4) }) }).catch(() => null);
-    const b = r ? await r.json().catch(() => null) : null;
-    const facts: Record<string, unknown> = b?.facts ?? {};
-    console.info("call/extract", { question, answer, status: r?.status, facts, ms: Math.round(performance.now() - t0) });
-    if (!r?.ok || !Object.keys(facts).length) return b;
-    const n = Date.now(), said = Object.entries(facts).map(([f, v]) => factLabel(f, v)).join(", ");
-    if (b?.draft?.design) setCallLead((c) => (c ? { ...c, draft: b.draft, ...(typeof b.version === "number" ? { version: b.version } : {}) } : c));
-    const after = b?.draft;
-    const same = before?.design && after?.design && (["pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"] as const).every((k) => (before.design[k] ?? null) === (after.design[k] ?? null));
-    const a0 = before?.economics?.autarky_share, a1 = after?.economics?.autarky_share;
-    const aut = a0 != null && a1 != null && Math.round(a0 * 100) !== Math.round(a1 * 100) ? `, autarky ${Math.round(a0 * 100)} % to ${Math.round(a1 * 100)} %` : "";
-    setHeard({ text: same ? `${said}: kit unchanged${aut}` : `${said}, from the call${aut}`, n });
-    void pull.current().catch(() => {});
-    return b;
+    if (!r?.ok || !r.body) { console.info("call/extract", { status: r?.status }); return null; }
+    // Line one: the facts as Claude read them, shown at once. Line two: the engine's redesign.
+    const reader = r.body.getReader(), dec = new TextDecoder(), out: Record<string, unknown>[] = [];
+    let buf = "", n = 0, said = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      buf += dec.decode(value ?? new Uint8Array(), { stream: !done });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1);
+        let m: Record<string, unknown>; try { m = JSON.parse(line); } catch { continue; }
+        out.push(m);
+        if (m.facts) {
+          const facts = m.facts as Record<string, unknown>;
+          console.info("call/extract facts", { question, answer, facts, ms: Math.round(performance.now() - t0) });
+          if (Object.keys(facts).length) {
+            n = Date.now();
+            said = Object.entries(facts).map(([f, v]) => (f === "ev" ? (v === "planned" ? "A car planned" : v === "now" ? "An electric car" : "No electric car") : factLabel(f, v))).join(", ");
+            setHeard({ text: `${said}, from the call`, n }); setRedesigns((x) => x + 1);
+          }
+        } else if (n) {
+          setRedesigns((x) => Math.max(0, x - 1));
+          const dropped = (m.dropped as string[] | undefined) ?? [];
+          if (m.error || dropped.length) { console.info("call/extract engine", m); setHeard((h) => (h?.n === n ? null : h)); continue; }
+          const after = m.draft as Lead["draft"] | undefined;
+          if (after?.design) setCallLead((c) => (c ? { ...c, draft: after, ...(typeof m.version === "number" ? { version: m.version } : {}) } : c));
+          const same = before?.design && after?.design && (["pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"] as const).every((k) => (before.design[k] ?? null) === (after.design[k] ?? null));
+          const a0 = before?.economics?.autarky_share, a1 = after?.economics?.autarky_share;
+          const aut = a0 != null && a1 != null && Math.round(a0 * 100) !== Math.round(a1 * 100) ? `, autarky ${Math.round(a0 * 100)} % to ${Math.round(a1 * 100)} %` : "";
+          setHeard({ text: same ? `${said}: kit unchanged${aut}` : `${said}, from the call${aut}`, n });
+          console.info("call/extract redesign", { summary: m.summary, ms: Math.round(performance.now() - t0) });
+          void pull.current().catch(() => {});
+        }
+      }
+      if (done) break;
+    }
+    return out;
   };
   const onTurn = (m: { message: string; source?: string; role?: string }) => {
     const role = m.role === "user" || m.source === "user" ? "user" : "agent";

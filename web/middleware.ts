@@ -13,8 +13,18 @@ function limited(ip: string) {
 }
 // A lead still on its call: the homeowner's call screen draws its scene and sends what Rina hears.
 const CALLING = new Set(["draft", "in_call"]);
+// A lead's status, kept 30 s per lead so each fact on a call costs no extra round trip.
+const seen = new Map<string, { st: string | null; at: number }>();
 async function statusOf(id: string | null, origin: string): Promise<string | null> {
   if (!id || !/^[\w-]+$/.test(id)) return null;
+  const hit = seen.get(id);
+  if (hit && Date.now() - hit.at < 30_000) return hit.st;
+  const st = await statusFresh(id, origin);
+  if (seen.size > 2000) seen.clear();
+  if (st) seen.set(id, { st, at: Date.now() });
+  return st;
+}
+async function statusFresh(id: string, origin: string): Promise<string | null> {
   // Through this app's own proxy, which adds the intake secret server side.
   const r = await fetch(`${origin}/api/leads/${id}`, { cache: "no-store" }).catch(() => null);
   if (!r?.ok) return null;
@@ -24,7 +34,8 @@ async function statusOf(id: string | null, origin: string): Promise<string | nul
 const bodyOf = (req: NextRequest) => req.clone().json().catch(() => null) as Promise<Record<string, unknown> | null>;
 async function released(req: NextRequest, alsoCalling = false) {
   const b = await bodyOf(req);
-  const st = await statusOf(typeof b?.lead_id === "string" ? b.lead_id : null, req.nextUrl.origin);
+  const lid = typeof b?.lead_id === "string" && /^[\w-]+$/.test(b.lead_id) ? b.lead_id : null;
+  const st = lid ? await statusFresh(lid, req.nextUrl.origin) : null;   // a release must open at once, so never the cache here
   return !!st && (RELEASED.has(st) || (alsoCalling && CALLING.has(st)));
 }
 // record_fact on the call screen: 20 facts a minute per lead.

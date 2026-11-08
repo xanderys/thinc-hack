@@ -75,6 +75,8 @@ export async function POST(req: NextRequest) {
   const id = b?.lead_id;
   if (!id || !/^[\w-]+$/.test(id) || !b?.answer?.trim()) return NextResponse.json({ error: "lead_id and answer are needed." }, { status: 400 });
   const t0 = Date.now();
+  // The lead's current facts, read while Claude thinks, so a fact it already holds is never written again.
+  const known = callEngine("GET", `/api/leads/${id}`, new URLSearchParams()).then((r) => (r.status === 200 ? ((r.body as { facts?: Record<string, unknown> }).facts ?? {}) : {})).catch(() => ({} as Record<string, unknown>));
   const context = (b.turns ?? []).slice(-4).map((t) => `${t.role === "agent" ? "Rina" : "Homeowner"}: ${String(t.text).slice(0, 400)}`).join("\n");
   let facts: Fact[] = [];
   try {
@@ -91,14 +93,36 @@ export async function POST(req: NextRequest) {
   }
   const llm_ms = Date.now() - t0;
   const write: Record<string, unknown> = {};
-  for (const f of facts) { if (f.confidence !== "high") continue; const v = clean(f); if (v !== undefined) write[f.field] = v; }
+  for (const f of facts) { if (f.confidence === "low") continue; const v = clean(f); if (v !== undefined) write[f.field] = v; }
+  // The car in the engine's voice name: "planned" sizes like a car on the drive, "none" clears a plan.
+  if (write.ev_planned === true) { delete write.has_ev; delete write.ev_planned; write.ev = "planned"; }
+  else if (write.has_ev === true) { delete write.has_ev; delete write.ev_planned; write.ev = "now"; }
+  else if (write.has_ev === false && write.ev_planned !== true) { delete write.has_ev; delete write.ev_planned; write.ev = "none"; }
+  const facts0 = await known;
+  const same = (k: string, v: unknown) => {
+    if (k === "ev") return v === "planned" ? facts0.has_ev === true && facts0.ev_planned === true : v === "now" ? facts0.has_ev === true && facts0.ev_planned !== true : facts0.has_ev === false;
+    if (k === "heating_type") return String(facts0.heating_type ?? "").toLowerCase().replace(/\s/g, "") === String(v).toLowerCase().replace(/\s/g, "");
+    return facts0[k] === v;
+  };
+  for (const k of Object.keys(write)) if (same(k, write[k])) delete write[k];
   console.info("call/extract", JSON.stringify({ lead_id: id, answer: b.answer.slice(0, 200), facts, write, llm_ms }).slice(0, 800));
-  // Unclear answers write nothing; an empty step is never sent.
-  if (!Object.keys(write).length) return NextResponse.json({ facts: {}, read: facts, llm_ms });
-  const step = await callEngine("POST", "/api/intake/step", new URLSearchParams(), { lead_id: id, facts_so_far: write, source: "call" }, { "X-Client-Route": "call-extract" });
-  const body = step.body as { draft?: { design?: Record<string, number | null>; economics?: { capex_eur?: number; autarky_share?: number } }; version?: number; dropped?: string[]; error?: string };
-  if (step.status !== 200) return NextResponse.json({ error: body?.error ?? `The engine answered ${step.status}.`, facts: write, llm_ms }, { status: step.status });
-  const d = body.draft?.design ?? {}, e = body.draft?.economics ?? {};
-  const summary = [d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "no solar", d.battery_kwh ? `battery ${n2(d.battery_kwh)} kWh` : "no battery", ...(d.heatpump_kw ? [`heat pump ${n2(d.heatpump_kw)} kW`] : []), ...(d.wallbox_kw ? [`wallbox ${n2(d.wallbox_kw)} kW`] : []), ...(e.capex_eur != null ? [`€${n0(e.capex_eur)}`] : [])].join(", ");
-  return NextResponse.json({ facts: write, read: facts, dropped: body.dropped ?? [], draft: body.draft, version: body.version, summary: `kit ${summary}`, llm_ms, total_ms: Date.now() - t0 });
+  // Two lines of JSON: the facts the moment Claude has them, then the engine's redesign.
+  const enc = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(ctl) {
+      const line = (o: unknown) => ctl.enqueue(enc.encode(JSON.stringify(o) + "\n"));
+      line({ facts: write, read: facts, llm_ms });
+      // Nothing new or nothing sure: no step is written.
+      if (!Object.keys(write).length) { ctl.close(); return; }
+      const step = await callEngine("POST", "/api/intake/step", new URLSearchParams(), { lead_id: id, facts_so_far: write, source: "call" }, { "X-Client-Route": "call-extract" });
+      const sb = step.body as { draft?: { design?: Record<string, number | null>; economics?: { capex_eur?: number; autarky_share?: number } }; version?: number; dropped?: { field?: string; reason?: string }[]; error?: string };
+      const dropped = (sb?.dropped ?? []).map((d) => (typeof d === "string" ? d : `${d.field}: ${d.reason ?? "dropped"}`));
+      if (step.status !== 200) { line({ error: sb?.error ?? `The engine answered ${step.status}.`, dropped, total_ms: Date.now() - t0 }); ctl.close(); return; }
+      const d = sb.draft?.design ?? {}, e = sb.draft?.economics ?? {};
+      const summary = [d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "no solar", d.battery_kwh ? `battery ${n2(d.battery_kwh)} kWh` : "no battery", ...(d.heatpump_kw ? [`heat pump ${n2(d.heatpump_kw)} kW`] : []), ...(d.wallbox_kw ? [`wallbox ${n2(d.wallbox_kw)} kW`] : []), ...(e.capex_eur != null ? [`€${n0(e.capex_eur)}`] : [])].join(", ");
+      line({ draft: sb.draft, version: sb.version, dropped, summary: `kit ${summary}`, total_ms: Date.now() - t0 });
+      ctl.close();
+    },
+  });
+  return new Response(stream, { headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" } });
 }
