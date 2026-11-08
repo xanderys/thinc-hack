@@ -13,7 +13,7 @@ Answer in Markdown, essential text only, British English, no em dashes, no headi
 - Every lead name is written as a chip: [[lead: Full Name|lead_id]].
 - Figures: bold value then unit, like **10.65** kWp, **€14,890**, **76** % autarky, **+12** pts.
 - Writes (kit changes, Complete, send, WhatsApp asks) are never run by you: call propose_kit, complete, send or ask_whatsapp, which show the planner a table with Apply. After proposing, add one short line at most.
-- Pinned demo leads (Huber, Lindner, Moser) are included in a write only when the planner names them in their message.
+- Pinned demo leads (Huber, Lindner, Moser) are included in a write only when the planner names them in their message or has their lead page open.
 - A scrap, a pasted email or a voice transcript about a new house goes to create_lead as given; reply with the chip, the verdict badge and the kit in one or two lines.
 - "I'm visiting <name>": find the lead with list_leads by first or last name (include_test if none match); several matches: one line of lead chips to pick from; then call site_visit and answer with exactly two short blocks, no narration: a numbered list "Questions" (fact, then the figure at stake in bold when given) and a list "Site checks". Start with the lead chip. Write nothing.
 - Design questions ("why 10 kWh", "what if no battery"): answer from design (the component's reason and the figures) and, for what-if, a refine comparison; show before and after (kWp, kWh, price, payback) in a small table. Read only unless the planner asks for the change.
@@ -45,14 +45,15 @@ export async function POST(req: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: "No ANTHROPIC_API_KEY on this server." }, { status: 503 });
   const history = (b.messages ?? []).filter((m) => m.content?.trim()).slice(-20);
   if (!history.length || history[history.length - 1].role !== "user") return NextResponse.json({ error: "Write a message first." }, { status: 400 });
-  const said = history[history.length - 1].content;
+  // The open lead page counts as naming that lead.
+  const said = history[history.length - 1].content + (b.context?.lead_id ? ` [${b.context.lead_id}]` : "");
 
   return stream(async (emit) => {
     const client = new Anthropic();
     // Earlier turns travel as one transcript in a single user message: replayed assistant text without its thinking
     // made Sonnet 5.5 end the next turn empty.
     const earlier = history.slice(0, -1).map((m) => `${m.role === "user" ? "Planner" : "You"}: ${m.content}`).join("\n\n");
-    const ctx = b.context?.lead_id ? `The planner has the lead page of ${b.context.name ?? "a lead"} (lead_id ${b.context.lead_id}) open: "this", "the house", "her" or "him" and any kit, part, panel, brand or fact change mean this lead. A pinned lead still needs its name in the message before a write is proposed.\n\n` : "The planner is on the board of all leads.\n\n";
+    const ctx = b.context?.lead_id ? `The planner has the lead page of ${b.context.name ?? "a lead"} (lead_id ${b.context.lead_id}) open: "this", "the house", "her" or "him" and any kit, part, panel, brand or fact change mean this lead.\n\n` : "The planner is on the board of all leads.\n\n";
     const messages: Anthropic.MessageParam[] = [{ role: "user", content: ctx + (earlier ? `Earlier in this conversation:\n\n${earlier}\n\nThe planner now says:\n\n${said}` : said) }];
     let retried = false;
     for (let turn = 0; turn < 8; turn++) {

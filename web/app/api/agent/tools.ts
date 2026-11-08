@@ -88,6 +88,7 @@ async function upsell(part: "battery" | "heatpump", ids: string[] | undefined, i
 }
 
 const lastName = (n: string) => n.trim().split(/\s+/).pop()!.toLowerCase();
+// Named: the planner wrote the lead's surname or id, or has that lead's page open ("ctx:<id>" rides on said).
 const named = (l: { lead_id: string; customer_name: string }, said: string) => { const s = said.toLowerCase(); return s.includes(l.lead_id) || s.includes(lastName(l.customer_name)); };
 
 const PART: Record<string, [string, string]> = { pv_kwp: ["Solar", "kWp"], battery_kwh: ["Battery", "kWh"], heatpump_kw: ["Heat pump", "kW"], wallbox_kw: ["Wallbox", "kW"], inverter_kw: ["Inverter", "kW"] };

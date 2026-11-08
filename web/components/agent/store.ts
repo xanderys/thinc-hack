@@ -46,7 +46,7 @@ export async function ask(q: string, ctx: CopilotContext) {
     for await (const e of lines(res)) {
       if (e.t === "text") { turn += String(e.d); const t = turn; patch(me.id, (x) => ({ ...x, text: t })); }
       else if (e.t === "tools") { turn = ""; patch(me.id, (x) => ({ ...x, text: "" })); }
-      else if (e.t === "propose") patch(me.id, (x) => ({ ...x, proposals: [...(x.proposals ?? []), { ...(e as unknown as Proposal), said: q, state: "open", results: [] }] }));
+      else if (e.t === "propose") patch(me.id, (x) => ({ ...x, proposals: [...(x.proposals ?? []), { ...(e as unknown as Proposal), said: q + (ctx.leadId ? ` [${ctx.leadId}]` : ""), state: "open", results: [] }] }));
       else if (e.t === "created") { mine.add(String(e.lead_id)); dispatchEvent(new CustomEvent("marquee:lead-created", { detail: e.lead_id })); }
       else if (e.t === "error") patch(me.id, (x) => ({ ...x, err: { src: String(e.src), msg: String(e.msg) } }));
     }
