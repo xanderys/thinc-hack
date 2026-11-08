@@ -60,6 +60,7 @@ function PhoneField({ value, onSet }: { value: string | null | undefined; onSet:
   return (
     <form className="fc-phone" onSubmit={(e) => { e.preventDefault(); if (ok) onSet(clean); }}>
       <input type="tel" inputMode="tel" autoComplete="tel" value={d} aria-label="Phone number" placeholder="Country code first, like +49 151 2345678" autoFocus aria-invalid={d !== "" && !E164.test(clean)} onChange={(e) => setD(e.target.value.replace(/[^\d+\s().-]/g, ""))} />
+      {d !== "" && !E164.test(clean) && <span className="u err" role="status">Country code first, like +49 151 2345678</span>}
       <button type="submit" className="fc-set" disabled={!ok}>Set</button>
     </form>
   );
