@@ -2,7 +2,7 @@
 // On-model editing for the planner: the controls sit on the house, only for the selected system.
 // Panels: a glass "+" on every empty slot (its dotted frame drawn by the scene), a tap on a module takes it off.
 // Battery, wallbox, heat pump: tap the unit for its size (a popover on the model), or the "+" on its dotted outline
-// when the design has none. Every target is at least 44 px. The scene animates modules and units in and out
+// when the design has none (the heat pump's "+" lets the engine size it). Every target is at least 44 px. The scene animates modules and units in and out
 // (0.25 s spring, bounce 0); Reduce Motion keeps the fades only. The homeowner page never mounts this.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Design, OverrideValue } from "@/lib/api";
@@ -15,7 +15,9 @@ type Sys = "panels" | "battery" | "wallbox" | "heatpump";
 type Unit = "battery" | "wallbox" | "heatpump";
 const FIELD: Record<Unit, keyof Design> = { battery: "battery_kwh", wallbox: "wallbox_kw", heatpump: "heatpump_kw" };
 const STEPS: Record<Unit, number[]> = { battery: [5, 7, 10, 15], wallbox: [11, 22], heatpump: [4, 6, 8, 10, 12, 14, 16] };
-const ADD: Record<Unit, number> = { battery: 5, wallbox: 11, heatpump: 8 };
+// What "+" asks for: the smallest battery, the usual 11 kW wallbox; the heat pump is sized by the engine ("include",
+// as the chooser does), and the stepper then shows the kW it chose.
+const ADD: Record<Unit, OverrideValue> = { battery: 5, wallbox: 11, heatpump: "include" };
 const UNIT: Record<Unit, string> = { battery: "kWh", wallbox: "kW", heatpump: "kW" };
 const NAME: Record<Unit, string> = { battery: "battery", wallbox: "wallbox", heatpump: "heat pump" };
 const fmt = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
