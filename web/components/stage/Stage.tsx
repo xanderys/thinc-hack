@@ -13,6 +13,7 @@ import WhatsAppClient from "@/components/whatsapp/WhatsAppClient";
 import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, OverrideValue, Overrides, ReadResponse, RefineResponse } from "@/lib/api";
 import { call, send } from "@/lib/client";
+import { breakEvenNote } from "@/lib/notes";
 import { approveLead, matches, offerOf } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
 import { DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
@@ -324,7 +325,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       const rows: Variant[] = [...cur, ...order.map((v, n) => {
         const [name, how] = v.label.split(" (");
         return { name, tag: n === 0 ? "Preferred" : v.key === "expert" ? (how ? how.replace(/\)$/, "").replace(/^./, (c) => c.toUpperCase()).replace(" here ", " ") : "As planners design it") : "",
-          design: v.design, e: v.economics, note: v.key === "expert" ? "" : v.note, current: same(v.design, res.design),
+          design: v.design, e: v.economics, note: v.key === "expert" ? "" : breakEvenNote(v.note, v, ev), current: same(v.design, res.design),
           overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } };
       })];
       const out: Variant[] = [];

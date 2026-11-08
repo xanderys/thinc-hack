@@ -11,7 +11,7 @@ export type FactField = "address" | "annual_use" | "people" | "floor_area" | "bu
 export interface Qualification {
   verdict: Verdict;
   sentence: string;                       // "Priority: Worth a visit: the roof fits 10.35 kWp ..." (verdict word, then reason)
-  reason: string;                         // a planner's sentence plus the value: "Worth a visit: the roof fits 10.35 kWp and pays back in 10 years. Expected offer about €14,600."
+  reason: string;                         // a planner's sentence plus the value: "Worth a visit: the roof fits 10.35 kWp and breaks even in 10 years. Expected offer about €14,600."
   facts: { stated: number; total: number; list: { field: FactField | "roof"; source: FactSource }[] };   // roof is listed, never counted
   expected_offer_eur: number | null;      // draft investment in euros, as the offer shows it; null on Decline
   confidence_line: string;                // "7 of 9 facts stated, roof measured from the address, consumption from the bill"
@@ -62,7 +62,8 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
 
   const d = design?.design, e = design?.economics;
   const capex = e && d?.pv_kwp ? Math.round(e.capex_eur) : null;
-  const payback = e?.payback_years ?? null;
+  // The break-even year the offer tiles show, so the verdict and the tiles quote one figure.
+  const payback = e?.break_even_year ?? e?.payback_years ?? null;
 
   const roofWords = !hasStreet ? "roof not measured"
     : roof?.pending ? "roof being measured"
@@ -109,10 +110,10 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
   if (!measuredRoof(roof)) return out("call_first", "One call first: no building found at this address, confirm it.");
   // 5. No system that pays back.
   if (!d?.pv_kwp) return out("decline", "Not worth a visit: no system fits this home.");
-  if (payback == null || payback > MAX_PAYBACK_YEARS) return out("decline", `Not worth a visit: it would not pay back within ${MAX_PAYBACK_YEARS} years.`);
+  if (payback == null || payback > MAX_PAYBACK_YEARS) return out("decline", `Not worth a visit: it would not break even within ${MAX_PAYBACK_YEARS} years.`);
   // 6. The other facts that move the design.
   if (!useStated) return out("call_first", "One call first: annual use is the default, ask for the bill.");
   if ((!f.heating_type || f.heating_type === "Unknown") && f.heating_cost_per_year_eur != null)
     return out("call_first", "One call first: the heating type is unknown, ask what heats the house.");
-  return out("visit", `Worth a visit: the roof fits ${n2(d.pv_kwp)} kWp and pays back in ${Math.round(payback)} years.${capex ? ` Expected offer about €${n0(capex)}.` : ""}`);
+  return out("visit", `Worth a visit: the roof fits ${n2(d.pv_kwp)} kWp and breaks even in ${Math.round(payback)} years.${capex ? ` Expected offer about €${n0(capex)}.` : ""}`);
 }

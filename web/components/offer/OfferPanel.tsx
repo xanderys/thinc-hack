@@ -33,10 +33,11 @@ const UNIT: Record<keyof Design, string> = { pv_kwp: "kWp", inverter_kw: "kW", b
 const COMP: Partial<Record<keyof Design, "pv" | "battery" | "wallbox" | "heatpump">> = { pv_kwp: "pv", battery_kwh: "battery", wallbox_kw: "wallbox", heatpump_kw: "heatpump" };
 
 
+import { breakEvenNote } from "@/lib/notes";
 // Engine offers in Stage's variant shape, so a pick runs through Stage's onVariant like any other.
 function asStage(vs: EngineVariant[], d: Design): StageVariant[] {
   const same = (x: Design) => JSON.stringify(x) === JSON.stringify(d);
-  return vs.map((v) => ({ name: v.label.split(" (")[0], tag: "", design: v.design, e: v.economics, note: v.note, current: same(v.design),
+  return vs.map((v) => ({ name: v.label.split(" (")[0], tag: "", design: v.design, e: v.economics, note: breakEvenNote(v.note, v, vs), current: same(v.design),
     overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } }));
 }
 
