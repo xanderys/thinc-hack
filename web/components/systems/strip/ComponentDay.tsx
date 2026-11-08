@@ -53,7 +53,7 @@ export function BatteryDay({ leadId, sizes, version }: Props) {
 
 export function WallboxDay({ leadId, sizes, version }: Props) {
   const [season, setSeason] = useState<Season>("summer");
-  const [hour, setHour] = useState(13);
+  const [hour, setHour] = useState(19);
   const [tries, setTries] = useState(0);
   const { data, error } = useDay(leadId, season, sizes, version, tries);
   const w = data?.wallbox ?? null;

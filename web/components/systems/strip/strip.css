@@ -49,7 +49,7 @@
   .dv-figs b { font-size: 15px; } .dv-figs p { font-size: 12px; }
   .ds-season button { height: 24px; padding: 0 7px; }
   .ds-svg { height: 30px; } .ds-band { height: 8px; } .ds-skel { height: 52px; }
-  .ds-axis { height: 11px; font-size: 9.5px; }
+  .ds-axis { height: 5px; } .ds-axis span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .ds-skel, .dv-skel { animation: none; } }
 .dv-figs .dv-was { font-size: inherit; font-weight: 600; color: var(--ink-2); }
