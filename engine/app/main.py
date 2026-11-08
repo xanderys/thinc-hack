@@ -1101,6 +1101,14 @@ def _sources(lead: dict) -> dict:
     return {k: ("whatsapp" if fs.get(k) == "whatsapp" else "stated" if k in given else "estimated") for k in _public(inp)}
 
 
+def _blockers(lead: dict) -> list:
+    """v2.19: facts whose stated value would change the kit or the price, ranked by the euro swing (agent/blockers.py)."""
+    if STATE.get("engine") is None or lead.get("status") in ("approved", "sent", "signed", "declined"):
+        return []
+    from .agent import blockers
+    return blockers.compute(engine(), lead, _sources(lead))
+
+
 STATUS_LABEL = {"draft": "Draft", "in_call": "On a call", "done": "Ready", "approved": "Complete", "sent": "Sent", "signed": "Signed",
                 "declined": "Declined", "question": "Question", "ended": "Ended"}
 
@@ -1121,6 +1129,7 @@ def _lead_out(lead: dict) -> dict:
             "proposal_hash": current_hash(lead), "decision": dec, "approved": lead.get("approved"), "overrides": lead.get("overrides") or {},
             "status_label": STATUS_LABEL.get(lead["status"], lead["status"]), "sent": lead.get("sent"), "phone": lead.get("phone"),
             "whatsapp": wa.public(lead), "fact_sources": lead.get("fact_sources") or {}, "sources": _sources(lead),
+            "blockers": _blockers(lead),
             "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
             "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"], "pinned": bool(lead.get("pinned")),
             "created_at": lead["created_at"], "updated_at": lead["updated_at"]}
