@@ -272,6 +272,28 @@ def _capex(inputs, design):
     return solar + (hp_net_capex(inputs) if hp else 0) + (rules.WALLBOX_COST if wb else 0), solar
 
 
+def rates(inputs, design) -> dict:
+    """The rate card behind the investment total: every rate the capex uses, and one line per component that sums to it."""
+    pv, bat, hp, wb = (design.get(k) or 0 for k in ("pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"))
+    boiler = BOILER_AVOIDED_EUR if inputs.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable") else 0
+    subsidy = HP_SUBSIDY * min(HP_GROSS_EUR, HP_ELIGIBLE_CAP)
+    lines = []
+    if pv:
+        lines.append({"item": "pv", "label": f"PV {pv:g} kWp: fixed cost per system €{PV_FIXED_EUR:,.0f} plus €{PV_EUR_KWP:,.0f} per kWp", "eur": round(pv_cost(pv))})
+    if bat:
+        lines.append({"item": "battery", "label": f"Battery {bat:g} kWh at €{BAT_EUR_KWH:,.0f} per kWh", "eur": round(bat * BAT_EUR_KWH)})
+    if wb:
+        lines.append({"item": "wallbox", "label": f"Wallbox {wb:g} kW, fixed €{rules.WALLBOX_COST:,.0f}", "eur": round(rules.WALLBOX_COST)})
+    if hp:
+        lines.append({"item": "heatpump", "label": hp_capex_note(inputs), "eur": round(hp_net_capex(inputs))})
+    return {"pv_fixed_eur": PV_FIXED_EUR, "pv_eur_per_kwp": PV_EUR_KWP, "battery_eur_per_kwh": float(BAT_EUR_KWH),
+            "wallbox_fixed_eur": float(rules.WALLBOX_COST), "heatpump_fixed_eur": float(HP_GROSS_EUR), "heatpump_subsidy_share": HP_SUBSIDY,
+            "heatpump_subsidy_cap_eur": float(HP_ELIGIBLE_CAP), "heatpump_subsidy_eur": round(subsidy), "heatpump_boiler_avoided_eur": float(boiler),
+            "heatpump_net_eur": round(hp_net_capex(inputs)), "installation_eur": 0.0,
+            "installation_note": "Installation is inside each rate (the PV rate and the heat pump price are installed prices).",
+            "lines": lines, "total_eur": round(_capex(inputs, design)[0])}
+
+
 def pv_cost(kwp):
     return PV_FIXED_EUR + PV_EUR_KWP * kwp if kwp else 0.0
 
