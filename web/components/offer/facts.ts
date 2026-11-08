@@ -98,3 +98,27 @@ export function rateCard(d: Partial<Design> | null | undefined, total: number, a
   else if (rest !== 0) lines.push({ label: "Rounding", calc: "to the nearest €10", eur: rest });
   return { lines, total };
 }
+
+// SKUs (engine v2.15): the product behind each part, read from the design response wherever the engine puts it
+// (skus.<part>, design.skus.<part> or components.<c>.sku). Absent on an older engine: the rows keep their generic names.
+export type SkuPart = "module" | "inverter" | "battery" | "wallbox" | "heatpump";
+export type Sku = { brand: string; name: string; size?: number; unit?: string; share?: number; brands?: ({ brand: string; share?: number } | string)[] };
+const COMP_OF: Record<SkuPart, string[]> = { module: ["pv", "module"], inverter: ["inverter"], battery: ["battery"], wallbox: ["wallbox"], heatpump: ["heatpump"] };
+export function skusOf(r: unknown): Partial<Record<SkuPart, Sku>> {
+  const o = (r ?? {}) as { skus?: Record<string, Sku>; design?: { skus?: Record<string, Sku> }; components?: Record<string, { sku?: Sku } | undefined> };
+  const out: Partial<Record<SkuPart, Sku>> = {};
+  (Object.keys(COMP_OF) as SkuPart[]).forEach((p) => {
+    const s = o.skus?.[p] ?? o.design?.skus?.[p] ?? COMP_OF[p].map((c) => o.components?.[c]?.sku).find(Boolean);
+    if (s && typeof s.brand === "string" && typeof s.name === "string") out[p] = s;
+  });
+  return out;
+}
+// "Huawei Battery 10kWh" -> "Huawei Battery": the size is shown beside it in the lighter colour.
+export const skuName = (s: Sku) => { const n = s.name.replace(/\s*\d+(?:[.,]\d+)?\s*(?:x\s*\d+\s*)?(?:kWh|kWp|kW|Wp|W)\b/gi, "").replace(/\s{2,}/g, " ").trim(); return n.toLowerCase().startsWith(s.brand.toLowerCase()) ? n : `${s.brand} ${n}`; };
+// The brands the data has for this part and size, most common first.
+export const brandsOf = (s: Sku | undefined): string[] => {
+  if (!s?.brands?.length) return [];
+  const xs = s.brands.map((b) => (typeof b === "string" ? { brand: b, share: 0 } : { brand: b.brand, share: b.share ?? 0 }));
+  return [...new Map(xs.sort((a, b) => b.share - a.share).map((x) => [x.brand, x])).keys()];
+};
+export const years = (n: number) => `${n0(n)} ${Math.round(n) === 1 ? "year" : "years"}`;

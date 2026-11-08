@@ -183,7 +183,7 @@ export interface ReadFact { field: keyof HomeInputs | "wants" | "monthly_bill_eu
 export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; source?: "call"; origin?: Record<string, "form" | "call" | "estimated" | "whatsapp">; postcode?: string; }
 export interface WriteResponse { text: string; grounded: boolean; lines: Partial<Record<ComponentKey, string | null>>; cached?: boolean; }
 
-export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Installer A", "23c108b7": "Installer B" };
+export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Isarwerk Solar", "23c108b7": "Würmtal Energie" };
 
 // v1.9: the engine runs the call, one rolling draft per lead.
 export interface LeadChange { component: string; from: number | null; to: number | null; why: string; }

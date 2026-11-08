@@ -290,7 +290,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         const o: Overrides = v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw };
         const k = keyOf(i, o);
         if (designs.current.has(k)) continue;
-        keep(k, v.key === "expert" ? base : { ...base, design: v.design, economics: v.economics, ...("layout" in v ? { layout: (v as { layout?: unknown }).layout } : {}) } as DesignResponse);
+        keep(k, v.key === "expert" ? base : { ...base, design: v.design, economics: v.economics, ...("layout" in v ? { layout: (v as { layout?: unknown }).layout } : {}), ...("skus" in v ? { skus: (v as { skus?: unknown }).skus } : {}) } as DesignResponse);
       }
     }, 300);   // after first paint
     return () => { clearTimeout(t); ctl.abort(); };
