@@ -58,7 +58,7 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
           {leadId && <button type="button" className="btn ghost" onClick={() => setSheet(true)}>Send</button>}
         </>
       ) : (
-        <button type="button" className={`btn ${s.approveBtn}`} onClick={go} disabled={busy}>{busy ? "Saving" : "Complete"}</button>
+        <button type="button" className={`btn ${s.approveBtn}`} onClick={go} disabled={busy} aria-busy={busy || undefined}>Complete</button>
       )}
       </div>
       {fail && !complete && !signed && <span className={s.failS} role="alert">{fail}</span>}
