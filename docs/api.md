@@ -221,7 +221,7 @@ When the inputs state a roof direction (`roof_azimuth_deg`, or `roof_orientation
 
 ## v2.14 (engine, additive): WhatsApp copilot, Complete and Send, planned car, stated heating
 Phone and facts
-- `POST /api/leads` takes `phone?: string` (E.164; spaces allowed, 8 to 15 digits, else 422). `PUT /api/leads/{id}/phone {phone: string | null, base_version?}` sets or removes it, and `POST /api/intake/step` takes `phone?` (phone alone returns `{version, phone, status}` with no redraft). Phone survives reset. The pinned demo leads carry `+6586936789`. `GET /api/leads/{id}` returns `phone`.
+- `POST /api/leads` takes `phone?: string` (E.164; spaces allowed, 8 to 15 digits, else 422). `PUT /api/leads/{id}/phone {phone: string | null, base_version?}` sets or removes it, and `POST /api/intake/step` takes `phone?` (phone alone returns `{version, phone, status}` with no redraft). Phone survives reset. The pinned demo leads carry `the demo phone (env)`. `GET /api/leads/{id}` returns `phone`.
 - `POST /api/intake/step` takes `source?: "whatsapp" | "call" | "form" | "planner"`. Every fact it changes is recorded in `GET /api/leads/{id}` → `fact_sources: Record<field, source>`, and `sources: Record<field, "stated" | "estimated" | "whatsapp">` covers every public fact, which the chips use for "via WhatsApp". A whatsapp step never opens "On a call".
 - HomeInputs gains `ev_planned: boolean` (sized like `has_ev`; `has_ev: false` clears it; voice/interpret `ev: "planned"` sets both) and `heating_stated?: string`: the word as stated ("District", "Electric", "Gas", "Heat pump"), set whenever `heating_type` is given in words. `heating_type` stays the kind sizing uses (district and electric → `OtherNonRenewable`, wood and pellets → `OtherRenewable`).
 
