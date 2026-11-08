@@ -22,7 +22,7 @@ import s from "./spatial.module.css";
 import ShadingPanel from "./ShadingScrubber";
 import { useShadeView, useShading } from "@/lib/shading";
 
-export type Endpoints = { glb?: string; layers?: string };
+export type Endpoints = { glb?: string; layers?: string; layersGet?: boolean };  // layersGet: the homeowner page reads its layers with a GET, never a POST
 
 const modelOf = (x: Layers["planes"] | null | undefined): RoofModel | null =>
   !x ? null : Array.isArray(x) ? { address: "", planes: x } : x.planes ? x : null;
@@ -102,7 +102,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     const ac = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     setLayersErr(null); setBusy(true);
-    fetch(layersUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ inputs: { ...inputs, address }, design, ...(leadId ? { lead_id: leadId } : {}) }), signal: ac.signal })
+    fetch(layersUrl, endpoints?.layersGet ? { method: "GET", signal: ac.signal } : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ inputs: { ...inputs, address }, design, ...(leadId ? { lead_id: leadId } : {}) }), signal: ac.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => null);
         setBusy(false);

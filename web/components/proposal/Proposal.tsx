@@ -86,9 +86,9 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
     { k: "price" as const, v: eur(e.capex_eur) },
   ];
   const tiles = [
-    ...figs.map((f, i) => ({ k: ["Panels", "Battery", "Price, estimate"][i], v: f.v })),
-    ...(yieldKwh != null ? [{ k: "Yield a year", v: `${n0(yieldKwh)} kWh` }] : []),
-    { k: "Supplied by your system", v: pc(e.autarky_share) },
+    ...figs.map((f, i) => ({ k: ["Solar", "Battery", "Investment"][i], v: f.v })),
+    ...(yieldKwh != null ? [{ k: "Yield", v: `${n0(yieldKwh)} kWh` }] : []),
+    { k: "Autarky", v: pc(e.autarky_share) },
     { k: "Break-even", v: be == null ? "20+ years" : `${n0(be)} years` },
   ];
   const decided = lead.status === "signed" ? "Signed" : lead.status === "declined" ? "Declined" : lead.status === "question" ? "Question sent" : "Sign";
@@ -103,18 +103,18 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
       <section className="pp-stage" aria-label="Your home">
         {street && spatial !== false ? (
           <div className="pp-spatial">
-            <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={design} address={address} response={lead.draft} bare homeowner system={sys} onLayers={setLayers} onAvailable={setSpatial}>
+            <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={design} address={address} response={lead.draft} bare homeowner endpoints={{ layers: `/start/proposal/${encodeURIComponent(lead.lead_id)}/layers`, layersGet: true }} system={sys} onLayers={setLayers} onAvailable={setSpatial}>
               <HomeSystems sys={sys} design={design} economics={e} layers={layers} demandKwh={lead.facts.annual_demand_kwh} pending={!layers} note={<RoofNote draft={lead.draft} />} />
             </SpatialDemo>
           </div>
         ) : <div className="pp-drawing"><House design={design} /></div>}
       </section>
-      <ProposedCard title="Proposed Design" figs={figs} pending={false}>
+      <ProposedCard title="Proposed Design" figs={figs} pending={false} lift={76}>
         <div className="pp-open">
           <Tiles items={tiles} mode="fade" />
           {alts.length > 0 && (
             <section className="pp-card" aria-labelledby="pp-alts">
-              <h2 id="pp-alts">Alternatives</h2>
+              <h2 id="pp-alts">Alternatives for your installer to discuss</h2>
               <ul className="pp-vars">
                 {alts.map(({ key: k, name: label, v }) => (
                   <li key={k}>
@@ -131,7 +131,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
           </section>
         </div>
       </ProposedCard>
-      <ProposedCard title={decided} figs={name ? [{ k: "kwp", v: name }] : []} pending={false} lift={76}>
+      <ProposedCard title={decided} figs={name ? [{ k: "kwp", v: name }] : []} pending={false}>
         <Decision lead={lead} brand={brand} startedAt={startedAt} onDecided={onDecided} />
       </ProposedCard>
     </article>
