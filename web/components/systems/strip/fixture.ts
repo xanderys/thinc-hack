@@ -43,7 +43,7 @@ export function mockDay(s: Season, sizes: { battery_kwh?: number; wallbox_kw?: n
   const temp = H.map((h) => r2(-3 + 5 * Math.sin((Math.PI * (h - 8)) / 16) * (h >= 8 && h <= 23 ? 1 : 0.2)));
   const hpkw = sizes.heatpump_kw ?? 7.5;
   const heat_demand_kwh = temp.map((t, h) => r2(Math.max(0.6, (20 - t) * 0.28 * (h >= 23 || h < 5 ? 0.75 : 1))));
-  const hp = (k: number) => ({ electricity_kwh_year: Math.round(14500 / (3.4 + (k - 7.5) * 0.02)), cost_eur_year: Math.round((14500 / (3.4 + (k - 7.5) * 0.02)) * 0.32) });
+  const hp = (k: number) => ({ heat_covered_share: Math.min(1, 0.82 + (k - 5.5) * 0.03), bivalent_temp_c: Math.round(-2 - (k - 5.5) * 1.2), co2_saved_kg_year: 3400, gas_price_ct_kwh: 12, electricity_kwh_year: Math.round(14500 / (3.4 + (k - 7.5) * 0.02)), cost_eur_year: Math.round((14500 / (3.4 + (k - 7.5) * 0.02)) * 0.32) });
   const heatpump = { kw: hpkw, heat_demand_kwh, outdoor_temp_c: temp, heat_load_kw: 6.8, heating_kwh_year: 14500, cop: 3.4, ...hp(hpkw), boiler_cost_eur_year: 1680, ladder: [5.5, 7.5, 10.5, 12.5], by_size: Object.fromEntries([5.5, 7.5, 10.5, 12.5].map((k) => [String(k), hp(k)])) };
   return { day: s, hours: 24, solar_kwh: solar, load_kwh: load, battery, wallbox, heatpump, sunrise_h, sunset_h };
 }
