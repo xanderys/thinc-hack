@@ -6,7 +6,7 @@ import { call } from "@/lib/client";
 import { isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
-import { INSTALLER_NAME } from "@/lib/api";
+import { COMPONENT_DESIGN_FIELD, INSTALLER_NAME } from "@/lib/api";
 import type { Layers, Bar, Check, RoofModel } from "@/components/spatial/types";
 import LayersMenu from "@/components/spatial/LayersMenu";
 import { findRot, rotLine } from "@/lib/rot";
@@ -50,7 +50,7 @@ const SYS = FIVE && process.env.NEXT_PUBLIC_SYSTEMS !== "0";
 const CHECK_AT = FIVE ? 5 : 7;
 const STEP_COLOUR = ["#ffc043", "#24a148", "#1c71ef", "#e3634f", "#071b71"];
 const stepStyle = (i: number) => ({ ["--step" as string]: STEP_COLOUR[i], ["--step-ink" as string]: i === 0 ? "#071b71" : "#fff" }) as CSSProperties;
-const TAG: Record<string, string> = { lead: "lead", rina: "Rina", address: "address", default: "assumed" };
+const TAG: Record<string, string> = { lead: "from the enquiry", rina: "stated by the homeowner", address: "from the address", default: "assumed" };
 // One muted palette for every bar, in Reonic's heat-load order; component colours where the segment is a component.
 const PALETTE = ["#f5c35a", "#5b8def", "#4fb477", "#a58bea", "#e3634f", "#f0924a", "#a1a1aa", "#71717b"];
 const SEG_COLOUR: Record<string, string> = {
@@ -229,14 +229,18 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const ovNow = ((isValidElement(decide) ? (decide.props as { overrides?: Record<string, unknown> }).overrides : null) ?? {});
   const ovKey = JSON.stringify(ovNow);
   const [opt, setOpt] = useState<Record<string, unknown> | null>(null);
+  const optBase = useRef<unknown>(null);   // the design on screen when the edit was made
   const sizeOf = (v: unknown) => (typeof v === "number" ? v : v === null ? 0 : undefined);
   useEffect(() => {
     if (!opt) return;
     const rd = res.design as unknown as Record<string, unknown>;
     if (Object.entries(opt).every(([k, v]) => sizeOf(v) === undefined || (Number(rd[k]) || 0) === sizeOf(v))) { setOpt(null); return; }
+    // Any design that lands after the edit answers it, also when the engine snapped the size (7 kWh to its package):
+    // the overlay goes and the card and the pass show the engine's own figures at once.
+    if (optBase.current && res !== optBase.current && !pending) { setOpt(null); return; }
     const t = setTimeout(() => setOpt(null), 20000);
     return () => clearTimeout(t);
-  }, [res.design, opt]);
+  }, [res, res.design, opt, pending]); // eslint-disable-line react-hooks/exhaustive-deps
   const d = useMemo(() => {
     if (!pending && !opt) return res.design;
     const o: Record<string, unknown> = { ...res.design };
@@ -455,11 +459,23 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   // The rule's own result and the catalogue snap, as one chain (payload: derivation.axiom_result and final, the part's
   // sku): "Rule result 10.35 kWp, snapped to 23 × 463 W = 10.65 kWp". Nothing when the two agree.
   const snapLine = (k: ComponentKey, unit: string) => {
+    // Always the first line of a part's popover, from the payload: the rule's result, then the catalogue snap to the
+    // design's own size (d, which is the snapped one; derivation.final can still be the pre-catalogue figure).
+    const field = COMPONENT_DESIGN_FIELD[k] as keyof typeof d, size = Number(d[field]) || 0;
+    if (!size) return null;
     const dv = res.components[k]?.derivation, sku = (res.components[k] as { sku?: { size?: number | null; unit?: string | null; modules?: number | null } }).sku;
-    if (!dv || dv.axiom_result == null || dv.final == null || Math.abs(dv.final - dv.axiom_result) < 0.005) return null;
-    const to = sku?.size ? (k === "pv" && sku.modules ? `${sku.modules} × ${n0(sku.size)} ${sku.unit ?? "W"}` : `the ${n1(sku.size)} ${sku.unit ?? unit} package`) : null;
-    return <p>Rule result {n2(dv.axiom_result)} {unit}, snapped to {to ? (k === "pv" ? `${to} = ${n2(dv.final)} ${unit}` : to) : `${n2(dv.final)} ${unit}`}.</p>;
+    const rule = dv?.axiom_result ?? null;
+    const fmtU = (x: number) => `${k === "pv" ? n2(x) : n1(x)} ${unit}`;
+    if (rule == null) return <p className="sc-rule">Catalogue size, {fmtU(size)}.</p>;
+    if (Math.abs(size - rule) < 0.005) return <p className="sc-rule">Rule result {fmtU(rule)}, the catalogue size.</p>;
+    const to = sku?.size ? (k === "pv" && sku.modules ? `${sku.modules} × ${n0(sku.size)} ${sku.unit ?? "W"} = ${fmtU(size)}` : `the ${n1(sku.size)} ${sku.unit ?? unit} package`) : fmtU(size);
+    return <p className="sc-rule">Rule result {fmtU(rule)}, snapped to {to}.</p>;
   };
+  // The inverter has no rule of its own in the payload: its catalogue size, from the module SKU's inverter.
+  const invLine = (() => {
+    const kw = Number((d as unknown as { inverter_kw?: number | null }).inverter_kw) || (res.components.pv as { inverter_sku?: { size?: number | null } }).inverter_sku?.size || 0;
+    return kw ? <p className="sc-rule">Catalogue size, {n1(kw)} kW inverter.</p> : null;
+  })();
   // No sentences on the cards: figures only; every derivation sentence moved behind the i.
   const sysBody: Record<SystemName, { head: ReactNode; label: string; body: ReactNode; info: ReactNode }> = {
     panels: (() => {
@@ -471,10 +487,10 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         body: multi ? <p>Shared roof, apartment building: the single-family design does not apply.</p>
           : a ? <PairBars roof={a.pv_yield_kwh} share={e.autarky_share ?? null} parts={[{ k: "Household", v: inputs.annual_demand_kwh ?? 0 }, ...(layers?.ev ? [{ k: "Car", v: layers.ev.annual_kwh }] : [])]} /> : null,
         info: <>
+          {snapLine("pv", "kWp")}{invLine}
           {usePara}
           {roofBar && <BarView bar={roofBar} bare />}
           <BarView bar={useBar} bare />
-          {snapLine("pv", "kWp")}
           <p>{n2(d.pv_kwp ?? 0)} kWp{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}.</p>
           {pvChecks.length > 0 && <Checks checks={pvChecks} />}
           {shading?.source && <p>Shading: {shading.source}</p>}
@@ -486,14 +502,20 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     battery: (() => {
       const day = bars[2], roof = seg(day, /solar|roof/i), fromB = seg(day, /from the battery/i) ?? seg(day, /^battery$/i), grid = seg(day, /grid/i);
       const kwh = d.battery_kwh;
+      // The year's split from the refine itself (res.economics.annual), so it follows each refine the moment it lands;
+      // the spring-weekday day bar (layers) waits behind the i.
+      const ra = res.economics.annual, rDis = ra?.battery_discharged_kwh ?? 0;
+      const rRoof = ra ? (ra.home_from_pv_kwh ?? Math.max(0, ra.self_consumed_kwh - rDis)) : null;
+      const yearSplit = ra && rRoof != null ? <SplitBar label="A year" unit="kWh" total={ra.load_kwh} parts={[{ k: "Roof", v: rRoof }, { k: "Battery", v: rDis }, { k: "Grid", v: ra.grid_import_kwh }]} /> : null;
       return {
         head: adding?.part === "battery" ? <Head main="Battery" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : kwh ? <Head main={`Battery ${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
         label: kwh ? `${n1(kwh)} kWh battery` : "No battery",
-        body: !kwh && adding?.part !== "battery" ? <>{why0("battery")}{day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null}</> : day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null,
+        body: !kwh && adding?.part !== "battery" ? <>{why0("battery")}{yearSplit}</> : yearSplit,
         info: <>
+          {snapLine("battery", "kWh")}
           {day && roof != null && <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p>}
           {kwh && ratio != null ? <p>{n1(kwh)} kWh is {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0 kWh per kWp for {n2(d.pv_kwp ?? 0)} kWp.</p> : !kwh ? <p>No battery in this design.</p> : null}
-          {snapLine("battery", "kWh")}{day && <BarView bar={day} />}{batChecks.length > 0 && <Checks checks={batChecks} />}{whyBlock(2)}
+          {day && <BarView bar={day} />}{batChecks.length > 0 && <Checks checks={batChecks} />}{whyBlock(2)}
         </>,
       };
     })(),
@@ -510,8 +532,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         label: wb ? `${n1(wb)} kW wallbox` : "No wallbox",
         body: !wb && adding?.part !== "wallbox" ? why0("wallbox") : wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
         info: <>
+          {snapLine("wallbox", "kW")}
           {wb && km && kwh ? <p>{n0(km)} km a year takes about {n0(kwh)} kWh{homeShare ?? (homeKwh && kwh ? homeKwh / kwh : null) ? `; ${pc((homeShare ?? homeKwh! / kwh)!)} of it is charged at home, ${n0(homeKwh ?? homeShare! * kwh)} kWh` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p> : <p>{line2[3]}</p>}
-          {snapLine("wallbox", "kW")}{ch && (wb || layers?.ev) && <BarView bar={ch} />}{whyBlock(3)}
+          {ch && (wb || layers?.ev) && <BarView bar={ch} />}{whyBlock(3)}
         </>,
       };
     })(),
@@ -536,9 +559,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
             : bars[4] && <Fig v={`${n1(bars[4].total)} kW`} u={designT ? `heat loss at ${designT} °C, an upper bound` : "heat loss, an upper bound"} />}
         </>,
         info: multi ? <p>The walls and roof are the whole building&rsquo;s, so no heat pump size for one flat.</p> : <>
+          {snapLine("heatpump", "kW")}
           {lossS && <p>{lossS}</p>}
           <p>{hp ? "Sized from the heating bill." : hpWhy ?? "Heating facts not asked yet."}</p>
-          {snapLine("heatpump", "kW")}
           {hasEnv && <EnvelopeBar env={model!.envelope!} bare />}
           {bars[4] && <BarView bar={bars[4]} />}
           <HeatPumpStep res={res} inputs={inputs} env={null} multi={multi} variants={variants} onVariant={onVariant} />
@@ -588,7 +611,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         {address && spatial !== false ? (
           <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatLayer ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && panelHeat}
-            edit={dp?.setOverride ? { adding: adding?.part ?? null, setOverride: (f, v) => { holdOffer(); stayChip.current = Date.now() + 60000; markAdd(f, v); setOpt({ [f]: v }); dp.setOverride?.(f, v); }, setKit: setKit ? (p) => { holdOffer(); stayChip.current = Date.now() + 60000; setOpt(p); setKit(p); } : undefined,
+            edit={dp?.setOverride ? { adding: adding?.part ?? null, setOverride: (f, v) => { holdOffer(); stayChip.current = Date.now() + 60000; markAdd(f, v); optBase.current = res; setOpt({ [f]: v }); dp.setOverride?.(f, v); }, setKit: setKit ? (p) => { holdOffer(); stayChip.current = Date.now() + 60000; optBase.current = res; setOpt(p); setKit(p); } : undefined,
               slots: Array.isArray((ovNow as { layout_slots?: unknown }).layout_slots) ? (ovNow as { layout_slots: string[] }).layout_slots : null } : undefined}>
             {overlays}
           </SpatialDemo>
@@ -684,13 +707,14 @@ function Checks({ checks }: { checks: Check[] }) {
       <ul>
         {checks.map((c) => {
           const tone = isInfo(c) ? "info" : isRef(c) ? (refOut(c) ? "ref" : "pass") : c.pass ? "pass" : "fail";
-          const pill = { info: c.class ? cap(c.class) : "Info", pass: isRef(c) ? "Inside guide" : "Pass", ref: "Above guide", fail: "Flag" }[tone];
+          // Plain words only: an informational row or a plain pass needs no label; the content stands on its own.
+          const pill = { info: c.class ? cap(c.class) : "", pass: isRef(c) ? "Inside guide" : "", ref: "Above guide", fail: "Flag" }[tone];
           return (
             <li key={c.name} className={tone === "fail" ? s.fail : tone === "ref" ? s.refRow : ""}>
               <span className={s.cn}>{cap(c.name)}</span>
               <b>{val(c)}</b>
-              <span className={{ info: s.info, pass: s.pass, ref: s.ref, fail: s.flag }[tone]}>{pill}</span>
-              <span className={s.band}>{c.band}</span>
+              {pill ? <span className={{ info: s.info, pass: s.pass, ref: s.ref, fail: s.flag }[tone]}>{pill}</span> : <span />}
+              <span className={s.band}>{c.band?.replace(/^Reonic:\s*/, "Reonic planners: ").replace(/(\d)%/g, "$1 %")}</span>
               {(() => {
                 const num = typeof c.value === "number" ? n2(c.value) : String(c.value);
                 const m = c.message ?? (isRef(c) && /battery/i.test(c.name) ? (!refOut(c) ? `${num}, inside the guide` : `Battery ${num} kWh per kWh of daily use: above Reonic's 0.6 guide`) : null);

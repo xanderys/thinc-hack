@@ -250,7 +250,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const k = keyOf(inputs, overrides);
     const hit = designs.current.get(k);
     if (hit) { land({ ok: true, data: hit }, asked, why, fixed, null); return; }
-    if (cause.current) setPending((p) => p ?? Date.now());
+    // A lead that opens on stored kit edits: its first figures come from the refine, so they shimmer until it lands
+    // (a lead without overrides shows its design at once, those figures are final).
+    if (cause.current || fixed) setPending((p) => p ?? Date.now());
     // A stored draft from before the engine named products (no skus) is read again once, so the rows can name them.
     if (seedDraft.current) { if ("skus" in seedDraft.current) seedDesign(inputs, seedDraft.current); seedDraft.current = null; }   // the plain draft for these facts, also when opening on kit edits
     const t = setTimeout(async () => {
