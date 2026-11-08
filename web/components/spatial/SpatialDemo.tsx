@@ -123,6 +123,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   useEffect(() => {
     if (!wantScene || !host.current || !overlay.current || !svg.current) return;
     let dead = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     import("./scene").then(({ SpatialScene }) => {
       if (dead || !host.current || !overlay.current || !svg.current) return;
       const sc = new SpatialScene(host.current, overlay.current, svg.current, {
@@ -132,9 +133,15 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
       scene.current = sc;
       setReady(true);
       setGlbErr(null);
-      sc.loadGlb(glbUrl, (e) => { if (!dead) { setGlbErr(e); setGlbOk(!e); } });
+      // A cold engine can miss the first glb request: one quiet retry after 4 s before the error shows.
+      const load = (n: number) => sc.loadGlb(glbUrl, (e) => {
+        if (dead) return;
+        if (e && n < 1) { retry = setTimeout(() => { if (!dead) load(n + 1); }, 4000); return; }
+        setGlbErr(e); setGlbOk(!e);
+      });
+      load(0);
     });
-    return () => { dead = true; scene.current?.dispose(); scene.current = null; setReady(false); setGlbOk(false); prevLayer.current = 0; };
+    return () => { dead = true; if (retry) clearTimeout(retry); scene.current?.dispose(); scene.current = null; setReady(false); setGlbOk(false); prevLayer.current = 0; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantScene, glbUrl, reduce, retryGlb]);
 
@@ -153,7 +160,8 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   // Ground picture and imagery dates for the layers menu (satGround.ts, whiteMode.ts).
   const groundOrigin = (model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32;
   const groundKey = isOrigin(groundOrigin) ? groundOrigin.join(",") : "";
-  useEffect(() => { if (glbOk && isOrigin(groundOrigin)) scene.current?.groundFor(groundOrigin); }, [glbOk, groundKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Handed to the scene whenever both exist, in any order; the scene starts it once its glb is in.
+  useEffect(() => { if (ready && isOrigin(groundOrigin)) scene.current?.groundFor(groundOrigin); }, [ready, groundKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
   const vo = useViewOpts();
   const credit = vo.google && vo.ground === "google" && vo.credit ? ` · Ground: ${vo.credit}` : "";
