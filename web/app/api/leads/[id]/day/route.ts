@@ -16,6 +16,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return NextResponse.json(mockDay(day, { battery_kwh: num("battery_kwh"), wallbox_kw: num("wallbox_kw"), heatpump_kw: num("heatpump_kw") }));
   }
   q.delete("mockday");
+  // Local runs can point the day at a second engine (DAY_ENGINE_URL) while the rest reads the usual one.
+  if (process.env.DAY_ENGINE_URL && process.env.VERCEL_ENV !== "production") {
+    try {
+      const r = await fetch(`${process.env.DAY_ENGINE_URL}/api/leads/${encodeURIComponent(id)}/day?${q}`, { headers: process.env.INTAKE_SECRET ? { "X-Intake-Secret": process.env.INTAKE_SECRET } : {}, cache: "no-store", signal: AbortSignal.timeout(20000) });
+      return NextResponse.json(await r.json().catch(() => ({ error: `${r.status} ${r.statusText}` })), { status: r.status });
+    } catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 502 }); }
+  }
   const out = await callEngine("GET", `/api/leads/${encodeURIComponent(id)}/day`, q, undefined,
     process.env.INTAKE_SECRET ? { "X-Intake-Secret": process.env.INTAKE_SECRET } : undefined);
   return NextResponse.json(out.body, { status: out.status });

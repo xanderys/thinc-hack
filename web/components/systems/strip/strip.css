@@ -44,6 +44,12 @@
 .dv-figs .dv-skel { display: inline-block; width: 44px; height: 18px; vertical-align: -3px; }
 .dv-err { margin: 0; font-size: 12px; color: var(--ink-2); }
 .dv-err button { all: unset; cursor: pointer; color: var(--accent); font-weight: 600; margin-left: 6px; }
-@media (max-width: 760px) { .dv-figs b { font-size: 15.5px; } .ds-svg { height: 44px; } .ds-skel { height: 72px; } }
+@media (max-width: 760px) {
+  .dv { gap: 4px; } .ds { gap: 2px; } .ds-plot { gap: 2px; }
+  .dv-figs b { font-size: 15px; } .dv-figs p { font-size: 12px; }
+  .ds-season button { height: 24px; padding: 0 7px; }
+  .ds-svg { height: 30px; } .ds-band { height: 8px; } .ds-skel { height: 52px; }
+  .ds-axis { height: 11px; font-size: 9.5px; }
+}
 @media (prefers-reduced-motion: reduce) { .ds-skel, .dv-skel { animation: none; } }
 .dv-figs .dv-was { font-size: inherit; font-weight: 600; color: var(--ink-2); }

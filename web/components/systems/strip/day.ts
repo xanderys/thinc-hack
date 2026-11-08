@@ -21,7 +21,15 @@ export function atSize<T>(m: BySize<T> | undefined, size: number | null | undefi
 }
 
 const memo = new Map<string, Promise<Day | string>>();
-const mockOn = () => typeof window !== "undefined" && new URLSearchParams(location.search).get("mockday") === "1";
+// Read once at load: the lead page rewrites its URL, so the flag is kept for the tab's session.
+const mockOn = () => {
+  if (typeof window === "undefined") return false;
+  try {
+    if (new URLSearchParams(location.search).get("mockday") === "1") sessionStorage.setItem("marquee.mockday", "1");
+    return sessionStorage.getItem("marquee.mockday") === "1";
+  } catch { return false; }
+};
+if (typeof window !== "undefined") mockOn();
 
 function fetchDay(lead: string, day: Season, sizes: Sizes, key: string): Promise<Day | string> {
   const q = new URLSearchParams({ day });
