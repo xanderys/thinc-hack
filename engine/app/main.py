@@ -102,6 +102,11 @@ def startup():
     threading.Thread(target=warm_hourly, daemon=True).start()
     if STATE.get("inbox") is None:
         threading.Thread(target=warm_inbox, daemon=True).start()
+    try:
+        from . import catalogue
+        catalogue.build()  # before any design snaps to it
+    except Exception:
+        log.exception("catalogue build failed")
     leads.load_all()  # before anything can create or step a lead
     snapshot_untouched()
     for l in leads.LEADS.values():  # the pinned demo leads carry Xander's number for the WhatsApp copilot
@@ -398,6 +403,7 @@ def design(req: DesignReq):
 
 
 FIELDS = {"pv_kwp": "pv", "battery_kwh": "battery", "heatpump_kw": "heatpump", "wallbox_kw": "wallbox", "inverter_kw": "inverter"}
+SKU_KEYS = ("sku_module", "sku_battery", "sku_inverter", "sku_wallbox", "sku_heatpump")  # v2.15: a brand per part
 
 
 @app.post("/api/refine")
@@ -412,9 +418,10 @@ def refine(req: RefineReq):
     check_inputs(inp)
     if "layout_slots" in (req.overrides or {}):
         _slots(req.overrides["layout_slots"])  # stored on the lead by the intake step; the design itself is sized from pv_kwp
-    bad = [k for k in (req.overrides or {}) if k not in FIELDS and k != "layout_slots"]
+    bad = [k for k in (req.overrides or {}) if k not in FIELDS and k != "layout_slots" and k not in SKU_KEYS]
     if bad:
-        return err(422, f"Unknown override field: {', '.join(bad)}. Allowed: {', '.join(FIELDS)}, layout_slots.")
+        return err(422, f"Unknown override field: {', '.join(bad)}. Allowed: {', '.join(FIELDS)}, layout_slots, {', '.join(SKU_KEYS)}.")
+    sku_ov = {k: v for k, v in (req.overrides or {}).items() if k in SKU_KEYS and isinstance(v, str) and v}
     ov = {k: v for k, v in (req.overrides or {}).items() if k in FIELDS}
     nonnum = [k for k, v in ov.items() if v is not None and v != "include" and not (isinstance(v, (int, float)) and not isinstance(v, bool))]
     if nonnum:
@@ -423,7 +430,7 @@ def refine(req: RefineReq):
         ov.pop("inverter_kw")
     check_design({k: v for k, v in ov.items() if v != "include"}, "overrides")
     before = eng.predict(inp, full=False)  # only its sizes feed the diff
-    after = eng.predict(inp, ov)
+    after = eng.predict(inp, {**ov, **sku_ov})
     diff = []
     for k, comp in FIELDS.items():
         a, b = before["design"][k], after["design"][k]
@@ -721,6 +728,10 @@ def _clean_overrides(raw: dict) -> dict:
     """Validate kit overrides exactly as /api/refine does; raises InputError (422) on a bad key or value."""
     raw = dict(raw)
     slots = _slots(raw.pop("layout_slots")) if "layout_slots" in raw else None
+    skus = {k: raw.pop(k) for k in list(raw) if k in SKU_KEYS}
+    bad_sku = [k for k, v in skus.items() if v is not None and not (isinstance(v, str) and 0 < len(v) <= 40)]
+    if bad_sku:
+        raise InputError(f"{', '.join(bad_sku)} must be a brand name or null.")
     bad = [k for k in raw if k not in FIELDS]
     if bad:
         raise InputError(f"Unknown override field: {', '.join(bad)}. Allowed: {', '.join(FIELDS)}.")
@@ -731,6 +742,7 @@ def _clean_overrides(raw: dict) -> dict:
     check_design({k: v for k, v in ov.items() if v != "include"}, "overrides")
     if slots is not None:
         ov["layout_slots"] = slots
+    ov.update({k: v for k, v in skus.items() if v})
     return ov
 
 
@@ -1411,7 +1423,7 @@ def approve_lead(lead_id: str, req: Optional[ApproveReq] = None, x_intake_secret
         return _approve_conflict(lead, "Approval needs the selected variant.")
     shown = {k: (req.design or {}).get(k) or None for k in model_mod.SIZES} if req.design else None
     if variant == "edit":
-        ov = {k: v for k, v in (req.overrides or {}).items() if k in FIELDS}
+        ov = {k: v for k, v in (req.overrides or {}).items() if k in FIELDS or (k in SKU_KEYS and isinstance(v, str) and v)}
         if not ov and shown:  # the hand edit as shown: every size fixed, none re-sized
             ov = {k: (shown[k] if shown[k] is not None else None) for k in model_mod.SIZES}
         if not ov:
@@ -1509,6 +1521,14 @@ def lead_decision(lead_id: str, req: DecisionReq, request: Request):
 @app.get("/api/intake/priors")
 def intake_priors(x_intake_secret: Optional[str] = Header(None)):
     return leads.priors()
+
+
+@app.get("/api/catalogue")
+def catalogue_route():
+    """v2.15: one SKU catalogue for every installer: per part the products (brand, name, size, how often they appear in
+    the data pack), the ladder designs snap to and the default SKU per size (aggregates only, no project rows)."""
+    from . import catalogue
+    return catalogue.public()
 
 
 @app.get("/api/eval")

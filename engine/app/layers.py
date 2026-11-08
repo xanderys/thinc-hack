@@ -309,7 +309,7 @@ def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
             continue
         y = p.get("yield_shaded_kwh_per_kwp") or p.get("yield_kwh_per_kwp")
         loss = p.get("shade_loss_share")
-        segs.append({"name": _face_name(p), "value": round(n * 0.45, 2), "unit": "kWp", "modules": n, "source_tag": "address",
+        segs.append({"name": _face_name(p), "value": round(n * 0.463, 2), "unit": "kWp", "modules": n, "source_tag": "address",
                      "citation": f"LoD2 roof plane, {y:,.0f} kWh per kWp after shade" + (f" ({loss:.0%} lost to shade, DOM20 ray-cast)" if loss is not None else "")})
     pv_reason = (comps.get("pv") or {}).get("reason") or ""
     roof_cap = ((inp.get("roof") or {}).get("max_kwp"))

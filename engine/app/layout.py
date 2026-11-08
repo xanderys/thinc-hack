@@ -1,4 +1,4 @@
-"""One pipeline for every design with an address: size -> lay out exactly round(pv_kwp / 0.45) modules on the real planes by
+"""One pipeline for every design with an address: size -> lay out exactly round(pv_kwp / 0.463) modules on the real planes by
 shaded yield (roof/model lay_out) -> simulate the hourly year on those planes with their shaded yields. Economics, the day,
 the night and the 3D panels all read this one layout, so they cannot disagree."""
 import hashlib
@@ -8,7 +8,7 @@ import logging
 from . import hourly, roofs
 
 log = logging.getLogger("engine")
-MODULE_KWP = 0.45
+MODULE_KWP = 0.463  # v2.15: Sunpro 463 W, the catalogue module
 FLAT_TILT = 15.0  # flat roofs carry modules on 15 degree south racks (same assumption as planner_rules)
 _MEMO: dict = {}
 
@@ -93,14 +93,16 @@ def value_frontier(eng, inp: dict, design: dict) -> list:
     inst = inp["installer_id"]
     t = base_features(inp, inst)["t"]
     raw = _frontier(eng.rules_inputs(inp), eng.rules_catalogue(inst, t), None)
-    cands = {(r["kwp"], r["kwh"]) for r in raw if r["kwp"]} | {(design.get("pv_kwp") or 0.0, design.get("battery_kwh") or 0.0)}
+    from . import catalogue as C  # v2.15: every variant is catalogue sizes (463 W modules, the battery ladder)
+    snapb = lambda b: C._nearest(float(b), C.LADDER["battery_kwh"]) if b else 0.0
+    cands = {(C.snap_pv(r["kwp"]), snapb(r["kwh"])) for r in raw if r["kwp"]} | {(design.get("pv_kwp") or 0.0, design.get("battery_kwh") or 0.0)}
     base = roof_to_sim({kk: v for kk, v in inp.items() if not kk.startswith("_")})
     keep = {kk: design.get(kk) for kk in ("heatpump_kw", "wallbox_kw")}
     rows = []
     for pv, b in sorted(cands):
         if not pv:
             continue
-        d = {"pv_kwp": pv, "inverter_kw": design.get("inverter_kw") if pv == design.get("pv_kwp") else rules.inverter_kw(pv),
+        d = {"pv_kwp": pv, "inverter_kw": design.get("inverter_kw") if pv == design.get("pv_kwp") else C.snap_inverter(pv),
              "battery_kwh": b or None, **keep}
         lo = layout(inp, pv)
         chosen = pv == (design.get("pv_kwp") or 0) and (b or 0) == (design.get("battery_kwh") or 0)

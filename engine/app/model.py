@@ -315,11 +315,12 @@ class Engine:
                 "median_size": q(50), "p25": q(25), "p75": q(75)}
 
     # ---------- prediction ----------
-    def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
-        """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain."""
+    def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True, snap: bool = True) -> dict:
+        """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain.
+        snap: sizes go to the SKU catalogue's ladder (v2.15); the exam paths pass False."""
         mode = RECOMMENDER["mode"]
         if mode in ("rules", "calibrated", "band", "readout", "rules5"):
-            out = self.predict_rules(inp, overrides, full, extras, engine=mode)
+            out = self.predict_rules(inp, overrides, full, extras, engine=mode, snap=snap)
         else:
             out = self.predict_ml(inp, overrides, full, extras)
         out = with_heat_bound(inp, out)
@@ -339,9 +340,26 @@ class Engine:
             stated_direction_check(inp, out)
         except Exception:
             pass
-        try:  # v2.14: the rate card behind the investment total
+        try:  # v2.14: each variant's modules per face (the slot grid's first n per face are placed), so one call carries every layout
+            if inp.get("address") and out.get("variants"):
+                from . import shading as _sh
+                for v in out["variants"]:
+                    if snap:
+                        from . import catalogue as _C
+                        v["skus"] = _C.snap(v.get("design") or {}, overrides)[1]
+                    kwp = (v.get("design") or {}).get("pv_kwp")
+                    counts = _sh.chosen_counts(inp["address"], kwp) if kwp else {}
+                    v["layout"] = {"modules_per_face": counts, "modules": sum(counts.values())}
+        except Exception:
+            log.exception("variant layouts")
+        try:  # v2.14: the rate card behind the investment total (v2.15: each line names its SKU)
             from .hourly import sim as _sim
             out["rates"] = _sim.rates(inp, out["design"])
+            names = {"pv": "module", "battery": "battery", "wallbox": "wallbox", "heatpump": "heatpump"}
+            for ln in out["rates"].get("lines", []):
+                sk = (out.get("skus") or {}).get(names.get(ln["item"], ""))
+                if sk:
+                    ln["sku"] = sk["name"] + (f" x {sk['modules']}" if sk.get("modules") else "")
         except Exception:
             log.exception("rates")
         add_hashes(out, "edit" if overrides else "expert")
@@ -354,7 +372,7 @@ class Engine:
                 "wallbox_kw": self.wallbox_default(inst)}
 
     def predict_rules(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True,
-                      engine: str = "rules") -> dict:
+                      engine: str = "rules", snap: bool = True) -> dict:
         """v2.0: design from app/planner_rules (REONIC PHYSICS), wrapped with the same evidence, physics and variants."""
         from . import planner_rules
         inst = inp["installer_id"]
@@ -368,7 +386,7 @@ class Engine:
         if engine == "rules5":
             from .planner_rules import rules5 as R5
             fn = R5.recommend
-        r = rules_cached(fn, rec_in, self.rules_catalogue(inst, t), ov)
+        r = rules_cached(fn, rec_in, self.rules_catalogue(inst, t), {k: v for k, v in ov.items() if k in SIZES})
         design = {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
         nb = self.neighbours(inp, inst)
         comps = {}
@@ -398,10 +416,28 @@ class Engine:
                                     reason=f"No battery: {design.get('pv_kwp') or 0:g} kWp is under {MIN_PV_FOR_BATTERY:g} kWp, too little "
                                            f"PV to fill one (the rule gave {was:g} kWh; only 6 of 1,256 signed designs are under "
                                            f"{MIN_PV_FOR_BATTERY:g} kWp). The planner can still add one.")
+        skus = {}
+        if snap:  # v2.15: every size a real product from the catalogue; economics, layout and variants run on these sizes
+            from . import catalogue
+            before = dict(design)
+            design, skus = catalogue.snap(design, ov)
+            for c in COMPONENTS:
+                k = TARGET[c]
+                if design.get(k) != before.get(k) and design.get(k):
+                    comps[c]["size"] = design[k]
+                    comps[c]["reason"] = (comps[c].get("reason") or "") + f" Catalogue size: {design[k]:g} {'kWp' if k == 'pv_kwp' else catalogue.UNIT[catalogue.PART[k]]}" + \
+                        (f" ({skus['module']['modules']} x {catalogue.MODULE_W} W modules)." if k == "pv_kwp" and skus.get("module") else ".")
+            for c, part in (("pv", "module"), ("battery", "battery"), ("wallbox", "wallbox"), ("heatpump", "heatpump")):
+                if skus.get(part):
+                    comps[c]["sku"] = skus[part]
+            if skus.get("inverter"):
+                comps["pv"]["inverter_sku"] = skus["inverter"]
         phys_inp = {**inp, **(r.get("sim_inputs") or {})}  # the planes and yields rules-2 swept, so economics match its pick
+        if snap and design.get("pv_kwp") != r["design"].get("pv_kwp") and inp.get("address"):
+            phys_inp.pop("pv_planes", None)  # the swept planes were for the unsnapped size: lay out the catalogue size again
         econ, plaus, opt = self._physics(phys_inp, design, inst, t, full, extras)
         out = {"design": design, "explanation": list(r.get("explanation") or [])[:6], "components": comps, "plausibility": plaus,
-               "economics": econ,
+               "economics": econ, **({"skus": skus} if skus else {}),
                "model_version": {"calibrated": "rules-1-calibrated"}.get(engine) or r.get("version") or planner_rules.RULES_VERSION,
                "rules": r.get("rules", [])}
         if engine == "readout":  # rules-5's wording (textbook, planners, design per rule) reads best: serve it when it exists
@@ -689,7 +725,7 @@ class Engine:
             return pv
         fits = cat[cat <= m + 1e-9]
         self._capped[id(inp)] = True
-        return float(fits.max()) if len(fits) else round(int(m / 0.45) * 0.45, 2)
+        return float(fits.max()) if len(fits) else round(int(m / 0.463) * 0.463, 2)
 
     def wallbox_default(self, inst) -> float:
         """The installer's wallbox size if it sells one size at least 60% of the time, else 11 kW (registration only;
@@ -786,7 +822,7 @@ class Engine:
         out = []
         for r, d, w in self._inbox[:limit]:
             inp = row_inputs(r)
-            full = self.predict(inp, full=False)
+            full = self.predict(inp, full=False, snap=False)  # the replay is scored like the exam: unsnapped
             d = full["design"]  # the flags judge the design shown on the row, not the order-time draft
             w = {c: bool(rules.within(c, [d[TARGET[c]] or 0.0], [r[TARGET[c]]])[0]) for c in COMPONENTS}
             w["all"] = all(w.values())

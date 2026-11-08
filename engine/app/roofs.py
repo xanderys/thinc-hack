@@ -94,7 +94,7 @@ def _floor_from_model(address: str) -> dict:
     return out
 
 
-PANEL_KW = 0.45
+PANEL_KW = 0.463  # v2.15: the catalogue module
 
 
 def lookup(address: str) -> dict:

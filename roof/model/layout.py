@@ -6,7 +6,7 @@ import math
 import numpy as np
 from shapely.geometry import Polygon, box
 
-PANEL_W, PANEL_M2 = 450, 2.0
+PANEL_W, PANEL_M2 = 463, 2.0  # v2.15: Sunpro 463 W TOPCon (the catalogue module), about 2 m2
 MOD_U, MOD_V = 1.134, 1.762      # portrait module, 2.0 m2
 GAP, EDGE = 0.02, 0.30           # between modules; setback from every roof edge
 USABLE = 0.70                    # share of a plane modules may cover
@@ -64,7 +64,7 @@ def slots(plane: dict) -> list[list[list[float]]]:
 def lay_out(planes: list[dict], kwp: float | None) -> dict:
     """Fill planes in order of yield until kwp is reached (None: every plane at sun >= MIN_SUN, full).
     Sets plane["chosen_panels"]; returns the totals."""
-    need = math.inf if kwp is None else math.ceil(kwp * 1000 / PANEL_W - 1e-9)
+    need = math.inf if kwp is None else math.ceil(kwp * 1000 / PANEL_W - 0.02)  # 10.65 kWp is 23 x 463 W rounded to 0.01 kWp
     placed = 0
     y = lambda p: p.get("yield_shaded_kwh_per_kwp", p["yield_kwh_per_kwp"])
     for p in planes:
