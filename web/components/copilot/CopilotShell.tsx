@@ -112,7 +112,7 @@ export default function CopilotShell() {
         </section>
       </div>
       <button type="button" className={s.circle} aria-label="Open the copilot" data-on={asCircle && !open ? "1" : undefined} data-off={off} tabIndex={asCircle && !open ? 0 : -1} onClick={() => setOpen(true)}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3.5" y="6" width="17" height="12" rx="6" /><path d="M8 12h5" /></svg>
+        {/* eslint-disable-next-line @next/next/no-img-element */}<img src="/copilot/friday.png" alt="Copilot" width={56} height={56} draggable={false} />
       </button>
     </Ctx.Provider>
   );
