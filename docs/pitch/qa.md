@@ -20,7 +20,7 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
    No, and we do not claim it. The pack holds 13 heat pumps in 1,619 projects, so an always-none rule scores the same. Our rule fires only when asked or for a gas or oil boiler 20 years or older.
 
 6. **Is your design better than the expert's?**
-   Only under our simulator's assumptions. Where the designs differ, 514 of the 633, ours scores higher on modelled 20-year value on 327 homes, the expert's on 180, median gain about 430 EUR. That is modelled with the same hourly simulation for both, not measured installation performance.
+   Only under our simulator's assumptions. Where the designs differ, 514 of the 633, ours scores higher on modelled 20-year value on 327 homes, the expert's on 180, median gain about 430 EUR. That is modelled with the same hourly simulation and the same market-rate price card for both, not measured installation performance.
 
 7. **Is the physics validated?**
    Compared against HTW Berlin's household solar and storage tables, within about 2 to 5 percentage points on homes without a heat pump or car. EV and heat pump loads have no equivalent reference yet. A reference comparison, not an independent validation.
@@ -37,6 +37,8 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
 ## More
 
 **How do you know it is not overfitting?** Half the data was sealed with a fixed seed before any rule was fitted. Every score on the deck is from that half. The rules were fitted on the other half (654 new-system homes) with 5-fold cross-validation.
+
+**Where do the prices come from?** Public German market rates in a rate card the installer replaces with its own catalogue on day one; the dataset carries no prices, so we never claim price accuracy. Every € in the app sits behind an "i" that reads "Market estimate, not the installer's price list", with the unit rates and the arithmetic.
 
 **Where is the AI?** No language model sizes anything. The engine is readable rules fitted on the data plus hourly physics. Claude only reads a pasted enquiry into facts in the web layer, and ElevenLabs carries Rina's voice.
 
