@@ -14,7 +14,7 @@ import HousePhoto from "./HousePhoto";
 import ModelThumb from "./ModelThumb";
 import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
 import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
-import { PAST_LINE } from "@/components/proposal/Proposal";
+import { pastLine } from "@/lib/past";
 import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
 
 // The facts count is the verdict chip's tooltip, never part of the line.
@@ -344,7 +344,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
                 {c.q ? <span className={`${qs.cardValue} num`}>{offerEur(c.q.expected_offer_eur)}</span> : !lv && <span className="b-skel b-skel-line short" aria-hidden />}
                 {c.q && c.q.verdict !== "visit" && <span className={qs.cardWhy}>{reasonOf(c.q)}</span>}
                 {dec && <span className={`b-dec ${c.status}`}>{STATUS[c.status]} {hm(dec.decided_at)}{c.status === "signed" && span(c.created, dec.decided_at) ? `, ${span(c.created, dec.decided_at)} from enquiry` : ""}</span>}
-                {dec && c.status === "signed" && <span className="b-today">{PAST_LINE}</span>}
+                {dec && c.status === "signed" && pastLine(designs[c.id]?.lead?.facts.installer_id) && <span className="b-today">{pastLine(designs[c.id]?.lead?.facts.installer_id)}</span>}
                 {dec && dec.matches_current === false && <span className="b-warn">Signed a different version than the one on file</span>}
               </button>
             </li>
