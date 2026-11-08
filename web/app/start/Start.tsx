@@ -23,6 +23,9 @@ type Step = "form" | "waiting" | "ringing" | "call" | "thanks" | "declined";
 type Opt = "people" | "heating" | "ev" | "bill_band" | "roof";
 
 const locationOk = (s: string) => /\b\d{5}\b/.test(s);
+// Optional; stored as E.164 with spaces and dashes removed.
+const phoneClean = (s: string) => s.replace(/[\s().-]/g, "");
+const phoneOk = (s: string) => !s.trim() || /^\+[1-9]\d{6,14}$/.test(phoneClean(s));
 const first = (s: string) => s.trim().split(/\s+/)[0] ?? "";
 // Engine statuses before the call has finished; everything else has a design to show.
 const CALLING = new Set(["draft", "in_call"]);
@@ -50,7 +53,7 @@ function Page({ agentId, installerId, test }: Props) {
   const brand = INSTALLER_BRAND[installerId];
   const [step, setStep] = useState<Step>("form");
   const [a, setA] = useState<HomeAnswers>({ name: "", location: "" });
-  const [miss, setMiss] = useState<"name" | "location" | null>(null);
+  const [miss, setMiss] = useState<"name" | "location" | "phone" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [leadError, setLeadError] = useState<string | null>(null);
   const [since, setSince] = useState<number | null>(null);
@@ -58,7 +61,7 @@ function Page({ agentId, installerId, test }: Props) {
   const [speaker, setSpeaker] = useState(true);
   const connected = useRef(false);
   const ring = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const nameRef = useRef<HTMLInputElement>(null), placeRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null), placeRef = useRef<HTMLInputElement>(null), phoneRef = useRef<HTMLInputElement>(null);
 
   const roof = useRef<RoofInfo | null | undefined>(undefined);
   // v1.9: the lead exists from Submit; the engine refines its draft during the call.
@@ -133,6 +136,7 @@ function Page({ agentId, installerId, test }: Props) {
   const submit = () => {
     if (!a.name.trim()) { setMiss("name"); nameRef.current?.focus(); return; }
     if (!locationOk(a.location)) { setMiss("location"); placeRef.current?.focus(); return; }
+    if (!phoneOk(a.phone ?? "")) { setMiss("phone"); phoneRef.current?.focus(); return; }
     setMiss(null); setError(null);
     unlock();   // the submit tap allows every sound that follows
     setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false);
@@ -147,7 +151,7 @@ function Page({ agentId, installerId, test }: Props) {
     // The phone rings only once the engine holds the lead; on failure the form shows the engine's words and a retry.
     const shown = Date.now();
     fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form", ...(test ? { test: true } : {}) }) })
+      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), ...(a.phone?.trim() ? { phone: phoneClean(a.phone) } : {}), installer_id: installerId, facts: homeFacts(a), source: "form", ...(test ? { test: true } : {}) }) })
       .then(async (r) => {
         const b = await r.json().catch(() => ({}));
         if (!r.ok || !b.lead_id) throw new Error(errorText(b) ?? `The engine answered ${r.status} with no lead.`);
@@ -272,6 +276,12 @@ function Page({ agentId, installerId, test }: Props) {
           <input id="h-place" ref={placeRef} className="h-input" autoComplete="street-address" inputMode="text" value={a.location} aria-invalid={miss === "location"}
             placeholder="Katharinenstraße 5, 82008 Unterhaching" onChange={(e) => setA({ ...a, location: e.target.value })} />
           {miss === "location" && <p className="h-why" role="alert">Add a postcode, or the full address.</p>}
+        </div>
+        <div className="h-q">
+          <label htmlFor="h-phone">Phone (optional)</label>
+          <input id="h-phone" ref={phoneRef} className="h-input" type="tel" autoComplete="tel" inputMode="tel" value={a.phone ?? ""} aria-invalid={miss === "phone"}
+            placeholder="+49" onChange={(e) => setA({ ...a, phone: e.target.value })} />
+          {miss === "phone" && <p className="h-why" role="alert">Use the international format, for example +49 151 2345678.</p>}
         </div>
         <p className="h-opt">Optional. Leave anything you are not sure of.</p>
         {pick("people", "People in the home")}
