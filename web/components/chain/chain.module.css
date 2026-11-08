@@ -299,6 +299,8 @@
   .shadeUnder { order: 2; }
   .stripPhone { order: 3; position: sticky; top: var(--hero-h, 46vh); z-index: 4; background: var(--paper); margin: -10px -16px 8px; padding: 6px 16px; width: auto; }
   .stripPhone .scrub { margin: 0; padding: 0; width: 100%; max-width: 100%; }
+  /* The strip is the step switch on a phone: only the open step shows, so it sits right under the strip. */
+  .rail > .item:not(.open) { display: none; }
   /* Nothing wider than the phone: the bar and its form shrink to the screen instead of scrolling the page sideways. */
   .say { width: auto; max-width: 100vw; min-width: 0; }
   .say :global(.s-refine), .say :global(.s-refine > div), .say :global(.s-say) { min-width: 0; max-width: 100%; }

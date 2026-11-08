@@ -200,14 +200,16 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
   );
 }
 
-// The parts outside tolerance, from the row's own fields: only a part whose sizes really differ is named (a part the
-// engine marks out at the shown precision, e.g. 7.2 against 7.2, is not a miss to show).
+// Every part outside tolerance, named with the sizes and by how much, from the row's own fields.
 function miss(r: InboxRow) {
-  const out = KEYS.filter((k) => r.within[k] === false).map((k) => {
-    const f = COMPONENT_DESIGN_FIELD[k], x = sz(r.expert[f], UNIT[k]), o = sz(r.draft[f], UNIT[k]);
-    return x === o ? null : `${NAME[k]}: expert fitted ${x}, draft ${o}.`;
-  }).filter(Boolean);
-  return out.join(" ");
+  return KEYS.filter((k) => r.within[k] === false).map((k) => {
+    const f = COMPONENT_DESIGN_FIELD[k], e = r.expert[f] as number | null, d = r.draft[f] as number | null, u = UNIT[k];
+    if (d == null) return `${NAME[k]}: expert fitted ${sz(e, u)}, draft left it out.`;
+    if (e == null) return `${NAME[k]}: draft added ${sz(d, u)}, expert fitted none.`;
+    const diff = n2(Math.abs(d - e));
+    if (sz(d, u) === sz(e, u)) return `${NAME[k]}: draft ${sz(d, u)}, expert ${sz(e, u)}, flagged outside tolerance by rounding.`;
+    return `${NAME[k]}: draft ${sz(d, u)}, expert ${sz(e, u)}, ${diff} ${u} ${d > e ? "over" : "under"}.`;
+  }).join(" ");
 }
 
 function Replay({ ev }: { ev: EvalX | null }) {
