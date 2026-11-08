@@ -1,47 +1,54 @@
-// Envelope x-ray for the heat pump step: the house as one heated zone (DIN EN 12831 treats a single-family house as one
-// zone), its outer walls, windows, roof and floor tinted by their element's share of the heat loss (lib/envelope.ts:
-// orange loses most, blue least). Walls turn translucent so the floor reads through them. Windows are drawn as the
-// typology's share of each wall, in rows per storey; all of it is estimated from the address.
-// One spring (0.5 s, bounce 0) fades it in and out; it never moves anything, so Reduce Motion keeps the same fade.
+// Envelope x-ray for the heat pump step. The real LoD2 model stays: the aerial-textured roof keeps its pitch and
+// texture under a light tint, and the house's own walls become a frosted glass shell, so the floor reads through
+// them. Each element (roof, outer walls, floor) takes a muted cool-to-warm tint by its share of the heat loss
+// (lib/envelope.ts), and a faint shell just outside each face breathes slowly where heat leaves. No windows are
+// drawn: the engine's window share is a typology figure, not measured facade data. The shares sit in one legend
+// card at the side of the view, with thin leader lines to their face. Numbers are the engine's envelope block.
+// Motion: one critically damped spring (0.5 s, bounce 0) fades it all in and out; the glow breathes over 5 s.
+// Reduce Motion: the same opacity fade (a crossfade) and a still glow.
 import * as THREE from "three";
 import type { Envelope, RoofPlane, V3 } from "./types";
-import { elementsOf, windowShare, type ElementKey } from "@/lib/envelope";
+import { elementsOf, type ElementKey } from "@/lib/envelope";
 
-type Label = { key: string; at: THREE.Vector3; html: string; cls?: string; prio?: number };
-export interface XrayHost { walls: () => THREE.Mesh | null; box: THREE.Box3; planes: () => RoofPlane[]; root: THREE.Object3D }
+type P = { x: number; y: number; ok: boolean };
+export interface XrayHost {
+  walls: () => THREE.Mesh | null; box: THREE.Box3; planes: () => RoofPlane[]; root: THREE.Object3D;
+  overlay: () => HTMLElement | null; project: (v: THREE.Vector3) => P; camera: () => THREE.Camera; reduce: () => boolean;
+}
 
 const toV = ([x, y, z]: V3) => new THREE.Vector3(x, z, -y);
-const WALL = new THREE.Color("#E2DED4");
+const FROST = new THREE.Color("#F3F1EC");
+const INK = "#2A2C33";
 const OMEGA = (2 * Math.PI) / 0.5;
-const STOREY = 3, SILL = 0.9, WIN_H = 1.3, WIN_W = 1.2, GAP = 0.45;
+const BREATH_S = 5;
+// The four shares on the card, in this order; roof falls back to the top ceiling when the roof space is unheated.
+const CARD: ElementKey[] = ["roof", "wall", "window", "floor"];
+
+type Face = { c: THREE.Vector3; n: THREE.Vector3; area: number };
+type Fade = { m: THREE.Material & { opacity: number }; k: number; glow?: number };
 
 export class Xray {
   private env: Envelope | null = null;
-  private f = 0; private v = 0; private goal = 0;
+  private f = 0; private v = 0; private goal = 0; private t = 0;
   private g = new THREE.Group();
-  private mats: { m: THREE.Material & { opacity: number }; k: number }[] = [];
+  private mats: Fade[] = [];
   private wall: { mesh: THREE.Mesh; orig: THREE.BufferGeometry } | null = null;
   private wallsDone = false;
+  private faces: Face[] = [];          // wall facades of this house, for the wall leader
+  private roofAt: THREE.Vector3 | null = null;
+  private floorAt: THREE.Vector3 | null = null;
+  private card: HTMLDivElement | null = null;
+  private lines: SVGSVGElement | null = null;
 
   constructor(private host: XrayHost) { this.g.visible = false; host.root.add(this.g); }
 
-  // env null: fade out, then put the plain walls back.
-  set(env: Envelope | null): Label[] {
+  // env null: fade out, then put the plain walls back. Returns no on-model labels: the shares live in the card.
+  set(env: Envelope | null): never[] {
     if (!env || !env.faces?.length) { this.goal = 0; return []; }
     const same = this.env === env && this.g.children.length > 0;
     this.env = env; this.goal = 1;
     if (!same) this.build();
-    // One chip per element share, pinned where that element is on the house ("Windows 31 %"); the biggest first.
-    const b = this.host.box, w = b.max.x - b.min.x, h = b.max.y - b.min.y, cz = (b.min.z + b.max.z) / 2;
-    const AT: Partial<Record<ElementKey, THREE.Vector3>> = {
-      roof: new THREE.Vector3(b.min.x + w * 0.5, b.max.y + 0.3, cz),
-      ceiling: new THREE.Vector3(b.min.x + w * 0.5, b.max.y + 0.3, cz),
-      wall: new THREE.Vector3(b.min.x + w * 0.2, b.min.y + h * 0.35, b.max.z),
-      window: new THREE.Vector3(b.min.x + w * 0.75, b.min.y + h * 0.45, b.max.z),
-      floor: new THREE.Vector3(b.max.x, b.min.y + 0.2, b.max.z),
-    };
-    return elementsOf(env).list.filter((e) => e.share > 0 && AT[e.key]).sort((x, y) => y.share - x.share).slice(0, 4)
-      .map((e, i) => ({ key: `xray-${e.key}`, at: AT[e.key]!, html: `<i style="background:${e.colour}"></i>${e.name} <b>${Math.round(e.share * 100)} %</b>`, cls: "chip c-el", prio: 4e6 - i }));
+    return [];
   }
 
   private clear() {
@@ -50,38 +57,53 @@ export class Xray {
     this.mats = [];
     if (this.wall) { this.wall.mesh.geometry = this.wall.orig; this.wall = null; }
     this.wallsDone = false;
+    this.faces = []; this.roofAt = null; this.floorAt = null;
+    this.card?.remove(); this.card = null;
+    this.lines?.remove(); this.lines = null;
   }
 
-  private mat(colour: THREE.Color | null, k: number, vertex = false) {
-    const m = new THREE.MeshBasicMaterial({ color: colour ?? 0xffffff, vertexColors: vertex, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
-    this.mats.push({ m, k });
+  private mat(colour: THREE.Color, k: number, opts: { lit?: boolean; glow?: number } = {}) {
+    const p = { color: colour, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false };
+    // Lit glass keeps the facets readable; the emissive share keeps it from going grey in shade.
+    const m = opts.lit ? new THREE.MeshLambertMaterial({ ...p, emissive: colour.clone().multiplyScalar(0.45) }) : new THREE.MeshBasicMaterial(p);
+    this.mats.push({ m, k, glow: opts.glow });
     return m;
   }
 
-  private colour(scale: (s: number) => [number, number, number], share: Map<ElementKey, number>, k: ElementKey) {
-    const s = share.get(k);
-    if (s == null) return null;
-    const [r, g, b] = scale(s);
-    return new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
+  private tints(env: Envelope) {
+    const { list, scale } = elementsOf(env);
+    const share = new Map(list.map((e) => [e.key, e.share]));
+    const c = (k: ElementKey) => {
+      const s = share.get(k);
+      if (s == null || s <= 0) return null;
+      const [r, g, b] = scale(s);
+      return { col: new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace), s };
+    };
+    return { roof: c("roof") ?? c("ceiling"), wall: c("wall"), floor: c("floor"), hi: Math.max(0.01, ...list.map((e) => e.share)) };
   }
 
   private build() {
     this.clear();
-    const env = this.env!;
-    const { list, scale } = elementsOf(env);
-    const share = new Map(list.map((e) => [e.key, e.share]));
-    const roofC = this.colour(scale, share, "roof") ?? this.colour(scale, share, "ceiling");
-    // Roof faces of the house itself.
-    if (roofC) this.host.planes().filter((p) => p.is_target).forEach((p) => {
-      const pts = p.polygon.map(toV), n = new THREE.Vector3();
-      for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; n.x += (a.y - b.y) * (a.z + b.z); n.y += (a.z - b.z) * (a.x + b.x); n.z += (a.x - b.x) * (a.y + b.y); }
-      n.normalize(); if (n.y < 0) n.negate();
-      const u = new THREE.Vector3().subVectors(pts[1], pts[0]).normalize(), v = new THREE.Vector3().crossVectors(n, u).normalize();
-      const tris = THREE.ShapeUtils.triangulateShape(pts.map((q) => new THREE.Vector2(q.dot(u), q.dot(v))), []);
-      const geo = new THREE.BufferGeometry().setFromPoints(pts.map((q) => q.clone().addScaledVector(n, 0.06)));
-      geo.setIndex(tris.flat());
-      const m = new THREE.Mesh(geo, this.mat(roofC, 0.9)); m.renderOrder = 5; this.g.add(m);
-    });
+    const T = this.tints(this.env!);
+    // Roof: the aerial texture stays readable under a light tint; a second sheet just above it carries the glow.
+    if (T.roof) {
+      let best = 0;
+      this.host.planes().filter((p) => p.is_target).forEach((p) => {
+        const pts = p.polygon.map(toV), n = new THREE.Vector3();
+        for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; n.x += (a.y - b.y) * (a.z + b.z); n.y += (a.z - b.z) * (a.x + b.x); n.z += (a.x - b.x) * (a.y + b.y); }
+        n.normalize(); if (n.y < 0) n.negate();
+        const u = new THREE.Vector3().subVectors(pts[1], pts[0]).normalize(), v = new THREE.Vector3().crossVectors(n, u).normalize();
+        const tris = THREE.ShapeUtils.triangulateShape(pts.map((q) => new THREE.Vector2(q.dot(u), q.dot(v))), []).flat();
+        const sheet = (lift: number, mat: THREE.Material, order: number) => {
+          const geo = new THREE.BufferGeometry().setFromPoints(pts.map((q) => q.clone().addScaledVector(n, lift)));
+          geo.setIndex(tris);
+          const m = new THREE.Mesh(geo, mat); m.renderOrder = order; this.g.add(m);
+        };
+        sheet(0.05, this.mat(T.roof!.col, 0.34), 5);
+        sheet(0.45, this.mat(T.roof!.col, 0, { glow: 0.22 * (T.roof!.s / T.hi) }), 7);
+        if (p.area_m2 > best) { best = p.area_m2; this.roofAt = pts.reduce((a, q) => a.add(q), new THREE.Vector3()).multiplyScalar(1 / pts.length).addScaledVector(n, 0.1); }
+      });
+    }
     this.buildWalls();
   }
 
@@ -90,31 +112,41 @@ export class Xray {
     const wm = this.host.walls(), env = this.env;
     if (!wm || !env || this.wallsDone) return;
     this.wallsDone = true;
-    const { list, scale } = elementsOf(env);
-    const share = new Map(list.map((e) => [e.key, e.share]));
-    const wallC = this.colour(scale, share, "wall"), winC = this.colour(scale, share, "window"), floorC = this.colour(scale, share, "floor");
-    const src = wm.geometry.index ? wm.geometry.toNonIndexed() : wm.geometry.clone();
+    const T = this.tints(env);
+    const src = wm.geometry.index ? wm.geometry.toNonIndexed() : wm.geometry;
     const pos = src.getAttribute("position");
     wm.updateWorldMatrix(true, false);
     const inHouse = this.host.box.clone().expandByScalar(0.8);
-    const mine: THREE.Vector3[] = [], rest: number[] = [];
-    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    const mine: THREE.Vector3[] = [], keep: number[] = [];
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), m = new THREE.Vector3();
     for (let i = 0; i < pos.count; i += 3) {
       a.fromBufferAttribute(pos, i).applyMatrix4(wm.matrixWorld); b.fromBufferAttribute(pos, i + 1).applyMatrix4(wm.matrixWorld); c.fromBufferAttribute(pos, i + 2).applyMatrix4(wm.matrixWorld);
-      const m = a.clone().add(b).add(c).multiplyScalar(1 / 3);
-      if (inHouse.containsPoint(new THREE.Vector3(m.x, Math.min(m.y, inHouse.max.y - 0.1), m.z))) mine.push(a.clone(), b.clone(), c.clone());
-      else for (let j = 0; j < 3; j++) rest.push(pos.getX(i + j), pos.getY(i + j), pos.getZ(i + j));
+      m.copy(a).add(b).add(c).multiplyScalar(1 / 3);
+      if (inHouse.containsPoint(m.setY(Math.min(m.y, inHouse.max.y - 0.1)))) mine.push(a.clone(), b.clone(), c.clone());
+      else keep.push(i, i + 1, i + 2);
     }
     if (!mine.length) return;
-    // The plain walls of this house leave the shared wall mesh while the x-ray is on; a grey copy fades out.
-    const restG = new THREE.BufferGeometry(); restG.setAttribute("position", new THREE.Float32BufferAttribute(rest, 3)); restG.computeVertexNormals();
+    // The house's own walls leave the shared wall mesh while the x-ray is on (every attribute kept, so the
+    // neighbours keep their shading); the glass shell stands in their place. The massing's edge lines stay.
+    const rest = new THREE.BufferGeometry();
+    for (const [name, attr] of Object.entries(src.attributes)) {
+      const A = attr as THREE.BufferAttribute, out = new Float32Array(keep.length * A.itemSize);
+      keep.forEach((j, o) => { for (let q = 0; q < A.itemSize; q++) out[o * A.itemSize + q] = A.getComponent(j, q); });
+      rest.setAttribute(name, new THREE.BufferAttribute(out, A.itemSize));
+    }
     this.wall = { mesh: wm, orig: wm.geometry };
-    wm.geometry = restG;
-    const geo = new THREE.BufferGeometry().setFromPoints(mine);
-    const grey = new THREE.Mesh(geo, this.mat(WALL, -1)); grey.renderOrder = 1; this.g.add(grey);
-    if (wallC) { const t = new THREE.Mesh(geo, this.mat(wallC, 0.55)); t.renderOrder = 4; this.g.add(t); }
+    wm.geometry = rest;
 
-    // Facades: target triangles grouped by plane; vertical ones get windows.
+    const glass = FROST.clone();
+    if (T.wall) glass.lerp(T.wall.col, 0.62);
+    const geo = new THREE.BufferGeometry().setFromPoints(mine); geo.computeVertexNormals();
+    const shell = new THREE.Mesh(geo, this.mat(glass, 0.58, { lit: true })); shell.renderOrder = 4; this.g.add(shell);
+    const lm = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0, depthWrite: false });
+    this.mats.push({ m: lm, k: 0.38 });
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), lm);
+    edges.renderOrder = 6; this.g.add(edges);
+
+    // Facades (vertical faces grouped by plane): leader targets, and a glow sheet a little outside each one.
     const ctr = this.host.box.getCenter(new THREE.Vector3());
     const groups = new Map<string, { n: THREE.Vector3; pts: THREE.Vector3[]; area: number }>();
     for (let i = 0; i < mine.length; i += 3) {
@@ -122,70 +154,123 @@ export class Xray {
       const n = new THREE.Vector3().subVectors(q, p).cross(new THREE.Vector3().subVectors(r, p));
       const area = n.length() / 2; if (area < 0.05) continue;
       n.normalize();
-      const m = p.clone().add(q).add(r).multiplyScalar(1 / 3);
-      if (n.dot(m.clone().sub(ctr)) < 0) n.negate();
+      const mid = p.clone().add(q).add(r).multiplyScalar(1 / 3);
+      if (n.dot(mid.clone().sub(ctr)) < 0) n.negate();
       if (Math.abs(n.y) > 0.2) continue;
       const k = `${Math.round(Math.atan2(n.x, -n.z) * 36 / Math.PI)}:${Math.round(n.dot(p) / 0.3)}`;
       const gq = groups.get(k) ?? { n, pts: [], area: 0 };
       gq.pts.push(p, q, r); gq.area += area; groups.set(k, gq);
     }
-    const env2 = env;
-    if (winC) {
-      const wins: THREE.Vector3[] = [];
+    if (T.wall) {
+      const halo: THREE.Vector3[] = [];
       groups.forEach(({ n, pts, area }) => {
-        if (area < 4) return;
-        const az = ((Math.atan2(n.x, -n.z) * 180) / Math.PI + 360) % 360;
-        const s = windowShare(env2, az);
-        if (s <= 0) return;
-        const u = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), n).normalize();
-        const us = pts.map((p) => p.dot(u)), u0 = Math.min(...us), u1 = Math.max(...us);
-        const y0 = Math.min(...pts.map((p) => p.y));
-        // Full-height part of the wall: the lower of the tops at its two ends (a gable's eaves, a rectangle's top).
-        const edge = (uu: number) => Math.max(...pts.filter((p) => Math.abs(p.dot(u) - uu) < 0.25).map((p) => p.y));
-        const top = Math.min(edge(u0), edge(u1));
-        const rows = Math.max(0, Math.floor((top - y0 - SILL - WIN_H) / STOREY) + 1);
-        const width = u1 - u0;
-        if (!rows || width < WIN_W + 0.6) return;
-        const per = Math.max(1, Math.min(Math.floor((width - 0.6) / (WIN_W + GAP)), Math.round((s * area) / (rows * WIN_W * WIN_H))));
-        const d = n.dot(pts[0]) + 0.04, step = width / per;
-        for (let r = 0; r < rows; r++) for (let i = 0; i < per; i++) {
-          const cu = u0 + step * (i + 0.5), by = y0 + r * STOREY + SILL;
-          const at = (du: number, dy: number) => u.clone().multiplyScalar(cu + du).addScaledVector(n, d).setY(by + dy);
-          const [p0, p1, p2, p3] = [at(-WIN_W / 2, 0), at(WIN_W / 2, 0), at(WIN_W / 2, WIN_H), at(-WIN_W / 2, WIN_H)];
-          wins.push(p0, p1, p2, p0, p2, p3);
-        }
+        if (area < 3) return;
+        pts.forEach((p) => halo.push(p.clone().addScaledVector(n, 0.4)));
+        const c0 = pts.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
+        this.faces.push({ c: c0.addScaledVector(n, 0.05), n, area });
       });
-      if (wins.length) { const m = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints(wins), this.mat(winC, 0.95)); m.renderOrder = 6; this.g.add(m); }
+      if (halo.length) { const h = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints(halo), this.mat(T.wall.col, 0, { glow: 0.2 * (T.wall.s / T.hi) })); h.renderOrder = 7; this.g.add(h); }
     }
-    // Floor: the hull of the walls' foot, just above the ground, seen through the walls.
-    if (floorC) {
+    // Floor: the hull of the walls' foot, just above the ground, seen through the glass.
+    if (T.floor) {
       const foot = mine.filter((p) => p.y < this.host.box.min.y + 0.4).map((p) => new THREE.Vector2(p.x, p.z));
       const hull = convexHull(foot);
       if (hull.length >= 3) {
         const y = this.host.box.min.y + 0.06;
-        const tris = THREE.ShapeUtils.triangulateShape(hull, []);
         const geoF = new THREE.BufferGeometry().setFromPoints(hull.map((p) => new THREE.Vector3(p.x, y, p.y)));
-        geoF.setIndex(tris.flat());
-        const m = new THREE.Mesh(geoF, this.mat(floorC, 0.9)); m.renderOrder = 3; this.g.add(m);
+        geoF.setIndex(THREE.ShapeUtils.triangulateShape(hull, []).flat());
+        const fm = new THREE.Mesh(geoF, this.mat(T.floor.col, 0.62)); fm.renderOrder = 3; this.g.add(fm);
+        const cx = hull.reduce((s, p) => s.add(p), new THREE.Vector2()).multiplyScalar(1 / hull.length);
+        this.floorAt = new THREE.Vector3(cx.x, y, cx.y);
       }
     }
     this.apply();
   }
 
+  // The legend card: four shares, the engine's numbers, with a thin leader to each face that is drawn.
+  private ensureCard() {
+    const ov = this.host.overlay(), env = this.env;
+    if (!ov || !env || this.card) return;
+    const { list } = elementsOf(env);
+    const by = new Map(list.map((e) => [e.key, e]));
+    const rows = CARD.map((k) => (k === "roof" && !(by.get("roof")?.share) ? by.get("ceiling") ?? by.get("roof") : by.get(k)))
+      .filter((e): e is NonNullable<typeof e> => !!e && e.share > 0);
+    if (!rows.length) return;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("aria-hidden", "true");
+    Object.assign(svg.style, { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", pointerEvents: "none", overflow: "visible", zIndex: "2" });
+    const card = document.createElement("div");
+    card.className = "xr-card";
+    card.setAttribute("role", "group"); card.setAttribute("aria-label", "Heat loss by element");
+    Object.assign(card.style, {
+      position: "absolute", zIndex: "3", pointerEvents: "none", background: "#fff", border: "1px solid var(--rule-strong, #d6d3cb)",
+      borderRadius: "12px", padding: "8px 10px 7px", font: "12.5px/1.25 var(--font-sans), sans-serif", color: "var(--ink, #0A0C14)",
+      display: "grid", gap: "4px", minWidth: "148px",
+    });
+    const pc = (s: number) => `${Math.round(s * 100)} %`;
+    card.innerHTML = `<div style="font-weight:600;margin-bottom:1px">Heat loss</div>` +
+      rows.map((e) => `<div data-k="${e.key === "ceiling" ? "roof" : e.key}" style="display:grid;grid-template-columns:8px 1fr auto;gap:7px;align-items:center;white-space:nowrap">` +
+        `<i style="width:8px;height:8px;border-radius:50%;background:${e.colour}"></i><span>${e.name}</span>` +
+        `<b style="font-weight:600;font-variant-numeric:tabular-nums">${pc(e.share)}</b></div>`).join("") +
+      `<div style="font-size:11px;color:var(--ink-3, #8a8d96);margin-top:2px">Estimated from address</div>`;
+    ov.appendChild(svg); ov.appendChild(card);
+    this.card = card; this.lines = svg;
+  }
+
+  private place() {
+    const card = this.card, svg = this.lines, ov = this.host.overlay();
+    if (!card || !svg || !ov) return;
+    const cs = getComputedStyle(card);
+    const num = (v: string, d: number) => { const x = parseFloat(cs.getPropertyValue(v)); return Number.isFinite(x) ? x : d; };
+    const fl = num("--free-l", 0), ft = num("--free-t", 0);
+    // Top left of the free area, clear of the step cards and the house in the middle.
+    const cw = card.offsetWidth, ch = card.offsetHeight;
+    const x = fl + 12, y = ft + 12;
+    card.style.transform = `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px)`;
+    const o = this.f;
+    card.style.opacity = o.toFixed(3);
+    svg.style.opacity = o.toFixed(3);
+    // Each row's leader starts at the card edge nearest its face and ends in a small dot on the face.
+    const cam = this.host.camera(), eye = new THREE.Vector3(); cam.getWorldPosition(eye);
+    const wallAt = this.faces.length ? this.faces.reduce((best, fc) => {
+      const s = fc.n.dot(eye.clone().sub(fc.c).normalize()) * Math.sqrt(fc.area);
+      return s > best.s ? { s, f: fc } : best;
+    }, { s: -Infinity, f: this.faces[0] }).f.c : null;
+    const at: Record<string, THREE.Vector3 | null> = { roof: this.roofAt, wall: wallAt, floor: this.floorAt, window: null };
+    let html = "";
+    card.querySelectorAll<HTMLElement>("[data-k]").forEach((row) => {
+      const t = at[row.dataset.k ?? ""];
+      if (!t) return;
+      const p = this.host.project(t);
+      if (!p.ok) return;
+      const ry = y + row.offsetTop + row.offsetHeight / 2;
+      const sx = p.x < x ? x : p.x > x + cw ? x + cw : x + cw / 2, sy = p.x < x || p.x > x + cw ? ry : p.y < y ? y : y + ch;
+      const kx = sx === x ? sx - 14 : sx === x + cw ? sx + 14 : sx;
+      html += `<polyline points="${sx.toFixed(1)},${sy.toFixed(1)} ${kx.toFixed(1)},${sy.toFixed(1)} ${p.x.toFixed(1)},${p.y.toFixed(1)}" fill="none" stroke="${INK}" stroke-opacity="0.45" stroke-width="1"/>` +
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="#fff" stroke="${INK}" stroke-width="1"/>`;
+    });
+    if (svg.innerHTML !== html) svg.innerHTML = html;
+  }
+
   private apply() {
-    this.mats.forEach(({ m, k }) => { m.opacity = k < 0 ? 1 - this.f : this.f * k; m.visible = m.opacity > 0.005; });
+    const still = this.host.reduce();
+    const breath = still ? 0.75 : 0.55 + 0.45 * (0.5 - 0.5 * Math.cos((2 * Math.PI * this.t) / BREATH_S));
+    this.mats.forEach(({ m, k, glow }) => { m.opacity = glow != null ? this.f * glow * breath : this.f * k; m.visible = m.opacity > 0.003; });
     this.g.visible = this.f > 0.005;
   }
 
   frame(dt: number) {
     if (this.goal === 1 && !this.wallsDone) this.buildWalls();
-    if (Math.abs(this.f - this.goal) < 0.002 && Math.abs(this.v) < 0.01) {
-      if (this.f !== this.goal) { this.f = this.goal; this.v = 0; this.apply(); if (this.goal === 0) { this.clear(); this.env = null; } }
-      return;
+    if (this.goal === 1) this.ensureCard();
+    this.t += dt;
+    const settled = Math.abs(this.f - this.goal) < 0.002 && Math.abs(this.v) < 0.01;
+    if (settled) {
+      if (this.f !== this.goal) { this.f = this.goal; this.v = 0; if (this.goal === 0) { this.apply(); this.clear(); this.env = null; return; } }
+    } else {
+      const a = -OMEGA * OMEGA * (this.f - this.goal) - 2 * OMEGA * this.v;
+      this.v += a * dt; this.f = Math.max(0, Math.min(1, this.f + this.v * dt));
     }
-    const a = -OMEGA * OMEGA * (this.f - this.goal) - 2 * OMEGA * this.v;
-    this.v += a * dt; this.f = Math.max(0, Math.min(1, this.f + this.v * dt));
-    this.apply();
+    if (this.f > 0) { this.apply(); this.place(); }
   }
 
   dispose() { this.clear(); this.g.removeFromParent(); }

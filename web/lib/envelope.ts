@@ -1,6 +1,6 @@
 // The heat-loss split of the house by element, read from the envelope block of /api/explain/layers. The x-ray tint
 // (components/spatial/xray.ts) and the bar (components/spatial/EnvelopeBar.tsx) both read elementsOf(), so they show
-// the same numbers in the same colours: orange for the elements that lose most, blue for the least.
+// the same numbers in the same colours: brick for the elements that lose most, slate blue for the least.
 import type { Envelope } from "@/components/spatial/types";
 
 export type ElementKey = "wall" | "window" | "floor" | "ceiling" | "roof" | "ventilation" | "bridges";
@@ -18,13 +18,14 @@ const ORDER: ElementKey[] = ["wall", "window", "floor", "ceiling", "roof", "vent
 export const kindOf = (kind: string): ElementKey | null =>
   /window|door/i.test(kind) ? "window" : /wall/i.test(kind) ? "wall" : /ceiling/i.test(kind) ? "ceiling" : /roof/i.test(kind) ? "roof" : /floor|ground|base/i.test(kind) ? "floor" : null;
 
-// Blue small, orange large (Reonic's heat-loss grammar), through a pale middle.
-const STOPS: [number, number, number][] = [[61, 111, 224], [233, 228, 218], [232, 115, 12]];
+// Cool small, warm large (Reonic's heat-loss grammar), muted: slate blue through sand to brick, never
+// saturated orange, so the tint reads on the glass shell and the bar alike.
+const STOPS: [number, number, number][] = [[122, 150, 178], [210, 188, 148], [184, 104, 70]];
 export function lossRgb(t: number): [number, number, number] {
   const x = Math.max(0, Math.min(1, t)) * 2, i = Math.min(1, Math.floor(x)), f = x - i;
   return [0, 1, 2].map((j) => Math.round(STOPS[i][j] + (STOPS[i + 1][j] - STOPS[i][j]) * f)) as [number, number, number];
 }
-export const LOSS_GRADIENT = "linear-gradient(90deg, rgb(61,111,224), rgb(233,228,218) 50%, rgb(232,115,12))";
+export const LOSS_GRADIENT = "linear-gradient(90deg, rgb(122,150,178), rgb(210,188,148) 50%, rgb(190,110,74))";
 
 export function elementsOf(env: Envelope): { list: Element[]; total: number; scale: (share: number) => [number, number, number] } {
   const els = (env as Envelope & V27).elements;
