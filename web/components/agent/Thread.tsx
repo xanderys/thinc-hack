@@ -4,7 +4,8 @@ import ComposerField from "@/components/composer/ComposerField";
 import { transcribe } from "@/components/composer/create";
 import Blocks, { inline, openLead } from "./Blocks";
 import { useCopilotContext } from "./context";
-import { ask, run, useThread, type Proposal } from "./store";
+import { ask, run, setPendingSuggestion, useThread, type Proposal } from "./store";
+import { suggest, type Suggestion, type SuggestLead, type SuggestRow } from "./suggest";
 import s from "./agent.module.css";
 
 const eur = (x: number | null | undefined) => (x == null ? "" : `€${Math.round(x).toLocaleString("en-GB")}`);
@@ -26,6 +27,21 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
   const field = useRef<HTMLTextAreaElement | null>(null);
   const media = useRef<{ r: MediaRecorder; chunks: Blob[]; stream: MediaStream } | null>(null);
   const go = onLead ?? openLead;
+  // What the screen holds, for the suggestion chips (no model call).
+  const [sugs, setSugs] = useState<Suggestion[]>([]);
+  useEffect(() => {
+    let stop = false;
+    const load = async () => {
+      try {
+        if (ctx.leadId) { const l = await fetch(`/api/leads/${encodeURIComponent(ctx.leadId)}`).then((r) => r.json()) as SuggestLead; if (!stop) setSugs(suggest(ctx, l)); }
+        else { const rows = await fetch("/api/leads?limit=40").then((r) => r.json()) as SuggestRow[]; if (!stop) setSugs(suggest(ctx, null, Array.isArray(rows) ? rows : [])); }
+      } catch { /* chips stay as they were */ }
+    };
+    void load(); const iv = setInterval(load, 15000);
+    return () => { stop = true; clearInterval(iv); };
+  }, [ctx.leadId, ctx.name, items.length]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setPendingSuggestion(sugs.length > 0); }, [sugs]);
+  const tap = (x: Suggestion) => { if (x.event) dispatchEvent(new CustomEvent(x.event)); else if (x.message && !busy) void ask(x.message, ctx); };
   useEffect(() => () => { media.current?.stream.getTracks().forEach((t) => t.stop()); }, []);
   // Reopened: back where the reader was. New content: follow it only when the reader is at the bottom.
   const atEnd = useRef(true);
@@ -66,6 +82,7 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
               {it.err && <p className={s.err} role="alert"><b>{it.err.src}</b> {it.err.msg}</p>}
             </div>)}
       </div>
+      {sugs.length > 0 && !busy && <div className={s.sugs}>{sugs.map((x) => <button key={x.label} type="button" className={s.sug} onClick={() => tap(x)}>{x.label}</button>)}</div>}
       <div className={s.fieldWrap}>
         <ComposerField value={text} onChange={setText} onSend={submit} onAttach={pick} onMicStart={() => void startRec()} onMicStop={() => void stopRec()}
           busy={busy || voicing} recording={rec} trailing={fieldTrailing ?? trailing} fieldRef={field} />

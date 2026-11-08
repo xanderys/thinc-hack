@@ -9,6 +9,13 @@ export type Proposal = { title: string; ops: Op[]; rows: Row[]; refused: string[
 export type Item = { id: number; who: "you" | "agent"; text: string; pending?: boolean; err?: { src: string; msg: string }; proposals?: Proposal[] };
 
 let items: Item[] = [], busy = false, seq = 0;
+// For the shell's circle: a dot when a suggestion waits, a tooltip with the last answer's first line. Read by polling.
+export let pendingSuggestion = false;
+export let lastFirstLine = "";
+export const getPendingSuggestion = () => pendingSuggestion;
+export const getLastFirstLine = () => lastFirstLine;
+export function setPendingSuggestion(v: boolean) { pendingSuggestion = v; }
+const plain = (t: string) => t.replace(/\[\[lead:\s*([^|\]]+)\|[^\]]+\]\]/g, "$1").replace(/\[\[(ok|warn|fail):\s*([^\]]+)\]\]/g, "$2").replace(/==|\*\*|`/g, "").trim();
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
 const set = (f: (xs: Item[]) => Item[]) => { items = f(items); emit(); };
@@ -51,7 +58,9 @@ export async function ask(q: string, ctx: CopilotContext) {
       else if (e.t === "error") patch(me.id, (x) => ({ ...x, err: { src: String(e.src), msg: String(e.msg) } }));
     }
   } catch (e) { patch(me.id, (x) => ({ ...x, err: { src: "Agent said", msg: (e as Error).message } })); }
-  patch(me.id, (x) => ({ ...x, pending: false, text: x.text.trim() })); busy = false; emit();
+  patch(me.id, (x) => ({ ...x, pending: false, text: x.text.trim() }));
+  const done = items.find((x) => x.id === me.id); if (done?.text) lastFirstLine = plain(done.text.split("\n").find((l) => l.trim()) ?? "");
+  busy = false; emit();
 }
 
 export async function run(id: number, pi: number, p: Proposal, undo: boolean) {
