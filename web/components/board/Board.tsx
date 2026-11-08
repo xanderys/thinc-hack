@@ -66,11 +66,11 @@ function seedOf(l: LeadT): Seed {
   try { stored = JSON.parse(sessionStorage.getItem(`marquee.read.${l.lead_id}`) ?? "null"); } catch { /* storage blocked */ }
   // The lead's own facts win over the read stored at creation: they carry every change made since.
   const wa = whatsappOrigin(l);
-  if (stored) return { leadId: l.lead_id, read: { ...stored.read, inputs: { ...stored.read.inputs, ...l.facts }, origin: { ...stored.read.origin, ...wa } }, text: stored.text, draft: l.draft, version: l.version ?? null, phone: l.phone ?? null, approved: l.approved ?? null, overrides: l.overrides ?? null };
+  if (stored) return { leadId: l.lead_id, read: { ...stored.read, inputs: { ...stored.read.inputs, ...l.facts }, origin: { ...stored.read.origin, ...wa } }, text: stored.text, draft: l.draft, version: l.version ?? null, phone: l.phone ?? null, sources: l.sources, approved: l.approved ?? null, overrides: l.overrides ?? null };
   const place = l.address_or_postcode, pc = /^\d{5}$/.test(place.trim()) ? place.trim() : undefined;
   const inputs = { ...l.facts, ...(pc ? {} : { address: l.facts.address ?? place }) };
   const unknown = l.status === "draft" && l.next_question ? [l.next_question.field as keyof LeadT["facts"]] : [];
-  return { leadId: l.lead_id, draft: l.draft, version: l.version ?? null, phone: l.phone ?? null, approved: l.approved ?? null, overrides: l.overrides ?? null, read: { inputs, found: [], unknown, postcode: pc, origin: wa, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
+  return { leadId: l.lead_id, draft: l.draft, version: l.version ?? null, phone: l.phone ?? null, sources: l.sources, approved: l.approved ?? null, overrides: l.overrides ?? null, read: { inputs, found: [], unknown, postcode: pc, origin: wa, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
 }
 
 export default function Board({ openId: initial }: { openId?: string }) {

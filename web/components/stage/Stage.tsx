@@ -13,6 +13,7 @@ import WhatsAppClient from "@/components/whatsapp/WhatsAppClient";
 import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, OverrideValue, Overrides, ReadResponse, RefineResponse } from "@/lib/api";
 import { call, send } from "@/lib/client";
+import { serialWrite } from "@/lib/leadQueue";
 import { breakEvenNote } from "@/lib/notes";
 import { approveLead, matches, offerOf } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
@@ -25,7 +26,7 @@ type Snap = { changed: Partial<HomeInputs>; overrides: Overrides };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 // A house opened from the board: the lead's id (refinements write back to it) and what was read.
-export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null; approved?: LeadT["approved"]; overrides?: Overrides | null; phone?: string | null };   // draft: shown at once, before the first design call returns
+export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null; approved?: LeadT["approved"]; overrides?: Overrides | null; phone?: string | null; sources?: Record<string, string> };   // draft: shown at once, before the first design call returns
 // While Rina's call runs: the lead's facts so far, the step count, what the last answer changed and what she is asking.
 export type Live = { version?: number | null; step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null; via?: string; origin?: Record<string, "whatsapp"> };
 
@@ -88,13 +89,26 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   // from an effect or a view change. Each carries the lead version the card was showing; a 409 means the lead changed
   // elsewhere, and the board reloads it.
   const baseVersion = useRef<number | null>(seed?.version ?? null);
+  // One write at a time per lead (lib/leadQueue): each takes the version the previous answer returned. A 409 re-reads the version
+  // once and sends the write again; only a second 409 means the lead really changed elsewhere.
+  function step(id: string, body: Record<string, unknown>, route: string, key: string) {
+    return serialWrite(id, key, async () => {
+      const go = () => send<{ version?: number }>("/api/intake/step", { lead_id: id, ...body, ...(baseVersion.current != null ? { base_version: baseVersion.current } : {}) }, route);
+      let r = await go();
+      if (r.status === 409) {
+        const g = await call<LeadT>(`/api/leads/${id}`);
+        if (g.ok && g.data.version != null) { baseVersion.current = g.data.version; r = await go(); }
+      }
+      if (r.ok && r.data?.version != null) baseVersion.current = r.data.version;
+      return r;
+    });
+  }
   async function writeLead(route: string, facts: Partial<HomeInputs>): Promise<{ ok: boolean; error?: string }> {
     const id = leadRef.current;
     if (!id) return { ok: true };
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return { ok: false, error: "The tab is hidden; nothing was sent." };
-    const r = await send<{ version?: number }>("/api/intake/step", { lead_id: id, facts_so_far: facts, ...(baseVersion.current != null ? { base_version: baseVersion.current } : {}) }, route);
+    const r = await step(id, { facts_so_far: facts }, route, `facts:${Object.keys(facts).sort().join(",")}`);
     if (r.status === 409) { stale(id); return { ok: false }; }
-    if (r.ok && r.data?.version != null) baseVersion.current = r.data.version;
     return r.ok ? { ok: true } : { ok: false, error: r.error };
   }
   // A kit choice (chooser, undo; never an offer tab) is written to the lead at once, so a reload and Approve see the same design.
@@ -103,9 +117,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const id = leadRef.current;
     if (!id) return;
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-    const r = await send<{ version?: number }>("/api/intake/step", { lead_id: id, overrides: kit, ...(baseVersion.current != null ? { base_version: baseVersion.current } : {}) }, route);
+    const r = await step(id, { overrides: kit }, route, "kit");
     if (r.status === 409) { stale(id); return; }
-    if (r.ok && r.data?.version != null) baseVersion.current = r.data.version;
     if (r.ok) persisted.current = kit;
     if (!r.ok) setErr(`The change was not saved: ${r.error}`);
   }
@@ -237,7 +250,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       setBusy(true);
       try {
         const lid = leadRef.current;
-        const r = fixed ? await call<RefineResponse>("/api/refine", { inputs, overrides, ...(lid && baseVersion.current != null ? { lead_id: lid, base_version: baseVersion.current } : {}) }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
+        const refine = () => call<RefineResponse>("/api/refine", { inputs, overrides, ...(lid && baseVersion.current != null ? { lead_id: lid, base_version: baseVersion.current } : {}) }, ctl.signal);
+        const r = fixed ? await (lid ? serialWrite(lid, "refine", async () => { let x = await refine(); if (!x.ok && x.status === 409) { const g = await call<LeadT>(`/api/leads/${lid}`); if (g.ok && g.data.version != null) { baseVersion.current = g.data.version; x = await refine(); } } return x; }) : refine()) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
         if (r.ok) keep(k, r.data);
         land(r, asked, why, fixed, lid);
         setBusy(false);
@@ -446,7 +460,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   if (seed && read) return (
     <div className="st st-open b-card-in" ref={openRef}>
-      <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} phone={phone} onPhone={seed ? onPhone : undefined} setInstaller={setInstaller}
+      <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} sources={seed?.sources} phone={phone} onPhone={seed ? onPhone : undefined} setInstaller={setInstaller}
         factsSlot={seed ? <WhatsAppClient leadId={leadRef.current ?? seed.leadId} phone={phone} /> : undefined}
         question={question ?? null} answer={answer} onAnswer={onAnswer} askError={askErr} asking={question === undefined} liveAsking={live?.asking ?? null}
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}

@@ -427,7 +427,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       return {
         head: kwh ? <Head main={`${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
         label: kwh ? `${n1(kwh)} kWh battery` : "No battery",
-        body: day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null,
+        body: day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null,
         info: <>
           {day && roof != null && <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p>}
           {kwh && ratio != null ? <p>{n1(kwh)} kWh is {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0 kWh per kWp for {n2(d.pv_kwp ?? 0)} kWp.</p> : !kwh ? <p>No battery in this design.</p> : null}
@@ -448,7 +448,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         label: wb ? `${n1(wb)} kW wallbox` : "No wallbox",
         body: wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
         info: <>
-          {wb && km && kwh ? <p>{n0(km)} km a year takes about {n0(kwh)} kWh{homeKwh ? `; ${n0(homeKwh)} kWh of it is charged at home` : homeShare ? `; ${pc(homeShare)} of it is charged at home` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p> : <p>{line2[3]}</p>}
+          {wb && km && kwh ? <p>{n0(km)} km a year takes about {n0(kwh)} kWh{homeShare ?? (homeKwh && kwh ? homeKwh / kwh : null) ? `; ${pc((homeShare ?? homeKwh! / kwh)!)} of it is charged at home, ${n0(homeKwh ?? homeShare! * kwh)} kWh` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p> : <p>{line2[3]}</p>}
           {ch && (wb || layers?.ev) && <BarView bar={ch} />}{whyBlock(3)}
         </>,
       };
@@ -458,16 +458,15 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       const designT = bars[4]?.sentence?.match(/(-?\d+) C\b/)?.[1];
       const env = hasEnv ? model!.envelope! : null;
       const shares = env ? (() => {
-        const { list } = elementsOf(env), by = new Map(list.map((x) => [x.key, x]));
-        const roof = by.get("roof")?.share ? by.get("roof") : by.get("ceiling") ?? by.get("roof");
-        return [roof, by.get("wall"), by.get("window"), by.get("floor")].filter((x): x is NonNullable<typeof x> => !!x && x.share > 0).sort((p, q) => q.share - p.share);
+        const { list } = elementsOf(env);
+        return list.filter((x) => x.share > 0).sort((p, q) => q.share - p.share);
       })() : [];
       const hp = d.heatpump_kw;
       return {
         head: multi ? <Head main="No heat load" sub="for flats" /> : hp ? <Head main={`${n1(hp)} kW`} sub="heat pump" /> : <Head main="No heat pump" />,
         label: multi ? "Heat load not estimated for flats" : hp ? `${n1(hp)} kW heat pump` : "No heat pump",
         body: multi ? null : <>
-          {shares.length > 0 && <SplitBar label="Heat loss" unit="" parts={shares.map((x) => ({ k: x.name, v: Math.round(x.share * 100), c: x.colour }))} />}
+          {shares.length > 0 && <SplitBar label="Heat loss" unit="" total={100} parts={shares.map((x) => ({ k: x.name, v: Math.round(x.share * 100), c: x.colour }))} />}
           {bars[4] && <Fig v={`${n1(bars[4].total)} kW`} u={designT ? `heat loss at ${designT} °C` : "heat loss"} />}
         </>,
         info: multi ? <p>The walls and roof are the whole building&rsquo;s, so no heat pump size for one flat.</p> : <>

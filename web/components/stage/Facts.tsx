@@ -101,7 +101,7 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
     case "house_built_year": {
       const est = builtEstimated(i, roof) || !i.house_built_year;
       return est
-        ? <div className="fc-seg" role="group" aria-label="Decade built">{DECADES.map((d) => <button key={d} type="button" aria-pressed={!!i.house_built_year && Math.floor(i.house_built_year / 10) * 10 === d && !builtEstimated(i, roof)} onClick={() => set(d + 5)}>{d}s</button>)}</div>
+        ? <div className="fc-seg" role="group" aria-label="Decade built">{DECADES.map((d) => <button key={d} type="button" aria-pressed={!!i.house_built_year && Math.floor(i.house_built_year / 10) * 10 === d && !builtEstimated(i, roof)} onClick={() => set(d)}>{d}s</button>)}</div>
         : <NumRange value={i.house_built_year} min={1900} max={2026} step={1} unit="built" label="Year built" onSet={set} />;
     }
     case "has_ev": {
@@ -122,8 +122,10 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
 }
 
 /** The facts row. An explicit edit calls onFact (the existing intake-step path); opening a chip never writes. slot: room for a button at the row's end. */
-export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phone, onPhone }: { phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
+export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phone, onPhone, sources }: { sources?: Record<string, string>; phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
   const [open, setOpen] = useState<Field | "phone" | null>(null);
+  // A fact the planner sets here is stated from then on, whatever the lead said before.
+  const [edited, setEdited] = useState<Set<string>>(new Set());
   const specs = SPECS.filter((s) => s.f !== hidden);
   const cur = specs.find((s) => s.f === open);
   useEffect(() => {
@@ -135,7 +137,9 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
     <div className="fc-wrap">
       <div className="fc-row" data-facts-row="">
         {specs.map((s) => {
-          const st = s.state(inputs, roof);
+          const base = s.state(inputs, roof);
+          // The engine's own word for each fact (lead.sources) sets the tone; a missing value stays missing.
+          const st = base === "missing" ? base : edited.has(s.f) ? "stated" : sources?.[s.f] ? (sources[s.f] === "estimated" ? "estimated" : "stated") : base;
           return (
             <button key={s.f} type="button" className="fc" data-state={st} aria-expanded={open === s.f} aria-controls="fc-panel" onClick={() => setOpen((o) => o === s.f ? null : s.f)}>
               <Glyph g={s.glyph} /><span className="k">{s.label}</span>{st !== "missing" && <span className="v">{s.value(inputs, roof)}</span>}{origin?.[s.f] === "whatsapp" && st !== "missing" && <span className="via">via WhatsApp</span>}
@@ -150,7 +154,7 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
         {slot != null && <span className="fc-slot">{slot}</span>}
       </div>
       {open === "phone" && onPhone && <div className="fc-panel" id="fc-panel" role="group" aria-label="Phone" key="phone"><PhoneField value={phone} onSet={(v) => { onPhone(v); setOpen(null); }} /></div>}
-      {cur && <div className="fc-panel" id="fc-panel" role="group" aria-label={cur.label} key={cur.f}><Panel spec={cur} i={inputs} roof={roof} onFact={(f, v, l) => { onFact(f, v, l); if (f !== "ev_annual_km" && !(f === "has_ev" && v === true)) setOpen(null); }} /></div>}
+      {cur && <div className="fc-panel" id="fc-panel" role="group" aria-label={cur.label} key={cur.f}><Panel spec={cur} i={inputs} roof={roof} onFact={(f, v, l) => { onFact(f, v, l); setEdited((x) => new Set(x).add(f === "ev_annual_km" ? "has_ev" : f)); if (f !== "ev_annual_km" && !(f === "has_ev" && v === true)) setOpen(null); }} /></div>}
     </div>
   );
 }
