@@ -18,7 +18,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Masthead />
         <main>{children}</main>
-        <CopilotShell />
+        {/* The homeowner site (HOMEOWNER_SITE=1, see middleware.ts) never mounts the planner copilot; its / is /start behind a rewrite. */}
+        {process.env.HOMEOWNER_SITE !== "1" && <CopilotShell />}
         <AutoReload />
       </body>
     </html>
