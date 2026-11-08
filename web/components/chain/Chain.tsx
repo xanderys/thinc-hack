@@ -18,9 +18,10 @@ import Why from "@/components/stage/Why";
 import s from "./chain.module.css";
 import { SiteVisitNote, useCardQualification } from "@/components/qualify/Verdict";
 import ShadingPanel from "@/components/spatial/ShadingScrubber";
-import { HeatPumpStep } from "@/components/spatial/EnvelopeBar";
+import { EnvelopeBar, HeatPumpStep } from "@/components/spatial/EnvelopeBar";
 
-const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
+// While the 3D code loads, the hero shows the same house shimmer the view shows until its first frame.
+const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false, loading: () => <HouseSkel /> });
 
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-GB");
@@ -99,6 +100,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   useEffect(() => { if (!pending) return; const t = setInterval(() => beat((x) => x + 1), 500); return () => clearInterval(t); }, [pending]);
   const waited = pending ? (Date.now() - pending) / 1000 : 0;
   const edit = !!cause && !/^Switched to/.test(cause);
+  const causeRef = useRef(cause); causeRef.current = cause;
   const q = useCardQualification(inputs, res, leadId);   // visit verdict: offer value, confidence, what to confirm on site
   // Draft first: the chain plays once, on the first open of a lead; after that the design is there at once and the
   // chain waits as a collapsed strip under the model.
@@ -107,17 +109,16 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     try { return !localStorage.getItem(`marquee.chain.seen.${leadId}`); } catch { return true; }
   });
   useEffect(() => { if (leadId) try { localStorage.setItem(`marquee.chain.seen.${leadId}`, "1"); } catch { /* storage blocked: the chain plays again next time */ } }, [leadId]);
-  const [expanded, setExpanded] = useState(first);
+  const [expanded, setExpanded] = useState(true);   // step cards always shown; the eye in the toolbar folds them
   const [stage, setStage] = useState(first ? 1 : N);
   const [auto, setAuto] = useState(first);
   const [updated, setUpdated] = useState<number | null>(null);
-  const [, tick] = useState(0);
-  useEffect(() => { if (!updated) return; const t = setInterval(() => tick((x) => x + 1), 30000); return () => clearInterval(t); }, [updated]);
   const [layers, setLayers] = useState<Layers | null>(null);
   const [moved, setMoved] = useState<Set<number>>(new Set());
   const [spatial, setSpatial] = useState<boolean | null>(null);
   const [heatmap, setHeatmap] = useState(false);
   const [why, setWhy] = useState<{ k: ComponentKey; level: number } | null>(null);
+  const [whyStep, setWhyStep] = useState<number | null>(null);
   const lastLayers = useRef<Layers | null>(null);
   const consumed = useRef<unknown>(redraft);
   const redraftRef = useRef<unknown>(redraft); redraftRef.current = redraft;
@@ -176,7 +177,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     consumed.current = redraftRef.current;
     // A refinement redrafts in place: the changed layers light up and the camera goes to the first; no replay.
     setMoved(m);
-    setStage(Math.min(...m));
+    // A variant switch stays on the Offer; the strip lights what changed, the view does not move.
+    if (!/^Switched to/.test(causeRef.current ?? "")) setStage(Math.min(...m));
     setAuto(false);
     setUpdated(Date.now());
   }
@@ -208,7 +210,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   const checkHead = (() => { const c = layers?.checks ?? []; const bad = c.filter(isFail).length, out = c.filter(refOut).length; return c.length ? (bad ? `${bad} of ${c.length} checks flag` : out ? "Checks pass; battery above Reonic’s guide" : `All ${c.length} checks pass`) : "Checks"; })();
   const rule = (k: string) => res.rules?.find((r) => r.name === k);
-  const ruleText = (k: string) => { const r = rule(k); return r?.rule?.text ?? null; };
   const head5: string[] = [
     `${n2(d.pv_kwp ?? 0)} kWp${model?.layout?.panels ? `, ${model.layout.panels} modules` : ""}${multi ? ", shared roof" : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh` : "None",
@@ -227,19 +228,26 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     `${eur(e.capex_eur)}${breakEven ? `, break-even in ${breakEven} years` : ""}`,
   ];
   const head = FIVE ? head5 : head8;
-  // Panels: what the roof takes against what the house will use, the size, the cap, the rule and how many signed designs agree.
+  // Panels, behind Why: what the roof takes against what the house will use, and the size against the cap.
   const useBar: Bar = { key: "roof", title: "Use", unit: "kWh", total: (inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0),
     segments: [{ name: "household", value: inputs.annual_demand_kwh ?? 0, unit: "kWh", source_tag: "lead" }, ...(layers?.ev ? [{ name: "electric car", value: layers.ev.annual_kwh, unit: "kWh", source_tag: "default" as const }] : [])],
     sentence: layers?.ev ? "Sized for today's use plus the car." : "Sized for today's use.", sources: [] };
   const capKwp = Number(rule("cap")?.sentence.match(/(\d+)\s*kWp/)?.[1] ?? 30);
-  const agree = (() => {
-    const m = ruleText("pv")?.match(/\((\d[\d,]*) of (\d[\d,]*)/);
-    if (m) return `${m[1]} of ${m[2]} similar signed designs`;
-    const nb = res.components.pv?.neighbours;
-    return nb?.n ? `${Math.round(nb.share_included * nb.n)} of ${nb.n} similar signed designs` : null;
-  })();
   const shade = layers?.checks?.find((c) => /shad/i.test(c.name));
   const ratio = d.battery_kwh && d.pv_kwp ? d.battery_kwh / d.pv_kwp : null;
+  // Level two of each step card: one plain sentence why. Research (similar designs, sources, rules) lives behind Why.
+  const plain = (t?: string | null) => {
+    const f = t?.split(/(?<=\.)\s/)[0]?.trim();
+    return f && f.length <= 150 && !/installer|signed|similar|tolerance|source|rule of thumb/i.test(f) ? f : null;
+  };
+  const faces = bars[1] ? bars[1].segments.filter((g) => g.unit === "kWp").length : 0;
+  const line2: Record<number, string | null> = {
+    1: a ? `About ${n0(a.pv_yield_kwh)} kWh a year${faces ? ` from ${faces} face${faces === 1 ? "" : "s"}` : ""}, for a home using ${n0((inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0))} kWh${layers?.ev ? " including the car" : ""}.` : null,
+    2: d.battery_kwh ? plain(bars[2]?.sentence) ?? "Carries the midday surplus into the evening." : "No battery in this design.",
+    3: d.wallbox_kw ? plain(bars[3]?.sentence) ?? `Charges the car at home, ${n0(layers?.ev?.annual_kwh ?? 0)} kWh a year.` : inputs.has_ev ? "No wallbox in this design." : "No electric car, so no wallbox.",
+    4: d.heatpump_kw ? "Sized from the heating bill." : "Not asked for.",
+  };
+
 
   const view = VIEWS[stage - 1];
   const kpis = [
@@ -249,9 +257,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     { k: "Break-even", v: breakEven == null ? "over 20 years" : `${breakEven} years` },
   ];
 
-  const ago = updated ? Math.round((Date.now() - updated) / 60000) : null;
-  const stamp = ago == null ? "Draft" : ago < 1 ? "Draft, updated just now" : `Draft, updated ${ago} min ago`;
-  const go = (n: number) => { setAuto(false); setStage(n); setWhy(null); };
+  const go = (n: number) => { setAuto(false); setStage(n); setWhy(null); setWhyStep(null); };
 
   const tools = ({ view: v, setView, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
     <div className={s.toolbar} role="toolbar" aria-label="Model">
@@ -262,6 +268,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       <button type="button" className={s.tb} onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
       <span className={s.sep} />
       <LayersMenu className={s.tb} up heatmap={{ on: heatmap, set: setHeatmap }} />
+      <button type="button" className={s.tb} aria-pressed={expanded} title="Reasoning" aria-label="Reasoning" onClick={() => { setAuto(false); setExpanded((x) => !x); }}>
+        <Ico>{expanded ? <><path d="M1.5 10S5 4 10 4s8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z" /><circle cx="10" cy="10" r="2.5" /></> : <><path d="M1.5 10S5 4 10 4s8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z" /><circle cx="10" cy="10" r="2.5" /><path d="M3 17L17 3" /></>}</Ico>
+      </button>
       <div className={s.seg} role="group" aria-label="View">
         <button type="button" aria-pressed={v === "2d"} onClick={() => setView("2d")}>2D</button>
         <button type="button" aria-pressed={v === "3d" && !photo?.on} onClick={() => setView("3d")}>3D</button>
@@ -298,10 +307,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
               </button>
             ))}
           </div>
-          <div className={s.stampRow}>
-            <span className={s.draft}>{stamp}</span>
-            <button type="button" className={s.showR} onClick={() => setExpanded(true)}>Show reasoning</button>
-          </div>
           {stage === N && variants.length > 0 && (
             <div className={s.varList}>
               <VariantTabs variants={variants} onVariant={onVariant} pending={!!pending} />
@@ -312,51 +317,50 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         </div>
       )}
       {expanded && <ol className={s.rail} aria-label="How the design was reached">
-        <li className={s.stampRow}><span className={s.draft}>{stamp}</span>{!auto || stage >= N ? <button type="button" className={s.showR} onClick={() => setExpanded(false)}>Hide reasoning</button> : null}</li>
         {TITLES.map((t, i) => {
           const n = i + 1, open = n === stage, built = n <= stage || !auto;
           const bar = bars[n];
           return (
-            <li key={t} className={`${s.item} ${open ? s.open : ""} ${built ? "" : s.pending}`} style={FIVE ? stepStyle(i) : undefined}>
+            <li key={moved.has(n) ? `${t}-m${updated}` : t} className={`${s.item} ${open ? s.open : ""} ${built ? "" : s.pending} ${moved.has(n) ? s.flash : ""}`} style={FIVE ? stepStyle(i) : undefined}>
               <button type="button" className={s.ih} onClick={() => go(n)} aria-expanded={open}>
                 <span className={s.num}>{n}</span>
-                <span className={s.it}>{t}{moved.has(n) && <span className={s.moved}>Moved</span>}{multi && FIVE && (n <= 2 || n === N) && <span className={s.flatTag}>Single-family figure</span>}</span>
+                <span className={s.it}>{t}{multi && FIVE && (n <= 2 || n === N) && <span className={s.flatTag}>Single-family figure</span>}</span>
                 <span className={s.ihead} data-pending={!!pending || !fresh}>{head[i]}</span>
               </button>
               {FIVE && open && n === N && layers?.checks && <CheckRow checks={layers.checks} />}
-              {FIVE && open && n === 1 && multi && <p className={s.shared}>Shared roof, apartment building: single-family design does not apply<span>{building!.reason}</span></p>}
-              {FIVE && open && n === 4 && multi && <p className={s.shared}>The walls and roof here are the whole apartment building&apos;s, so no heat load or heat pump size for one flat.</p>}
-              {built && bar && !(FIVE && n === 3 && !d.wallbox_kw && !layers?.ev) && !(FIVE && n === 4 && (multi || (open && hasEnv))) && (open ? <BarView bar={FIVE && n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} /> : <BarStrip bar={bar} />)}
-              {FIVE && open && n === 1 && (
-                <>
-                  <BarView bar={useBar} />
-                  <div className={s.facts}>
-                    <p><b>{n2(d.pv_kwp ?? 0)} kWp</b>{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}</p>
-                    {ruleText("pv") && !bars[1]?.sentence.includes(ruleText("pv")!) && <p className={s.ruleS}>{ruleText("pv")}</p>}
-                    {agree && <span className={s.conf}>{agree}</span>}
-                  </div>
-                </>
-              )}
-              {FIVE && open && n === 2 && (
-                <div className={s.facts}>
-                  {ratio != null ? (
-                    <p className={ratio >= 0.7 && ratio <= 1.0 ? s.passS : s.refS}>{n2(ratio)} kWh per kWp: {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0</p>
-                  ) : <p>No battery in this design.</p>}
-                  {ruleText("battery") && <p className={s.ruleS}>{ruleText("battery")}</p>}
+              {built && bar && !(FIVE && open && n <= 4) && !(FIVE && n === 3 && !d.wallbox_kw && !layers?.ev) && !(FIVE && n === 4 && (multi || (open && hasEnv))) && (open ? <BarView bar={FIVE && n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} /> : <BarStrip bar={bar} />)}
+              {FIVE && open && n <= 4 && (
+                <div className={s.three}>
+                  {multi && (n === 1 || n === 4) ? (
+                    <p className={s.l2}>{n === 1 ? "Shared roof, apartment building: the single-family design does not apply." : "The walls and roof are the whole building's, so no heat pump size for one flat."}</p>
+                  ) : (
+                    <>
+                      {line2[n] && <p className={s.l2} data-pending={!!pending || !fresh}>{line2[n]}</p>}
+                      {n <= 3 && bar && !(n === 3 && !d.wallbox_kw && !layers?.ev) && <BarView bar={n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} bare />}
+                      {n === 4 && hasEnv && <EnvelopeBar env={model!.envelope!} bare />}
+                    </>
+                  )}
+                  {!(n === 3 && !(WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation)) && <div className={s.whyrow}>
+                    <button type="button" className={s.whyb} aria-expanded={whyStep === n} onClick={() => { setWhyStep((w) => (w === n ? null : n)); setWhy(WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation ? { k: WHY_AT[n]!, level: 1 } : null); }}>Why</button>
+                  </div>}
+                  {whyStep === n && (
+                    <div className={s.whyPanel}>
+                      {n === 1 && <>
+                        <BarView bar={useBar} />
+                        <p>{n2(d.pv_kwp ?? 0)} kWp{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}</p>
+                      </>}
+                      {n === 2 && <>
+                        {ratio != null && <p>{n2(ratio)} kWh per kWp: {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0</p>}
+                      </>}
+                      {n === 4 && <>
+                        <HeatPumpStep res={res} inputs={inputs} env={null} multi={multi} variants={variants} onVariant={onVariant} />
+                      </>}
+                      {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />}
+                    </div>
+                  )}
                 </div>
               )}
-              {FIVE && open && n === 3 && (
-                <div className={s.facts}>
-                  {ruleText("wb") && <p className={s.ruleS}>{ruleText("wb")}</p>}
-                </div>
-              )}
-              {FIVE && open && n === 4 && (
-                <div className={s.facts}>
-                  <HeatPumpStep res={res} inputs={inputs} env={hasEnv ? model!.envelope! : null} multi={multi} variants={variants} onVariant={onVariant} />
-                  {ruleText("hp") && <p className={s.ruleS}>{ruleText("hp")}</p>}
-                </div>
-              )}
-              {open && n === (FIVE ? 1 : 4) && rot && <p className={s.rot}>{rot}</p>}
+              {!FIVE && open && n === 4 && rot && <p className={s.rot}>{rot}</p>}
               {!FIVE && open && n === 7 && layers?.checks && <Checks checks={layers.checks} />}
               {open && n === N && a && <Offer res={{ ...res, economics: e }} />}
               {open && n === N && variants.length > 0 && (
@@ -366,12 +370,12 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
               )}
               {open && n === N && <SiteVisitNote q={q} />}
               {open && n === N && decide && <div className={s.decide}>{decide}</div>}
-              {open && WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation && (
+              {!(FIVE && n <= 4) && open && WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation && (
                 <div className={s.whyrow}>
                   <button type="button" className={s.whyb} aria-expanded={why?.k === WHY_AT[n]} onClick={() => setWhy((w) => (w?.k === WHY_AT[n] ? null : { k: WHY_AT[n]!, level: 1 }))}>Why</button>
                 </div>
               )}
-              {open && why && why.k === WHY_AT[n] && (
+              {!(FIVE && n <= 4) && open && why && why.k === WHY_AT[n] && (
                 <div className={s.whyPanel}>
                   <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />
                 </div>
@@ -409,6 +413,13 @@ function Ico({ children }: { children: ReactNode }) {
 function Inert({ label, children }: { label: string; children: ReactNode }) {
   return <button type="button" className={`${s.tb} ${s.inert}`} aria-disabled="true" title={`${label}: not in this demo`} aria-label={`${label}, not in this demo`}><Ico>{children}</Ico></button>;
 }
+function HouseSkel() {
+  return (
+    <div className={s.heroSkel} aria-hidden="true">
+      <svg viewBox="0 0 240 160"><path d="M30 84 L120 24 L210 84 V148 H30 Z" /></svg>
+    </div>
+  );
+}
 function Bolt() {
   return <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><path d="M11 1L3 12h6l-1 7 8-11h-6z" fill="#374be6" /></svg>;
 }
@@ -425,7 +436,7 @@ export function Chips({ d }: { d: { pv_kwp?: number | null; battery_kwh?: number
 
 const stackable = (b: Bar) => b.segments.filter((g) => g.unit === b.unit && g.value > 0);
 
-function BarView({ bar }: { bar: Bar }) {
+function BarView({ bar, bare }: { bar: Bar; bare?: boolean }) {
   const segs = stackable(bar), sum = segs.reduce((x, g) => x + g.value, 0) || 1;
   const extra = bar.segments.filter((g) => !segs.includes(g));
   const fmt = (v: number, u: string) => (!u ? String(v) : `${u === "kWp" || u === "kW" ? n2(v) : v >= 100 ? n0(v) : n1(v)} ${u}`);
@@ -436,17 +447,17 @@ function BarView({ bar }: { bar: Bar }) {
         <>
           <div className={s.track}>{segs.map((g, i) => <span key={g.name} title={g.citation} style={{ flex: g.value / sum, background: SEG_COLOUR[g.name] ?? PALETTE[i % PALETTE.length] }} />)}</div>
           <ul className={s.legend}>
-            {segs.map((g, i) => <li key={g.name} title={g.citation}><i style={{ background: SEG_COLOUR[g.name] ?? PALETTE[i % PALETTE.length] }} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b><em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em></li>)}
-            {extra.map((g) => <li key={g.name} title={g.citation}><i className={s.noDot} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b><em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em></li>)}
+            {segs.map((g, i) => <li key={g.name} title={g.citation}><i style={{ background: SEG_COLOUR[g.name] ?? PALETTE[i % PALETTE.length] }} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
+            {extra.map((g) => <li key={g.name} title={g.citation}><i className={s.noDot} />{cap(g.name)} <b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
           </ul>
         </>
       ) : (
         <ul className={s.steps}>
-          {bar.segments.map((g) => <li key={g.name} title={g.citation}><span>{cap(g.name)}</span><b>{fmt(g.value, g.unit)}</b><em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em></li>)}
+          {bar.segments.map((g) => <li key={g.name} title={g.citation}><span>{cap(g.name)}</span><b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
         </ul>
       )}
-      <p className={s.barS}>{bar.sentence}</p>
-      {bar.sources.length > 0 && <p className={s.barSrc}>{bar.sources.join("; ")}</p>}
+      {!bare && <p className={s.barS}>{bar.sentence}</p>}
+      {!bare && bar.sources.length > 0 && <p className={s.barSrc}>{bar.sources.join("; ")}</p>}
     </div>
   );
 }

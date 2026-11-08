@@ -7,7 +7,7 @@ import * as THREE from "three";
 import type { Envelope, RoofPlane, V3 } from "./types";
 import { elementsOf, windowShare, type ElementKey } from "@/lib/envelope";
 
-type Label = { key: string; at: THREE.Vector3; html: string; cls?: string };
+type Label = { key: string; at: THREE.Vector3; html: string; cls?: string; prio?: number };
 export interface XrayHost { walls: () => THREE.Mesh | null; box: THREE.Box3; planes: () => RoofPlane[]; root: THREE.Object3D }
 
 const toV = ([x, y, z]: V3) => new THREE.Vector3(x, z, -y);
@@ -31,10 +31,17 @@ export class Xray {
     const same = this.env === env && this.g.children.length > 0;
     this.env = env; this.goal = 1;
     if (!same) this.build();
-    // The step leads on shares: the element that loses most, as the bar shows it.
-    const top = [...elementsOf(env).list].sort((x, y) => y.share - x.share)[0];
-    const b = this.host.box, at = new THREE.Vector3((b.min.x + b.max.x) / 2, b.max.y + 0.8, (b.min.z + b.max.z) / 2);
-    return top ? [{ key: "xray", at, html: `<b>${top.name} ${Math.round(top.share * 100)} %</b> of the heat loss<br/><span>estimated from address</span>` }] : [];
+    // One chip per element share, pinned where that element is on the house ("Windows 31 %"); the biggest first.
+    const b = this.host.box, w = b.max.x - b.min.x, h = b.max.y - b.min.y, cz = (b.min.z + b.max.z) / 2;
+    const AT: Partial<Record<ElementKey, THREE.Vector3>> = {
+      roof: new THREE.Vector3(b.min.x + w * 0.5, b.max.y + 0.3, cz),
+      ceiling: new THREE.Vector3(b.min.x + w * 0.5, b.max.y + 0.3, cz),
+      wall: new THREE.Vector3(b.min.x + w * 0.2, b.min.y + h * 0.35, b.max.z),
+      window: new THREE.Vector3(b.min.x + w * 0.75, b.min.y + h * 0.45, b.max.z),
+      floor: new THREE.Vector3(b.max.x, b.min.y + 0.2, b.max.z),
+    };
+    return elementsOf(env).list.filter((e) => e.share > 0 && AT[e.key]).sort((x, y) => y.share - x.share).slice(0, 4)
+      .map((e, i) => ({ key: `xray-${e.key}`, at: AT[e.key]!, html: `<i style="background:${e.colour}"></i>${e.name} <b>${Math.round(e.share * 100)} %</b>`, cls: "chip c-el", prio: 4e6 - i }));
   }
 
   private clear() {

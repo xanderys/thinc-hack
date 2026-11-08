@@ -124,5 +124,15 @@
 .massTag { position: absolute; left: 12px; bottom: 40px; z-index: 2; margin: 0; font-size: 11px; color: var(--ink-2); background: rgba(253, 253, 251, 0.88); border: 1px solid var(--rule); border-radius: 6px; padding: 1px 7px; pointer-events: none; }
 .layersBtn { appearance: none; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); padding: 4px 6px; display: inline-flex; align-items: center; cursor: pointer; }
 .layersBtn[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
-.houseSkel { position: absolute; left: 50%; top: 50%; width: min(40%, 280px); height: auto; transform: translate(-50%, -50%); }
+/* The house skeleton sits where the house will appear: the centre of the area the overlays leave free. */
+.houseSkel { position: absolute; left: calc(var(--free-l, 0px) + var(--free-w, 100%) / 2); top: calc(var(--free-t, 0px) + var(--free-h, 100%) / 2); width: min(40%, 280px); height: auto; transform: translate(-50%, -50%); }
+
+/* On-model chips: one line, Geist 12.5 px, Reonic component colours. */
+.overlay :global(.sp-label.chip) { font-family: var(--font-sans), sans-serif; font-size: 12.5px; line-height: 1.2; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--rule-strong); background: #fff; color: var(--ink); box-shadow: none; transition: visibility 0s; }
+.overlay :global(.sp-label.chip b) { font-family: var(--font-sans), sans-serif; font-weight: 600; font-variant-numeric: tabular-nums; }
+.overlay :global(.sp-label.chip.c-pv) { background: #fff4dc; border-color: #f2d79a; color: #6b4500; }
+.overlay :global(.sp-label.chip.c-bat) { background: #e3f5e9; border-color: #a9dcb9; color: #13602c; }
+.overlay :global(.sp-label.chip.c-ev) { background: #e5effe; border-color: #a9c6f7; color: #1557c0; }
+.overlay :global(.sp-label.chip.c-el i) { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+@media (max-width: 700px) { .overlay :global(.sp-label.chip) { font-size: 12px; padding: 3px 8px; } }
 @media (prefers-reduced-motion: reduce) { .houseSkel animate { display: none; } }

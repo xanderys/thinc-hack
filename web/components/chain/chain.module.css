@@ -249,7 +249,7 @@
 .waited { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--ink-3); }
 
 /* Pending: the numbers an edit will move shimmer at once, in their final size, until the engine answers. */
-.kpis[data-pending="true"] dd, .vtabs[data-pending="true"] .vtFig, .vtabs[data-pending="true"] .vtPrice, .ihead[data-pending="true"] {
+.kpis[data-pending="true"] dd, .vtabs[data-pending="true"] .vtFig, .vtabs[data-pending="true"] .vtPrice, .ihead[data-pending="true"], .l2[data-pending="true"] {
   color: transparent; border-radius: 6px;
   background: linear-gradient(90deg, var(--sheet-2) 0%, #e9ecf5 50%, var(--sheet-2) 100%) 0 0 / 200% 100%;
   animation: shimmer 1.2s linear infinite;
@@ -258,10 +258,28 @@
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) {
   .figIn { animation: none; }
-  .kpis[data-pending="true"] dd, .vtabs[data-pending="true"] .vtFig, .vtabs[data-pending="true"] .vtPrice, .ihead[data-pending="true"] { animation: none; }
+  .kpis[data-pending="true"] dd, .vtabs[data-pending="true"] .vtFig, .vtabs[data-pending="true"] .vtPrice, .ihead[data-pending="true"], .l2[data-pending="true"] { animation: none; }
+  .flash { animation: none; }
 }
 @media (max-width: 760px) {
   .varList .vtabs { margin: 0 -12px; padding: 0 12px; }
 }
 /* Phone cells are too narrow for "old → new": the figure crossfades in place, so the card never grows. */
 @media (max-width: 760px) { .figWas, .figTo { display: none; } }
+
+/* Step cards: three levels. The number (header), one sentence why, the one derivation bar. */
+.three { padding: 0 12px 12px 52px; display: grid; gap: 8px; }
+.l2 { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
+.three .whyrow { margin: 0; padding: 0; }
+.three .whyPanel { margin: 0; }
+.whyPanel p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+/* A step an edit moved is highlighted once, then rests. */
+.flash { animation: flash 1400ms var(--spring-smooth) both; }
+@keyframes flash { 0% { background-color: #fff3d6; } 100% { background-color: #fff; } }
+@media (max-width: 760px) { .three { padding-left: 12px; } }
+/* The hero before the 3D code arrives: the same house shimmer the view shows until its first frame. */
+.heroSkel { position: absolute; inset: 0; display: grid; place-items: center; }
+.heroSkel svg { width: min(40%, 280px); height: auto; }
+.heroSkel path { fill: #e3e6ef; animation: skelPulse 1.2s ease-in-out infinite alternate; }
+@keyframes skelPulse { from { fill: #e3e6ef; } to { fill: #f3f4f8; } }
+@media (prefers-reduced-motion: reduce) { .heroSkel path { animation: none; } }
