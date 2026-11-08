@@ -2,6 +2,7 @@
 //   kit: the design's sizes (pv_kwp, inverter_kw, battery_kwh, wallbox_kw, heatpump_kw), plus modules when the roof layout knows the count.
 //   total: capex in euros, shown once as an estimate; omit it (or null) and the total line is left out. note: one small line under it.
 //   edit (planner only): (field, label, content) => node, wraps a row's name and spec in a control such as InlineOverride; omit for read-only.
+//   info (optional): per field, an "i" popover at the row's end (planner: DC/AC ratio on the inverter).
 //   changed + flash (optional): parts that just changed ring once; bump flash to ring again.
 //   A size of null or 0 means the component is not in the design and gets no row.
 // One parts list in the German Angebot order, drawn like a building-instruction sheet: quantity, part, the one spec.
@@ -19,8 +20,8 @@ const MODULE_KWP = 0.45;   // the engine's standard module when the layout gives
 
 type Row = { key: string; field?: KitField; part?: Part; qty: number; name: string; spec?: string; icon: ReactNode };
 
-export default function KitSheet({ kit, total, note, edit, changed, flash = 0, className }: {
-  kit: KitSheetKit; total?: number | null; note?: string; edit?: (f: KitField, label: string, content: ReactNode) => ReactNode;
+export default function KitSheet({ kit, total, note, edit, info, changed, flash = 0, className }: {
+  kit: KitSheetKit; total?: number | null; note?: string; info?: Partial<Record<KitField, ReactNode>>; edit?: (f: KitField, label: string, content: ReactNode) => ReactNode;
   changed?: Part[]; flash?: number; className?: string;
 }) {
   const rows: Row[] = [];
@@ -48,6 +49,7 @@ export default function KitSheet({ kit, total, note, edit, changed, flash = 0, c
               const content = <><b className={s.name}>{r.name}</b>{r.spec && <> <span className={s.spec}>{r.spec}</span></>}</>;
               return r.field && edit ? edit(r.field, r.spec ? `${r.name} ${r.spec}` : r.name, content) : content;
             })()}</span>
+            {r.field && info?.[r.field] && <span className={s.rowInfo}>{info[r.field]}</span>}
           </li>
         ))}
       </ol>
