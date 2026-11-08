@@ -45,7 +45,7 @@ const SPECS: Spec[] = [
 ];
 const builtEstimated = (i: HomeInputs, r?: RoofResult | null) => !!i.house_built_year && !!r?.build_year_class && r.build_year_estimate != null && Math.abs(i.house_built_year - r.build_year_estimate) < 0.5;
 
-// +6586936789 shown as +65 8693 6789: the country code, then groups of four.
+// +491512345678 shown as +49 151 2345678: the country code, then groups of four.
 const E164 = /^\+[1-9]\d{7,14}$/;
 const CC = ["65", "44", "49", "61", "1", "33", "31", "41", "43", "39", "34", "91", "86", "81"];
 export function showPhone(e: string) {
