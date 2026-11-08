@@ -15,6 +15,7 @@ type Anchor = { lat: number; lon: number; beta: number }; // radians, from the e
 const A = 6378137, E2 = 0.00669437999014;
 const ZOOM = 20;
 const MAX_TILES = 49;
+let owner = 0, seq = 0; // which ground last put its credit in the shared store
 
 // Every textured mesh of the glb gets the sharpest filtering the device has.
 export function sharpen(root: THREE.Object3D, renderer: THREE.WebGLRenderer) {
@@ -51,7 +52,7 @@ function img(url: string, signal: AbortSignal) {
 // Builds the Google ground for this glb and registers both pictures with the layers menu. Returns a cleanup.
 // The anchor comes from the origin the card already has (planes.origin_utm32), computed here: no engine call.
 export function googleGround(root: THREE.Object3D, renderer: THREE.WebGLRenderer, origin: [number, number, number]): () => void {
-  const ac = new AbortController();
+  const ac = new AbortController(), id = ++seq;
   let off: (() => void) | null = null, tex: THREE.Texture | null = null, mat: THREE.Material | null = null;
   const ground: THREE.Mesh[] = [];
   root.traverse((o) => { if ((o as THREE.Mesh).isMesh && (o.name || o.parent?.name || "").toLowerCase().startsWith("ground")) ground.push(o as THREE.Mesh); });
@@ -105,13 +106,14 @@ export function googleGround(root: THREE.Object3D, renderer: THREE.WebGLRenderer
     };
     apply();
     off = onWhite(apply);
+    owner = id;
     setGoogleGround(true, v.copyright ? `${v.copyright}, Google` : "Google");
   })().catch((e) => { if (!ac.signal.aborted) console.warn(`Google satellite ground off: ${(e as Error).message}`); });
 
   return () => {
     ac.abort(); off?.();
     ground.forEach((m, i) => { m.geometry.setAttribute("uv", bavaria[i].uv); setRealGround(m, bavaria[i].mat); });
-    setGoogleGround(false);
+    if (owner === id) setGoogleGround(false);
     tex?.dispose(); mat?.dispose();
   };
 }
