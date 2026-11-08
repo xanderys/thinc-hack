@@ -1,7 +1,7 @@
 "use client";
 // The layers menu on the model toolbar: sun heatmap (on the hero card), White context, Solid walls, the ground picture, and
 // how old the pictures on screen are. Options live in whiteMode.ts so the scene and photo layer follow them.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { imageryLines, licenceLine, setGround, setSolid, setWhite, useViewOpts } from "./whiteMode";
 import { setMeshWanted, useMeshPref } from "./meshPref";
 import m from "./LayersMenu.module.css";
@@ -21,6 +21,21 @@ export default function LayersMenu({ className, up, heatmap }: Props) {
     document.addEventListener("pointerdown", away); addEventListener("keydown", esc, true);
     return () => { document.removeEventListener("pointerdown", away); removeEventListener("keydown", esc, true); };
   }, [open]);
+  // Opens on the side with room inside the model's frame (its nearest clipping box), never clipped at the canvas edge;
+  // \`up\` is the preferred side, and the menu scrolls if neither side fits it whole.
+  const menu = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ up: boolean; max: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!open) { setFit(null); return; }
+    const btn = box.current, m = menu.current;
+    if (!btn || !m) return;
+    let clip: HTMLElement | null = btn.parentElement;
+    while (clip && clip !== document.body && getComputedStyle(clip).overflow === "visible" && getComputedStyle(clip).overflowY === "visible") clip = clip.parentElement;
+    const c = (clip ?? document.body).getBoundingClientRect(), b = btn.getBoundingClientRect(), h = m.scrollHeight;
+    const above = b.top - Math.max(c.top, 0) - 12, below = Math.min(c.bottom, innerHeight) - b.bottom - 12;
+    const goUp = up ? above >= h || above >= below : !(below >= h || below >= above);
+    setFit({ up: goUp, max: Math.max(120, goUp ? above : below) });
+  }, [open, up]);
   const lines = imageryLines(o);
   return (
     <div className={m.wrap} ref={box}>
@@ -28,7 +43,7 @@ export default function LayersMenu({ className, up, heatmap }: Props) {
         <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M10 2l8 4-8 4-8-4zM2 10l8 4 8-4M2 14l8 4 8-4" /></svg>
       </button>
       {open && (
-        <div className={`${m.menu} ${up ? m.up : ""}`} role="menu" aria-label="Layers" data-esc-first="">
+        <div ref={menu} className={`${m.menu} ${(fit ? fit.up : up) ? m.up : ""}`} style={fit ? { maxHeight: fit.max, overflowY: "auto" } : { visibility: "hidden" }} role="menu" aria-label="Layers" data-esc-first="">
           {heatmap && <label className={m.row}><input type="checkbox" checked={heatmap.on} onChange={(e) => heatmap.set(e.target.checked)} />Sun heatmap</label>}
           <label className={m.row}><input type="checkbox" checked={o.white} onChange={(e) => setWhite(e.target.checked)} />Surrounding buildings</label>
           <label className={m.row}><input type="checkbox" checked={o.solid} onChange={(e) => setSolid(e.target.checked)} />Solid walls</label>

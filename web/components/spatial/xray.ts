@@ -24,10 +24,12 @@ const FROST = new THREE.Color("#F3F1EC");
 const INK = "#2A2C33";
 const OMEGA = (2 * Math.PI) / 0.5;
 const BREATH_S = 5;
-const SHELL_K = 0.4, EDGE_K = 0.38, FAR_K = 0.2, PATCH_K = 0.5;
+const SHELL_K = 0.4, EDGE_K = 0.38, FAR_K = 0.2, PATCH_K = 0.55;
 // A neutral wash over the aerial photo inside the footprint: the photo there is the house's own roof seen from
 // above, which through the glass reads as a solid block from the high poses. Translucent, so the ground stays.
-const PATCH = new THREE.Color("#6F6C66");
+// Dark enough that the glass in front of it reads clearly apart from the solid walls from every pose (the high Panels
+// and Wallbox poses look through the walls onto this patch).
+const PATCH = new THREE.Color("#3E3C39");
 // The four shares on the card, in this order; roof falls back to the top ceiling when the roof space is unheated.
 const CARD: ElementKey[] = ["roof", "wall", "window", "floor"];
 
