@@ -34,7 +34,7 @@ footer: Marquee
 
 ![h:300](img/board-verdicts.png)
 
-<div class="data">replayed on <b>258</b> held-out signed sales: Priority <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b></div>
+<div class="data">replayed on <b>126</b> held-out signed sales: Priority <b>80%</b>, Call first <b>18%</b>, Decline <b>2%</b></div>
 
 <p class="brief">Estimates until the site visit. Offer values come from stated cost assumptions, not quotes.</p>
 
@@ -47,7 +47,7 @@ footer: Marquee
 <div class="cols">
 <div>
 
-# The family plans an electric car, and the chain runs again.
+# The real house, four decisions in a chain, then the offer.
 
 <div class="data">the real house: Bavarian LoD2 roof, aerial photo, shade per panel<br>four decisions in a chain, then the offer<br>one chip changes a fact and the chain runs again: the wallbox appears<br>intake by form, pasted email, or a call with Rina</div>
 
@@ -95,9 +95,9 @@ footer: Marquee
 
 <p class="label">Offer to signature</p>
 
-## Approve releases the chosen design to the homeowner, who signs or declines.
+## Complete sends the chosen design to the homeowner, who signs or declines.
 
-<div class="data">variants: planners’ pick, best payback, most independence, lowest upfront<br>the homeowner page shows the approved one and nothing else<br>the signature or the decline comes back to the board</div>
+<div class="data">variants: planners’ pick, best payback, most independence, lowest upfront<br>Complete opens Send the proposal: WhatsApp, or a link to copy<br>the homeowner page shows the completed design and nothing else<br>the signature or the decline comes back to the board</div>
 
 <p>Reonic’s chat sizes from the catalogue when asked, and the planner picks by hand. Marquee proposes unprompted, explains its rules, publishes its expert match, and hands the chosen design over to sign.</p>
 

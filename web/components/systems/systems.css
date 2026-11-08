@@ -358,3 +358,11 @@
   .sc-card { top: 8px; bottom: auto; left: 12px; right: 12px; }
   .sc-pop { top: calc(100% + 6px); bottom: auto; max-height: calc(var(--sys-hero-h, 400px) - 100% - 8px - 70px); }
 }
+/* Undo in the open card's header row, left of the chevron: a text button, one edit at a time. */
+.pc-card { position: relative; }
+.pc-undo { all: unset; box-sizing: border-box; position: absolute; top: 10px; right: 44px; z-index: 2; min-height: 36px; padding: 0 10px; display: grid; place-items: center;
+  border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--accent); cursor: pointer; animation: figFadeIn 300ms ease-out both; }
+.pc-bottom .pc-undo { top: 14px; }
+.pc-undo:disabled { color: var(--ink-4); cursor: default; }
+.pc-undo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@keyframes figFadeIn { from { opacity: 0; } to { opacity: 1; } }

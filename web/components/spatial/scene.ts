@@ -20,9 +20,14 @@ import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
 const BLUE = new THREE.Color("#374be6");
-// Sun heatmap: one muted ramp, least sun to most, through a light sand middle so no face reads as grey-pink.
-const HEAT = [new THREE.Color("#4f7cb3"), new THREE.Color("#ece2c6"), new THREE.Color("#dd8a3e")];
-const heatColour = (out: THREE.Color, s: number) => (s < 0.5 ? out.copy(HEAT[0]).lerp(HEAT[1], s * 2) : out.copy(HEAT[1]).lerp(HEAT[2], (s - 0.5) * 2));
+// Sun heatmap: one muted ramp, least sun to most, through a muted sand middle so no face reads as grey-pink.
+// Most roofs sit between 800 and 1,050 kWh/kWp, the middle of the scale, so values are pushed away from the middle
+// (power 0.6 on the distance) and a north face reads blue, a south face orange; the order of faces never changes.
+const HEAT = [new THREE.Color("#4f7cb3"), new THREE.Color("#ddd0b2"), new THREE.Color("#d9823a")];
+const heatColour = (out: THREE.Color, s: number) => {
+  const d = s - 0.5, t = 0.5 + Math.sign(d) * 0.5 * Math.pow(Math.abs(2 * d), 0.6);
+  return t < 0.5 ? out.copy(HEAT[0]).lerp(HEAT[1], t * 2) : out.copy(HEAT[1]).lerp(HEAT[2], (t - 0.5) * 2);
+};
 const SUN = new THREE.Color("#E8730C");
 const INK = "#0A0C14";
 const NEIGHBOUR = "#B4B1A9";

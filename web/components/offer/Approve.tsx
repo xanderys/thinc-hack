@@ -2,10 +2,10 @@
 // 409 on a mismatch) and opens the Send sheet. The lead's own state is read on open and after each save, so a complete,
 // sent or signed lead says so here. No time stamps on the card: the chip carries the state.
 import { useCallback, useEffect, useState } from "react";
-import type { InstallerId, Lead } from "@/lib/api";
+import type { Lead } from "@/lib/api";
 import { call } from "@/lib/client";
-import { INSTALLER_BRAND } from "@/app/start/intake";
 import SendSheet from "./SendSheet";
+import { LEAD_LIVE } from "@/lib/whatsapp";
 import s from "./offer.module.css";
 
 type Read = Pick<Lead, "status" | "status_label" | "approved_at" | "decision" | "customer_name" | "version"> & { installer?: string };
@@ -32,11 +32,18 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
     return () => ac.abort();
   }, [leadId, approvedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const close = useCallback(() => setSheet(false), []);
+  // After a send: the lead as the engine holds it, here and on the board (header chip and card) via the live-lead event.
+  const reread = async () => {
+    if (!leadId) return;
+    const r = await call<Lead>(`/api/leads/${encodeURIComponent(leadId)}`);
+    if (!r.ok) return;
+    setLead((x) => ({ ...(x ?? {} as Read), status: r.data.status, status_label: r.data.status_label, version: r.data.version }));
+    dispatchEvent(new CustomEvent(LEAD_LIVE, { detail: r.data }));
+  };
   const dec = lead?.decision;
   // A planner change after saving drops the lead back to a draft; the card's own state says so first.
   const signed = !stale && lead?.status === "signed" && dec?.action === "sign";
   const complete = !!approvedAt || (!stale && (lead?.status === "approved" || lead?.status === "sent"));
-  const brand = INSTALLER_BRAND[(lead?.installer ?? "2a8ba8e2") as InstallerId] ?? "your installer";
   const link = leadId && typeof location !== "undefined" ? `${location.origin}/start/proposal/${encodeURIComponent(leadId)}` : "";
   return (
     <div className={s.approve}>
@@ -47,7 +54,7 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
         <span className={s.done} data-k="signed">Signed{dec?.name ? ` by ${dec.name}` : ""}</span>
       ) : complete ? (
         <>
-          <span className={s.done}>{sent && !stale ? "Sent" : (!stale && lead?.status === "approved" && lead.status_label) || "Complete"}</span>
+          <span className={s.done}>{(!stale && lead?.status_label) || (sent && !stale ? "Sent" : "Complete")}</span>
           {leadId && <button type="button" className="btn ghost" onClick={() => setSheet(true)}>Send</button>}
         </>
       ) : (
@@ -56,7 +63,7 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
       </div>
       {fail && !complete && !signed && <span className={s.failS} role="alert">{fail}</span>}
       {dec && dec.matches_current === false && <span className={s.warnS}>Signed a different version than the one on screen</span>}
-      {sheet && leadId && <SendSheet leadId={leadId} name={lead?.customer_name ?? ""} brand={brand} link={link} version={lead?.version} onClose={close} onSent={(v) => { setSent(true); if (v != null) setLead((x) => x && { ...x, version: v, status: "sent", status_label: "Sent" }); }} />}
+      {sheet && leadId && <SendSheet leadId={leadId} name={lead?.customer_name ?? ""} link={link} version={lead?.version} onClose={close} onSent={() => { setSent(true); void reread(); }} />}
     </div>
   );
 }

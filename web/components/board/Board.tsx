@@ -196,7 +196,12 @@ export default function Board({ openId: initial }: { openId?: string }) {
 
   // The WhatsApp chip polls the lead while a conversation is open; each new version lands here like a call answer.
   useEffect(() => {
-    const on = (e: Event) => { const l = (e as CustomEvent<LeadT>).detail; if (l?.lead_id === openId) setLiveLead((p) => p && p.lead_id === l.lead_id && (p.version ?? -1) > (l.version ?? -1) ? p : l); };
+    const on = (e: Event) => {
+      const l = (e as CustomEvent<LeadT>).detail;
+      if (l?.lead_id === openId) setLiveLead((p) => p && p.lead_id === l.lead_id && (p.version ?? -1) > (l.version ?? -1) ? p : l);
+      // The list row too, so the header chip and the board card read the lead's own status (Sent after a send).
+      if (l?.lead_id && l.status) setRows((rs) => rs && rs.map((r) => (r.lead_id === l.lead_id ? { ...r, status: l.status, status_label: l.status_label ?? r.status_label } : r)));
+    };
     addEventListener(LEAD_LIVE, on); return () => removeEventListener(LEAD_LIVE, on);
   }, [openId]);
 
@@ -336,7 +341,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
             <li key={c.id}>
               <button type="button" className={lv ? "b-card live" : "b-card"} style={{ viewTransitionName: `card-${c.id}` }} onClick={() => open(c.id)}>
                 {lv && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
-                <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{st === c.status && c.label ? c.label : STATUS[st]}</span>{c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
+                <span className="b-top">{!dec && <span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{st === c.status && c.label ? c.label : STATUS[st]}</span>}{c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
                 <span className="b-name">{c.name}</span>
                 <span className="b-place">{c.place}</span>
                 {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><ModelThumb lead={designs[c.id]?.lead} design={c.design} /></span>}
