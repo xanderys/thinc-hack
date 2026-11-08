@@ -138,4 +138,4 @@ export function invoiceOf(d: Partial<Design>, rates: Rates | null | undefined, a
 // The investment as one number everywhere (tiles, pass, kit total): the invoice total for the design on screen, from the
 // engine's unit rates (so a chooser edit moves every figure together); the engine's capex where it sends no rates.
 export const investmentOf = (r: { design?: Partial<Design>; rates?: Rates | null; economics: { capex_eur: number; assumptions?: string[] } } | null | undefined) =>
-  !r ? 0 : (r.design ? invoiceOf(r.design, r.rates, r.economics.assumptions, r.economics.capex_eur)?.total : undefined) ?? r.economics.capex_eur;
+  !r || !r.economics ? 0 : (r.design ? invoiceOf(r.design, r.rates, r.economics.assumptions, r.economics.capex_eur)?.total : undefined) ?? r.economics.capex_eur;

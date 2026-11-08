@@ -405,3 +405,9 @@
 .b-skel-pill > .b-skel { display: inline-block; width: 44px; height: 12px; vertical-align: middle; }
 /* The rule result leads each popover. */
 .sc-pop .sc-rule { color: var(--ink); font-weight: 600; }
+
+/* Shared building: one column of plain rows. */
+.sb { display: grid; gap: 10px; padding: 4px 0; }
+.sb-row { display: grid; gap: 2px; margin: 0; font-size: 14px; line-height: 1.4; }
+.sb-row b { font-weight: 600; }
+.sb-row span { color: var(--muted, #5a6478); }
