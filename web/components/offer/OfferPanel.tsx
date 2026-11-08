@@ -140,8 +140,8 @@ export default function OfferPanel(p: OfferProps) {
   const dcac = line(/dc\s*\/\s*ac/i);
   // Two rows of three, no number twice: what is fitted and what it costs, then what it gives back.
   const tiles = [
-    { k: "Solar", v: d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "None" },
-    { k: "Battery", v: d.battery_kwh ? `${n2(d.battery_kwh)} kWh` : "None" },
+    { k: "Solar", v: d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "No solar" },
+    { k: "Battery", v: d.battery_kwh ? `${n2(d.battery_kwh)} kWh` : "No battery" },
     { k: "Investment", v: eur(e.capex_eur) },
     { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
     { k: "Autarky", v: pc(e.autarky_share) },
