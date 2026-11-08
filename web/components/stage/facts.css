@@ -46,3 +46,4 @@
 .fc-phone input { width: 100%; max-width: 280px; font: inherit; font-size: 18px; font-variant-numeric: tabular-nums; padding: 6px 10px; border: 1px solid var(--ink-3); border-radius: 8px; background: var(--sheet); color: var(--ink); }
 .fc-phone input[aria-invalid="true"] { border-color: var(--bad); }
 .fc-phone .u { font-size: 13px; color: var(--ink-3); }
+.fc-phone .u.err { color: var(--bad); }
