@@ -68,3 +68,11 @@
   .chev { transition: none; }
   .busyBtn { animation: none; }
 }
+
+.hl { background: rgba(255, 192, 67, 0.32); border-radius: 3px; padding: 0 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.callout { border: 1px solid var(--rule); border-radius: 12px; padding: 8px 12px; background: var(--sheet); display: flex; flex-direction: column; gap: 4px; }
+.calloutWarn { border-color: rgba(249, 156, 0, 0.45); background: rgba(249, 156, 0, 0.08); }
+.quote { border-left: 0; padding: 8px 12px; border-radius: 12px; background: var(--sheet-2); white-space: pre-wrap; display: flex; flex-direction: column; gap: 4px; }
+.sugs { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 8px 6px; }
+.sug { border: 1px solid var(--rule-2); background: var(--sheet); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; }
+.sug:hover { border-color: var(--accent); color: var(--accent); }
