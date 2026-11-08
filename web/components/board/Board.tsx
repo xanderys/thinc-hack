@@ -17,7 +17,7 @@ import { PAST_LINE } from "@/components/proposal/Proposal";
 import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
 
 // The facts count is the verdict chip's tooltip, never part of the line.
-const factsTip = (q: { facts?: { stated: number; total: number }; confidence_line?: string }) => q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : q.confidence_line?.split(",")[0];
+const factsTip = (q: { facts?: { stated: number; total: number }; confidence_line?: string }) => `${q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : q.confidence_line?.split(",")[0] ?? ""}. Estimates until the site visit.`.replace(/^\. /, "");
 import qs from "@/components/qualify/qualify.module.css";
 
 const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
@@ -25,6 +25,9 @@ const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 
 type Kept = NonNullable<ReturnType<typeof recallVerdict>>;
 type Card = { id: string; name: string; place: string; status: LeadT["status"]; updated: string; design?: Design; line: string; created?: string; decision?: LeadRow["decision"]; q: Kept | null };
+/** What the lead stands on: the approved design and its economics once approved or signed, else the stored draft. */
+const standing = (l: LeadT): DesignResponse => l.approved?.design ? { ...l.draft, design: l.approved.design, economics: l.approved.economics ?? l.draft.economics } : l.draft;
+
 type Got = { at: string; d: Design; lead?: LeadT; res?: DesignResponse };
 const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
 const isPc = (x?: string | null) => !x || /^\s*\d{5}\s*$/.test(x);
@@ -103,14 +106,14 @@ export default function Board({ openId: initial }: { openId?: string }) {
         call<LeadT>(`/api/leads/${row.lead_id}`).then(async (g) => {
           if (!g.ok) { fetching.current.delete(row.lead_id); return; }
           // A draft stored by an earlier engine: show a fresh design for the lead's facts until the lead refreshes.
-          let d = g.data.draft.design, res = g.data.draft;
+          let res = standing(g.data), d = res.design;
           // The stored draft first, so the verdict never waits on the redesign below.
           setDesigns((x) => { if (x[row.lead_id]?.lead) return x; const n = { ...x, [row.lead_id]: { at: "", d, lead: g.data, res } }; designsRef.current = n; return n; });
           const h = await health();
           const dv = g.data.draft as DesignResponse & { rules_version?: string | null };
           if (h && (dv.model_version !== h.model_version || (dv.rules_version != null && dv.rules_version !== h.rules_version))) {
             const f = await call<DesignResponse>("/api/design", { inputs: g.data.facts });
-            if (f.ok) { d = f.data.design; res = f.data; }
+            if (f.ok && !g.data.approved?.design) { d = f.data.design; res = f.data; }
           }
           fetching.current.delete(row.lead_id);
           setDesigns((x) => { const n = { ...x, [row.lead_id]: { at, d, lead: g.data, res } }; designsRef.current = n; return n; });
@@ -249,7 +252,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
       if (Date.now() - firstSeen.current[ll.lead_id] < 10_000) return null;
       roof = { pending: true } as RoofResult;
     }
-    return qualify(ll, ll.draft, roof);
+    return qualify(ll, standing(ll), roof);
   })();
   const [cardNow, setCardNow] = useState<{ leadId: string; res: DesignResponse; changed: Partial<HomeInputs> } | null>(null);
   useEffect(() => {
