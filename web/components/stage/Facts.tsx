@@ -45,7 +45,7 @@ const SPECS: Spec[] = [
 ];
 const builtEstimated = (i: HomeInputs, r?: RoofResult | null) => !!i.house_built_year && !!r?.build_year_class && r.build_year_estimate != null && Math.abs(i.house_built_year - r.build_year_estimate) < 0.5;
 
-// +6586936789 shown as +65 8693 6789: the country code, then groups of four.
+// An E.164 number shown with its country code, then the rest in groups of four.
 const E164 = /^\+[1-9]\d{7,14}$/;
 const CC = ["65", "44", "49", "61", "1", "33", "31", "41", "43", "39", "34", "91", "86", "81"];
 export function showPhone(e: string) {
@@ -54,13 +54,13 @@ export function showPhone(e: string) {
 }
 
 function PhoneField({ value, onSet }: { value: string | null | undefined; onSet: (v: string) => void }) {
-  const [d, setD] = useState(value ?? "+");
+  const [d, setD] = useState(value ?? "");
   const clean = d.replace(/[\s().-]/g, "");
   const ok = E164.test(clean) && clean !== value;
   return (
     <form className="fc-phone" onSubmit={(e) => { e.preventDefault(); if (ok) onSet(clean); }}>
-      <input type="tel" inputMode="tel" autoComplete="tel" value={d} aria-label="Phone number" aria-invalid={d !== "+" && !E164.test(clean)} onChange={(e) => setD(e.target.value.replace(/[^\d+\s().-]/g, ""))} />
-      <span className="u">{d !== "+" && !E164.test(clean) ? "Country code first, like +49 151 2345678" : "International format"}</span>
+      <input type="tel" inputMode="tel" autoComplete="tel" value={d} aria-label="Phone number" placeholder="Country code first, like +49 151 2345678" autoFocus aria-invalid={d !== "" && !E164.test(clean)} onChange={(e) => setD(e.target.value.replace(/[^\d+\s().-]/g, ""))} />
+      {d !== "" && !E164.test(clean) && <span className="u err" role="status">Country code first, like +49 151 2345678</span>}
       <button type="submit" className="fc-set" disabled={!ok}>Set</button>
     </form>
   );
