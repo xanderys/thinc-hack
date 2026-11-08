@@ -91,3 +91,4 @@
 .thread { scroll-padding-top: 24px; -webkit-mask-image: linear-gradient(transparent 0, #000 18px); mask-image: linear-gradient(transparent 0, #000 18px); }
 
 .event { margin: 0; font-size: 13px; color: var(--ink-3); }
+.msg { align-self: flex-start; max-width: 92%; padding: 8px 12px; border-radius: 18px 18px 18px 6px; background: rgba(36, 161, 72, 0.10); white-space: pre-wrap; font-size: 15px; }
