@@ -12,7 +12,7 @@ import * as THREE from "three";
 import { POSES, springStep, type Pose } from "./camera";
 import type { ShadeAt } from "@/lib/shading";
 import type { Envelope } from "./types";
-import { CAR, CAR_PORT, WALLBOX_OUTLET, cable, car } from "./kitMeshes";
+import { CAR, CAR_PORT, WALLBOX, WALLBOX_OUTLET, cable, car } from "./kitMeshes";
 
 export type System = "panels" | "battery" | "wallbox" | "heatpump";
 
@@ -41,10 +41,10 @@ class Pipe {
   readonly line: THREE.Line;
   readonly dots: THREE.InstancedMesh;
   private u = 0;
-  constructor(private curve: THREE.Curve<V>, color: THREE.Color) {
+  constructor(private curve: THREE.Curve<V>, color: THREE.Color, r = DOT_R) {
     const g = new THREE.BufferGeometry().setFromPoints(curve.getPoints(48));
     this.line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: PIPE, transparent: true, opacity: 0.55 }));
-    this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(DOT_R, 10, 8), new THREE.MeshBasicMaterial({ color }), DOTS);
+    this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(r, 10, 8), new THREE.MeshBasicMaterial({ color }), DOTS);
     this.dots.frustumCulled = false;
     this.step(0, 0);
   }
@@ -108,7 +108,7 @@ export class Systems {
     const { anchors: A, box } = this.host;
     if (box.isEmpty()) return;
     const home = A.home.clone().setY(0.6);
-    const mk = (k: keyof Systems["pipes"], c: THREE.Curve<V>, col: THREE.Color, into: THREE.Group) => { const p = new Pipe(c, col); this.pipes[k] = p; into.add(p.line, p.dots); };
+    const mk = (k: keyof Systems["pipes"], c: THREE.Curve<V>, col: THREE.Color, into: THREE.Group, r = DOT_R) => { const p = new Pipe(c, col, r); this.pipes[k] = p; into.add(p.line, p.dots); return p; };
     mk("pvHome", route(A.roof, home, box), SOLAR, this.battery);
     mk("pvBatt", route(A.roof, A.batt.clone().setY(1.2), box, 0.55), SOLAR, this.battery);
     mk("battHome", straight(A.batt.clone().setY(1.2), home, 0.75), BATT, this.battery);
@@ -123,12 +123,15 @@ export class Systems {
     const out = wbObj ? WALLBOX_OUTLET.clone().applyMatrix4(wbObj.matrixWorld) : new THREE.Vector3(box.max.x + 0.1, 1.05, box.max.z - 1.5);
     this.carGoal.set(out.x + 0.9 + CAR.w / 2, 0, out.z - CAR_PORT.z);
     const port = this.carGoal.clone().add(CAR_PORT);
-    const wb = out.clone().setY(out.y + 0.2);
-    mk("gridBox", straight(A.home.clone().setY(1.2).setX(box.max.x - 0.2), wb, 1.2), EV, this.charge);
-    mk("boxCar", straight(wb, port.clone().setY(port.y + 0.3), 0.9), EV, this.charge);
-    if (this.plug) { this.plug.removeFromParent(); this.plug.geometry.dispose(); (this.plug.material as THREE.Material).dispose(); }
+    // Power reaches the unit from inside: the house pipe stops in the wall behind it, and the car's dots run along
+    // the cable itself, small enough to sit on it, starting below the unit, so nothing covers the wallbox.
     const P = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-    this.plug = cable([out, P(out.x + 0.06, 0.5, out.z), P(out.x + 0.25, 0.03, out.z), P(port.x - 0.4, 0.03, port.z), P(port.x - 0.12, 0.45, port.z), port], 0.02);
+    const behind = P(out.x - WALLBOX.d / 2 - 0.2, out.y + WALLBOX.h / 2, out.z);
+    mk("gridBox", straight(A.home.clone().setY(1.2).setX(box.max.x - 0.2), behind, 1.2), EV, this.charge, 0.12);
+    const path = [out, P(out.x + 0.06, 0.5, out.z), P(out.x + 0.25, 0.03, out.z), P(port.x - 0.4, 0.03, port.z), P(port.x - 0.12, 0.45, port.z), port];
+    mk("boxCar", new THREE.CatmullRomCurve3(path.slice(1)), EV, this.charge, 0.09).line.visible = false;
+    if (this.plug) { this.plug.removeFromParent(); this.plug.geometry.dispose(); (this.plug.material as THREE.Material).dispose(); }
+    this.plug = cable(path, 0.02);
     this.g.add(this.plug);
     this.place(this.sys === "wallbox");
   }
