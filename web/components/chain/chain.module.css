@@ -283,3 +283,10 @@
 .heroSkel path { fill: #e3e6ef; animation: skelPulse 1.2s ease-in-out infinite alternate; }
 @keyframes skelPulse { from { fill: #e3e6ef; } to { fill: #f3f4f8; } }
 @media (prefers-reduced-motion: reduce) { .heroSkel path { animation: none; } }
+/* Offer panel mount: per-panel shading floats top-left on Panels; the Offer panel itself lives in components/offer. */
+.shadeCard { position: absolute; top: 12px; left: 12px; z-index: 3; width: 290px; background: #fff; border-radius: 12px; border: 1px solid var(--rule); padding: 10px; }
+.offerUnder { display: none; }
+@media (max-width: 760px) {
+  .shadeCard { display: none; }
+  .offerUnder { display: block; order: -1; min-width: 0; }
+}

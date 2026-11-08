@@ -2,7 +2,7 @@
 // The open card's reasoning chain: the house is the hero for the whole page, eight stages build on it.
 // Each stage adds one sentence to the rail, a working-shown bar or check list where the engine has one,
 // and moves the camera to the part of the house it explains. A change re-runs the chain from the stage it moved.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
 import { INSTALLER_NAME } from "@/lib/api";
@@ -16,7 +16,7 @@ import type { Variant } from "@/components/stage/Plan";
 import House from "@/components/stage/House";
 import Why from "@/components/stage/Why";
 import s from "./chain.module.css";
-import { SiteVisitNote, useCardQualification } from "@/components/qualify/Verdict";
+import OfferPanel, { type OfferProps } from "@/components/offer/OfferPanel";
 import ShadingPanel from "@/components/spatial/ShadingScrubber";
 import { EnvelopeBar, HeatPumpStep } from "@/components/spatial/EnvelopeBar";
 
@@ -28,38 +28,6 @@ const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-GB");
 const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
 const pc = (x: number) => `${Math.round(x * 100)} %`;
 const eur = (x: number) => `${x < 0 ? "-" : ""}€${n0(Math.abs(x))}`;
-
-// Variants as side-by-side tabs; an offer equal to another tab is folded into it as a small tag (Stage sets also).
-function VariantTabs({ variants, onVariant, pending }: { variants: Variant[]; onVariant: (v: Variant) => void; pending?: boolean }) {
-  return (
-    <div className={s.vtabs} role="group" aria-label="Variants" data-pending={pending || undefined}>
-      {variants.map((v) => {
-        const d = v.design, pick = !v.current && !!v.overrides;
-        return (
-          <button key={v.name} type="button" className={s.vtab} aria-pressed={v.current} aria-disabled={!v.current && !pick} onClick={() => { if (pick) onVariant(v); }}>
-            <span className={s.vtName}>{v.name}</span>
-            {v.also?.map((t) => <span key={t} className={s.vAlso}>{t}</span>)}
-            <span className={s.vtFig}>{n2(d.pv_kwp ?? 0)} kWp, {d.battery_kwh ? `${n2(d.battery_kwh)} kWh` : "no battery"}</span>
-            <span className={s.vtPrice}>{v.e ? eur(v.e.capex_eur) : ""}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// A figure that changed: the old value crossfades to the new; after a sentence or a hand edit the old one stays in
-// place with an arrow for 1.5 s. Never a separate card, never in the way of input.
-function Fig({ v, arrow }: { v: string; arrow: boolean }) {
-  const [f, setF] = useState<{ v: string; was: string | null; n: number }>({ v, was: null, n: 0 });
-  useEffect(() => { setF((x) => (x.v === v ? x : { v, was: arrow ? x.v : null, n: x.n + 1 })); }, [v]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (!f.was) return; const t = setTimeout(() => setF((x) => ({ ...x, was: null })), 1500); return () => clearTimeout(t); }, [f.n, f.was]);
-  return (
-    <span key={f.n} className={f.n ? s.figIn : undefined}>
-      {f.was && <><span className={s.figWas}>{f.was}</span><span className={s.figTo} aria-label="to"> → </span></>}{f.v}
-    </span>
-  );
-}
 
 // Four components and the offer, in Reonic's names and colours; the old eight-stage path stays behind NEXT_PUBLIC_CHAIN=8.
 const FIVE = process.env.NEXT_PUBLIC_CHAIN !== "8";
@@ -87,6 +55,13 @@ type Props = {
   answered: boolean; refine: ReactNode;
 };
 
+// Phone width: the Offer panel docks under the model instead of beside it (same break as chain.module.css).
+function useNarrow() {
+  const [r, setR] = useState(false);
+  useEffect(() => { const m = matchMedia("(max-width: 760px)"); setR(m.matches); const f = () => setR(m.matches); m.addEventListener("change", f); return () => m.removeEventListener("change", f); }, []);
+  return r;
+}
+
 function useReduce() {
   const [r, setR] = useState(false);
   useEffect(() => { const m = matchMedia("(prefers-reduced-motion: reduce)"); setR(m.matches); const f = () => setR(m.matches); m.addEventListener("change", f); return () => m.removeEventListener("change", f); }, []);
@@ -95,13 +70,10 @@ function useReduce() {
 
 export default function Chain({ res, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, refine, decide, redraft }: Props) {
   const reduce = useReduce();
-  // Over 2 s the pending state says how long it has waited.
-  const [, beat] = useState(0);
-  useEffect(() => { if (!pending) return; const t = setInterval(() => beat((x) => x + 1), 500); return () => clearInterval(t); }, [pending]);
-  const waited = pending ? (Date.now() - pending) / 1000 : 0;
-  const edit = !!cause && !/^Switched to/.test(cause);
   const causeRef = useRef(cause); causeRef.current = cause;
-  const q = useCardQualification(inputs, res, leadId);   // visit verdict: offer value, confidence, what to confirm on site
+  // A change made from the Offer panel or Undo keeps the planner in the Offer: no stage or camera move on the re-run.
+  const hold = useRef(0);
+  const holdOffer = () => { hold.current = Date.now(); };
   // Draft first: the chain plays once, on the first open of a lead; after that the design is there at once and the
   // chain waits as a collapsed strip under the model.
   const [first] = useState(() => {
@@ -178,7 +150,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     // A refinement redrafts in place: the changed layers light up and the camera goes to the first; no replay.
     setMoved(m);
     // A variant switch stays on the Offer; the strip lights what changed, the view does not move.
-    if (!/^Switched to/.test(causeRef.current ?? "")) setStage(Math.min(...m));
+    if (!/^(Switched to|Undone)/.test(causeRef.current ?? "") && Date.now() - hold.current > 15000) setStage(Math.min(...m));
     setAuto(false);
     setUpdated(Date.now());
   }
@@ -250,12 +222,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
 
   const view = VIEWS[stage - 1];
-  const kpis = [
-    { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
-    { k: "Autarky", v: pc(e.autarky_share) },
-    { k: "Investment", v: eur(e.capex_eur) },
-    { k: "Break-even", v: breakEven == null ? "over 20 years" : `${breakEven} years` },
-  ];
 
   const go = (n: number) => { setAuto(false); setStage(n); setWhy(null); setWhyStep(null); };
 
@@ -265,7 +231,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       <Inert label="Pan"><path d="M7 11V5.5a1.5 1.5 0 013 0V10m0-1.5V4a1.5 1.5 0 013 0v5m0-3a1.5 1.5 0 013 0v6c0 3.5-2.5 6-6 6s-5-1.5-6.5-4L3 11.5a1.5 1.5 0 012.5-1.5L7 12" /></Inert>
       <Inert label="Measure"><path d="M3 14L14 3l3 3L6 17zM6 11l1.5 1.5M8.5 8.5L10 10M11 6l1.5 1.5" /></Inert>
       <span className={s.sep} />
-      <button type="button" className={s.tb} onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
+      <button type="button" className={s.tb} onClick={() => { holdOffer(); onUndo(); }} disabled={!canUndo} title="Undo" aria-label="Undo"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
       <span className={s.sep} />
       <LayersMenu className={s.tb} up heatmap={{ on: heatmap, set: setHeatmap }} />
       <button type="button" className={s.tb} aria-pressed={expanded} title="Reasoning" aria-label="Reasoning" onClick={() => { setAuto(false); setExpanded((x) => !x); }}>
@@ -280,19 +246,19 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     </div>
   );
 
+  // The Offer panel: beside the house on desktop (cover, so the house fits left of it), under the model on a phone.
+  // Overrides and Approve come from the decide element Stage already passes, so Stage itself stays untouched.
+  const dp = (isValidElement(decide) ? decide.props : null) as Partial<Pick<OfferProps, "overrides" | "setOverride" | "approvedAt" | "onApprove">> | null;
+  const narrow = useNarrow();
+  const offer = (docked: boolean) => (
+    <OfferPanel docked={docked} res={res} economics={e} breakEven={breakEven} cause={cause} pending={!!pending}
+      variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={layers?.checks ?? null} model={model} leadId={leadId}
+      overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
+  );
   const overlays = (
     <>
-      <div className={s.sim} data-cover>
-        <p className={s.simH}><Bolt /> Simulation{pending && waited > 2 ? <span className={s.waited}>Redrafting, {n1(waited)} s</span> : null}</p>
-        <dl className={s.kpis} data-pending={!!pending}>{kpis.map((x) => <div key={x.k}><dt>{x.k}</dt><dd><Fig v={x.v} arrow={edit} /></dd></div>)}</dl>
-        {address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div>}
-      </div>
-      {stage === N && variants.length > 0 && (
-        <div className={s.variants}>
-          <p className={s.varH}>Variants</p>
-          <VariantTabs variants={variants} onVariant={onVariant} pending={!!pending} />
-        </div>
-      )}
+      {address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}
+      {!narrow && offer(true)}
     </>
   );
 
@@ -307,13 +273,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
               </button>
             ))}
           </div>
-          {stage === N && variants.length > 0 && (
-            <div className={s.varList}>
-              <VariantTabs variants={variants} onVariant={onVariant} pending={!!pending} />
-            </div>
-          )}
-          {stage === N && <SiteVisitNote q={q} />}
-          {decide && <div className={s.decide}>{decide}</div>}
         </div>
       )}
       {expanded && <ol className={s.rail} aria-label="How the design was reached">
@@ -327,7 +286,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
                 <span className={s.it}>{t}{multi && FIVE && (n <= 2 || n === N) && <span className={s.flatTag}>Single-family figure</span>}</span>
                 <span className={s.ihead} data-pending={!!pending || !fresh}>{head[i]}</span>
               </button>
-              {FIVE && open && n === N && layers?.checks && <CheckRow checks={layers.checks} />}
               {built && bar && !(FIVE && open && n <= 4) && !(FIVE && n === 3 && !d.wallbox_kw && !layers?.ev) && !(FIVE && n === 4 && (multi || (open && hasEnv))) && (open ? <BarView bar={FIVE && n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} /> : <BarStrip bar={bar} />)}
               {FIVE && open && n <= 4 && (
                 <div className={s.three}>
@@ -363,13 +321,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
               {!FIVE && open && n === 4 && rot && <p className={s.rot}>{rot}</p>}
               {!FIVE && open && n === 7 && layers?.checks && <Checks checks={layers.checks} />}
               {open && n === N && a && <Offer res={{ ...res, economics: e }} />}
-              {open && n === N && variants.length > 0 && (
-                <div className={s.varList}>
-                  <VariantTabs variants={variants} onVariant={onVariant} pending={!!pending} />
-                </div>
-              )}
-              {open && n === N && <SiteVisitNote q={q} />}
-              {open && n === N && decide && <div className={s.decide}>{decide}</div>}
               {!(FIVE && n <= 4) && open && WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation && (
                 <div className={s.whyrow}>
                   <button type="button" className={s.whyb} aria-expanded={why?.k === WHY_AT[n]} onClick={() => setWhy((w) => (w?.k === WHY_AT[n] ? null : { k: WHY_AT[n]!, level: 1 }))}>Why</button>
@@ -401,6 +352,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       </div>
 
       {FIVE && onPanels && address && spatial !== false && <div className={s.shadeUnder}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}
+      {narrow && <div className={s.offerUnder}>{offer(false)}</div>}
       <div className={s.say}>{refine}</div>
       {prev && JSON.stringify(prev.design) !== JSON.stringify(res.design) && <span className={s.srOnly} aria-live="polite">Draft updated.</span>}
     </div>
@@ -419,9 +371,6 @@ function HouseSkel() {
       <svg viewBox="0 0 240 160"><path d="M30 84 L120 24 L210 84 V148 H30 Z" /></svg>
     </div>
   );
-}
-function Bolt() {
-  return <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><path d="M11 1L3 12h6l-1 7 8-11h-6z" fill="#374be6" /></svg>;
 }
 export function Chips({ d }: { d: { pv_kwp?: number | null; battery_kwh?: number | null; wallbox_kw?: number | null; heatpump_kw?: number | null } }) {
   return (
@@ -509,24 +458,6 @@ function Checks({ checks }: { checks: Check[] }) {
           <p className={s.gNote}>Module to inverter power {n0(dc)} %</p>
         </div>
       )}
-    </div>
-  );
-}
-
-// The offer opens with the sanity ticks in one row; Reonic's battery guide sits under it as a reference line.
-function CheckRow({ checks }: { checks: Check[] }) {
-  const val = (c: Check) => c.value == null ? "" : typeof c.value !== "number" ? String(c.value) : c.unit === "share" ? pc(c.value) : c.unit === "%" ? `${n0(c.value)} %` : `${c.value >= 100 ? n0(c.value) : n2(c.value)}${c.unit && c.unit.length < 8 ? ` ${c.unit}` : ""}`;
-  const ref = checks.find(isRef);
-  const refMsg = ref && (ref.message ?? `${n2(Number(ref.value))} kWh per kWh of daily use: ${refOut(ref) ? "above" : "inside"} Reonic's guide`);
-  return (
-    <div className={s.tickRow}>
-      <ul>
-        {checks.filter((c) => !isRef(c)).map((c) => {
-          const tone = isFail(c) ? "fail" : isInfo(c) ? "info" : "pass";
-          return <li key={c.name} className={s[`t_${tone}`]} title={c.band}><i aria-hidden="true">{tone === "fail" ? "!" : tone === "pass" ? "✓" : "i"}</i>{cap(c.name)} <b>{val(c)}</b></li>;
-        })}
-      </ul>
-      {refMsg && <p className={refOut(ref!) ? s.refS : s.passS}>{refMsg}</p>}
     </div>
   );
 }
