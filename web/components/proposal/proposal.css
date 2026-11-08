@@ -21,6 +21,8 @@
    and the skeleton take the same box. */
 .pp-housebox { min-height: calc(55px + 62.5cqw + 80px); border-radius: 12px; }
 @media (max-width: 700px) { .pp-housebox { min-height: calc(55px + 125cqw + 114px); } }
+/* No 3D model for the address: the drawing takes only its own height, so no empty box sits under it. */
+.pp-housebox:has(> .pp-drawing) { min-height: 0; }
 .pp-housebox > .pp-drawing { height: 100%; box-sizing: border-box; display: grid; place-items: center; }
 .pp-housebox > .pp-drawing svg { max-height: 100%; width: auto; max-width: 100%; }
 .pp-spatial { border: 1px solid var(--pp-rule); border-radius: 12px; overflow: hidden; background: var(--pp-card); }
@@ -39,7 +41,10 @@
 .pp-vars li { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name num" "chips num"; align-items: start; gap: 6px 12px; padding: 12px 0; border-top: 1px solid var(--pp-rule); }
 .pp-vars li:first-child { border-top: 0; padding-top: 0; }
 .pp-vname { grid-area: name; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.pp-vars li:not(.on) .pp-vname { font-weight: 500; color: var(--pp-ink-2); }
+.pp-vars .pp-vname { font-weight: 500; }
+.pp-more-d { margin-top: 4px; font-size: 12.5px; color: var(--pp-ink-2); }
+.pp-more-d summary { cursor: pointer; min-height: 24px; display: flex; align-items: center; color: var(--pp-blue); }
+.pp-more-d p { margin: 4px 0 0; line-height: 1.4; }
 .pp-vnum { grid-area: num; text-align: right; font-size: 15px; font-weight: 600; display: flex; flex-direction: column; gap: 2px; }
 .pp-vnum small { font-size: 12.5px; font-weight: 400; color: var(--pp-ink-2); }
 .pp-vars .pp-chips { grid-area: chips; }

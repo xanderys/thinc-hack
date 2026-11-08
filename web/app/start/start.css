@@ -23,7 +23,8 @@ body:has(.start-root) main { max-width: none; padding: 0; }
 .h-input { width: 100%; min-height: 48px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--h-rule); background: #fff; font: inherit; font-size: 16px; color: var(--h-ink); }
 .h-input::placeholder { color: #A3A79F; }
 .h-input[aria-invalid="true"] { border-color: #B3261E; }
-.h-why { font-size: 13.5px; color: #B3261E; margin: 6px 0 0; }
+.h-why { font-size: 13.5px; color: #B3261E; margin: 6px 0 0; overflow-wrap: anywhere; }
+.h-retry { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--h-brand); text-decoration: underline; cursor: pointer; min-height: 24px; }
 .h-opt { font-size: 13.5px; color: var(--h-ink-2); margin: 22px 0 14px; padding-top: 16px; border-top: 1px solid var(--h-rule); }
 .h-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .h-chip { min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--h-rule); background: transparent; color: var(--h-ink); font: inherit; font-size: 15px; cursor: pointer; }
