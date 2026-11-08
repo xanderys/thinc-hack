@@ -127,6 +127,11 @@ export class SpatialScene {
   private focusPts: Record<Focus, THREE.Vector3> = { roof: new THREE.Vector3(), house: new THREE.Vector3(), drive: new THREE.Vector3(), battery: new THREE.Vector3(), wallbox: new THREE.Vector3(), west: new THREE.Vector3() };
   private fitD = 40;
   private wallbox: THREE.Object3D | null = null;
+  // Live anchors for the size pills: the same vectors are re-projected every frame, so a pill follows its unit
+  // when snapUnits moves it onto the wall after the building model loads.
+  private wbAt = new THREE.Vector3();
+  private battAt = new THREE.Vector3();
+  private gridPole = new THREE.Group(); // the grid connection, shown only with the day flow's "Grid" label
   private inverterUnit: THREE.Object3D | null = null;
   private hpUnit: THREE.Object3D | null = null;
   private fly: { pos: THREE.Vector3; tgt: THREE.Vector3; top: boolean } | null = null;
@@ -177,7 +182,7 @@ export class SpatialScene {
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xd6d1c5, 1.9));
     this.sunLight.position.set(-20, 30, 25);
     this.scene.add(this.sunLight);
-    this.scene.add(this.ctxLines, this.placeholder, this.outlines, this.tints, this.panels, this.kit, this.hpGroup, this.sunGroup);
+    this.scene.add(this.ctxLines, this.placeholder, this.outlines, this.tints, this.panels, this.kit, this.hpGroup, this.gridPole, this.sunGroup);
 
     // Touch moves the model, never the page.
     this.renderer.domElement.style.touchAction = "none";
@@ -337,7 +342,7 @@ export class SpatialScene {
 
   setModel(model: RoofModel) {
     this.targets = [];
-    [this.placeholder, this.outlines, this.tints, this.kit, this.hpGroup, this.sunGroup, this.ctxLines].forEach((g) => g.clear());
+    [this.placeholder, this.outlines, this.tints, this.kit, this.hpGroup, this.gridPole, this.sunGroup, this.ctxLines].forEach((g) => g.clear());
     const nbr = neighbourEdges(model.planes);
     this.ctxLines.add(outlineMesh(nbr));
     this.ctxLines.userData.edges = nbr; // the mesh view paints the same edges in its shader (whiteContext.ts)
@@ -373,7 +378,7 @@ export class SpatialScene {
     if (this.glbRoot && !this.box.isEmpty()) this.flattenNeighbours(this.glbRoot);
     const size = box.getSize(new THREE.Vector3());
     // Battery: indoors against the south wall, seen through the glass walls (snapUnits puts it on the wall's inner
-    // face once the building model is in); grid: a pole at the edge of the plot.
+    // face once the building model is in); grid: a pole at the edge of the plot, only with the day flow.
     const bx = box.min.x + 1.6, bz = box.max.z - 1.2;
     // The parts come from kitMeshes.ts, the same objects the parts list shows as icons.
     this.batteryBox = withEdges(battery() as THREE.Mesh, INK);
@@ -383,7 +388,9 @@ export class SpatialScene {
     pole.position.set(gx, 3.75, gz);
     const arm = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.08), new THREE.MeshLambertMaterial({ color: "#4A4C55" }));
     arm.position.set(gx, 7.1, gz);
-    this.kit.add(this.batteryBox, pole, arm);
+    this.kit.add(this.batteryBox);
+    this.gridPole.add(pole, arm);
+    this.gridPole.visible = false;
     this.kit.visible = false;
 
     this.centre.set((box.min.x + gx) / 2, size.y * 0.4, (box.min.z + gz) / 2);
@@ -637,6 +644,7 @@ export class SpatialScene {
       const hit = ray.intersectObjects(walls, false)[0];
       if (hit && hit.point.x >= this.box.max.x - 2.5) wb.position.x = hit.point.x + WALLBOX.d / 2 + 0.01;
     }
+    this.pillAnchors();
     this.systems.rebuild();
     const hp = this.hpUnit;
     if (hp) {
@@ -837,10 +845,16 @@ export class SpatialScene {
   nodeLabel(key: "roof" | "home" | "batt" | "grid", html: string) { this.nodeLabels[key] = html; }
 
   // Battery and wallbox steps: the marker on the house carries its size ("10 kWh", "11 kW").
+  // The pills sit just above their unit: the battery's top, the wallbox's top edge.
+  private pillAnchors() {
+    this.battAt.copy(this.anchors.batt).setY(1.65);
+    if (this.wallbox) this.wbAt.copy(this.wallbox.position).add(new THREE.Vector3(0, WALLBOX.h + 0.06, 0));
+  }
   kitLabels(batt: string | null, wb: string | null): Label[] {
     const out: Label[] = [];
-    if (batt) out.push({ key: "kit-batt", at: this.anchors.batt.clone().setY(1.65), html: `<b>${batt}</b>`, cls: "chip c-bat", prio: 5e6 });
-    if (wb && this.wallbox) out.push({ key: "kit-wb", at: this.wallbox.position.clone().add(new THREE.Vector3(0, WALLBOX.h + 0.2, 0)), html: `<b>${wb}</b>`, cls: "chip c-ev", prio: 5e6 });
+    this.pillAnchors();
+    if (batt) out.push({ key: "kit-batt", at: this.battAt, html: `<b>${batt}</b>`, cls: "chip c-bat", prio: 5e6 });
+    if (wb && this.wallbox) out.push({ key: "kit-wb", at: this.wbAt, html: `<b>${wb}</b>`, cls: "chip c-ev", prio: 5e6 });
     return out;
   }
 
@@ -1091,6 +1105,7 @@ export class SpatialScene {
 
     // Floating labels.
     const all: Label[] = [...this.labels];
+    this.gridPole.visible = !!this.day && this.sunGroup.visible;
     if (this.day && this.sunGroup.visible) {
       (["roof", "home", "batt", "grid"] as const).forEach((k) => all.push({ key: `node-${k}`, at: this.anchors[k], html: this.nodeLabels[k] ?? "", cls: `node node-${k}` }));
       const keys = new Set(all.map((a) => a.key));

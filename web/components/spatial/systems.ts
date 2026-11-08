@@ -126,10 +126,11 @@ export class Systems {
     // Power reaches the unit from inside: the house pipe stops in the wall behind it, and the car's dots run along
     // the cable itself, small enough to sit on it, starting below the unit, so nothing covers the wallbox.
     const P = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-    const behind = P(out.x - WALLBOX.d / 2 - 0.2, out.y + WALLBOX.h / 2, out.z);
+    const c = wbObj ? wbObj.position : out, behind = P(c.x - WALLBOX.d / 2 - 0.2, c.y + WALLBOX.h / 2, c.z); // inside, behind the unit
     mk("gridBox", straight(A.home.clone().setY(1.2).setX(box.max.x - 0.2), behind, 1.2), EV, this.charge, 0.12);
-    const path = [out, P(out.x + 0.06, 0.5, out.z), P(out.x + 0.25, 0.03, out.z), P(port.x - 0.4, 0.03, port.z), P(port.x - 0.12, 0.45, port.z), port];
-    mk("boxCar", new THREE.CatmullRomCurve3(path.slice(1)), EV, this.charge, 0.09).line.visible = false;
+    // The cable: from the holster's foot straight down the wall a hand's width out, along the drive, up to the flap.
+    const path = [out, P(out.x + 0.06, out.y - 0.25, out.z), P(out.x + 0.08, 0.2, out.z), P(out.x + 0.3, 0.03, out.z), P(port.x - 0.4, 0.03, port.z), P(port.x - 0.12, 0.45, port.z), port];
+    mk("boxCar", new THREE.CatmullRomCurve3(path.slice(2)), EV, this.charge, 0.09).line.visible = false;
     if (this.plug) { this.plug.removeFromParent(); this.plug.geometry.dispose(); (this.plug.material as THREE.Material).dispose(); }
     this.plug = cable(path, 0.02);
     this.g.add(this.plug);

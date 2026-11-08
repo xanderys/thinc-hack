@@ -81,8 +81,8 @@ export function wallbox(): THREE.Group {
   g.add(body, face, led, holster, loop);
   return g;
 }
-// Where the cable leaves the unit, in the wallbox's own frame.
-export const WALLBOX_OUTLET = new THREE.Vector3(0, 0.02, 0.01);
+// Where the cable leaves the unit, in the wallbox's own frame: the foot of the plug holster at its side.
+export const WALLBOX_OUTLET = new THREE.Vector3(WALLBOX.w / 2 + 0.035, 0.09, 0.01);
 
 // The car: a low-poly hatchback, an extruded side profile with a glass band and four wheels, in a neutral grey.
 // Wheels on y = 0, centred, nose towards -z. CAR_PORT is the charging flap on its left front wing (the -x side).
