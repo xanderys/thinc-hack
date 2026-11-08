@@ -1,15 +1,15 @@
 "use client";
 // The offer, tucked like a Wallet pass: "Proposed Design" and the three headline figures. Tap or drag and it springs
-// open to the full Offer panel (bounce 0, release velocity kept; a crossfade under Reduce Motion). Phone: it rises
-// from the bottom over the page. Desktop: the pass sits at the canvas's right edge and the panel slides out from
-// the right. While tucked, a change above shimmers the figures until the engine answers, then lights the ones that moved.
+// open to the full Offer panel (bounce 0, release velocity kept; a crossfade under Reduce Motion). The same card on
+// every width: full width over the page on a phone, 520 px centred over the model above the sentence bar on desktop,
+// where a clip hides the tucked body. Approve stays pinned at the bottom of the open card. While tucked, a change above shimmers the figures until the engine answers, then lights the ones that moved.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import "./systems.css";
 
 type Fig = { k: "kwp" | "kwh" | "price"; v: string };
 type Props = {
   kwp: number | null | undefined; kwh: number | null | undefined; price: number;
-  pending: boolean; side: "bottom" | "right"; children: ReactNode; id?: string | null;
+  pending: boolean; side?: "bottom"; children: ReactNode; id?: string | null;
 };
 
 const n = (x: number, d: number) => (Math.round(x * 10 ** d) / 10 ** d).toLocaleString("en-GB");
@@ -22,7 +22,8 @@ function useReduce() {
   return r;
 }
 
-export default function ProposedCard({ kwp, kwh, price, pending, side, children, id }: Props) {
+export default function ProposedCard({ kwp, kwh, price, pending, children, id }: Props) {
+  const side = "bottom" as const;
   const reduce = useReduce();
   const [open, setOpen] = useState(false);
   const figs: Fig[] = [
@@ -86,6 +87,7 @@ export default function ProposedCard({ kwp, kwh, price, pending, side, children,
     const measure = () => {
       const s = st.current;
       const peek = r.querySelector<HTMLElement>(".pc-pass")?.getBoundingClientRect().height ?? 72;
+      document.documentElement.style.setProperty("--pc-peek", `${Math.round(peek)}px`);
       const max = side === "bottom" ? Math.max(0, el.getBoundingClientRect().height - peek) : el.getBoundingClientRect().width + 24;
       const wasTucked = !s.init || s.goal === s.max;
       s.max = max; s.init = true;
@@ -94,14 +96,15 @@ export default function ProposedCard({ kwp, kwh, price, pending, side, children,
     };
     measure();
     const ro = new ResizeObserver(measure); ro.observe(el); ro.observe(r);
-    return () => ro.disconnect();
+    return () => { ro.disconnect(); document.documentElement.style.removeProperty("--pc-peek"); };
   }, [side, paint]);
   useEffect(() => () => cancelAnimationFrame(st.current.raf), []);
   useEffect(() => {
     if (!open) return;
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") to(false); };
-    addEventListener("keydown", esc);
-    return () => removeEventListener("keydown", esc);
+    // Capture phase on window: Esc tucks the pass and stops there, so the board's Esc (close the lead) never runs.
+    const esc = (e: KeyboardEvent) => { if (e.key !== "Escape") return; e.stopPropagation(); e.preventDefault(); to(false); };
+    addEventListener("keydown", esc, true);
+    return () => removeEventListener("keydown", esc, true);
   }, [open, to]);
 
   // Drag on the pass: 1:1 after 10 px, then the release velocity projects where it lands (Apple's 0.998 rate).
@@ -147,21 +150,21 @@ export default function ProposedCard({ kwp, kwh, price, pending, side, children,
 
   return (
     <div ref={root} className={`pc pc-${side}${open ? " pc-open" : ""}${reduce ? " pc-reduce" : ""}`}>
-      {side === "bottom" && <div ref={scrim} className="pc-scrim" onClick={() => to(false)} aria-hidden="true" />}
-      <div ref={side === "bottom" ? mover : undefined} className="pc-card" role="region" aria-label="Proposed Design">
+      {<div ref={scrim} className="pc-scrim" onClick={() => to(false)} aria-hidden="true" />}
+      <div className="pc-clip"><div ref={mover} className="pc-card" role="region" aria-label="Proposed Design">
         <button type="button" className="pc-pass" aria-expanded={open} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
           onClick={() => { if (moved.current) { moved.current = false; return; } to(!open); }}>
-          {side === "bottom" && <span className="pc-grip" aria-hidden="true" />}
+          <span className="pc-grip" aria-hidden="true" />
           <span className="pc-h">Proposed Design</span>
           <span className="pc-figs" aria-live="polite" aria-busy={pending}>{figs.map(figure)}</span>
           <svg className="pc-chev" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            {side === "bottom" ? <path d="M5 12.5l5-5 5 5" /> : <path d="M12.5 5l-5 5 5 5" />}
+            <path d="M5 12.5l5-5 5 5" />
           </svg>
         </button>
-        <div ref={side === "right" ? mover : undefined} className="pc-body" inert={!open}>
+        <div className="pc-body" inert={!open}>
           {children}
         </div>
-      </div>
+      </div></div>
     </div>
   );
 }
