@@ -266,7 +266,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const narrow = useNarrow();
   const offer = (docked: boolean) => (
     <OfferPanel docked={docked} res={res} economics={e} breakEven={breakEven} cause={cause} pending={!!pending}
-      variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={layers?.checks ?? null} checksFresh={fresh} model={model} leadId={leadId} inputs={inputs}
+      variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={roofFitKnown(layers?.checks ?? null, inputs.address)} checksFresh={fresh} model={model} leadId={leadId} inputs={inputs}
       overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
   );
   const overlays = (
@@ -540,4 +540,13 @@ function Cash({ v }: { v: number[] }) {
       {v.map((x, i) => <rect key={i} x={i * bw + 1} width={bw - 2} y={x >= 0 ? zero - (x / max) * (H / 2 - 4) : zero} height={(Math.abs(x) / max) * (H / 2 - 4)} fill={x >= 0 ? "#071b71" : "#ffc043"} rx="1.5" />)}
     </svg>
   );
+}
+
+// The engine passes Roof fit when no roof was measured (nothing to compare); the planner must not read that as a tick.
+function roofFitKnown<C extends { name: string; value?: unknown; pass?: boolean; level?: string }>(checks: C[] | null, address?: string | null): C[] | null {
+  if (!checks) return checks;
+  const street = !!address && !/^\s*\d{4,5}\s*$/.test(address) && /[a-zäöüß]{3,}/i.test(address.replace(/\b\d{5}\b.*$/, ""));
+  return checks.map((c) => c.name === "Roof fit" && c.value == null
+    ? { ...c, name: street ? "Roof fit unknown: roof not measured" : "Roof fit unknown: street address needed", pass: false, level: "info" }
+    : c);
 }
