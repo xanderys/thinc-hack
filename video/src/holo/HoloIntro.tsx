@@ -26,21 +26,23 @@ type Track = {
 };
 
 // Model is 1.0 wide, 0.475 tall, 0.83 deep, centred on the origin.
-const BASE_W = 0.18; // world units (1 unit is about 0.9 m: the can is 0.19)
+// The lawn base starts just big enough to cover the sketch paper (about 0.3 x 0.3 units).
+const BASE_W = 0.44; // world units (1 unit is about 0.9 m: the can is 0.19)
 const MODEL_HALF_H = 0.2381;
-const YAW0 = THREE.MathUtils.degToRad(-20);
+// Lawn edges square to the paper's edges.
+const YAW0 = THREE.MathUtils.degToRad(-46);
 
-// Expand: hands frame the house 152 to 157, spread 158 to 164.
+// Expand: hands frame the house 152 to 157, spread 158 to 166; it ends at 2.2x.
 const SCALE_KEYS: [number, number][] = [
   [157, 1.0],
-  [158, 1.02],
-  [159, 1.07],
-  [160, 1.16],
-  [161, 1.28],
-  [162, 1.41],
-  [163, 1.52],
-  [164, 1.58],
-  [166, 1.6],
+  [158, 1.04],
+  [159, 1.14],
+  [160, 1.32],
+  [161, 1.56],
+  [162, 1.82],
+  [163, 2.04],
+  [164, 2.16],
+  [166, 2.2],
 ];
 const scaleAt = (f: number) => {
   if (f <= SCALE_KEYS[0][0]) return SCALE_KEYS[0][1];
