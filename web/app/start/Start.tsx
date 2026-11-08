@@ -4,7 +4,7 @@ import { ConversationProvider, useConversation } from "@elevenlabs/react";
 import { endTone, startRing, stopRing, tick, unlock } from "./sounds";
 import type { Lead } from "@/lib/api";
 import { designLine, n0, n2, pct } from "@/lib/stage";
-import Proposal, { span, TODAY_LINE } from "@/components/proposal/Proposal";
+import Proposal, { span, PAST_LINE } from "@/components/proposal/Proposal";
 import RoofNote from "@/components/home/RoofNote";
 import { HOME_FORM, homeFacts, INSTALLER_BRAND, homeFirstMessage, homeNote, homeVariables, type HomeAnswers, type InstallerId, type RoofInfo } from "./intake";
 
@@ -355,7 +355,7 @@ function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: L
       <dl className="h-times">
         <div><dt>Enquiry to design</dt><dd>{Math.floor(took / 60)} min {took % 60} s</dd></div>
         <div><dt>Enquiry to signature</dt><dd>{signedAt != null ? span(signTook) : clock(Math.floor(signTook / 1000))}</dd></div>
-        <p>{TODAY_LINE}</p>
+        <p>{PAST_LINE}</p>
       </dl>
       {released
         ? <button type="button" className="h-go" onClick={onOpen}>Open your proposal</button>
