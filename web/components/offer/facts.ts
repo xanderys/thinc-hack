@@ -25,7 +25,7 @@ export function differs(d: Partial<Design>, ref: Partial<Design> | null): string
   const b = d.battery_kwh ?? 0, rb = ref.battery_kwh ?? 0;
   if (Math.abs(b - rb) >= 0.5) return !b ? "No battery" : !rb ? `+${n1(b)} kWh battery` : b > rb ? `+${n1(b - rb)} kWh battery` : `${n1(rb - b)} kWh less battery`;
   const m = modulesOf(d.pv_kwp) - modulesOf(ref.pv_kwp);
-  if (m) return !d.pv_kwp ? "No solar" : m > 0 ? `${m} more modules` : `${-m} fewer modules`;
+  if (m) { const k = Math.abs(m), u = k === 1 ? "module" : "modules"; return !d.pv_kwp ? "No solar" : m > 0 ? `${k} more ${u}` : `${k} fewer ${u}`; }
   if (!!d.wallbox_kw !== !!ref.wallbox_kw) return d.wallbox_kw ? "Adds a wallbox" : "No wallbox";
   if (!!d.heatpump_kw !== !!ref.heatpump_kw) return d.heatpump_kw ? "Adds a heat pump" : "No heat pump";
   return "Same kit";
