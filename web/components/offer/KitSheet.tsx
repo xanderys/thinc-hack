@@ -71,7 +71,7 @@ export default function KitSheet({ kit, total, assumptions, rates, skus, note, e
             <span className={s.qty}><Num v={`${r.qty}×`} lit /></span>
             <span className={s.icon} aria-hidden="true">{r.icon}</span>
             <span className={s.label}>{(() => {
-              const content = <><b className={s.name}>{r.name}</b>{r.spec && <> <span className={s.spec}><Num v={r.spec} lit /></span></>}</>;
+              const content = <><b className={s.name}>{r.name}</b>{r.spec && <> <span className={s.spec}><Num key={r.spec} v={r.spec} lit /></span></>}</>;
               return r.field && edit ? edit(r.field, r.spec ? `${r.name} ${r.spec}` : r.name, content) : content;
             })()}</span>
             {r.field && info?.[r.field] && <span className={s.rowInfo}>{info[r.field]}</span>}
