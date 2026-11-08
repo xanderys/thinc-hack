@@ -72,7 +72,7 @@ function Headline({ ev, err, retry }: { ev: EvalX | null; err: string | null; re
   );
 }
 
-type Approved = { inputs: HomeInputs; draft: Design | null; approved: Design; at: string };
+type Approved = { lead_id?: string | null; inputs: HomeInputs; draft: Design | null; approved: Design; at: string };
 
 function rule(f: ValidateFlag, installer: HomeInputs["installer_id"]) {
   const k = f.component as ComponentKey, nb = f.neighbours, took = Math.round(nb.share_included * nb.n);
@@ -86,7 +86,13 @@ function Validation() {
   const [err, setErr] = useState<string | null>(null);
   const [kept, setKept] = useState<number[]>([]);
   const [tick, setTick] = useState(0);
-  useEffect(() => { try { const raw = sessionStorage.getItem("marquee.approved"); setAp(raw ? JSON.parse(raw) : null); } catch { setAp(null); } }, []);
+  useEffect(() => {
+    let raw: Approved | null = null;
+    try { const t = sessionStorage.getItem("marquee.approved"); raw = t ? JSON.parse(t) : null; } catch { /* storage blocked */ }
+    if (!raw?.lead_id) { setAp(raw); return; }
+    // Test leads are hidden from the lead list: an approval on one never shows here.
+    call<{ lead_id: string }[]>("/api/leads").then((r) => setAp(r.ok && r.data.some((l) => l.lead_id === raw!.lead_id) ? raw : r.ok ? null : raw));
+  }, []);
   useEffect(() => {
     if (!ap) return;
     call<ValidateResponse>("/api/validate", { inputs: ap.inputs, design: ap.approved }).then((r) => { if (r.ok) { setRes(r.data); setErr(null); } else setErr(r.error); });

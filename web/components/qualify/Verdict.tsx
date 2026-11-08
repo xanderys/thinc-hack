@@ -10,12 +10,6 @@ export function VerdictChip({ verdict, className, tip }: { verdict: Verdict | nu
   return <span title={tip} className={`${s.chip} ${verdict ? s[verdict] : s.checking} ${className ?? ""}`}>{verdict ? VERDICT_WORD[verdict] : "Checking"}</span>;
 }
 
-/** Header line: the chip and the planner's sentence, nothing else. */
-export function VerdictLine({ q }: { q: Pick<Qualification, "verdict" | "sentence" | "reason"> & Partial<Pick<Qualification, "facts">> | null }) {
-  if (!q) return <span className={s.line}><VerdictChip verdict={null} /></span>;
-  return <span className={s.line}><VerdictChip verdict={q.verdict} tip={q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : undefined} /><span className={s.sent}>{reasonOf(q)}</span></span>;
-}
-
 // Verdicts kept from before the reason field read their sentence after the verdict word.
 export const reasonOf = (q: Pick<Qualification, "sentence"> & { reason?: string }) => q.reason ?? q.sentence.split(": ").slice(1).join(": ");
 
