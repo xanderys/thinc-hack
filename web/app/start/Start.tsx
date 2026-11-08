@@ -110,6 +110,7 @@ function Page({ agentId, installerId, test }: Props) {
     noted.current = true;
     conversation.sendContextualUpdate(homeNote(a, installerId, roof.current));
   }, [conversation.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const w = window as Window & { __marqueeBusy?: Record<string, boolean> }; w.__marqueeBusy = { ...w.__marqueeBusy, call: conversation.status === "connected" || conversation.status === "connecting" }; }, [conversation.status]); // AutoReload never reloads during a call
 
   useEffect(() => {
     if (since == null) return;

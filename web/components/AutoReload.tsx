@@ -2,6 +2,7 @@
 // A tab running an older build reloads itself, quietly, once the planner is not typing or waiting on a change.
 // Checks every 60 s and on focus; keeps the scroll per path through the reload (the open lead is in the URL).
 import { useEffect } from "react";
+import { isBusy as copilotBusy } from "@/components/agent/store";
 
 const BUILT = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
 const SCROLL = (p: string) => `marquee.scroll.${p}`;
@@ -59,7 +60,9 @@ export default function AutoReload() {
       try { build = (await fetch("/api/version", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)))?.build; } catch { return; }
       if (!build || build === BUILT || build === "dev") return;
       if (sessionStorage.getItem(DONE) === build) return;   // reloaded for it once already: never loop
-      if (typing() || busy > 0) return;                     // next check or focus tries again
+      const flags = (window as Window & { __marqueeBusy?: Record<string, boolean> }).__marqueeBusy ?? {};
+      // A live call, a copilot reply or proposal in progress, a write in flight, or typing: the next check tries again.
+      if (typing() || busy > 0 || copilotBusy() || Object.values(flags).some(Boolean)) return;
       sessionStorage.setItem(DONE, build);
       sessionStorage.setItem(SCROLL(location.pathname), String(Math.round(scrollY)));
       location.reload();

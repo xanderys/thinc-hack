@@ -10,6 +10,7 @@ export type Proposal = { title: string; ops: Op[]; rows: Row[]; refused: string[
 export type Item = { id: number; who: "you" | "agent" | "event"; text: string; pending?: boolean; err?: { src: string; msg: string }; proposals?: Proposal[] };
 
 let items: Item[] = [], busy = false, seq = 0;
+export const isBusy = () => busy || items.some((i) => i.pending || i.proposals?.some((p) => p.state === "applying" || p.state === "undoing")); // AutoReload waits for it
 // For the shell's circle: a dot when a suggestion waits, a tooltip with the last answer's first line. Read by polling.
 export let pendingSuggestion = false;
 export let lastFirstLine = "";
