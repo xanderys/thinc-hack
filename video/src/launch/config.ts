@@ -26,24 +26,28 @@ export type Hologram = {
 
 export type LaunchProps = {
   intro: string; // raw room footage under public/, shown before the hologram take
-  introRawEnd: number; // where the hologram take takes over (0: the take is the whole intro)
+  introFrom: number; // seconds into the raw footage where the film starts
+  introRawEnd: number; // film seconds where the hologram take takes over (0: the take is the whole intro)
   roomSound: { src: string; from: number } | null; // ambient sound under the intro
   hologram: Hologram;
   musicSrc: string | null; // path under public/, plays from frame 0; the file carries its own fade-out
   musicVolume: number; // 0 to 1, lower it to duck under the VO
+  captions: boolean; // burned-in captions (off since v2)
   voSrc: string | null; // recorded voiceover under public/, starts at 0
 };
 
 export const defaultLaunchProps: LaunchProps = {
   intro: "footage/zy.mp4",
-  introRawEnd: 0,
+  // Raw room footage until the chair hides the desk (2.9 s), so no house shows before the pass.
+  // holo-take3-reveal.mp4 itself switches at 2.5 s, where the house is still visible.
+  introFrom: 0.3,
+  introRawEnd: 2.9,
   roomSound: { src: "footage/zy.mp4", from: 0.3 },
-  // Take 3 reveal: the original clip up to the chair pass, then take 3.
   hologram: {
     src: "capture/holo-take3-reveal.mp4",
-    from: 0,
-    start: 0,
-    len: 10.04,
+    from: 2.9,
+    start: 2.9,
+    len: 7.14,
     rate: 1,
     focusX: 0.32,
     focusY: 0.72,
@@ -51,6 +55,7 @@ export const defaultLaunchProps: LaunchProps = {
   },
   musicSrc: "music/moon-cut.mp3",
   musicVolume: 1,
+  captions: false,
   voSrc: null,
 };
 

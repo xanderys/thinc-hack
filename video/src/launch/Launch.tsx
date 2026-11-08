@@ -197,7 +197,7 @@ const Intro: React.FC<{ p: LaunchProps }> = ({ p }) => {
       <AbsoluteFill style={{ opacity: 1 - paper, transform: `scale(${scale})`, transformOrigin: `${h.focusX * 100}% ${h.focusY * 100}%` }}>
         {p.introRawEnd > 0 ? (
           <Sequence durationInFrames={sec(p.introRawEnd)}>
-            <OffthreadVideo src={staticFile(p.intro)} muted style={{ width: W, height: H, objectFit: "cover" }} />
+            <OffthreadVideo src={staticFile(p.intro)} trimBefore={Math.round(p.introFrom * FPS)} muted style={{ width: W, height: H, objectFit: "cover" }} />
           </Sequence>
         ) : null}
         <Sequence from={sec(h.start)} durationInFrames={sec(h.len)}>
@@ -255,7 +255,7 @@ export const Launch: React.FC<LaunchProps> = (p) => {
         </Sequence>
       ))}
 
-      {CAPTIONS.map((c, i) => (
+      {p.captions && CAPTIONS.map((c, i) => (
         <Sequence key={`cap${i}`} from={at(c.from)} durationInFrames={at(c.to) - at(c.from)} name={`cap ${i}`}>
           <CaptionView text={c.text} len={at(c.to) - at(c.from)} overVideo={c.to <= introEnd} />
         </Sequence>
