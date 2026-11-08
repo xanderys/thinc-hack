@@ -84,7 +84,7 @@ export default function VariantTabs({ rows, onPick, pending }: { rows: Row[]; on
           onClick={() => { if (r.selected || !r.pick) return; dispatchEvent(new CustomEvent("marquee:variant", { detail: { id: r.key, design: r.design } })); onPick(r); }}>
           <span className={s.vtGlyph}><Glyph k={r.key} size={18} /></span>
           <span className={s.vtBody}>
-            <span className={s.vtName}>{r.name}{r.approved && <span className={s.vtMark}>Approved</span>}</span>
+            <span className={s.vtName}>{r.name}{r.approved && <span className={s.vtMark}>Complete</span>}</span>
             <span className={s.vtLine}>{r.line}</span>
             <Facts items={variantFacts(r.e, r.design, r.key === "expert" ? null : ref)} />
           </span>
