@@ -101,6 +101,11 @@ export default function Board({ openId: initial }: { openId?: string }) {
   const [kept, setKept] = useState<Record<string, Kept>>({});
 
   useEffect(() => { setApproved(readApproved()); }, []);
+  // The composer lane announces a lead it just created: refetch the list so it shows at the top.
+  useEffect(() => {
+    const on = () => setTick((t) => t + 1);
+    addEventListener("marquee:lead-created", on); return () => removeEventListener("marquee:lead-created", on);
+  }, []);
 
   // Leads every 4 s; each card's design when its lead changes.
   useEffect(() => {
