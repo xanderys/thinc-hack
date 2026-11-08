@@ -336,3 +336,23 @@
 .sc-card[data-folded] { padding-top: 8px; padding-bottom: 8px; }
 @media (prefers-reduced-motion: reduce) { .sc-fold::after { transition: none; } }
 @media (min-width: 761px) { main:has(.sys-on) { padding-bottom: 0 !important; } }
+
+/* Facts row (Facts.tsx, .fc-row) under the Systems layout: one line that scrolls inside itself on every width; the
+   open fact's panel sits below the row in flow, so the scroller never clips it. The WhatsApp control portals into it. */
+.st-open:has(.sys-on) .fc-row { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; gap: 6px; padding-bottom: 1px; }
+.st-open:has(.sys-on) .fc-row::-webkit-scrollbar { display: none; }
+.st-open:has(.sys-on) .fc-row > * { flex: none; }
+.st-open:has(.sys-on) .fc { min-height: 32px; font-size: 13px; white-space: nowrap; }
+@media (max-width: 760px) {
+  .st-open:has(.sys-on) .fc-row { margin: 0 -16px; padding: 0 16px 1px; }
+}
+/* The facts row scrolls inside itself: every box above it may shrink below its content width. */
+.st-open:has(.sys-on) > .t-bar, .st-open:has(.sys-on) .t-bar > *, .st-open:has(.sys-on) .fc-wrap { min-width: 0; max-width: 100%; }
+.b-open:has(.sys-on) .st-open > .t-bar { min-width: 0; overflow: hidden; }
+
+@media (max-width: 760px) {
+  /* Phone: the card sits at the top of the canvas under the chip row, full width less 12 px a side; the house frames in
+     the free area below it and the toolbar at the foot stays clear. The i opens downwards. */
+  .sc-card { top: 8px; bottom: auto; left: 12px; right: 12px; }
+  .sc-pop { top: calc(100% + 6px); bottom: auto; max-height: calc(var(--sys-hero-h, 400px) - 100% - 8px - 70px); }
+}

@@ -357,7 +357,8 @@ export class SpatialScene {
     if (this.box.isEmpty()) return this.fitD;
     const W = this.host.clientWidth || 1, H = this.host.clientHeight || 1, f = this.free();
     const cam = this.scratch;
-    cam.copy(this.persp); cam.updateProjectionMatrix();
+    // The goal screen offset, not the one gliding now: the fit is for where the framing is going.
+    cam.copy(this.persp); cam.setViewOffset(W, H, this.offGoal.x, this.offGoal.y, W, H); cam.updateProjectionMatrix();
     // The free rect in NDC; the principal point already sits at its centre through the view offset.
     const x0 = ((f.cx - f.fw / 2) / W) * 2 - 1, x1 = ((f.cx + f.fw / 2) / W) * 2 - 1;
     const y1 = 1 - ((f.cy - f.fh / 2) / H) * 2, y0 = 1 - ((f.cy + f.fh / 2) / H) * 2;
@@ -366,10 +367,11 @@ export class SpatialScene {
     const u = dir.clone().normalize(), v = new THREE.Vector3();
     const fits = (d: number) => {
       cam.position.copy(tgt).addScaledVector(u, d); cam.lookAt(tgt); cam.updateMatrixWorld();
-      return corners.every((c) => { v.copy(c).project(cam); return v.z < 1 && v.x >= x0 + mx && v.x <= x1 - mx && v.y >= y0 + my && v.y <= y1 - my; });
+      // In front of the camera is enough: the far plane is a render limit, not a framing one.
+      return corners.every((c) => { if (v.copy(c).applyMatrix4(cam.matrixWorldInverse).z >= 0) return false; v.copy(c).project(cam); return v.x >= x0 + mx && v.x <= x1 - mx && v.y >= y0 + my && v.y <= y1 - my; });
     };
     let lo = this.fitD * 0.15, hi = this.fitD * 6;
-    if (!fits(hi)) return hi;
+    if (!fits(hi)) return this.fitD;   // nothing frames it (a degenerate free rect): the standard fit, never the bound
     for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; if (fits(m)) hi = m; else lo = m; }
     return hi;
   }
@@ -377,7 +379,7 @@ export class SpatialScene {
   frameReport() {
     const W = this.host.clientWidth || 1, H = this.host.clientHeight || 1, f = this.free();
     const c = (this.box.isEmpty() ? this.centre : this.box.getCenter(new THREE.Vector3())).clone().project(this.camera);
-    return { house: [Math.round(((c.x + 1) / 2) * W), Math.round(((1 - c.y) / 2) * H)], free: [Math.round(f.cx), Math.round(f.cy)], fw: Math.round(f.fw), fh: Math.round(f.fh) };
+    return { house: [Math.round(((c.x + 1) / 2) * W), Math.round(((1 - c.y) / 2) * H)], free: [Math.round(f.cx), Math.round(f.cy)], fw: Math.round(f.fw), fh: Math.round(f.fh), dist: +this.persp.position.distanceTo(this.controls.target).toFixed(1), fitD: +this.fitD.toFixed(1) };
   }
   private fitted = false;
   // The photo mesh is only crisp up close: it caps the fitted distance (stage poses scale with it); null lifts it.
