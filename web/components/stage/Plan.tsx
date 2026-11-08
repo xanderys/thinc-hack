@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { Design, DesignResponse, Economics, HomeInputs, Overrides, WriteResponse } from "@/lib/api";
 import House from "./House";
 import dynamic from "next/dynamic";
@@ -24,7 +24,7 @@ function Est({ k, v, u, was }: { k: string; v: string; u: string; was?: string |
   );
 }
 
-export default function Plan({ res, prev, inputs, write, writeBusy, flag, variants, onVariant, busy, answered, bare, roofNote }: Props & { bare?: boolean; roofNote?: string }) {
+export default function Plan({ res, prev, inputs, write, writeBusy, flag, variants, onVariant, busy, answered, bare, roofNote }: Props & { bare?: boolean; roofNote?: ReactNode }) {
   const [open, setOpen] = useState<string | null>(null);
   const [level, setLevel] = useState(1);
   const [closing, setClosing] = useState(false);
