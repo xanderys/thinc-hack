@@ -192,7 +192,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null, approved: LeadT["approved"] = null, kit: Overrides | null = null) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
-    frozen.current = false;
+    frozen.current = false; frozenAt.current = null;
     seedDraft.current = draft;   // the lead's stored draft answers the first design read (no call on open)
     const r = { data };
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(draft); setPrev(null); last.current = draft;
@@ -243,6 +243,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   const designs = useRef(new Map<string, DesignResponse | RefineResponse>());
   const seedDraft = useRef<DesignResponse | null>(null);
   const frozen = useRef(false);   // a Complete lead opened as approved: no re-run until the planner changes something
+  const frozenAt = useRef<string | null>(null);   // the facts and sizes it was frozen at
   const keyOf = (i: HomeInputs, o: Overrides) => JSON.stringify([i, Object.fromEntries(Object.entries(o).sort(([x], [y]) => x.localeCompare(y)))]);
   const keep = (k: string, r: DesignResponse | RefineResponse) => { const m = designs.current; m.delete(k); m.set(k, r); if (m.size > 32) m.delete(m.keys().next().value!); };
 
@@ -253,8 +254,13 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const asked = inputs, why = cause.current, fixed = Object.keys(overrides).length > 0;
     const k = keyOf(inputs, overrides);
     // A Complete lead shows the proposal as it was approved and sent; the engine is asked again only after an edit.
-    if (frozen.current && !cause.current) return;
-    frozen.current = false;
+    // It stays frozen only while the facts and the fixed sizes are exactly what the card opened with: any override write,
+    // refine, size row, chooser or Apply moves them and unfreezes it to the live refine.
+    if (frozen.current) {
+      if (frozenAt.current == null) frozenAt.current = k;
+      if (frozenAt.current === k && !cause.current) return;
+    }
+    frozen.current = false; frozenAt.current = null;
     const hit = designs.current.get(k);
     if (hit) { land({ ok: true, data: hit }, asked, why, fixed, null); return; }
     // A lead that opens on stored kit edits: its first figures come from the refine, so they shimmer until it lands
@@ -418,6 +424,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   // Several kit fields as one edit (one history step, one lead write): the on-model layout sends pv_kwp with
   // layout_slots, the chosen slot ids the engine stores as they are.
   const setKit = useCallback((patch: Record<string, OverrideValue | string[] | undefined>) => {
+    frozen.current = false; frozenAt.current = null;   // an edit always shows the live design
     if (leadRef.current) pushEdit(leadRef.current, overrides as Record<string, unknown>);
     cause.current = "Changed by hand:"; setApprovedAt(null);
     const n: Record<string, unknown> = { ...overrides };
@@ -425,6 +432,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setOverrides(n as Overrides); void writeKit("kit-edit", n as Overrides);
   }, [changed, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
   const setOverride = useCallback((f: keyof Design, v: OverrideValue | undefined) => {
+    frozen.current = false; frozenAt.current = null;   // an edit always shows the live design
     if (leadRef.current) pushEdit(leadRef.current, overrides as Record<string, unknown>);
     cause.current = "Changed by hand:"; setApprovedAt(null);
     const n = { ...overrides }; if (v === undefined) delete n[f]; else n[f] = v;
