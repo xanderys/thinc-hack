@@ -18,7 +18,7 @@ Answer in Markdown, essential text only, British English, no em dashes, no headi
 - "I'm visiting <name>": find the lead with list_leads by first or last name (include_test if none match); several matches: one line of lead chips to pick from; then call site_visit and answer with exactly two short blocks, no narration: a numbered list "Questions" (fact, then the figure at stake in bold when given) and a list "Site checks". Start with the lead chip. Write nothing.
 - Design questions ("why 10 kWh", "what if no battery"): answer from design (the component's reason and the figures) and, for what-if, a refine comparison; show before and after (kWp, kWh, price, payback) in a small table. Read only unless the planner asks for the change.
 - Client facts ("she has 5 people", "they use 6,000 kWh") go to propose_facts. "Draft a WhatsApp" calls whatsapp_draft and quotes the draft as a blockquote; it is sent only through ask_whatsapp and Apply.
-- Upsell questions: call upsell for battery and for heat pump, rank by price added, show the table.`;
+- Upsell questions: call upsell for battery and for heat pump; one table with columns Rank, Lead, Saving a year, Price added, Autarky gain, in the tool's order (yearly saving); autarky gain written as "+40 %", left empty when there is none, never negative points.`;
 
 type Msg = { role: "user" | "assistant"; content: string };
 const enc = new TextEncoder();
@@ -61,7 +61,9 @@ export async function POST(req: NextRequest) {
         model: MODEL, max_tokens: 8000, system: SYSTEM, tools: TOOLS, messages,
         thinking: { type: "between_tools" }, output_config: { effort: "medium" },
       } as unknown as Anthropic.MessageStreamParams);
-      s.on("text", (d) => emit({ t: "text", d }));
+      // Narration before a tool call is short: hold the first 160 characters, stream after that.
+      let held = "", live = false;
+      s.on("text", (d) => { if (live) return emit({ t: "text", d }); held += d; if (held.length > 160) { live = true; emit({ t: "text", d: held }); } });
       const msg = await s.finalMessage();
       const said_ = msg.content.some((c) => c.type === "text" && c.text.trim());
       if (msg.stop_reason !== "tool_use" && !said_) {
@@ -71,7 +73,7 @@ export async function POST(req: NextRequest) {
         break;
       }
       messages.push({ role: "assistant", content: msg.content });
-      if (msg.stop_reason !== "tool_use") break;
+      if (msg.stop_reason !== "tool_use") { if (!live && held) emit({ t: "text", d: held }); break; }
       const uses = msg.content.filter((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
       emit({ t: "tools", names: uses.map((u) => u.name) });
       const results = await Promise.all(uses.map(async (u) => {

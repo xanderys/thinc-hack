@@ -11,7 +11,7 @@ type Ov = Record<string, number | null | "include" | string | string[]>;
 type L = Lead & { version: number; pinned?: boolean; test?: boolean; overrides?: Ov; phone?: string | null; status_label?: string; approved?: { design?: DesignResponse["design"]; economics?: DesignResponse["economics"] } | null; whatsapp?: { state?: string } };
 export type Op = { lead_id: string; name: string; action: "kit" | "complete" | "send" | "ask" | "facts"; overrides?: Ov; channel?: "whatsapp" | "copy"; facts?: string[]; values?: Record<string, unknown> };
 export type Row = { lead_id: string; name: string; what: string; price_from: number | null; price_to: number | null; autarky_from: number | null; autarky_to: number | null; verdict_from: string; verdict_to: string; kwp_from?: number | null; kwp_to?: number | null; kwh_from?: number | null; kwh_to?: number | null; payback_from?: number | null; payback_to?: number | null };
-export type Proposal = { title: string; ops: Op[]; rows: Row[]; refused: string[] };
+export type Proposal = { title: string; ops: Op[]; rows: Row[]; refused: string[]; unchanged: string[] };
 export type Emit = (e: Record<string, unknown>) => void;
 
 const S = () => new URLSearchParams();
@@ -84,7 +84,9 @@ async function upsell(part: "battery" | "heatpump", ids: string[] | undefined, i
         saving_delta_eur_year: we && be ? Math.round(we.annual_saving_eur - be.annual_saving_eur) : null };
     } catch (e) { return { lead_id: id, error: (e as Error).message }; }
   }));
-  return out.sort((a, b) => ((b as { price_delta_eur?: number }).price_delta_eur ?? -1e9) - ((a as { price_delta_eur?: number }).price_delta_eur ?? -1e9));
+  const sorted = out.filter((x) => (x as { saving_delta_eur_year?: number }).saving_delta_eur_year != null)
+    .sort((a, b) => ((b as { saving_delta_eur_year: number }).saving_delta_eur_year) - ((a as { saving_delta_eur_year: number }).saving_delta_eur_year));
+  return [...sorted.map((x, i) => { const d = (x as { autarky_delta_pts?: number | null }).autarky_delta_pts; return { rank: i + 1, ...x, autarky_gain: d != null && d > 0 ? `+${Math.round(d)} %` : null }; }), ...out.filter((x) => !sorted.includes(x))];
 }
 
 const lastName = (n: string) => n.trim().split(/\s+/).pop()!.toLowerCase();
@@ -96,7 +98,7 @@ const part = (k: string, v: unknown) => { const [n, u] = PART[k] ?? [k, ""]; ret
 
 // Builds the table the planner sees before Apply: price, autarky and verdict before and after.
 export async function propose(title: string, ops: Op[], said: string): Promise<Proposal> {
-  const rows: Row[] = [], keep: Op[] = [], refused: string[] = [];
+  const rows: Row[] = [], keep: Op[] = [], refused: string[] = [], unchanged: string[] = [];
   await Promise.all(ops.slice(0, 30).map(async (op) => {
     let l: L; try { l = await lead(op.lead_id); } catch (e) { refused.push(`${op.name || op.lead_id}: ${(e as Error).message}`); return; }
     if (l.pinned && !named(l, said)) { refused.push(`${l.customer_name} is a pinned demo lead; name them to include them.`); return; }
@@ -106,6 +108,10 @@ export async function propose(title: string, ops: Op[], said: string): Promise<P
     if (op.action === "kit") { const ov = { ...(l.overrides ?? {}), ...(op.overrides ?? {}) }; after = await refine(l, ov); what = Object.entries(op.overrides ?? {}).map(([k, v]) => part(k, v)).join(", "); }
     else if (op.action === "facts") { after = await refine(l, l.overrides ?? {}, op.values); what = Object.entries(op.values ?? {}).map(([k, v]) => `${FACT[k] ?? k}: ${v}`).join(", "); }
     else what = op.action === "complete" ? "Complete" : op.action === "send" ? `Send by ${op.channel ?? "whatsapp"}` : "Ask on WhatsApp";
+    // A change that changes nothing offers no Apply.
+    if ((op.action === "kit" || op.action === "facts") && after && JSON.stringify(before.design) === JSON.stringify(after.design) && before.economics?.capex_eur === after.economics?.capex_eur) {
+      unchanged.push(`${l.customer_name} already has this: ${what.charAt(0).toLowerCase()}${what.slice(1)}, nothing to apply.`); return;
+    }
     const [vf, vt] = await Promise.all([verdict(l, before), verdict(l, after)]);
     rows.push({ lead_id: l.lead_id, name: l.customer_name, what, price_from: before.economics?.capex_eur ?? null, price_to: after?.economics?.capex_eur ?? null,
       autarky_from: before.economics?.autarky_share ?? null, autarky_to: after?.economics?.autarky_share ?? null, verdict_from: vf, verdict_to: after ? vt : "No design",
@@ -113,7 +119,7 @@ export async function propose(title: string, ops: Op[], said: string): Promise<P
       payback_from: before.economics?.break_even_year ?? null, payback_to: after?.economics?.break_even_year ?? null });
     keep.push({ ...op, name: l.customer_name });
   }));
-  return { title, ops: keep, rows, refused };
+  return { title, ops: keep, rows, refused, unchanged };
 }
 
 // Runs an applied batch, one lead at a time, and returns what each override write replaced (for Undo).
@@ -146,7 +152,9 @@ export async function apply(ops: Op[], emit: Emit, said: string, undo = false) {
         const r = await callEngine("POST", `/api/leads/${l.lead_id}/whatsapp/ask`, S(), { ...(op.facts?.length ? { facts: op.facts } : {}), base_version: l.version }, H(SECRET()));
         if (r.status !== 200) throw new Error(`Engine said: ${err(r.body)}`);
       }
-      emit({ t: "result", lead_id: l.lead_id, name: l.customer_name, ok: true });
+      const what = op.action === "kit" ? Object.entries(op.overrides ?? {}).map(([k, v]) => { const [n, u] = PART[k] ?? [k, ""]; return v === null ? `${n} removed` : v === "include" ? `${n} added` : `${n} fixed at ${v} ${u}`.trim(); }).join(", ")
+        : op.action === "facts" ? `Facts updated: ${Object.keys(op.values ?? {}).map((k) => FACT[k] ?? k).join(", ")}` : op.action === "complete" ? "Complete" : op.action === "send" ? "Proposal sent" : "Asked on WhatsApp";
+      emit({ t: "result", lead_id: l.lead_id, name: l.customer_name, ok: true, what: undo ? "Undone" : what });
     } catch (e) { emit({ t: "result", lead_id: op.lead_id, name: op.name, ok: false, msg: (e as Error).message }); }
   }
   return prev;
@@ -156,8 +164,11 @@ async function createLead(text: string, test: boolean) {
   const r = await interpret(new NextRequest("http://agent.local/api/interpret", { method: "POST", body: JSON.stringify({ mode: "composer", text }), headers: { "content-type": "application/json" } }));
   const f = await r.json() as Record<string, unknown>;
   if (!r.ok) throw new Error(`Reader said: ${err(f)}`);
-  const place = (f.address ?? f.postcode) as string | undefined;
+  const pc = f.postcode as string | undefined, addr = f.address as string | undefined;
+  // The postcode goes inside the address ("Street N, 80331 München") so the engine stores it.
+  const place = addr && pc && !/\b\d{5}\b/.test(addr) ? (addr.includes(",") ? addr.replace(/,\s*/, `, ${pc} `) : `${addr}, ${pc}`) : (addr ?? pc);
   if (!place) return { needs: "address", facts: f };
+  if (addr) f.address = place;
   const name = (f.name as string | undefined)?.trim() || place;
   const made = await callEngine("POST", "/api/leads", S(), { customer_name: name, address_or_postcode: place, installer_id: "2a8ba8e2", source: "form", ...(test || /^test\b/i.test(name) ? { test: true } : {}), ...(f.phone ? { phone: f.phone } : {}) }, H());
   if (made.status !== 200) throw new Error(`Engine said: ${err(made.body)}`);
@@ -226,7 +237,7 @@ export const TOOLS: Anthropic.Tool[] = [
   { name: "get_lead", description: "One lead: facts, the design the planner sees (kit overrides applied), price, autarky, break-even year, verdict (Priority, Call first, Decline), status, version.", input_schema: obj({ id: { type: "string" } }, ["id"]) },
   { name: "design", description: "The lead's full design response: components with reasons, variants, economics.", input_schema: obj({ id: { type: "string" } }, ["id"]) },
   { name: "refine", description: "Read only: the design this lead would get with these kit overrides (number fixes the size, null removes the part, \"include\" lets the engine size it). Writes nothing.", input_schema: obj({ id: { type: "string" }, overrides: KIT }, ["id", "overrides"]) },
-  { name: "upsell", description: "For every board lead (or the given ids) without the part: the price, autarky and saving a battery or heat pump adds, ranked by price added. Use for upsell questions.", input_schema: obj({ part: { type: "string", enum: ["battery", "heatpump"] }, ids, include_test: { type: "boolean" } }, ["part"]) },
+  { name: "upsell", description: "For every board lead (or the given ids) without the part: the yearly saving, price and autarky gain a battery or heat pump adds, ranked by yearly saving. Use for upsell questions.", input_schema: obj({ part: { type: "string", enum: ["battery", "heatpump"] }, ids, include_test: { type: "boolean" } }, ["part"]) },
   { name: "propose_kit", description: "Propose kit changes on one or more leads. Nothing is written: the planner sees a table with price and verdict before and after and an Apply button.", input_schema: obj({ title: { type: "string" }, ops: { type: "array", items: obj({ lead_id: { type: "string" }, name: { type: "string" }, overrides: KIT }, ["lead_id", "name", "overrides"]) } }, ["title", "ops"]) },
   { name: "complete", description: "Propose marking leads Complete (the planner signs off the shown design). Shown with Apply, never run directly.", input_schema: obj({ ops: OPS }, ["ops"]) },
   { name: "send", description: "Propose sending the proposal to the homeowner. Shown with Apply, never run directly. Only Complete leads can be sent.", input_schema: obj({ ops: OPS, channel: { type: "string", enum: ["whatsapp", "copy"] } }, ["ops"]) },
@@ -249,7 +260,7 @@ export async function runTool(name: string, input: Record<string, unknown>, said
     case "create_lead": { const r = await createLead(String(input.text ?? ""), test); if ("lead_id" in r) emit({ t: "created", lead_id: r.lead_id }); return r; }
     case "propose_facts": {
       const p = await propose("Change facts", [{ lead_id: String(input.lead_id), name: String(input.name ?? ""), action: "facts", values: (input.facts ?? {}) as Record<string, unknown> }], said);
-      if (p.ops.length) emit({ t: "propose", ...p });
+      if (p.ops.length || p.unchanged.length) emit({ t: "propose", ...p });
       return { shown_to_planner: p.ops.length, refused: p.refused, rows: p.rows, note: "The planner sees before and after with Apply. One short line at most." };
     }
     case "whatsapp_draft": {
@@ -263,7 +274,7 @@ export async function runTool(name: string, input: Record<string, unknown>, said
       const ops = ((input.ops as Op[]) ?? []).map((o) => ({ ...o, action, channel: input.channel as Op["channel"], facts: input.facts as string[] | undefined })) as Op[];
       const title = String(input.title ?? (action === "complete" ? "Complete" : action === "send" ? "Send the proposal" : action === "ask" ? "Ask on WhatsApp" : "Kit change"));
       const p = await propose(title, ops, said);
-      if (p.ops.length) emit({ t: "propose", ...p });
+      if (p.ops.length || p.unchanged.length) emit({ t: "propose", ...p });
       return { shown_to_planner: p.ops.length, refused: p.refused, rows: p.rows, note: "The planner sees this table with Apply. Do not repeat the table; one short line at most." };
     }
   }
