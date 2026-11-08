@@ -1,4 +1,5 @@
 "use client";
+import { maskPhonesIn } from "@/lib/phone";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Lead, WhatsAppAsk } from "@/lib/api";
 import { call, send } from "@/lib/client";
@@ -97,7 +98,7 @@ export default function WhatsAppClient({ leadId, phone }: { leadId: string | nul
           <ol className={s.thread}>
             {thread.map((m, i) => (
               <li key={`${i}-${m.at}`} className={m.dir === "out" ? s.out : s.in}>
-                {m.kind === "voice" ? <p><span className={s.tag}>Voice note</span>{m.transcript || m.text || "No transcript"}</p> : <p>{m.text}</p>}
+                {m.kind === "voice" ? <p><span className={s.tag}>Voice note</span>{maskPhonesIn(m.transcript || m.text || "No transcript")}</p> : <p>{maskPhonesIn(m.text)}</p>}
                 <span className={s.ts}>{m.dir === "out" ? "Sent" : who} {hm(m.at)}{m.kind === "dry" && <span className={s.tag}>not sent</span>}</span>
               </li>
             ))}

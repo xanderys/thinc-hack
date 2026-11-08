@@ -28,6 +28,7 @@ const MODULE_KWP = 0.45;                  // the engine's standard module (450 W
 
 type LeadLike = Pick<Lead, "status" | "facts" | "address_or_postcode"> & Partial<Pick<Lead, "history" | "decision" | "sources">>;
 
+import { berlinStamp } from "./time";
 const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-GB");
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
@@ -88,8 +89,8 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
 
   // 1. The homeowner said no.
   if (lead.status === "declined" || lead.decision?.action === "decline") {
-    const at = lead.decision?.decided_at ? new Date(lead.decision.decided_at) : null;
-    return out("decline", at && !isNaN(+at) ? `Declined by the homeowner on ${at.getDate()} ${at.toLocaleString("en-GB", { month: "short" })}.` : "Declined by the homeowner.");
+    const when = berlinStamp(lead.decision?.decided_at);
+    return out("decline", when ? `Declined ${when}.` : "Declined by the homeowner.");
   }
   // 2. A flat in a block: the roof is shared, a single-family design does not apply.
   if (hasStreet && measuredRoof(roof) && isMultiUnit(roof, f).multi) return out("call_first", "One call first: is this a house or a flat? A shared roof needs a different design.");
