@@ -127,16 +127,19 @@ function Page({ agentId, installerId, test }: Props) {
     const id = leadIdRef.current, f = String(p?.field ?? "");
     if (!id || !FACT_FIELDS.has(f)) return "ignored";
     const val = factValue(f, p.value);
-    setHeard((h) => ({ text: `${factLabel(f, val)}, from the call`, n: (h?.n ?? 0) + 1 }));
+    const n = Date.now();
+    setHeard({ text: `${factLabel(f, val)}, from the call`, n });
     setRedesigns((x) => x + 1);
     const r = await fetch("/api/intake/step", { method: "POST", headers: { "content-type": "application/json", "X-Client-Route": "start-call-fact" },
       body: JSON.stringify({ lead_id: id, facts_so_far: { [f]: val }, source: "call" }) }).catch(() => null);
-    await pull.current().catch(() => {});
+    const b = r && !r.ok ? await r.json().catch(() => null) : null;
+    if (r?.ok) await pull.current().catch(() => {});
+    else setHeard((h) => (h?.n === n ? null : h));   // the line goes if the engine did not take the fact
     setRedesigns((x) => Math.max(0, x - 1));
-    return r?.ok ? "ok" : `not saved (${r?.status ?? "offline"})`;
+    return r?.ok ? "ok" : `error: the fact was not saved (${b?.error ?? r?.status ?? "no connection"}); ask the homeowner again`;
   };
-  // Rina never waits on the engine (a step takes 0.3 to 4 s): the answer is "ok" at once and the scene catches up.
-  useConversationClientTool("record_fact", (p: { field?: string; value?: unknown }) => { void recordFact(p); return "ok"; });
+  // "ok" only once the engine holds the fact; anything else tells Rina to ask again.
+  useConversationClientTool("record_fact", recordFact);
   // Test leads only: the headless check calls the same handler the agent calls.
   useEffect(() => { if (test) (window as unknown as { __recordFact?: typeof recordFact }).__recordFact = recordFact; });
   const conversation = useConversation({
