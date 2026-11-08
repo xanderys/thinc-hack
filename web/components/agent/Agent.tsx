@@ -52,8 +52,10 @@ export default function Agent() {
     try {
       const res = await fetch("/api/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history }) });
       if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw new Error(j.error ?? `${res.status} ${res.statusText}`); }
+      let turn = "";   // a turn that ends in tool calls is narration: its text is dropped when the tools start
       for await (const e of lines(res)) {
-        if (e.t === "text") patch(me.id, (x) => ({ ...x, text: x.text + String(e.d) }));
+        if (e.t === "text") { turn += String(e.d); const t = turn; patch(me.id, (x) => ({ ...x, text: t })); }
+        else if (e.t === "tools") { turn = ""; patch(me.id, (x) => ({ ...x, text: "" })); }
         else if (e.t === "propose") patch(me.id, (x) => ({ ...x, proposals: [...(x.proposals ?? []), { ...(e as unknown as Proposal), said: q, state: "open", results: [] }] }));
         else if (e.t === "created") dispatchEvent(new CustomEvent("marquee:lead-created", { detail: e.lead_id }));
         else if (e.t === "error") patch(me.id, (x) => ({ ...x, err: { src: String(e.src), msg: String(e.msg) } }));
@@ -143,14 +145,15 @@ function ProposalCard({ p, onLead, onApply, onUndo }: { p: Proposal; onLead: (id
     <div className={s.prop}>
       <div className={s.propHead}>{p.title}</div>
       <div className={s.tableWrap}><table className={s.table}>
-        <thead><tr><th>Lead</th><th>Change</th><th className={s.num}>Price</th><th>Verdict</th></tr></thead>
+        <thead><tr><th>Lead</th><th>Change</th><th className={s.num}>Price</th><th className={s.num}>Autarky</th><th>Verdict</th></tr></thead>
         <tbody>{p.rows.map((r) => {
           const d = r.price_from != null && r.price_to != null ? r.price_to - r.price_from : null;
           const ad = r.autarky_from != null && r.autarky_to != null ? Math.round((r.autarky_to - r.autarky_from) * 100) : null;
           return <tr key={r.lead_id}>
             <td><button type="button" className={s.chip} onClick={() => onLead(r.lead_id)}>{r.name}</button></td>
             <td>{r.what}</td>
-            <td className={s.num}><span className={s.fig}><b>{eur(r.price_to)}</b></span>{d ? <span className={s.unit}> {signed(d)}</span> : null}{ad ? <span className={s.unit}>, {pct(r.autarky_to)} % autarky ({signed(ad)})</span> : null}</td>
+            <td className={s.num}><span className={s.fig}><b>{eur(r.price_to)}</b></span>{d ? <span className={s.unit}> {d > 0 ? "+" : "-"}{eur(Math.abs(d))}</span> : null}</td>
+            <td className={s.num}><span className={s.fig}><b>{pct(r.autarky_to)}</b></span><span className={s.unit}> %{ad ? ` ${signed(ad)} pts` : ""}</span></td>
             <td>{r.verdict_from === r.verdict_to ? r.verdict_to : <>{r.verdict_from} to <b>{r.verdict_to}</b></>}</td>
           </tr>;
         })}</tbody>

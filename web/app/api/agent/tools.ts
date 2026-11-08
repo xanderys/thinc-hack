@@ -90,6 +90,9 @@ async function upsell(part: "battery" | "heatpump", ids: string[] | undefined, i
 const lastName = (n: string) => n.trim().split(/\s+/).pop()!.toLowerCase();
 const named = (l: { lead_id: string; customer_name: string }, said: string) => { const s = said.toLowerCase(); return s.includes(l.lead_id) || s.includes(lastName(l.customer_name)); };
 
+const PART: Record<string, [string, string]> = { pv_kwp: ["Solar", "kWp"], battery_kwh: ["Battery", "kWh"], heatpump_kw: ["Heat pump", "kW"], wallbox_kw: ["Wallbox", "kW"], inverter_kw: ["Inverter", "kW"] };
+const part = (k: string, v: unknown) => { const [n, u] = PART[k] ?? [k, ""]; return v === null ? `No ${n.toLowerCase()}` : v === "include" ? `Add ${n.toLowerCase()}` : `${n} ${v} ${u}`.trim(); };
+
 // Builds the table the planner sees before Apply: price, autarky and verdict before and after.
 export async function propose(title: string, ops: Op[], said: string): Promise<Proposal> {
   const rows: Row[] = [], keep: Op[] = [], refused: string[] = [];
@@ -99,7 +102,7 @@ export async function propose(title: string, ops: Op[], said: string): Promise<P
     if (l.pinned && (op.action === "send" || op.action === "ask")) { refused.push(`${l.customer_name} is a pinned demo lead: no real messages.`); return; }
     const before = await shown(l);
     let after: DesignResponse | null = before, what = "";
-    if (op.action === "kit") { const ov = { ...(l.overrides ?? {}), ...(op.overrides ?? {}) }; after = await refine(l, ov); what = Object.entries(op.overrides ?? {}).map(([k, v]) => `${k} ${v === null ? "none" : v}`).join(", "); }
+    if (op.action === "kit") { const ov = { ...(l.overrides ?? {}), ...(op.overrides ?? {}) }; after = await refine(l, ov); what = Object.entries(op.overrides ?? {}).map(([k, v]) => part(k, v)).join(", "); }
     else what = op.action === "complete" ? "Complete" : op.action === "send" ? `Send by ${op.channel ?? "whatsapp"}` : "Ask on WhatsApp";
     const [vf, vt] = await Promise.all([verdict(l, before), verdict(l, after)]);
     rows.push({ lead_id: l.lead_id, name: l.customer_name, what, price_from: before.economics?.capex_eur ?? null, price_to: after?.economics?.capex_eur ?? null,

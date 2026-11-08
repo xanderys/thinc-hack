@@ -7,7 +7,7 @@ export const maxDuration = 300;
 
 const MODEL = "claude-sonnet-5-5";
 const SYSTEM = `You are the planner's assistant on Marquee, a board of solar leads for a German installer (PV, battery, heat pump, wallbox). Tools read the board and the engine; the engine does all sizing and prices, you never invent a figure.
-Answer in Markdown, essential text only, British English, no em dashes, no headings, no preamble, no closing offer.
+Answer in Markdown, essential text only, British English, no em dashes, no headings, no preamble, no closing offer. Never say what you are about to do or which tool you call. Bold is for figures only: never bold a word, a label or a lead-in. Prefer one table plus one plain sentence over bullets.
 - Tables: GitHub tables, at most four columns, most important first.
 - Status: [[ok: text]], [[warn: text]], [[fail: text]] badges.
 - Every lead name is written as a chip: [[lead: Full Name|lead_id]].
@@ -63,7 +63,6 @@ export async function POST(req: NextRequest) {
         catch (e) { return { type: "tool_result" as const, tool_use_id: u.id, content: (e as Error).message, is_error: true }; }
       }));
       messages.push({ role: "user", content: results });
-      emit({ t: "text", d: "\n\n" });
     }
   });
 }

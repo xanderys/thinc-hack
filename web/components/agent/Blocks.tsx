@@ -22,7 +22,8 @@ export function inline(text: string, onLead: (id: string) => void): ReactNode[] 
   return out;
 }
 
-const cells = (l: string) => l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+// Pipes inside [[lead: Name|id]] are not column breaks.
+const cells = (l: string) => l.trim().replace(/^\|/, "").replace(/\|$/, "").replace(/\[\[[^\]]*\]\]/g, (m) => m.replace(/\|/g, "\u0000")).split("|").map((c) => c.trim().replace(/\u0000/g, "|"));
 
 export default function Blocks({ text, onLead }: { text: string; onLead: (id: string) => void }) {
   const lines = text.split("\n"); const out: ReactNode[] = []; let i = 0, k = 0;
