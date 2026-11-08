@@ -12,7 +12,7 @@ const errOf = (e: string) => e.replace(/^\{?"?detail"?:\s*/, "");
 
 // Rina's lines come from fixed templates, never from the model.
 export const REPLY = {
-  roof: (a: string) => `Got it, measuring the roof at ${a}.`,
+  roof: (a: string) => `Got it, ${a}.`,
   ready: (n: string) => `Draft ready for ${n}.`,
   ask: "Got it. Which address?",
 };
@@ -25,7 +25,9 @@ export async function createLeadFromText(text: string, source: Source, opts: { k
   const read = await call<Facts>("/api/interpret", { mode: "composer", text });
   if (!read.ok) return { ok: false, src: "Reader said", msg: read.error };
   const f: Facts = { ...(opts.kept ?? {}), ...read.data };
-  const place = f.address ?? f.postcode;
+  // The engine keeps a postcode only inside address_or_postcode: "Street N, 80331 Town".
+  const pc = f.postcode && !(f.address ?? "").includes(f.postcode) ? f.postcode : null;
+  const place = f.address ? (pc ? (f.address.includes(",") ? f.address.replace(/,\s*([^,]*)$/, `, ${pc} $1`) : `${f.address}, ${pc}`) : f.address) : f.postcode;
   if (!place) return { ok: false, ask: true, facts: f };
   const name = f.name?.trim() || place;
   opts.onRoof?.(place, name);

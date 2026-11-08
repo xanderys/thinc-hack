@@ -11,14 +11,17 @@
 .field { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; line-height: 24px; padding: 8px 6px; max-height: 164px; color: var(--ink); }
 .glyph, .go { flex: 0 0 40px; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--ink-2); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
 .glyph:hover:not(:disabled) { color: var(--ink); }
-.on { background: var(--accent); color: #fff; }
+.on { background: var(--accent); color: #fff; animation: pulse 1.2s ease-in-out infinite; }
+.on svg { fill: currentColor; }
+.secs { align-self: center; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--accent); padding-right: 4px; }
+@keyframes pulse { 50% { opacity: 0.65; } }
 .go { background: var(--accent); color: #fff; }
 .go:disabled { background: var(--sheet-2); color: var(--ink-4); cursor: default; }
 .glyph:disabled { opacity: 0.5; cursor: default; }
 .open { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .err { color: var(--bad); }
 .src { font-weight: 600; margin-right: 4px; }
-@media (prefers-reduced-motion: reduce) { .busy { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .busy, .on { animation: none; } }
 
 .newrow { list-style: none; margin: 0 0 16px; padding: 0; max-width: 440px; }
 .newcard { display: block; width: 100%; text-align: left; border: 1px solid var(--rule-2); border-radius: var(--radius); background: var(--sheet); padding: 16px; font: inherit; cursor: pointer; }
