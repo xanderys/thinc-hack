@@ -389,4 +389,7 @@ def loop():
 
 
 def start():
+    if os.environ.get("WA_POLL") == "0":  # a spare engine on the same lead files must never answer the live line's replies
+        log.warning("whatsapp poll off (WA_POLL=0)")
+        return
     threading.Thread(target=loop, daemon=True, name="whatsapp-poll").start()
