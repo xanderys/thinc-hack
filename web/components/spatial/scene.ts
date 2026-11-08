@@ -151,7 +151,8 @@ export class SpatialScene {
   private planG: SVGGElement | null = null;
   private shade = new ShadeLayer();
   private ctxLines = new THREE.Group(); // neighbours' footprints on the white ground
-  private xray = new Xray({ walls: () => this.wallMesh, box: this.box, planes: () => this.targets.map((t) => t.p), root: this.scene });
+  private xray = new Xray({ walls: () => this.wallMesh, box: this.box, planes: () => this.targets.map((t) => t.p), root: this.scene,
+    overlay: () => this.overlay ?? null, project: (v) => this.project(v), camera: () => this.camera, reduce: () => !!this.opts?.reduce });
   // Per-system layers (systems.ts); it reads this scene's anchors, kit and sun lazily, so it can be made here.
   private systems = new Systems(this as unknown as ConstructorParameters<typeof Systems>[0]);
   private ctxOff: (() => void)[] = [];   // the white-context and ground subscriptions of this glb

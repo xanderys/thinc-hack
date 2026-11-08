@@ -16,6 +16,7 @@ import { usePhoto } from "./PhotoView";
 import { snapKey } from "./snapshot";
 import LayersMenu from "./LayersMenu";
 import { isOrigin } from "@/lib/tilesGeo";
+import { isMultiUnit } from "@/lib/building";
 import { setImagery, useViewOpts, type Imagery } from "./whiteMode";
 import s from "./spatial.module.css";
 import ShadingPanel from "./ShadingScrubber";
@@ -154,7 +155,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const planes: RoofPlane[] = model?.planes ?? [];
   const panelList = useMemo(() => planes.filter((p) => p.is_target).flatMap((p) => p.chosen_panels.map((r: PanelRect) => ({ p, r }))), [planes]);
   const counts = useMemo(() => Object.fromEntries(planes.filter((p) => p.is_target).map((p) => [p.id, p.chosen_panels.length])), [planes]);
-  const envelope: Envelope | null = (model?.envelope && model.envelope.faces?.length ? model.envelope : null);
+  // Flats: the heat load is not estimated (the chain says so), so there is no envelope to draw, no x-ray and no legend.
+  const flat = !!model && isMultiUnit(model, inputs).multi;
+  const envelope: Envelope | null = (!flat && model?.envelope && model.envelope.faces?.length ? model.envelope : null);
   const plan = model?.plan && model.plan.outline?.length ? model.plan : null;
   const ids = [1, 2, 3, 4, 5, 6, ...(envelope ? [7] : []), ...(plan ? [8] : [])];
   const nSteps = ids.length;
