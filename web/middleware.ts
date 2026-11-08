@@ -35,7 +35,7 @@ function factLimited(id: string) {
   if (factHits.size > 5000) factHits.clear();
   return h.length > 20;
 }
-const FACT_FIELDS = new Set(["annual_demand_kwh", "num_inhabitants", "heating_type", "boiler_age_years", "has_ev", "ev_planned", "house_built_year", "has_solar", "heating_demand_kwh"]);
+const FACT_FIELDS = new Set(["annual_demand_kwh", "num_inhabitants", "heating_type", "boiler_age_years", "has_ev", "ev_planned", "house_built_year", "has_solar", "heating_demand_kwh", "has_wallbox", "heating_cost_per_year_eur", "electricity_price_ct_kwh"]);
 
 const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#071b71"/><path d="M4 22 L22 8 L28 8 L10 22Z" fill="#ffc043"/></svg>`;
 
@@ -46,7 +46,7 @@ export async function middleware(req: NextRequest) {
   if (process.env.HOMEOWNER_SITE !== "1") return NextResponse.next();
   const p = req.nextUrl.pathname;
   if (p === "/") { const u = req.nextUrl.clone(); u.pathname = "/start"; return NextResponse.rewrite(u); }
-  if (p === "/start" || p === "/start/roof") return NextResponse.next();
+  if (p === "/start" || p === "/start/roof" || (p === "/start/log" && req.method === "POST")) return NextResponse.next();
   // The enquiry creates its lead and waits for the first design; the lead list stays planner-only.
   if (p === "/api/leads" && req.method === "POST") return NextResponse.next();
   if (/^\/api\/leads\/[\w-]+$/.test(p) && req.method === "GET") return NextResponse.next();

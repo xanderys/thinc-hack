@@ -13,14 +13,22 @@ import { HOME_FORM, homeFacts, INSTALLER_BRAND, homeFirstMessage, homeNote, home
 type Props = { agentId: string; installerId: InstallerId; test?: boolean };
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
 // record_fact (ElevenLabs client tool): the field names the engine takes; values arrive as strings.
-const FACT_FIELDS = new Set(["annual_demand_kwh", "num_inhabitants", "heating_type", "boiler_age_years", "has_ev", "ev_planned", "house_built_year", "has_solar", "heating_demand_kwh"]);
-const BOOL_FACTS = new Set(["has_ev", "ev_planned", "has_solar"]);
+const FACT_FIELDS = new Set(["annual_demand_kwh", "num_inhabitants", "heating_type", "boiler_age_years", "has_ev", "ev_planned", "house_built_year", "has_solar", "heating_demand_kwh", "has_wallbox", "heating_cost_per_year_eur", "electricity_price_ct_kwh"]);
+const BOOL_FACTS = new Set(["has_ev", "ev_planned", "has_solar", "has_wallbox"]);
+// Names the agent may use for a field, mapped to the engine's.
+const FIELD_ALIAS: Record<string, string> = { people: "num_inhabitants", persons: "num_inhabitants", household: "num_inhabitants", household_size: "num_inhabitants", inhabitants: "num_inhabitants",
+  ev: "has_ev", electric_car: "has_ev", car: "has_ev", solar: "has_solar", pv: "has_solar", wallbox: "has_wallbox", boiler_age: "boiler_age_years", heating_age: "boiler_age_years",
+  heating: "heating_type", annual_demand: "annual_demand_kwh", electricity_use: "annual_demand_kwh", built_year: "house_built_year", year_built: "house_built_year", heating_cost: "heating_cost_per_year_eur", price_ct_kwh: "electricity_price_ct_kwh" };
+const THIS_YEAR = 2026;
 // What the homeowner just said, in their words, shown at once on the call screen.
 function factLabel(f: string, v: unknown): string {
   const n = typeof v === "number" ? v : Number(v);
   switch (f) {
     case "num_inhabitants": return `${v} ${n === 1 ? "person" : "people"}`;
-    case "heating_type": return ({ Gas: "Gas heating", Oil: "Oil heating", Heatpump: "Heat pump already", OtherNonRenewable: "Other heating", OtherRenewable: "Renewable heating" } as Record<string, string>)[String(v)] ?? `${v} heating`;
+    case "heating_type": return ({ gas: "Gas heating", oil: "Oil heating", "heat pump": "Heat pump already", district: "District heating", electric: "Electric heating", OtherRenewable: "Wood or pellet heating" } as Record<string, string>)[String(v)] ?? `${v} heating`;
+    case "has_wallbox": return v ? "A wallbox already" : "No wallbox yet";
+    case "heating_cost_per_year_eur": return `€${n0(n)} a year on heating`;
+    case "electricity_price_ct_kwh": return `${v} ct per kWh`;
     case "has_ev": return v ? "An electric car" : "No electric car";
     case "ev_planned": return v ? "A car next year" : "No car planned";
     case "has_solar": return v ? "Solar already" : "No solar yet";
@@ -31,11 +39,32 @@ function factLabel(f: string, v: unknown): string {
     default: return String(v);
   }
 }
+// A value the engine can take, or undefined when there is nothing usable (Rina then asks again).
 function factValue(field: string, v: unknown): unknown {
-  if (BOOL_FACTS.has(field)) return v === true || /^(true|yes|ja|1)$/i.test(String(v).trim());
-  if (field === "heating_type") return String(v).trim();
-  const n = typeof v === "number" ? v : Number(String(v).replace(/[^\d.]/g, ""));
-  return Number.isFinite(n) && String(v).trim() !== "" ? n : String(v).trim();
+  const t = String(v ?? "").trim().toLowerCase();
+  if (v == null || t === "") return undefined;
+  if (BOOL_FACTS.has(field)) {
+    if (v === true || /^(true|yes|ja|y|1|now|planned)$/.test(t)) return true;
+    if (v === false || /^(false|no|nein|n|0|none)$/.test(t)) return false;
+    return undefined;
+  }
+  if (field === "heating_type") {
+    if (/heat ?pump|w[äa]rmepumpe/.test(t)) return "heat pump";
+    if (/gas/.test(t)) return "gas";
+    if (/\boil\b|\böl|heizöl/.test(t)) return "oil";
+    if (/district|fernw/.test(t)) return "district";
+    if (/electric|strom|night ?storage|nachtspeicher|othernonrenewable/.test(t)) return "electric";
+    if (/wood|pellet|holz|biomass|otherrenewable/.test(t)) return "OtherRenewable";
+    return undefined;
+  }
+  const m = t.replace(/(\d)[,.](\d{3})\b/g, "$1$2").match(/\d+(\.\d+)?/);
+  if (!m) return undefined;
+  let n = Number(m[0]);
+  if (/\bk\b|thousand|tausend/.test(t) && n < 100) n *= 1000;
+  // A year, or "the 80s", given for the boiler: the engine takes an age.
+  if (field === "boiler_age_years" && n > 60) { const year = n >= 1900 ? n : 1900 + n; n = Math.max(0, THIS_YEAR - year); }
+  if (field === "house_built_year" && n < 100) n = 1900 + n;
+  return Number.isFinite(n) ? n : undefined;
 }
 
 export default function Start(props: Props) {
@@ -124,23 +153,39 @@ function Page({ agentId, installerId, test }: Props) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Each fact Rina hears goes to the engine at once; the design re-runs and the call screen redraws in place.
   const recordFact = async (p: { field?: string; value?: unknown }) => {
-    const id = leadIdRef.current, f = String(p?.field ?? "");
-    if (!id || !FACT_FIELDS.has(f)) return "ignored";
-    const val = factValue(f, p.value);
+    const id = leadIdRef.current, raw = String(p?.field ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+    const f = FACT_FIELDS.has(raw) ? raw : FIELD_ALIAS[raw] ?? raw;
+    const val = FACT_FIELDS.has(f) ? factValue(f, p?.value) : undefined;
+    console.info("record_fact", { raw: p, field: f, value: val });
+    const log = (outcome: string) => { try { navigator.sendBeacon?.("/start/log", new Blob([JSON.stringify({ lead_id: id, raw: p, field: f, value: val, outcome })], { type: "application/json" })); } catch { /* best effort */ } };
+    if (!id) { log("no lead"); return "error: no lead yet; carry on and ask again in a moment"; }
+    if (!FACT_FIELDS.has(f)) { log("unknown field"); return `error: unknown field "${p?.field}"; use one of ${[...FACT_FIELDS].join(", ")}`; }
+    if (val === undefined) { log("empty value"); return `error: no usable value for ${f} in "${p?.value ?? ""}"; ask the homeowner again`; }
     const n = Date.now();
     setHeard({ text: `${factLabel(f, val)}, from the call`, n });
     setRedesigns((x) => x + 1);
+    const before = callLeadRef.current?.draft;
     const r = await fetch("/api/intake/step", { method: "POST", headers: { "content-type": "application/json", "X-Client-Route": "start-call-fact" },
       body: JSON.stringify({ lead_id: id, facts_so_far: { [f]: val }, source: "call" }) }).catch(() => null);
     const b = r ? await r.json().catch(() => null) : null;
-    if (r?.ok) {
+    const dropped: string[] = Array.isArray(b?.dropped) ? b.dropped : [];
+    const ok = !!r?.ok && !dropped.length;
+    if (ok) {
       // The step's own redesign goes on screen at once; the lead read after it brings the rest.
       if (b?.draft?.design) setCallLead((c) => (c ? { ...c, draft: b.draft, ...(typeof b.version === "number" ? { version: b.version } : {}) } : c));
+      const after = b?.draft;
+      const same = before?.design && after?.design && (["pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"] as const).every((k) => (before.design[k] ?? null) === (after.design[k] ?? null));
+      const a0 = before?.economics?.autarky_share, a1 = after?.economics?.autarky_share;
+      const aut = a0 != null && a1 != null && Math.round(a0 * 100) !== Math.round(a1 * 100) ? `, autarky ${Math.round(a0 * 100)} % to ${Math.round(a1 * 100)} %` : "";
+      if (same) setHeard({ text: `${factLabel(f, val)}: kit unchanged${aut}`, n });
+      else if (aut) setHeard({ text: `${factLabel(f, val)}, from the call${aut}`, n });
       await pull.current().catch(() => {});
     }
     else setHeard((h) => (h?.n === n ? null : h));   // the line goes if the engine did not take the fact
     setRedesigns((x) => Math.max(0, x - 1));
-    return r?.ok ? "ok" : `error: the fact was not saved (${b?.error ?? r?.status ?? "no connection"}); ask the homeowner again`;
+    log(ok ? "ok" : `failed ${r?.status ?? "offline"} ${dropped.join(",")}`);
+    if (dropped.length) return `error: the engine did not take ${dropped.join(", ")}; ask the homeowner again`;
+    return ok ? "ok" : `error: the fact was not saved (${b?.error ?? r?.status ?? "no connection"}); ask the homeowner again`;
   };
   // "ok" only once the engine holds the fact; anything else tells Rina to ask again.
   useConversationClientTool("record_fact", recordFact);
@@ -180,6 +225,7 @@ function Page({ agentId, installerId, test }: Props) {
   const seen = useRef(0);
   // The lead as it stands during the call: the scene and figures on the call screen follow it.
   const [callLead, setCallLead] = useState<Lead | null>(null);
+  const callLeadRef = useRef<Lead | null>(null); callLeadRef.current = callLead;
   const pull = useRef<() => Promise<void>>(async () => {});
   // The last fact heard on the call, shown before the engine answers; the figures shimmer while a redesign is out.
   const [heard, setHeard] = useState<{ text: string; n: number } | null>(null);
