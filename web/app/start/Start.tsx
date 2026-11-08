@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ConversationProvider, useConversation } from "@elevenlabs/react";
+import { ConversationProvider, useConversation, useConversationClientTool } from "@elevenlabs/react";
+import dynamic from "next/dynamic";
 import { endTone, startRing, stopRing, tick, unlock } from "./sounds";
 import type { Lead } from "@/lib/api";
 import { designLine, n0, n2, pct } from "@/lib/stage";
@@ -10,6 +11,16 @@ import RoofNote from "@/components/home/RoofNote";
 import { HOME_FORM, homeFacts, INSTALLER_BRAND, homeFirstMessage, homeNote, homeVariables, type HomeAnswers, type InstallerId, type RoofInfo } from "./intake";
 
 type Props = { agentId: string; installerId: InstallerId; test?: boolean };
+const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
+// record_fact (ElevenLabs client tool): the field names the engine takes; values arrive as strings.
+const FACT_FIELDS = new Set(["annual_demand_kwh", "num_inhabitants", "heating_type", "boiler_age_years", "has_ev", "ev_planned", "house_built_year", "has_solar", "heating_demand_kwh"]);
+const BOOL_FACTS = new Set(["has_ev", "ev_planned", "has_solar"]);
+function factValue(field: string, v: unknown): unknown {
+  if (BOOL_FACTS.has(field)) return v === true || /^(true|yes|ja|1)$/i.test(String(v).trim());
+  if (field === "heating_type") return String(v).trim();
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) && String(v).trim() !== "" ? n : String(v).trim();
+}
 
 export default function Start(props: Props) {
   return (
@@ -95,6 +106,15 @@ function Page({ agentId, installerId, test }: Props) {
     const on = () => { if (connected.current) endCall(); };
     addEventListener("pagehide", on); return () => removeEventListener("pagehide", on);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Each fact Rina hears goes to the engine at once; the design re-runs and the call screen redraws in place.
+  useConversationClientTool("record_fact", async (p: { field?: string; value?: unknown }) => {
+    const id = leadIdRef.current, f = String(p?.field ?? "");
+    if (!id || !FACT_FIELDS.has(f)) return "ignored";
+    const r = await fetch("/api/intake/step", { method: "POST", headers: { "content-type": "application/json", "X-Client-Route": "start-call-fact" },
+      body: JSON.stringify({ lead_id: id, facts_so_far: { [f]: factValue(f, p.value) }, source: "call" }) }).catch(() => null);
+    pull.current();
+    return r?.ok ? "ok" : `not saved (${r?.status ?? "offline"})`;
+  });
   const conversation = useConversation({
     onConnect: ({ conversationId }) => {
       connected.current = true; ended.current = false; setSince(Date.now());
@@ -126,14 +146,18 @@ function Page({ agentId, installerId, test }: Props) {
   // Keeps polling after the first design: a planner's change shows up as a second notification.
   const [update, setUpdate] = useState<string | null>(null);
   const seen = useRef(0);
+  // The lead as it stands during the call: the scene and figures on the call screen follow it.
+  const [callLead, setCallLead] = useState<Lead | null>(null);
+  const pull = useRef<() => void>(() => {});
   const leadSeen = useRef<Lead | null>(null);
   const updatedOnce = useRef(false);
   useEffect(() => {
     if (!leadId) return;
-    const t = setInterval(async () => {
+    const tick = async () => {
       const r = await fetch(`/api/leads/${leadId}`, { cache: "no-store" }).catch(() => null);
       if (!r?.ok) return;
       const l: Lead = await r.json();
+      if (l.draft?.design) setCallLead(l);
       // A declined call never moves the lead past "draft": its Submit draft is the design to show.
       if (CALLING.has(l.status) && !declinedRef.current) return;
       const prev = leadSeen.current;
@@ -145,7 +169,10 @@ function Page({ agentId, installerId, test }: Props) {
       if (l.status === "signed" && l.decision?.action === "sign") setSignedAt((s) => s ?? Date.parse(l.decision!.decided_at));
       if (!prev) { seen.current = steps(l); setDoneAt(Date.now()); return; }
       if (steps(l) > seen.current) { seen.current = steps(l); updatedOnce.current = true; setReady(null); if (!openRef.current) { setUpdate(whatsNew(prev.draft.design, l.draft.design)); setSummary(false); } }
-    }, 3000);
+    };
+    pull.current = () => { void tick(); };
+    void tick();
+    const t = setInterval(tick, 2000);
     return () => clearInterval(t);
   }, [leadId]);
 
@@ -155,7 +182,7 @@ function Page({ agentId, installerId, test }: Props) {
     if (!phoneOk(a.phone ?? "")) { setMiss("phone"); phoneRef.current?.focus(); return; }
     setMiss(null); setError(null);
     unlock();   // the submit tap allows every sound that follows
-    setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false);
+    setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false); setCallLead(null);
     setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null); declinedRef.current = false;
     setLeadError(null);
     setStep("waiting");
@@ -328,6 +355,7 @@ function Page({ agentId, installerId, test }: Props) {
             <p className="ios-time" aria-live="polite">{live ? clock(secs) : <span className="ios-sk" style={{ width: "3.2ch" }}><span className="h-vh">Connecting</span></span>}</p>
             <p className="ios-mode">{live ? (conversation.isSpeaking ? "Rina is speaking" : "Listening") : <span className="ios-sk" style={{ width: "9ch" }} />}</p>
           </div>
+          <CallScene lead={callLead} />
           {/* The iOS grid: mute, speaker and end work; keypad, add call, FaceTime and contacts are shown, not active. */}
           <div className="ios-keys">
             <button type="button" className={conversation.isMuted ? "ios-key on" : "ios-key"} aria-pressed={conversation.isMuted} onClick={() => conversation.setMuted(!conversation.isMuted)}>
@@ -414,4 +442,21 @@ function Mic() {
 }
 function Speaker() {
   return <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06a9 9 0 0 0 0-17.54z" /></svg>;
+}
+
+// The homeowner's home in 3D on the call screen: there from Submit, redrawn in place as each fact lands.
+function CallScene({ lead }: { lead: Lead | null }) {
+  const d = lead?.draft?.design, address = lead?.address_or_postcode ?? "";
+  const [ok, setOk] = useState<boolean | null>(null);
+  const figs = d ? [d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "No solar", d.battery_kwh ? `${n2(d.battery_kwh)} kWh battery` : "No battery", ...(d.heatpump_kw ? [`${n2(d.heatpump_kw)} kW heat pump`] : []), ...(d.wallbox_kw ? ["Wallbox"] : [])] : null;
+  return (
+    <div className="ios-scene" aria-label="Your design">
+      <div className={lead && d && ok !== false ? "ios-scene-3d" : "ios-scene-3d ios-sk"} aria-busy={!lead}>
+        {lead && d && ok !== false && (
+          <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={d} address={address} response={lead.draft} bare homeowner system="panels" onAvailable={setOk} />
+        )}
+      </div>
+      <p className="ios-figs" aria-live="polite">{figs ? figs.map((f) => <span key={f}>{f}</span>) : <span className="ios-sk" style={{ width: "18ch" }} />}</p>
+    </div>
+  );
 }
