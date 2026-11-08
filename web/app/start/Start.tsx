@@ -7,7 +7,7 @@ import { designLine, n0, n2, pct } from "@/lib/stage";
 import Proposal, { span, TODAY_LINE } from "@/components/proposal/Proposal";
 import { HOME_FORM, homeFacts, INSTALLER_BRAND, homeFirstMessage, homeNote, homeVariables, type HomeAnswers, type InstallerId, type RoofInfo } from "./intake";
 
-type Props = { agentId: string; installerId: InstallerId };
+type Props = { agentId: string; installerId: InstallerId; test?: boolean };
 
 export default function Start(props: Props) {
   return (
@@ -38,7 +38,7 @@ function whatsNew(a: Lead["draft"]["design"], b: Lead["draft"]["design"]): strin
 }
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
-function Page({ agentId, installerId }: Props) {
+function Page({ agentId, installerId, test }: Props) {
   const brand = INSTALLER_BRAND[installerId];
   const [step, setStep] = useState<Step>("form");
   const [a, setA] = useState<HomeAnswers>({ name: "", location: "" });
@@ -127,7 +127,7 @@ function Page({ agentId, installerId }: Props) {
     setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false);
     setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null);
     fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form" }) })
+      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form", ...(test ? { test: true } : {}) }) })
       .then(async (r) => { const b = await r.json().catch(() => ({})); if (r.ok && b.lead_id) setLeadId(b.lead_id); })
       .catch(() => {});
     // Look the address up while the phone rings, so the call starts with it.
@@ -200,39 +200,21 @@ function Page({ agentId, installerId }: Props) {
       </div>
     );
 
-  if (summary && lead) {
-    const d = lead.draft, e = d.economics, v = d.variants?.[0];
-    const say = [
-      d.design.pv_kwp != null ? `${n2(d.design.pv_kwp)} kWp of solar panels on your roof.` : "No solar panels for now.",
-      d.design.battery_kwh != null ? `A ${n2(d.design.battery_kwh)} kWh battery keeps daytime sun for the evening.` : "No battery for now.",
-      d.design.heatpump_kw != null ? `A ${n2(d.design.heatpump_kw)} kW heat pump heats the house.` : "No heat pump for now.",
-      d.design.wallbox_kw != null ? `A wallbox for the car, ${n2(d.design.wallbox_kw)} kW.` : "No car charger for now.",
-    ];
+  // The design card: the same box from Submit until the design lands, so nothing moves when it arrives.
+  const design = (
+    <DesignCard lead={doneAt != null ? lead : null} took={took} signedAt={signedAt} signTook={signTook} brand={brand} onOpen={openProposal} />
+  );
+
+  if (summary && lead)
     return (
       <div className="h-page">{head}
         <section className="h-card h-in h-sum" key="sum">
           <h1>{updatedOnce.current ? `Your updated design, ${first(a.name)}` : `Your first design, ${first(a.name)}`}</h1>
-          <dl className="h-nums">
-            {e.annual && <div><dt>Solar a year</dt><dd>{n0(e.annual.pv_yield_kwh)} kWh</dd></div>}
-            <div><dt>Self-sufficiency</dt><dd>{pct(e.autarky_share)} %</dd></div>
-            <div><dt>Investment</dt><dd>{n0(e.capex_eur)} EUR</dd></div>
-            <div><dt>Payback</dt><dd>{e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`}</dd></div>
-          </dl>
-          <ul className="h-parts">{say.map((x) => <li key={x}>{x}</li>)}</ul>
-          {v && <p className="h-pref"><b>{v.label.split(" (")[0]}</b> {designLine(v.design)}</p>}
-          <dl className="h-times">
-            <div><dt>Enquiry to design</dt><dd>{Math.floor(took / 60)} min {took % 60} s</dd></div>
-            <div><dt>Enquiry to signature</dt><dd>{signedAt != null ? span(signTook) : clock(Math.floor(signTook / 1000))}</dd></div>
-            <p>{TODAY_LINE}</p>
-          </dl>
-          {lead.status === "approved" || lead.status === "signed" || lead.status === "question"
-            ? <button type="button" className="h-go" onClick={openProposal}>Open your proposal</button>
-            : <p className="h-send">{brand} will send the full offer.</p>}
+          {design}
         </section>
         {readyBanner}
       </div>
     );
-  }
 
   const banner = readyBanner || (notify && (
     <button type="button" key={update ?? "first"} className="ios-banner ios-note" onClick={() => { setSummary(true); setUpdate(null); }}>
@@ -247,6 +229,7 @@ function Page({ agentId, installerId }: Props) {
         <section className="h-card h-in" key="end">
           <h1>{step === "thanks" ? `Thanks ${first(a.name)}, ${brand} will send the offer.` : `No problem, ${first(a.name)}. ${brand} will call you back later.`}</h1>
           {startedAt != null && <p className="h-watch" aria-live="off">{doneAt != null ? `Enquiry to design: ${Math.floor(took / 60)} min ${took % 60} s` : `Your design: ${clock(took)}`}</p>}
+          {startedAt != null && design}
         </section>
         {banner}
       </div>
@@ -296,8 +279,9 @@ function Page({ agentId, installerId }: Props) {
           <div className="ios-call-top">
             <h2>Rina</h2>
             <p>{brand}</p>
-            <p className="ios-time" aria-live="polite">{live ? clock(secs) : "Connecting"}</p>
-            {live && <p className="ios-mode">{conversation.isSpeaking ? "Rina is speaking" : "Listening"}</p>}
+            {/* Until the call connects, both lines hold their final size as skeletons. */}
+            <p className="ios-time" aria-live="polite">{live ? clock(secs) : <span className="ios-sk" style={{ width: "3.2ch" }}><span className="h-vh">Connecting</span></span>}</p>
+            <p className="ios-mode">{live ? (conversation.isSpeaking ? "Rina is speaking" : "Listening") : <span className="ios-sk" style={{ width: "9ch" }} />}</p>
           </div>
           {/* The iOS grid: mute, speaker and end work; keypad, add call, FaceTime and contacts are shown, not active. */}
           <div className="ios-keys">
@@ -317,6 +301,41 @@ function Page({ agentId, installerId }: Props) {
         </div>
       )}
       {step === "form" && banner}
+    </div>
+  );
+}
+
+// Placeholder text sized like the real thing; under .h-sk it is invisible and shimmers.
+const SK_PARTS = ["10.24 kWp of solar panels on your roof.", "A 10.24 kWh battery keeps daytime sun for the evening.", "A 10.24 kW heat pump heats the house.", "A wallbox for the car, 11 kW."];
+
+function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: Lead | null; took: number; signedAt: number | null; signTook: number; brand: string; onOpen: () => void }) {
+  const d = lead?.draft, e = d?.economics, v = d?.variants?.[0];
+  const say = d ? [
+    d.design.pv_kwp != null ? `${n2(d.design.pv_kwp)} kWp of solar panels on your roof.` : "No solar panels for now.",
+    d.design.battery_kwh != null ? `A ${n2(d.design.battery_kwh)} kWh battery keeps daytime sun for the evening.` : "No battery for now.",
+    d.design.heatpump_kw != null ? `A ${n2(d.design.heatpump_kw)} kW heat pump heats the house.` : "No heat pump for now.",
+    d.design.wallbox_kw != null ? `A wallbox for the car, ${n2(d.design.wallbox_kw)} kW.` : "No car charger for now.",
+  ] : SK_PARTS;
+  const released = lead && (lead.status === "approved" || lead.status === "signed" || lead.status === "question");
+  return (
+    <div className={lead ? "h-design h-arrive" : "h-design h-sk"} aria-busy={!lead} aria-hidden={!lead || undefined}>
+      <dl className="h-nums">
+        <div><dt>Solar a year</dt><dd>{e ? (e.annual ? `${n0(e.annual.pv_yield_kwh)} kWh` : "None") : "10,000 kWh"}</dd></div>
+        <div><dt>Self-sufficiency</dt><dd>{e ? `${pct(e.autarky_share)} %` : "70 %"}</dd></div>
+        <div><dt>Investment estimate</dt><dd>{e ? `${n0(e.capex_eur)} EUR` : "20,000 EUR"}</dd></div>
+        <div><dt>Payback</dt><dd>{e ? (e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`) : "10.5 years"}</dd></div>
+      </dl>
+      <p className="h-est">Prices are an estimate until the site visit.</p>
+      <ul className="h-parts">{say.map((x, i) => <li key={i}>{x}</li>)}</ul>
+      <p className="h-pref"><b>{v ? v.label.split(" (")[0] : "Planners' pick"}</b> {v ? designLine(v.design) : "10.24 kWp, 10.24 kWh"}</p>
+      <dl className="h-times">
+        <div><dt>Enquiry to design</dt><dd>{Math.floor(took / 60)} min {took % 60} s</dd></div>
+        <div><dt>Enquiry to signature</dt><dd>{signedAt != null ? span(signTook) : clock(Math.floor(signTook / 1000))}</dd></div>
+        <p>{TODAY_LINE}</p>
+      </dl>
+      {released
+        ? <button type="button" className="h-go" onClick={onOpen}>Open your proposal</button>
+        : <p className="h-send">{brand} will send the full offer.</p>}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { INSTALLER_NAME, type ComponentKey, type Design, type DesignResponse, ty
 import { buildFacts, KEYS, n0, n2 } from "@/lib/stage";
 import { decide } from "@/lib/proposal";
 import Signature, { type SignatureHandle } from "./Signature";
+import KitSlot from "@/components/home/KitSlot";
 import "./proposal.css";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
@@ -84,19 +85,22 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
         </div>
       </header>
 
+      {/* One fixed box for the 3D house, its fallback drawing and the skeleton, so the page below never moves. */}
       <section className="pp-house" aria-label="Your home">
-        {street && spatial !== false && (
-          <div className="pp-spatial">
-            <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={design} address={address} response={lead.draft} layer={layer} onLayerChange={setLayer} onAvailable={setSpatial} />
-          </div>
-        )}
-        {(!street || spatial === false) && <div className="pp-drawing"><House design={design} /></div>}
+        <div className="pp-housebox">
+          {street && spatial !== false && (
+            <div className="pp-spatial">
+              <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={design} address={address} response={lead.draft} layer={layer} onLayerChange={setLayer} onAvailable={setSpatial} />
+            </div>
+          )}
+          {(!street || spatial === false) && <div className="pp-drawing"><House design={design} /></div>}
+        </div>
       </section>
 
       <section className="pp-kpis" aria-label="Key figures">
         {yieldKwh != null && <Kpi label="Yield a year" value={`${n0(yieldKwh)} kWh`} />}
         <Kpi label="Autarky" value={pc(e.autarky_share)} />
-        <Kpi label="Investment" value={eur(e.capex_eur)} note={`Estimate, final price confirmed by ${brand}`} />
+        <Kpi label="Investment estimate" value={eur(e.capex_eur)} note="An estimate until the site visit." />
         <Kpi label="Break-even" value={be == null ? "over 20 years" : `${n0(be)} years`} />
       </section>
 
@@ -108,7 +112,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
               <li key={v.key} className={v.key === key ? "on" : undefined} aria-current={v.key === key ? "true" : undefined}>
                 <span className="pp-vname">{v.label}{v.key === key && <span className="pp-pill blue">Proposed</span>}</span>
                 <Chips d={v.design} />
-                <span className="pp-vnum">{eur(v.economics.capex_eur)}<small>{pc(v.economics.autarky_share)} autarky</small></span>
+                <span className="pp-vnum">{eur(v.economics.capex_eur)} estimate<small>{pc(v.economics.autarky_share)} autarky</small></span>
               </li>
             ))}
           </ul>
@@ -117,6 +121,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
 
       <section className="pp-card" aria-label="Your system">
         <h2>Your system</h2>
+        <KitSlot design={design} />
         <ul className="pp-parts">
           {KEYS.map((k) => {
             const v = design[FIELD[k]];
@@ -246,5 +251,57 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
       )}
       <p className="pp-small">Demo acceptance, not a qualified e-signature.</p>
     </section>
+  );
+}
+
+// The proposal before its lead loads: the same boxes as the page above, with placeholder text hidden under a shimmer.
+export function ProposalSkeleton() {
+  const v = ["PV + storage (as planners here design it)", "Best value", "Best payback", "Most independence", "Lowest upfront cost"];
+  return (
+    <article className="pp pp-sk" aria-busy="true" aria-label="Your proposal">
+      <header className="pp-cover">
+        <svg className="pp-band" viewBox="0 0 390 260" preserveAspectRatio="none" aria-hidden>
+          <polygon points="165,100 390,26 390,80 205,134" />
+          <polygon points="0,78 112,50 112,88 0,116" />
+        </svg>
+        <p className="pp-brand"><span className="pp-skt">Isarwerk Solar</span></p>
+        <div className="pp-title">
+          <h1>Your proposal</h1>
+          <p><span className="pp-skt">Name, Street 5, 82008 Town</span></p>
+        </div>
+      </header>
+      <section className="pp-house" aria-hidden><div className="pp-housebox pp-skb" /></section>
+      <section className="pp-kpis" aria-hidden>
+        {[["Yield a year", "10,000 kWh"], ["Autarky", "70 %"], ["Investment estimate", "€20,000"], ["Break-even", "10 years"]].map(([l, x], i) => (
+          <div key={l} className="pp-kpi"><span>{l}</span><b className="pp-skt">{x}</b>{i === 2 && <small className="pp-skt">An estimate until the site visit.</small>}</div>
+        ))}
+      </section>
+      <section className="pp-card" aria-hidden>
+        <h2>Variants</h2>
+        <ul className="pp-vars">
+          {v.map((x, i) => (
+            <li key={x}>
+              <span className="pp-vname"><span className="pp-skt">{x}</span>{i === 0 && <span className="pp-pill pp-skt">Proposed</span>}</span>
+              <span className="pp-chips"><span className="pp-pill pp-skt">10.24 kWp</span><span className="pp-pill pp-skt">10 kWh</span></span>
+              <span className="pp-vnum"><span className="pp-skt">€20,000 estimate</span><small className="pp-skt">70 % autarky</small></span>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section className="pp-card" aria-hidden>
+        <h2>Your system</h2>
+        <KitSlot design={null} />
+        <ul className="pp-parts">
+          {KEYS.map((k) => (
+            <li key={k}>
+              <span className="pp-dot pp-skb" aria-hidden />
+              <span className="pp-pname"><b className="pp-skt">{NAME[k]}</b><span className="pp-size pp-skt">10.24 {UNIT[k]}</span></span>
+              <span className="pp-wait" aria-hidden />
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section className="pp-card pp-sign pp-signsk" aria-hidden><h2>Sign</h2></section>
+    </article>
   );
 }
