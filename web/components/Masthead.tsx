@@ -25,7 +25,7 @@ export default function Masthead() {
           <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4L6.5 10l6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
       )}
-      <Link href="/" className="title">Planner</Link>
+      <Link href="/" className="title">MARQUEE</Link>
       {/* The bar carries only the name; it speaks only when the engine cannot be reached, in the engine's own words. */}
       {health.err && <span className="engine mock">{health.err}</span>}
     </header>
