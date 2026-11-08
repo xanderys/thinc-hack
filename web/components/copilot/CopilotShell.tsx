@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ComposerField from "@/components/composer/ComposerField";
 import Thread from "@/components/agent/Thread";
 import * as agentStore from "@/components/agent/store";
+import { startSuggestions } from "@/components/agent/store";
 import { suggest, type SuggestLead } from "@/components/agent/suggest";
 import { Ctx, type CopilotContext } from "./context";
 import s from "./copilot.module.css";
@@ -33,6 +34,7 @@ export default function CopilotShell() {
     };
     read(); const iv = setInterval(read, 500); return () => clearInterval(iv);
   }, []);
+  useEffect(() => startSuggestions(), []);   // the chips and the dot poll only while the shell is mounted
   const lead = leadOf(path) ? decodeURIComponent(leadOf(path)!) : undefined;
   const asCircle = !!lead;
 
@@ -124,10 +126,9 @@ export default function CopilotShell() {
   const goLead = (id: string) => { setOpen(false); history.pushState({ h: id }, "", `/h/${id}`); dispatchEvent(new PopStateEvent("popstate")); };
   return (
     <Ctx.Provider value={ctx}>
-      <div ref={wrap} className={s.shell} data-lead={asCircle ? "1" : undefined} data-open={open ? "1" : undefined} data-off={off} data-line={sug.line ? "1" : undefined}>
+      <div ref={wrap} className={s.shell} data-lead={asCircle ? "1" : undefined} data-open={open ? "1" : undefined} data-off={off}>
         <div className={s.dockWrap}>
           <div aria-hidden style={{ height: "var(--composer-h, 96px)" }} />
-          {sug.line && <div className={s.lastLine} title={sug.line}>{sug.line}</div>}
           <ComposerField value="" onChange={noop} onSend={noop} onAttach={() => setOpen(true)} onMicStart={noop} onMicStop={noop} onActivate={() => setOpen(true)} />
         </div>
         <div className={s.scrim} onClick={close} aria-hidden />

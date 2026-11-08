@@ -43,12 +43,20 @@ export async function refreshSuggestions() {
 export function useSuggestions(): Suggestion[] {
   return useSyncExternalStore((f) => { sugSubs.add(f); return () => { sugSubs.delete(f); }; }, () => suggestions, () => suggestions);
 }
-if (typeof window !== "undefined") {
-  let last: string | null = null;
-  const tick = () => { const k = leadOnScreen() ?? "board"; if (k !== last) { last = k; suggestions = []; pendingSuggestion = false; sugSubs.forEach((f) => f()); void refreshSuggestions(); } };
-  setInterval(tick, 300); addEventListener("popstate", tick); setTimeout(tick, 0);
-  setInterval(() => void refreshSuggestions(), 15000);
-  addEventListener("marquee:lead-stale", () => void refreshSuggestions());
+// Polling runs only while the planner's copilot shell is mounted, and only on planner screens (the board and a lead).
+const plannerScreen = () => location.pathname === "/" || location.pathname.startsWith("/h/");
+let started = 0, stopAll: (() => void) | null = null;
+export function startSuggestions(): () => void {
+  if (typeof window === "undefined") return () => {};
+  if (started++ === 0) {
+    let last: string | null = null;
+    const refresh = () => { if (plannerScreen()) void refreshSuggestions(); };
+    const tick = () => { if (!plannerScreen()) return; const k = leadOnScreen() ?? "board"; if (k !== last) { last = k; suggestions = []; pendingSuggestion = false; sugSubs.forEach((f) => f()); void refreshSuggestions(); } };
+    const a = setInterval(tick, 300), b = setInterval(refresh, 15000), t = setTimeout(tick, 0);
+    addEventListener("popstate", tick); addEventListener("marquee:lead-stale", refresh);
+    stopAll = () => { clearInterval(a); clearInterval(b); clearTimeout(t); removeEventListener("popstate", tick); removeEventListener("marquee:lead-stale", refresh); };
+  }
+  return () => { if (--started === 0) { stopAll?.(); stopAll = null; } };
 }
 
 // Every Apply and Undo is kept in the thread as an event the agent reads back ("what did I change?").
