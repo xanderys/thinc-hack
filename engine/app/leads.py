@@ -118,6 +118,9 @@ def new_id() -> str:
 
 def where(address_or_postcode: str) -> dict:
     s = (address_or_postcode or "").strip()
+    m = re.match(r"^(.*\D)\s+(\d+\s*[a-zA-Z]?)\s*,?\s+(\d{5})$", s)
+    if m and "," not in m.group(1):  # "Sandstraße 33 80335" reads as "Sandstraße 33, 80335"
+        s = f"{m.group(1).strip()} {m.group(2).strip()}, {m.group(3)}"
     return {"postcode": s} if PC.match(s) else ({"address": s} if s else {})
 
 

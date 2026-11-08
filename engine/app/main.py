@@ -116,6 +116,7 @@ def startup():
             leads.save(l)
     wa.configure(_wa_order, _wa_step)
     wa.start()
+    threading.Thread(target=_call_sweep, daemon=True, name="call-sweep").start()
     from .agent import autopilot
     autopilot.configure(refresh=_ap_refresh, sources=_sources, find=_find_lead, complete=_ap_complete, create=_ap_create,
                         delete=lambda i: delete_lead(i, True, os.environ.get("INTAKE_SECRET")), build_model=roofs._safe_model)
@@ -1308,6 +1309,58 @@ def lead_day(lead_id: str, day: Literal["summer", "winter"] = "summer", battery_
     out.update(lead_id=lead["lead_id"], version=int(lead.get("version") or 0))
     _DAY[key] = out
     return out
+
+
+def _end_call(lead: dict, why: str) -> dict:
+    """A call that ended (hang-up, beacon, or silence) leaves On a call: back to draft, designed from what it has."""
+    lead["status"] = "draft"
+    lead["next_question"] = None
+    lead.setdefault("history", []).append({"step": None, "field": None, "answer": {}, "changed": [], "note": why, "at": leads.now()})
+    try:
+        lead = _ap_refresh(lead)  # the roof measured and the draft current
+        lead["draft"] = engine().predict(dict(lead["inputs"]))
+        lead["draft_stamp"] = engine_stamp()
+    except Exception:
+        log.exception("end call redraft")
+    lead["updated_at"] = leads.now()
+    leads.save(lead)
+    return lead
+
+
+@app.post("/api/leads/{lead_id}/call/end")
+def call_end(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
+    """The web beacons this when the call ends (ElevenLabs end, hang-up, tab close). Idempotent."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = _find_lead(lead_id)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    if lead.get("status") == "in_call":
+        lead = _end_call(lead, "call ended")
+    return {"version": int(lead.get("version") or 0), "status": lead["status"], "design": (lead.get("draft") or {}).get("design")}
+
+
+def _call_sweep():
+    """Every minute: a call with no step for 3 minutes has ended."""
+    from datetime import datetime, timezone
+    while True:
+        try:
+            t = datetime.now(timezone.utc)
+            for l in list(leads.LEADS.values()):
+                if l.get("status") != "in_call":
+                    continue
+                try:
+                    last = datetime.strptime(l["updated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                except Exception:
+                    continue
+                if (t - last).total_seconds() >= CALL_IDLE_S:
+                    _end_call(l, "no step for 3 minutes: call ended")
+        except Exception:
+            log.exception("call sweep")
+        time.sleep(60)
+
+
+CALL_IDLE_S = 180
 
 
 @app.post("/api/leads/hide-unpinned")

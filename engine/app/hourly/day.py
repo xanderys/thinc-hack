@@ -70,6 +70,15 @@ def _battery(f, idx, nxt, kwh, sunset, sunrise_next):
     return ch, dis, covered, round(float(ss), 3)
 
 
+def _cover(q: np.ndarray, temp: np.ndarray, kw: float) -> dict:
+    """Hourly heat q (kWh per hour = kW) against a unit of kw: the share of the year's heat the unit delivers itself and
+    the bivalent point (the warmest outdoor hour in which the demand exceeds the unit, so backup heat runs below it)."""
+    tot = q.sum()
+    share = float(np.minimum(q, kw).sum() / tot) if tot else 1.0
+    over = temp[q > kw]
+    return {"heat_covered_share": round(share, 3), "bivalent_temp_c": round(float(over.max()), 1) if len(over) else None}
+
+
 def view(inputs: dict, design: dict, kind: str = "summer", sizes: dict | None = None) -> dict:
     sizes = sizes or {}
     d = {**design, **{k: v for k, v in sizes.items() if v is not None}}
@@ -104,9 +113,37 @@ def view(inputs: dict, design: dict, kind: str = "summer", sizes: dict | None = 
             spare = np.clip(g["pv"] - g["house"] - g["hp"], 0, None)
             solar = np.minimum(spare, ev).sum()
             return g, round(float(solar / ev.sum()), 3) if ev.sum() else 0.0, round(EV_CHARGE_KWH / min(kw, CAR_ONBOARD_KW), 1)
+        def solar_charging(kw):
+            """The same car, charged from the roof's surplus first (any hour of the day it is there), the rest from 18:00."""
+            g = S._flows({**inputs, "has_ev": True}, {**d, "wallbox_kw": kw}, "Munich")
+            daily = g["ev"].sum() / 365
+            spare = np.clip(g["pv"] - g["house"] - g["hp"], 0, None)
+            local, dates = _days()
+            hour = local.hour.to_numpy()
+            out_ev = np.zeros(len(spare))
+            for dd in np.unique(dates):
+                ix = np.where(dates == dd)[0]
+                need = daily
+                for i in ix[np.argsort(-spare[ix])]:  # the sunniest hours first, at most the wallbox's (and car's) power
+                    if need <= 0 or spare[i] <= 0:
+                        break
+                    e = min(spare[i], min(kw, CAR_ONBOARD_KW), need)
+                    out_ev[i] += e
+                    need -= e
+                for i in ix[np.argsort((hour[ix] - S.EV_START_H) % 24)]:  # the rest in the evening, as today
+                    if need <= 0:
+                        break
+                    e = min(min(kw, CAR_ONBOARD_KW) - out_ev[i], need)
+                    if e > 0:
+                        out_ev[i] += e
+                        need -= e
+            solar = np.minimum(spare, out_ev).sum()
+            return out_ev, round(float(solar / out_ev.sum()), 3) if out_ev.sum() else 0.0
         g, share, hrs = ev_stats(wb or 11.0)
+        sc_ev, sc_share = solar_charging(wb or 11.0)
         out["wallbox"] = {"kw": wb, "ev_kwh_year": round(float(g["ev"].sum())), "charging_kwh": r(g["ev"][idx]),
                           "solar_share_of_charging": share, "full_charge_hours": hrs, "ladder": LADDER["wallbox"],
+                          "solar_charging": {"charging_kwh": r(sc_ev[idx]), "solar_share_of_charging": sc_share},
                           "by_size": {f"{k:g}": dict(zip(("solar_share_of_charging", "full_charge_hours"), ev_stats(k)[1:])) for k in LADDER["wallbox"]},
                           "assumptions": f"{EV_CHARGE_KWH:.0f} kWh for a full charge (10 to 90 % of a {EV_BATTERY_KWH:.0f} kWh car), car takes at most "
                                          f"{CAR_ONBOARD_KW:g} kW AC; {S.EV_HOME_SHARE:.0%} of the car's kWh charged at home from {S.EV_START_H}:00"}
@@ -129,8 +166,11 @@ def view(inputs: dict, design: dict, kind: str = "summer", sizes: dict | None = 
         out["heatpump"] = {"kw": hp, "heat_demand_kwh": r(heat * shape[idx]), "outdoor_temp_c": r(temp[idx]), "heat_load_kw": load_kw,
                            "heating_kwh_year": round(heat), "heating_source": src, "electricity_kwh_year": round(float(el.sum())),
                            "cop": S.JAZ, "cost_eur_year": cost, "boiler_cost_eur_year": round(float(boiler)), "ladder": LADDER["heatpump"],
+                           "heat_price_ct_kwh": None if inputs.get("heating_cost_per_year_eur") else round(S.HEAT_EUR_PER_KWH * 100, 1),
+                           "full_load_hours": round(heat / load_kw) if load_kw else None,
                            "by_size": {f"{k:g}": {"electricity_kwh_year": round(float(el.sum())), "cost_eur_year": cost,
-                                                  "covers_heat_load": bool(k >= load_kw)} for k in LADDER["heatpump"]}}
+                                                  "covers_heat_load": bool(k >= load_kw), **_cover(heat * shape, temp, k)}
+                                       for k in LADDER["heatpump"]}}
     else:
         out["heatpump"] = None
     return out

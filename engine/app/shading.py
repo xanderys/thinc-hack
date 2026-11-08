@@ -1,7 +1,7 @@
 """Per-module shading: sunshine share of every module slot on the house's real roof, across a representative year.
 
 For each target plane, every slot roof/model can lay a module on (the chosen layout is always a prefix of these slots, so
-slot i is chosen_panels[i]) gets 4 sample points, one per module quarter. From each point a ray goes toward the sun at
+slot i is chosen_panels[i]) gets 9 sample points (a 3 x 3 grid) and 3 sun positions per hour (v2). From each point a ray goes toward the sun at
 288 positions (15th of each month, every local clock hour at half past, pvlib at the house's own lat/lon; below the
 horizon is skipped) and is marched over the Bavarian DOM20 surface model (trees, neighbours; the window roof/model
 already caches) and tested against the house's own LoD2 roof and wall triangles (dormers, other roof planes).
@@ -29,7 +29,7 @@ import pandas as pd
 from . import roofs
 
 log = logging.getLogger("engine")
-VERSION = 1
+VERSION = 2
 CACHE = Path(__file__).resolve().parent.parent / ".cache" / "shading"
 SOURCE = "estimated from the Bavarian surface model (DOM20) and LoD2"
 MODULE_KWP = 0.463  # v2.15: Sunpro 463 W, the catalogue module
@@ -37,7 +37,8 @@ LIFT = 0.05            # sample points sit this far above the module face
 STEP = 0.4             # ray march step over DOM20, metres
 SKIP = 0.8             # first metre of each DOM ray ignored (roof skin noise), as roof/model/shade.py
 OWN_PLANE_M = 0.15     # LoD2 triangles this close to the module's plane are its own roof, not a blocker
-QUARTERS = [(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)]
+QUARTERS = [(a, b) for b in (1 / 6, 0.5, 5 / 6) for a in (1 / 6, 0.5, 5 / 6)]  # v2: a 3 x 3 grid per module
+MINUTES = (15, 30, 45)  # v2: three sun positions per hour, so an edge grades instead of flipping
 
 
 def _mods():
@@ -58,10 +59,10 @@ def cache_path(address: str) -> Path:
 
 # ---------- sun ----------
 
-def _sun(lat: float, lon: float):
-    """Unit vectors (12, 24, 3) east, north, up and elevation degrees (12, 24) at the house, 15th of each month, hh:30."""
+def _sun(lat: float, lon: float, minute: int = 30):
+    """Unit vectors (12, 24, 3) east, north, up and elevation degrees (12, 24) at the house, 15th of each month, hh:mm."""
     import pvlib
-    t = pd.DatetimeIndex([pd.Timestamp(2025, m, 15, hh, 30, tz="Europe/Berlin") for m in range(1, 13) for hh in range(24)])
+    t = pd.DatetimeIndex([pd.Timestamp(2025, m, 15, hh, minute, tz="Europe/Berlin") for m in range(1, 13) for hh in range(24)])
     sp = pvlib.solarposition.get_solarposition(t, lat, lon, altitude=520)
     el = np.radians(sp["apparent_elevation"].to_numpy()).reshape(12, 24)
     az = np.radians(sp["azimuth"].to_numpy()).reshape(12, 24)
@@ -159,6 +160,7 @@ def compute(address: str, build_year=None) -> dict:
     hgt, _bmask, src = shade.surface(k, site["origin"], site)
     tris = _own_triangles(site, org, M)
     vec, el = _sun(lat, lon)
+    suns = [_sun(lat, lon, m)[0] for m in MINUTES]
     planes = []
     for p in meta["planes"]:
         if not p["is_target"]:
@@ -181,10 +183,14 @@ def compute(address: str, build_year=None) -> dict:
                 hrs = np.nonzero((el[mi] > 0.5) & (vec[mi] @ nrm > 0.02))[0]
                 if not len(hrs):
                     continue
-                Dm = vec[mi, hrs]
-                blocked = _hits_dom(P, Dm, hgt, shade.CELL, shade.WINDOW_M) | _hits_triangles(P, Dm, T)
-                lit[:, mi, hrs] = ~blocked
-            per = lit.reshape(len(C), 4, 12, 24)
+                acc = np.zeros((len(P), len(hrs)))
+                for vv in suns:  # the sun at hh:15, hh:30 and hh:45: a share of the hour, not one instant
+                    Dm = vv[mi, hrs]
+                    up = (Dm @ nrm > 0.0) & (Dm[:, 2] > 0.0)
+                    blocked = _hits_dom(P, Dm, hgt, shade.CELL, shade.WINDOW_M) | _hits_triangles(P, Dm, T)
+                    acc += np.where(up[None, :], ~blocked, False)
+                lit[:, mi, hrs] = acc / len(suns)
+            per = lit.reshape(len(C), len(QUARTERS), 12, 24)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)   # all-NaN hours are night
                 share = np.nanmean(per, axis=1)                   # (S, 12, 24)
