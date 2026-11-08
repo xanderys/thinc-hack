@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Composer from "@/components/composer/Composer";
 import ComposerField from "@/components/composer/ComposerField";
 import { transcribe } from "@/components/composer/create";
 import Blocks, { inline, openLead } from "./Blocks";
@@ -37,6 +38,24 @@ export default function Agent() {
   const media = useRef<{ r: MediaRecorder; chunks: Blob[]; stream: MediaStream } | null>(null);
   const dragFrom = useRef<{ y: number; t: number } | null>(null);
   useEffect(() => () => { media.current?.stream.getTracks().forEach((t) => t.stop()); }, []);
+  // A lead the composer created on its own (collapsed) shows in the thread as its chip.
+  const mine = useRef(new Set<string>());
+  useEffect(() => {
+    const on = async (e: Event) => {
+      const id = String((e as CustomEvent).detail ?? ""); if (!id || mine.current.has(id)) return;
+      const r = await fetch(`/api/leads/${encodeURIComponent(id)}`).then((x) => x.json()).catch(() => null);
+      const name = r?.customer_name ?? id;
+      setItems((xs) => [...xs, { id: ++seq.current, who: "agent", text: `[[ok: New lead]] [[lead: ${name}|${id}]]` }]);
+    };
+    addEventListener("marquee:lead-created", on); return () => removeEventListener("marquee:lead-created", on);
+  }, []);
+  // The card's field unmounts on close; give the board back the composer dock's height.
+  const comp = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) return;
+    const id = requestAnimationFrame(() => { const dock = comp.current?.querySelector("form")?.parentElement; if (dock) document.documentElement.style.setProperty("--composer-h", `${Math.ceil(dock.getBoundingClientRect().height)}px`); });
+    return () => cancelAnimationFrame(id);
+  }, [open]);
   useEffect(() => { const el = thread.current; if (el) el.scrollTop = el.scrollHeight; }, [items]);
   useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); }; addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, [open]);
 
@@ -50,14 +69,14 @@ export default function Agent() {
     const history = [...items, you].filter((x) => x.text.trim() && !x.err).map((x) => ({ role: x.who === "you" ? "user" : "assistant", content: x.text }));
     setItems((xs) => [...xs, you, me]); setBusy(true); setOpen(true);
     try {
-      const res = await fetch("/api/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history }) });
+      const res = await fetch("/api/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history, test: new URLSearchParams(location.search).get("test") === "1" }) });
       if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw new Error(j.error ?? `${res.status} ${res.statusText}`); }
       let turn = "";   // a turn that ends in tool calls is narration: its text is dropped when the tools start
       for await (const e of lines(res)) {
         if (e.t === "text") { turn += String(e.d); const t = turn; patch(me.id, (x) => ({ ...x, text: t })); }
         else if (e.t === "tools") { turn = ""; patch(me.id, (x) => ({ ...x, text: "" })); }
         else if (e.t === "propose") patch(me.id, (x) => ({ ...x, proposals: [...(x.proposals ?? []), { ...(e as unknown as Proposal), said: q, state: "open", results: [] }] }));
-        else if (e.t === "created") dispatchEvent(new CustomEvent("marquee:lead-created", { detail: e.lead_id }));
+        else if (e.t === "created") mine.current.add(String(e.lead_id)), dispatchEvent(new CustomEvent("marquee:lead-created", { detail: e.lead_id }));
         else if (e.t === "error") patch(me.id, (x) => ({ ...x, err: { src: String(e.src), msg: String(e.msg) } }));
       }
     } catch (e) { patch(me.id, (x) => ({ ...x, err: { src: "Agent said", msg: (e as Error).message } })); }
@@ -99,12 +118,12 @@ export default function Agent() {
   async function pick(file: File) { try { setText((await file.text()).slice(0, 8000)); field.current?.focus(); } catch { /* unreadable file */ } }
 
   const chevron = (
-    <button type="button" className={`${s.chev} ${open ? s.down : ""}`} aria-label={open ? "Collapse" : "Expand"} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+    <button type="button" className={`${s.chev} ${s.down}`} aria-label="Collapse" aria-expanded onClick={() => setOpen(false)}>
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 11 9 6.5l4.5 4.5" /></svg>
     </button>
   );
   const fieldEl = <ComposerField value={text} onChange={setText} onSend={submit} onAttach={pick} onMicStart={() => void startRec()} onMicStop={() => void stopRec()}
-    busy={busy} recording={rec} trailing={chevron} fieldRef={field} line={!open && busy ? <span className={`b-skel ${s.lineSkel}`} aria-hidden /> : null} />;
+    busy={busy} recording={rec} trailing={chevron} fieldRef={field} />;
 
   const onDown = (e: React.PointerEvent) => { e.currentTarget.setPointerCapture(e.pointerId); dragFrom.current = { y: e.clientY, t: performance.now() }; };
   const onMove = (e: React.PointerEvent) => { if (dragFrom.current) setDrag(Math.max(0, e.clientY - dragFrom.current.y)); };
@@ -117,7 +136,11 @@ export default function Agent() {
 
   return (
     <>
-      <div className={`${s.dock} ${open ? s.dockHidden : ""}`}>{!open && fieldEl}</div>
+      {/* Collapsed: the composer as its lane built it, with the expand chevron on its line. */}
+      <div ref={comp} style={open ? { visibility: "hidden" } : undefined}><Composer /></div>
+      {!open && <button type="button" className={`${s.chev} ${s.chevDock}`} aria-label="Expand" aria-expanded={false} onClick={() => setOpen(true)}>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 11 9 6.5l4.5 4.5" /></svg>
+      </button>}
       <div className={`${s.scrim} ${open ? s.scrimOn : ""}`} onClick={() => setOpen(false)} aria-hidden />
       <section className={`${s.card} ${open ? s.cardOn : ""} ${drag ? s.dragging : ""}`} style={drag ? { transform: `translateY(${drag}px)` } : undefined} aria-hidden={!open} aria-label="Agent">
         <div className={s.handle} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} role="button" aria-label="Drag down to collapse" tabIndex={-1}><span /></div>

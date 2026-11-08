@@ -32,7 +32,7 @@ function stream(run: (emit: (e: Record<string, unknown>) => void) => Promise<voi
 }
 
 export async function POST(req: NextRequest) {
-  let b: { messages?: Msg[]; apply?: Op[]; undo?: Op[]; said?: string };
+  let b: { messages?: Msg[]; apply?: Op[]; undo?: Op[]; said?: string; test?: boolean };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Body is not JSON" }, { status: 400 }); }
 
   if (b.apply || b.undo) {
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       const uses = msg.content.filter((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
       emit({ t: "tools", names: uses.map((u) => u.name) });
       const results = await Promise.all(uses.map(async (u) => {
-        try { return { type: "tool_result" as const, tool_use_id: u.id, content: JSON.stringify(await runTool(u.name, u.input as Record<string, unknown>, said, emit)).slice(0, 30000) }; }
+        try { return { type: "tool_result" as const, tool_use_id: u.id, content: JSON.stringify(await runTool(u.name, u.input as Record<string, unknown>, said, emit, !!b.test)).slice(0, 30000) }; }
         catch (e) { return { type: "tool_result" as const, tool_use_id: u.id, content: (e as Error).message, is_error: true }; }
       }));
       messages.push({ role: "user", content: results });

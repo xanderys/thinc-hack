@@ -142,19 +142,22 @@ export async function apply(ops: Op[], emit: Emit, said: string, undo = false) {
   return prev;
 }
 
-async function createLead(text: string) {
+async function createLead(text: string, test: boolean) {
   const r = await interpret(new NextRequest("http://agent.local/api/interpret", { method: "POST", body: JSON.stringify({ mode: "composer", text }), headers: { "content-type": "application/json" } }));
   const f = await r.json() as Record<string, unknown>;
   if (!r.ok) throw new Error(`Reader said: ${err(f)}`);
   const place = (f.address ?? f.postcode) as string | undefined;
   if (!place) return { needs: "address", facts: f };
   const name = (f.name as string | undefined)?.trim() || place;
-  const made = await callEngine("POST", "/api/leads", S(), { customer_name: name, address_or_postcode: place, installer_id: "2a8ba8e2", source: "form", test: true, ...(f.phone ? { phone: f.phone } : {}) }, H());
+  const made = await callEngine("POST", "/api/leads", S(), { customer_name: name, address_or_postcode: place, installer_id: "2a8ba8e2", source: "form", ...(test || /^test\b/i.test(name) ? { test: true } : {}), ...(f.phone ? { phone: f.phone } : {}) }, H());
   if (made.status !== 200) throw new Error(`Engine said: ${err(made.body)}`);
   const id = (made.body as { lead_id: string }).lead_id;
   const facts: Record<string, unknown> = { customer_name: name };
   for (const k of ["address", "postcode", "num_inhabitants", "heating_type", "heating_stated", "has_ev", "ev_planned", "annual_demand_kwh"]) if (f[k] !== undefined) facts[k] = f[k];
-  const step = await callEngine("POST", "/api/intake/step", S(), { lead_id: id, facts_so_far: facts, source: "planner" }, H());
+  // The composer's sources: a long text or a mail header is an email, else the planner's note; an older engine takes form or planner.
+  const src = text.length > 200 || /\b(From:|Betreff|Subject)/i.test(text) ? "email" : "planner";
+  let step = await callEngine("POST", "/api/intake/step", S(), { lead_id: id, facts_so_far: facts, source: src }, H());
+  if (step.status === 422 && src === "email") step = await callEngine("POST", "/api/intake/step", S(), { lead_id: id, facts_so_far: facts, source: "form" }, H());
   if (step.status !== 200) throw new Error(`Engine said: ${err(step.body)}`);
   const l = await lead(id), d = await shown(l);
   return summary(l, d, await verdict(l, d));
@@ -179,7 +182,7 @@ export const TOOLS: Anthropic.Tool[] = [
   { name: "stats", description: "How close the engine comes to the expert designs on unseen projects: the eval scoreboard.", input_schema: obj({}) },
 ];
 
-export async function runTool(name: string, input: Record<string, unknown>, said: string, emit: Emit): Promise<unknown> {
+export async function runTool(name: string, input: Record<string, unknown>, said: string, emit: Emit, test = false): Promise<unknown> {
   const id = String(input.id ?? "");
   switch (name) {
     case "list_leads": return listRows(!!input.include_test);
@@ -187,7 +190,7 @@ export async function runTool(name: string, input: Record<string, unknown>, said
     case "design": { const l = await lead(id); const d = await shown(l); return { design: d.design, economics: d.economics, explanation: d.explanation, components: d.components, variants: (d.variants ?? []).map((v) => ({ key: v.key, design: v.design, economics: v.economics })) }; }
     case "refine": { const l = await lead(id); const d = await refine(l, { ...(l.overrides ?? {}), ...(input.overrides as Ov) }); return d ? { design: d.design, economics: d.economics } : { error: "The engine refused these overrides." }; }
     case "upsell": return upsell(input.part as "battery" | "heatpump", input.ids as string[] | undefined, !!input.include_test);
-    case "create_lead": { const r = await createLead(String(input.text ?? "")); if ("lead_id" in r) emit({ t: "created", lead_id: r.lead_id }); return r; }
+    case "create_lead": { const r = await createLead(String(input.text ?? ""), test); if ("lead_id" in r) emit({ t: "created", lead_id: r.lead_id }); return r; }
     case "stats": { const r = await callEngine("GET", "/api/eval", S(), undefined, H()); const b = r.body as Record<string, unknown>; return Object.fromEntries(Object.entries(b ?? {}).filter(([k]) => !/per_project|rows|projects/.test(k)).map(([k, v]) => [k, v])); }
     case "propose_kit": case "complete": case "send": case "ask_whatsapp": {
       const action = name === "propose_kit" ? "kit" : name === "ask_whatsapp" ? "ask" : name;
