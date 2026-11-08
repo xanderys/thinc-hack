@@ -10,7 +10,7 @@ import Why from "./Why";
 import { INSTALLER_NAME } from "@/lib/api";
 import { designLine, evidence, KEYS, n0, n2, NAME, named, pct, size } from "@/lib/stage";
 
-export type Variant = { name: string; tag: string; design: Design; e: Economics | null; overrides: Overrides | null; current: boolean; note?: string };
+export type Variant = { name: string; tag: string; design: Design; e: Economics | null; overrides: Overrides | null; current: boolean; note?: string; also?: string[] };
 
 type Props = {
   res: DesignResponse; prev: DesignResponse | null; inputs: HomeInputs;
@@ -54,7 +54,6 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
 
   return (
     <section className="s-plan" aria-label="Plan system" aria-busy={busy}>
-      {!bare && <p className="s-steps">Read, asked one thing, designed, checked, drafted. The planner signs off.</p>}
       <p className="s-prose" aria-live="polite">
         {prose ?? <span className="s-wait">Writing</span>}
         {prose && <span className={flag ? "flag" : "flag none"}> {flag ? <>One thing to check: {named(flag)}</> : "Nothing to check."}</span>}
@@ -74,7 +73,7 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
           <dl className="s-est">
             {a && <Est k="Solar yield a year" v={n0(a.pv_yield_kwh)} u="kWh" was={was(a.pv_yield_kwh, pa?.pv_yield_kwh, n0)} />}
             <Est k="Autarky" v={pct(e.autarky_share)} u="%" was={was(e.autarky_share, pe?.autarky_share, pct)} />
-            <Est k="Investment" v={n0(e.capex_eur)} u="EUR" was={was(e.capex_eur, pe?.capex_eur, n0)} />
+            <Est k="Investment" v={`€${n0(e.capex_eur)}`} u="" was={was(e.capex_eur, pe?.capex_eur, (x) => `€${n0(x)}`)} />
             <Est k="Payback" v={e.payback_years == null ? "None" : n2(Math.round(e.payback_years * 10) / 10)} u={e.payback_years == null ? "" : "years"} was={e.payback_years == null ? null : was(e.payback_years, pe?.payback_years, (x) => n2(Math.round(x * 10) / 10))} />
           </dl>
           <p className="s-estnote">{e.method === "hourly-simulation" ? "Estimates from an hourly simulation of a typical Munich year." : "Estimates from annual averages."}</p>
@@ -120,7 +119,7 @@ export default function Plan({ res, prev, inputs, write, writeBusy, flag, varian
                   <span className="vd">
                     <span><span className="dt">Yield</span><span className="dd">{v.e.annual ? `${n0(v.e.annual.pv_yield_kwh)} kWh` : "None"}</span></span>
                     <span><span className="dt">Autarky</span><span className="dd">{pct(v.e.autarky_share)}%</span></span>
-                    <span><span className="dt">Investment</span><span className="dd">{n0(v.e.capex_eur)} EUR</span></span>
+                    <span><span className="dt">Investment</span><span className="dd">€{n0(v.e.capex_eur)}</span></span>
                     <span><span className="dt">Payback</span><span className="dd">{v.e.payback_years == null ? "None" : `${n2(Math.round(v.e.payback_years * 10) / 10)} years`}</span></span>
                   </span>
                 ) : <span className="s-wait">Simulating</span>}

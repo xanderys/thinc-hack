@@ -23,7 +23,8 @@ body:has(.start-root) main { max-width: none; padding: 0; }
 .h-input { width: 100%; min-height: 48px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--h-rule); background: #fff; font: inherit; font-size: 16px; color: var(--h-ink); }
 .h-input::placeholder { color: #A3A79F; }
 .h-input[aria-invalid="true"] { border-color: #B3261E; }
-.h-why { font-size: 13.5px; color: #B3261E; margin: 6px 0 0; }
+.h-why { font-size: 13.5px; color: #B3261E; margin: 6px 0 0; overflow-wrap: anywhere; }
+.h-retry { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--h-brand); text-decoration: underline; cursor: pointer; min-height: 24px; }
 .h-opt { font-size: 13.5px; color: var(--h-ink-2); margin: 22px 0 14px; padding-top: 16px; border-top: 1px solid var(--h-rule); }
 .h-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .h-chip { min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--h-rule); background: transparent; color: var(--h-ink); font: inherit; font-size: 15px; cursor: pointer; }
@@ -77,7 +78,7 @@ body:has(.start-root) main { max-width: none; padding: 0; }
   @keyframes ios-open { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
 }
 @media (prefers-reduced-motion: reduce) {
-  .h-in, .ios-banner, .ios-call { animation: h-fade 200ms linear both; }
+  .ios-banner { animation: h-fade 200ms linear both; }
   @keyframes h-fade { from { opacity: 0; } to { opacity: 1; } }
 }
 @media (hover: hover) { .h-chip:hover { border-color: var(--h-ink-2); } }
@@ -107,3 +108,30 @@ body:has(.start-root) main { max-width: none; padding: 0; }
 /* v2.5: the proposal takes the whole page, phone first. */
 .h-prop { min-height: 100dvh; background: var(--h-ground); }
 .h-send { margin: 0; font-size: 15px; }
+
+/* Skeletons at final size: the placeholder text keeps the real box, only its ink is hidden. */
+.h-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.h-sk dt, .h-sk dd, .h-sk li, .h-sk .h-est, .h-sk .h-pref, .h-sk .h-times p, .h-sk .h-send, .ios-sk {
+  color: transparent !important; border-radius: 6px;
+  background: linear-gradient(90deg, #eef0f3 0%, #f7f8fa 50%, #eef0f3 100%) 0 0 / 200% 100%;
+}
+.h-sk .h-pref b { color: transparent; }
+.h-sk dt, .h-sk dd, .h-sk .h-times p, .h-sk .h-est { width: fit-content; }
+.ios-sk { display: inline-block; height: 1em; vertical-align: -0.12em; background-image: linear-gradient(90deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.26) 50%, rgba(255,255,255,0.14) 100%); }
+.ios-call .ios-mode { min-height: 1.4em; }
+/* Every part line holds two lines, so a one-line answer never pulls the card up. */
+.h-parts li { min-height: 2.8em; }
+.h-est { margin: -8px 0 16px; font-size: 13.5px; color: var(--h-ink-2); }
+.h-send { min-height: 54px; margin-top: 8px; display: flex; align-items: center; }
+.h-design { margin-top: 18px; }
+.h-sum .h-design { margin-top: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .h-sk dt, .h-sk dd, .h-sk li, .h-sk .h-est, .h-sk .h-pref, .h-sk .h-times p, .h-sk .h-send, .ios-sk { animation: h-shimmer 1.4s linear infinite; }
+  @keyframes h-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+  .h-arrive { animation: h-fade-in 350ms var(--spring-smooth) both; }
+  @keyframes h-fade-in { from { opacity: 0; } to { opacity: 1; } }
+}
+
+/* Blank skeleton bars (no placeholder text): the shimmer comes from the .h-sk parent rules above. */
+.h-bar { display: inline-block; max-width: 100%; }
+.h-roofnote { margin: 2px 0 0; font-size: 13px; color: var(--h-ink-2); }

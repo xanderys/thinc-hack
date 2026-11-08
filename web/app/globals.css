@@ -52,7 +52,7 @@ button, input, select { font: inherit; color: inherit; }
 .masthead nav { display: flex; gap: 20px; }
 .masthead nav a { text-decoration: none; color: rgba(244, 241, 234, 0.72); padding-bottom: 2px; border-bottom: 1.5px solid transparent; }
 .masthead nav a[aria-current="page"] { color: var(--paper); border-bottom-color: var(--paper); }
-.masthead .engine { margin-left: auto; font-size: 12.5px; color: rgba(244, 241, 234, 0.72); font-family: var(--font-mono), monospace; }
+.masthead .engine { margin-left: auto; font-size: 12.5px; color: rgba(244, 241, 234, 0.72); }
 .masthead .engine.mock { color: var(--paper); text-decoration: underline; }
 
 main { max-width: 1360px; margin: 0 auto; padding: 0 32px 64px; }
@@ -558,6 +558,9 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 /* Listening: the laptop mic follows a call on speaker. */
 .s-listen { margin: 10px 0 4px; display: grid; gap: 6px; justify-items: start; }
 .s-listen .btn.on { display: inline-flex; align-items: center; gap: 8px; border-color: var(--accent); color: var(--accent); }
+.s-live { display: inline-flex; align-items: center; gap: 6px; }
+.s-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; font-size: 14px; }
+.s-chip .dot { background: #fff; }
 .s-listen .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .s-heard { margin: 0; font-size: 14px; color: var(--ink); font-style: italic; max-width: 60ch; }
 .s-last { margin: 0; }
@@ -632,16 +635,6 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .b-card-in { padding-top: 14px; }
 .t-bar { display: grid; gap: 12px; padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--rule); }
 .t-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 12px; background: var(--sheet-2); border: 1px solid var(--accent); font-size: 15px; }
-.t-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.t-chip { position: relative; }
-.t-chip summary { list-style: none; cursor: pointer; min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--rule); background: var(--sheet-2); font-size: 14px; }
-.t-chip summary::-webkit-details-marker { display: none; }
-.t-chip summary .k { color: var(--ink-3); }
-.t-chip[open] summary { border-color: var(--accent); }
-.t-edit { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; background: var(--paper); border: 1px solid var(--ink); padding: 10px; white-space: nowrap; }
-.t-edit form { display: flex; gap: 8px; align-items: center; }
-.t-edit input { width: 110px; font: inherit; padding: 7px 10px; border: 1px solid var(--ink-3); background: var(--sheet-2); border-radius: 0; }
-.t-edit .u { font-size: 13px; color: var(--ink-3); }
 .t-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
 .t-pref { display: inline-grid; grid-template-columns: repeat(4, auto); margin: 0; }
 .t-locks summary { cursor: pointer; font-size: 14px; min-height: 36px; display: inline-flex; align-items: center; }
@@ -654,12 +647,8 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 @media (max-width: 640px) {
   .t-pref { grid-template-columns: 1fr 1fr; width: 100%; }
   .t-go { margin-left: 0; width: 100%; justify-content: flex-end; }
-  .t-edit { position: static; margin-top: 4px; white-space: normal; }
 }
 @media (max-width: 640px) {
-  .t-chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 0 16px 4px; scrollbar-width: none; }
-  .t-chip summary { white-space: nowrap; }
-  .t-chip[open] { position: static; }
   .t-go { width: auto; margin-left: auto; }
 }
 .b-open-h { position: relative; overflow: hidden; }
@@ -682,10 +671,6 @@ input, select, textarea { border-radius: 8px; }
 .b-card-in { padding-top: 8px; }
 .t-bar { gap: 8px; padding-bottom: 8px; margin-bottom: 0; border-bottom: 0; }
 .t-row { gap: 8px 12px; }
-.t-chips { gap: 6px; }
-.t-chip summary { border-radius: 999px; background: #fff; min-height: 32px; font-size: 13.5px; }
-.t-edit { border-radius: 10px; border-color: var(--rule); box-shadow: var(--shadow); background: #fff; }
-.t-edit input { border-radius: 8px; }
 .t-ask { border-radius: 10px; }
 .t-pref { background: var(--sheet-2); border-radius: 10px; padding: 2px; border: 0 !important; }
 .t-pref > * { border: 0 !important; border-radius: 8px; }
@@ -719,3 +704,119 @@ input, select, textarea { border-radius: 8px; }
 .b-st.signed { background: #e3f5e9; color: #1b7a39; }
 .b-card.live .b-st { background: transparent; padding: 0; }
 .b-open-h p .b-chip { margin-left: 8px; vertical-align: 1px; }
+.b-open-h p.b-shared { margin-top: 6px; display: inline-block; font-size: 13px; font-weight: 600; color: #8a5a00; background: #fff4dc; border: 1px solid #f2d79a; border-radius: 8px; padding: 3px 10px; }
+
+/* Skeletons: the final layout's size, shimmering until the content lands; nothing jumps. */
+.b-skel, .s-skel { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--sheet-2) 0%, #e6e9f2 50%, var(--sheet-2) 100%) 0 0 / 200% 100%; animation: skel 1.2s linear infinite; }
+.b-card .b-skel { background-color: #eceef4; background-image: linear-gradient(90deg, #eceef4 0%, #f6f7fa 50%, #eceef4 100%); }
+.b-skel-chip { width: 64px; height: 22px; border-radius: 999px; }
+.b-skel-house { height: 120px; flex: 0 0 120px; }
+.b-skel-line { width: 70%; height: 16px; margin-top: 4px; }
+.b-skel-line.short { width: 40%; }
+@keyframes skel { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .b-skel, .s-skel { animation: none; } }
+
+/* The open card before the lead arrives: the final layout, shimmering. */
+.ok-skel { display: grid; gap: 12px; margin-top: 12px; }
+.ok-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.ok-chips .s-skel { height: 36px; border-radius: 999px; }
+.ok-body { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 12px; height: calc(100vh - 330px); min-height: 420px; }
+.ok-steps { display: grid; align-content: start; gap: 8px; }
+.ok-step { height: 64px; border-radius: 12px; }
+.ok-steps .ok-step:first-child { height: 220px; }
+.ok-hero { position: relative; border: 1px solid var(--rule); border-radius: 12px; background: var(--paper); overflow: hidden; }
+.ok-sim { position: absolute; top: 12px; left: 12px; width: 290px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 10px; background: #fff; border: 1px solid var(--rule); border-radius: 12px; }
+.ok-sim .s-skel { height: 56px; border-radius: 8px; }
+.ok-house { position: absolute; left: 50%; top: 50%; width: min(40%, 280px); transform: translate(-50%, -50%); fill: #e6e9f2; animation: okp 1.2s ease-in-out infinite alternate; }
+@keyframes okp { from { opacity: 0.55; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ok-house { animation: none; } }
+.ok-words { position: absolute; left: 14px; bottom: 12px; margin: 0; font-size: 12.5px; color: var(--ink-3); }
+@media (max-width: 760px) {
+  .ok-body { grid-template-columns: 1fr; height: auto; }
+  .ok-hero { order: -1; height: 46vh; min-height: 300px; margin: 0 -16px; border-radius: 0; }
+  .ok-sim { left: 8px; right: 8px; width: auto; grid-template-columns: repeat(4, 1fr); padding: 6px; }
+  .ok-sim .s-skel { height: 40px; }
+}
+/* Lane 3 (8 Nov 2026): the open card's bar and skeleton everywhere; the desktop two-column layout from 1024 px. */
+.s-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1 1 100%; min-width: 0; }
+@media (max-width: 640px) { .s-bar .s-undo { display: none; } }   /* phones keep their bar; Undo is on the model toolbar */
+.s-bar .s-say { flex: 1 1 260px; min-width: 0; }
+.s-bar .s-listen { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.s-bar .btn { min-height: 40px; }
+.b-l1 { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.b-l1 h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b-open-lines { flex: 1; min-width: 0; }
+.st-skel { display: grid; gap: 12px; margin-top: 12px; }
+.st-skel-l { display: grid; gap: 6px; align-content: start; }
+.st-skel-card { height: 64px; border-radius: 12px; }
+.st-skel-house { height: 46vh; min-height: 300px; border-radius: 12px; order: -1; }
+
+@media (min-width: 1024px) {
+  /* One screen: masthead, the three-line header, then the two columns down to the window's bottom edge. No page scroll. */
+  body:has(.b-open) { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+  body:has(.b-open) > main { flex: 1; min-height: 0; width: 100%; max-width: none; padding: 0 24px 16px; display: flex; flex-direction: column; }
+  .b-open { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-top: 10px; }
+  .b-open-h { flex: none; padding-bottom: 10px; align-items: flex-start; }
+  .b-open-h .b-head-photo, .b-open-h .b-shared { display: none; }
+  .b-open-h h1 { font-size: 24px; line-height: 1.2; }
+  .b-open-h p { margin: 2px 0 0; line-height: 1.35; }
+  .b-l1 .b-chip { margin-left: auto; flex: none; }
+  .b-l2, .b-l3 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .b-l2 .b-skel-line { width: 240px; height: 14px; }
+
+  .st-open { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-top: 8px; }
+  .st-open > .t-bar { flex: none; }
+  .st-open > [class*="chain_root__"] {
+    flex: 1; min-height: 0; height: auto; margin-top: 8px;
+    grid-template-columns: clamp(360px, 30vw, 440px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
+  }
+  /* Step cards scroll on their own; the track stays invisible (overlay scrollbars on macOS, a thin thumb elsewhere). */
+  .st-open [class*="chain_rail__"] { grid-column: 1; grid-row: 1; scrollbar-width: thin; scrollbar-color: rgba(20, 24, 40, 0.22) transparent; }
+  .st-open [class*="chain_rail__"]::-webkit-scrollbar { width: 6px; background: transparent; }
+  .st-open [class*="chain_rail__"]::-webkit-scrollbar-thumb { background: rgba(20, 24, 40, 0.22); border-radius: 3px; }
+  .st-open [class*="chain_hero__"] { grid-column: 2; grid-row: 1; }
+  /* Reasoning hidden: the house takes the full width, the step strip sits under it. */
+  .st-open > [class*="chain_isCollapsed__"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .st-open > [class*="chain_isCollapsed__"] [class*="chain_hero__"] { grid-column: 1; grid-row: 1; }
+  .st-open > [class*="chain_isCollapsed__"] [class*="chain_collapsed__"] { grid-column: 1; grid-row: 2; }
+
+  /* The sentence bar docks over the canvas bottom as glass; the model toolbar sits just above it; the map credit stays visible under it. */
+  .st-open [class*="chain_say__"] {
+    grid-column: 2; grid-row: 1; align-self: end; justify-self: center; z-index: 6; margin: 0 0 30px; width: min(760px, calc(100% - 120px));
+    padding: 8px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.72); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5);
+  }
+  .st-open > [class*="chain_isCollapsed__"] [class*="chain_say__"] { grid-column: 1; }
+  .st-open [class*="chain_say__"] .s-chips { margin: 0 0 6px; }
+  .st-open [class*="chain_say__"] .error { margin: 6px 0 0; }
+  .st-open [class*="chain_hero__"] [class*="chain_toolbar__"] { bottom: calc(var(--say-h, 58px) + 40px); }
+
+  .st-skel { flex: 1; min-height: 0; grid-template-columns: clamp(360px, 30vw, 440px) minmax(0, 1fr); }
+  .st-skel-house { height: auto; min-height: 0; order: 0; }
+}
+@media (min-width: 1024px) and (prefers-reduced-transparency: reduce) {
+  .st-open [class*="chain_say__"] { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--rule); }
+}
+
+/* Board cards: figures in the sans with tabular numbers, no monospace in the chrome. */
+.b-card .num { font-family: var(--font-sans), sans-serif; font-variant-numeric: tabular-nums; }
+
+/* Banner: the back chevron sits in the left gutter's first 44 px, with "Planner" right after it; an open card's
+   banner shares the card's gutter at desktop widths. */
+.masthead { align-items: center; }
+.masthead .back { display: grid; place-items: center; width: 44px; height: 44px; margin: -10px -14px -10px -18px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--paper); cursor: pointer; }
+.masthead .back:hover { background: rgba(244, 241, 234, 0.12); }
+.masthead .back:focus-visible { outline: 2px solid var(--paper); outline-offset: -2px; }
+@media (min-width: 1024px) { body:has(.b-open) .masthead { padding-left: 24px; padding-right: 24px; } }
+.b-open-h { padding-right: 0; }
+/* Phone: fact chips and their edit box stay inside the screen (no sideways scroll); the box spans the chip row. */
+@media (max-width: 760px) {
+  .t-row { position: relative; }
+}
+
+/* The open card's Undo, beside the status chip in the header row (Board.tsx HeaderUndo). */
+.b-undo { font: inherit; font-size: 13px; min-height: 36px; min-width: 64px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); cursor: pointer; flex: none; position: relative; }
+.b-undo::after { content: ""; position: absolute; inset: -4px; }   /* 44 px target */
+.b-undo:disabled { color: var(--ink-3, #8a8d96); cursor: default; opacity: 0.6; }
+.b-undo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) { .b-undo:not(:disabled):hover { background: #f4f4f5; } }

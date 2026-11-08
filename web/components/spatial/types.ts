@@ -10,6 +10,8 @@ export interface RoofPlane {
   id: string; polygon: V3[]; pitch: number; azimuth: number | null; area_m2: number;
   is_target: boolean; yield_kwh_per_kwp: number; sun: number; max_panels: number;
   fits_panels?: number; chosen_panels: PanelRect[];
+  // api v2.14: every position a module fits on a target face; placed marks the engine's own layout (a prefix).
+  slots?: { id: string; face: string; corners: V3[]; placed: boolean }[];
   // Shade fields, when the engine sends them.
   shade?: number | null; shade_loss_share?: number | null; yield_shaded_kwh_per_kwp?: number | null;
   skip_reason?: string | null; skip?: string | null; shade_reason?: string | null;

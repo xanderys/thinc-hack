@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import Proposal from "@/components/proposal/Proposal";
+import Proposal, { ProposalSkeleton } from "@/components/proposal/Proposal";
 import type { Lead } from "@/lib/api";
 import { INSTALLER_BRAND } from "../../intake";
 
@@ -23,15 +23,16 @@ export default function ProposalPage({ id }: { id: string }) {
     return () => { live = false; clearInterval(t); };
   }, [id, tries]);
 
-  if (!lead)
+  if (!lead && error)
     return (
       <div className="h-page">
         <section className="h-card" style={{ marginTop: 24 }}>
-          <h1>{error ? "This proposal did not load" : "Loading your proposal"}</h1>
-          {error && <p className="h-why" role="alert">{error} <button type="button" className="pp-link" onClick={() => setTries(tries + 1)}>Try again</button></p>}
+          <h1>This proposal did not load</h1>
+          <p className="h-why" role="alert">{error} <button type="button" className="pp-link" onClick={() => setTries(tries + 1)}>Try again</button></p>
         </section>
       </div>
     );
+  if (!lead) return <div className="h-prop"><ProposalSkeleton /></div>;
   if (lead.approved_at || lead.decision || ["approved", "signed", "declined", "question"].includes(lead.status)) released.current = true;
   const brand = INSTALLER_BRAND[lead.facts.installer_id] ?? INSTALLER_BRAND["2a8ba8e2"];
   if (lead.status === "draft" || lead.status === "in_call" || !released.current)

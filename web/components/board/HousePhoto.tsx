@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 // A street-level photo needs a street and number, not a postcode alone.
 export const hasStreet = (a?: string | null) => !!a && /[A-Za-zÄÖÜäöüß].*\d|\d.*[A-Za-zÄÖÜäöüß]/.test(a.split(",")[0] ?? "") && a.includes(",");
 
-// Front-of-house photo from the engine. Shows nothing until it has loaded; a 404, an error or a slow answer
+// Front-of-house photo from the engine. Shows nothing until it has loaded; a 204 (no photo), an error or a slow answer
 // (over 12 s) leaves the layout as it was. Fades in once (opacity only).
 export default function HousePhoto({ address, className, onShown }: { address?: string | null; className?: string; onShown?: (shown: boolean) => void }) {
   const [state, setState] = useState<"wait" | "ok" | "none">("wait");

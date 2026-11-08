@@ -2,21 +2,29 @@
 // Progressive, layered explanation of a design over the real house model.
 // Usage: <SpatialDemo inputs={inputs} design={design} address={address} layer={n} onLayerChange={setN} />
 // Renders nothing when the engine has no 3D model for the address; onAvailable(false) tells the parent to keep its drawing.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Design, DesignResponse, HomeInputs } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import type { Design, DesignResponse, HomeInputs, OverrideValue } from "@/lib/api";
 import { call } from "@/lib/client";
 import type { Envelope, Layers, PanelRect, RoofModel, RoofPlane } from "./types";
 import { labelOf, p2, planesOf } from "./types";
 import type { SpatialScene } from "./scene";
+import type { System } from "./systems";
 import { POSES, type StageView } from "./camera";
 import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
 import { usePhoto } from "./PhotoView";
+import { snapKey } from "./snapshot";
+import LayersMenu from "./LayersMenu";
+import { isOrigin } from "@/lib/tilesGeo";
+import { isMultiUnit } from "@/lib/building";
+import { setImagery, type Imagery } from "./whiteMode";
 import s from "./spatial.module.css";
+import EditLayer from "./EditLayer";
+import { MODULE_WP, countOf, idsOf, kwpKey, loadPicks, picksOf, savePicks, slotsOf, withPicks, type Picks } from "./editing";
 import ShadingPanel from "./ShadingScrubber";
 import { useShadeView, useShading } from "@/lib/shading";
 
-export type Endpoints = { glb?: string; layers?: string };
+export type Endpoints = { glb?: string; layers?: string; layersGet?: boolean };  // layersGet: the homeowner page reads its layers with a GET, never a POST
 
 const modelOf = (x: Layers["planes"] | null | undefined): RoofModel | null =>
   !x ? null : Array.isArray(x) ? { address: "", planes: x } : x.planes ? x : null;
@@ -28,15 +36,21 @@ type Props = {
   response?: DesignResponse | null;   // optional: the heat layer reads the heat pump derivation from it
   view?: StageView;                   // optional: the reasoning stage the camera should frame (camera.ts)
   bare?: boolean;                     // the reasoning chain draws its own chrome: canvas, labels and compass only
+  homeowner?: boolean;                // the homeowner's proposal: no numbers tile, check line, equation, plan notes or sources; sans font
   leadId?: string;                    // sent with the layers call so call facts tag as Rina
   onLayers?: (l: Layers) => void;     // the one layers response, for bars, checks and the energy numbers
-  tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void; photo?: { on: boolean; set: (on: boolean) => void } }) => ReactNode;
+  sunTint?: boolean;                  // tint the roof faces by sun with the modules showing (per-panel shading not in yet)
+  tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void }; zoom?: { can: { in: boolean; out: boolean }; by: (d: 1 | -1) => void }; north?: ReactNode }) => ReactNode;
   children?: ReactNode;               // overlays drawn over the canvas
+  system?: System | null;             // the Systems chip: its layer on the model and its camera (systems.ts)
+  onScene?: (sc: SpatialScene | null) => void; // the live scene, for callers that drive it directly (scene.setSystem)
+  // The planner's on-model editing (EditLayer.tsx); never on the homeowner page. setKit sends several fields as one
+  // edit (pv_kwp with layout_slots); slots is the lead's stored layout_slots.
+  edit?: { setOverride: (f: keyof Design, v: OverrideValue | undefined) => void; setKit?: (p: Record<string, OverrideValue | string[] | undefined>) => void; slots?: string[] | null };
 };
 
 // Layer ids are fixed (7 Heat, 8 Plan); a step shows only when its data is present.
 const STEPS = ["Roof", "Sun", "Panels", "A day", "Battery", "Value", "Heat", "Plan"];
-const LICENCE = "Bayerische Vermessungsverwaltung, www.geodaten.bayern.de, CC BY 4.0";
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
 const n1 = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 const n2 = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 2 });
@@ -55,13 +69,16 @@ function useReduce() {
   return r;
 }
 
-export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, leadId, onLayers, tools, children }: Props) {
+export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, homeowner, leadId, onLayers, tools, sunTint, children, system, onScene, edit }: Props) {
+  // A card can render a frame before its design is in: draw nothing of the design until it is.
+  design = design ?? ({ pv_kwp: 0, battery_kwh: 0, wallbox_kw: 0, heatpump_kw: 0, inverter_kw: 0 } as unknown as Design);
   const reduce = useReduce();
   const [own, setOwn] = useState(1);
   const layer = ctrl ?? own;
   const setLayer = (n: number) => { if (onLayerChange) onLayerChange(n); if (ctrl == null) setOwn(n); };
 
   const [layers, setLayers] = useState<Layers | null>(null);
+  const [zoomCan, setZoomCan] = useState({ in: true, out: true });
   const [absent, setAbsent] = useState(false);
   const [layersErr, setLayersErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,9 +86,12 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const [glbErr, setGlbErr] = useState<string | null>(null);
   const [glbOk, setGlbOk] = useState(false);
   const [ready, setReady] = useState(false);
+  const [sysNow, setSysNow] = useState<System | null>(null);   // the Systems chip on screen, for the edit layer
+  const editSys = (system ?? sysNow) as "panels" | "battery" | "wallbox" | "heatpump" | null;
   const [hour, setHour] = useState<{ h: number; playing: boolean }>({ h: 12, playing: false });
   const [view, setView] = useState<"3d" | "2d">("3d");
 
+  const viewEl = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null), overlay = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), compass = useRef<HTMLDivElement>(null);
   const scene = useRef<SpatialScene | null>(null);
   const modelRef = useRef<RoofModel | null>(null);
@@ -91,7 +111,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     const ac = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     setLayersErr(null); setBusy(true);
-    fetch(layersUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ inputs: { ...inputs, address }, design, ...(leadId ? { lead_id: leadId } : {}) }), signal: ac.signal })
+    fetch(layersUrl, endpoints?.layersGet ? { method: "GET", signal: ac.signal } : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ inputs: { ...inputs, address }, design, ...(leadId ? { lead_id: leadId } : {}) }), signal: ac.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => null);
         setBusy(false);
@@ -105,49 +125,143 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layersKey, layersUrl, tryN]);
 
-  const model = useMemo(() => (layers ? modelOf(layers.planes) : null), [layers]);
+  // On-model editing: the planner's slot picks for the design on screen (editing.ts). A tap shows at once; the
+  // stored picks for this kWp take over when the engine's answer for the new count is in. Undo finds the picks
+  // stored for the kWp it returns to.
+  const editLead = edit && !homeowner ? leadId ?? "demo" : null;
+  const [picksAll, setPicksAll] = useState<Record<string, Picks>>({});
+  useEffect(() => { if (editLead) setPicksAll(loadPicks(editLead)); }, [editLead]);
+  const [live, setLive] = useState<{ kwp: number; picks: Picks; until: number } | null>(null);
+  // The tap's own layout stands in only until the engine's design reaches its kWp; after that the lead's layout_slots
+  // lead (so an Undo, which lands on another kWp, shows the layout it restored).
+  useEffect(() => { if (live && kwpKey(design.pv_kwp) === kwpKey(live.kwp)) setLive(null); }, [design.pv_kwp, live]);
+  const wantN = Math.round(((design.pv_kwp ?? 0) * 1000) / MODULE_WP);
+  // Order: a tap still on its way to the engine, then the lead's layout_slots, then this browser's copy.
+  const faceIds = useMemo(() => {
+    const m = layers ? modelOf(layers.planes) : null;
+    return m ? m.planes.filter((p) => p.is_target).map((p) => p.id) : [];
+  }, [layers]);
+  const fromLead = edit?.slots?.length && faceIds.length ? picksOf(edit.slots, faceIds) : null;
+  const local = picksAll[kwpKey(design.pv_kwp)];
+  const picks: Picks | null = !editLead ? null
+    : live && live.until > Date.now() && kwpKey(live.kwp) !== kwpKey(design.pv_kwp) ? live.picks
+    : fromLead && countOf(fromLead) === wantN ? fromLead
+    : local && countOf(local) === wantN ? local : null;
+  const picksKey = picks ? JSON.stringify(picks) : "";
+  const model = useMemo(() => {
+    const m = layers ? modelOf(layers.planes) : null;
+    return m && picks ? { ...m, planes: withPicks(m.planes, picks) } : m;
+  }, [layers, picksKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The cards read the same layout as the model: hand them the planes with the picks in.
+  useEffect(() => {
+    if (!layers || !picks || !model) return;
+    onLayers?.({ ...layers, planes: Array.isArray(layers.planes) ? model.planes : { ...layers.planes, planes: model.planes } });
+  }, [model]); // eslint-disable-line react-hooks/exhaustive-deps
   modelRef.current = model;
   const hasModel = !!model;
+  // Once the view has a scene it keeps it while a reload briefly empties the layers: no teardown, no new canvas.
+  const everModel = useRef(false);
+  if (hasModel) everModel.current = true;
+  const wantScene = everModel.current;
   // three.js, loaded only once there is a model to show.
   useEffect(() => {
-    if (!hasModel || !host.current || !overlay.current || !svg.current) return;
+    if (!wantScene || !host.current || !overlay.current || !svg.current) return;
     let dead = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     import("./scene").then(({ SpatialScene }) => {
       if (dead || !host.current || !overlay.current || !svg.current) return;
       const sc = new SpatialScene(host.current, overlay.current, svg.current, {
-        reduce, compass: compass.current, onHour: (h, playing) => setHour({ h, playing }), onView: (m) => setView(m),
+        reduce, compass: compass.current, onHour: (h, playing) => setHour({ h, playing }), onView: (m) => setView(m), onZoom: setZoomCan,
       });
       if (modelRef.current) sc.setModel(modelRef.current);
       scene.current = sc;
+      // Development and headless checks only: where the house sits against the free rect.
+      if (process.env.NODE_ENV !== "production") (window as unknown as { __marqueeFrame?: () => unknown }).__marqueeFrame = () => sc.frameReport();
       setReady(true);
       setGlbErr(null);
-      sc.loadGlb(glbUrl, (e) => { if (!dead) { setGlbErr(e); setGlbOk(!e); } });
+      // A cold engine can miss the first glb request: one quiet retry after 4 s before the error shows.
+      const load = (n: number) => sc.loadGlb(glbUrl, (e) => {
+        if (dead) return;
+        if (e && n < 1) { retry = setTimeout(() => { if (!dead) load(n + 1); }, 4000); return; }
+        setGlbErr(e); setGlbOk(!e);
+      });
+      load(0);
     });
-    return () => { dead = true; scene.current?.dispose(); scene.current = null; setReady(false); setGlbOk(false); prevLayer.current = 0; };
+    return () => { dead = true; if (retry) clearTimeout(retry); scene.current?.dispose(); scene.current = null; setReady(false); setGlbOk(false); prevLayer.current = 0; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasModel, glbUrl, reduce, retryGlb]);
+  }, [wantScene, glbUrl, reduce, retryGlb]);
 
   // A new design re-reads the planes; the scene keeps its glb and camera.
-  useEffect(() => { if (model && scene.current && ready) { scene.current.setModel(model); setModelGen((x) => x + 1); } }, [model, ready]);
+  // A new house bumps modelGen (camera, system and pose effects re-run); a new design on the same house does not.
+  useEffect(() => { if (model && scene.current && ready) { if (scene.current.setModel(model)) setModelGen((x) => x + 1); } }, [model, ready]);
 
   const planes: RoofPlane[] = model?.planes ?? [];
   const panelList = useMemo(() => planes.filter((p) => p.is_target).flatMap((p) => p.chosen_panels.map((r: PanelRect) => ({ p, r }))), [planes]);
   const counts = useMemo(() => Object.fromEntries(planes.filter((p) => p.is_target).map((p) => [p.id, p.chosen_panels.length])), [planes]);
-  const envelope: Envelope | null = (model?.envelope && model.envelope.faces?.length ? model.envelope : null);
+  // Flats: the heat load is not estimated (the chain says so), so there is no envelope to draw, no x-ray and no legend.
+  const flat = !!model && isMultiUnit(model, inputs).multi;
+  const envelope: Envelope | null = (!flat && model?.envelope && model.envelope.faces?.length ? model.envelope : null);
   const plan = model?.plan && model.plan.outline?.length ? model.plan : null;
   const ids = [1, 2, 3, 4, 5, 6, ...(envelope ? [7] : []), ...(plan ? [8] : [])];
   const nSteps = ids.length;
   const L = ids.includes(layer) ? layer : 1;
-  // Photo: Google 3D Tiles under the layout (PhotoView.tsx); only in 3D, never on the plan layer.
-  const photo = usePhoto(address, ready ? scene.current : null, view === "3d" && L !== 8);
-  const photoTool = photo.available ? { on: photo.on && L !== 8 && view === "3d", set: (on: boolean) => { photo.setOn(on); if (on) { setView("3d"); if (L === 8) setLayer(3); } } } : undefined;
+  // In 3D the Google mesh replaces the LoD2 house when it loads (PhotoView.tsx); never on the plan layer.
+  // Ground picture and imagery dates for the layers menu (satGround.ts, whiteMode.ts).
+  const groundOrigin = (model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32;
+  const groundKey = isOrigin(groundOrigin) ? groundOrigin.join(",") : "";
+  // Handed to the scene whenever both exist, in any order; the scene starts it once its glb is in.
+  useEffect(() => { if (ready && isOrigin(groundOrigin)) scene.current?.groundFor(groundOrigin); }, [ready, groundKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
+  // Overlays marked data-cover inside the view (the number card, the shading strip) report their rects; each takes
+  // the side of the canvas that costs the house least, and the scene fits the house into what is left. The free
+  // area is also published as CSS variables (--free-l, --free-t, --free-w, --free-h) so a loading skeleton can sit
+  // exactly where the house will appear.
+  useEffect(() => {
+    const v = viewEl.current, sc = scene.current;
+    if (!v || !sc) return;
+    const M = 8; // px between an overlay and the house
+    const measure = () => {
+      const V = v.getBoundingClientRect(), W = V.width, H = V.height;
+      if (W < 2 || H < 2) return;
+      const ins = { top: 0, right: 0, bottom: 0, left: 0 };
+      v.querySelectorAll<HTMLElement>("[data-cover]").forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const x0 = Math.max(0, r.left - V.left), x1 = Math.min(W, r.right - V.left), y0 = Math.max(0, r.top - V.top), y1 = Math.min(H, r.bottom - V.top);
+        if (x1 - x0 < 4 || y1 - y0 < 4) return; // not over the model
+        const opts: [keyof typeof ins, number, number][] = [];
+        if (y0 <= H * 0.25) opts.push(["top", y1 + M, (y1 + M) * W]);
+        if (y1 >= H * 0.75) opts.push(["bottom", H - y0 + M, (H - y0 + M) * W]);
+        if (x0 <= W * 0.25) opts.push(["left", x1 + M, (x1 + M) * H]);
+        if (x1 >= W * 0.75) opts.push(["right", W - x0 + M, (W - x0 + M) * H]);
+        const best = opts.sort((a, b) => a[2] - b[2])[0];
+        if (best) ins[best[0]] = Math.max(ins[best[0]], best[1]);
+      });
+      sc.setInsets(ins);
+      const fw = Math.max(W * 0.45, W - ins.left - ins.right), fh = Math.max(H * 0.45, H - ins.top - ins.bottom);
+      v.style.setProperty("--free-l", `${Math.min(ins.left, W - fw)}px`); v.style.setProperty("--free-t", `${Math.min(ins.top, H - fh)}px`);
+      v.style.setProperty("--free-w", `${fw}px`); v.style.setProperty("--free-h", `${fh}px`);
+    };
+    let raf = 0;
+    const soon = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(measure); };
+    const ro = new ResizeObserver(soon);
+    const watch = () => { ro.disconnect(); ro.observe(v); v.querySelectorAll("[data-cover]").forEach((el) => ro.observe(el)); soon(); };
+    const mo = new MutationObserver(watch);
+    mo.observe(v, { childList: true }); // overlays are direct children of the view; labels below never trigger it
+    watch();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); mo.disconnect(); };
+  }, [ready]);
+
+  const photo = usePhoto((model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32, ready ? scene.current : null, view === "3d" && L !== 8, {
+    creditBottom: bare ? 22 : 104, planes,
+    snapKey: snapKey(leadId ?? "demo", layersKey, typeof window === "undefined" ? 1.6 : (host.current?.clientWidth ?? 16) / Math.max(1, host.current?.clientHeight ?? 10)),
+  });
 
   // Panels change with the design: re-place them (animated only when the panels layer is showing).
-  const panelKey = panelList.length + ":" + JSON.stringify(Object.values(counts));
+  const panelKey = panelList.map(({ p, r }) => `${p.id}|${JSON.stringify(r)}`).join(";");
   useEffect(() => {
     const sc = scene.current;
     if (!sc || !ready) return;
-    sc.setPanels(panelList, !reduce && L === 3);
+    sc.setPanels(panelList, !reduce && L === 3, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelKey, ready, modelGen]);
 
@@ -162,24 +276,72 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     const prev = prevLayer.current;
     prevLayer.current = L;
     sc.setHeat(null);
+    if (L !== 7) sc.setXray(null);
     sc.show({ outlines: L <= 3, panels: L >= 3 && L !== 7, kit: L >= 4 && L <= 6, sun: L === 4, battery: L === 5 && !!design.battery_kwh ? "lit" : "plain" });
-    sc.setTint(L === 2 ? "yield" : "off");
+    sc.setTint(L === 2 || (sunTint && L === 3) ? "yield" : "off");
     sc.setWallbox(!!design.wallbox_kw);
+    sc.setBattery(!!design.battery_kwh);
+    sc.setUnits({ inverter: !!design.inverter_kw, heatpump: !!design.heatpump_kw, layer: L >= 4 && L <= 7 });
     if (L === 3 && prev !== 3 && prev < 3) sc.setPanels(panelList, !reduce);
     if (L === 4 && layers) sc.setDay(layers.day.hours, !reduce); else sc.setDay(null, false);
     if (L === 1) sc.setLabels(sc.planeLabels("roof"));
     else if (L === 2) sc.setLabels(sc.planeLabels("sun"));
-    else if (L === 3) sc.setLabels(sc.planeLabels("panels", counts));
-    else if (L === 7) sc.setLabels(sc.setHeat(envelope));
+    else if (L === 3) { const all = Object.values(counts ?? {}).reduce((x, y) => x + y, 0); sc.setLabels(sc.planeLabels("panels", counts, all && design.pv_kwp ? design.pv_kwp / all : undefined)); }
+    else if (L === 7) sc.setLabels(sc.setXray(envelope));
+    else if (L === 5) {
+      // Battery step: the battery carries its size; Wallbox step: the wallbox does, or nothing.
+      const f = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+      // While the planner edits a unit on the model, its own control carries the size: no second label.
+      const own = (k: string) => !!edit && !homeowner && editSys === k;
+      const bt = stage !== "extras" && design.battery_kwh && !own("battery") ? `${f(design.battery_kwh)} kWh` : null;
+      const wb = stage !== "storage" && design.wallbox_kw && !own("wallbox") ? `${f(design.wallbox_kw)} kW` : null;
+      sc.setLabels(sc.kitLabels(bt, wb));
+    }
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw]);
+  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, design.battery_kwh, design.inverter_kw, design.heatpump_kw, stage, sunTint, editSys]);
 
   // The plan layer is always top-down; the other layers keep the planner's choice.
   useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);
 
+  // Systems chips (systems.ts): the envelope is kept for the Heat pump x-ray, and the chosen system drives the layer
+  // and the camera; null hands back to the layers above. The live scene goes to callers that drive it directly.
+  useEffect(() => { if (ready) scene.current?.setEnvelope(envelope); }, [envelope, ready, modelGen]);
+  useEffect(() => { if (ready && system !== undefined) scene.current?.setSystem(system); }, [system, ready, modelGen]);
+  // The Systems chips (components/systems/system.ts) announce the choice as a window event "marquee:system"
+  // { name } and keep the latest in window.__marqueeSystem; the scene follows it unless a system prop is given.
+  useEffect(() => {
+    if (!ready || system !== undefined) return;
+    const ok = (n: unknown): n is System | null => n === null || n === "panels" || n === "battery" || n === "wallbox" || n === "heatpump";
+    const apply = (n: unknown) => { if (ok(n)) { scene.current?.setSystem(n); setSysNow(n); } };
+    const w = window as unknown as { __marqueeSystem?: unknown };
+    if (w.__marqueeSystem !== undefined) apply(w.__marqueeSystem);
+    const on = (e: Event) => apply((e as CustomEvent<{ name?: unknown }>).detail?.name ?? null);
+    window.addEventListener("marquee:system", on);
+    return () => window.removeEventListener("marquee:system", on);
+  }, [ready, modelGen, system]);
+  useEffect(() => { onScene?.(ready ? scene.current : null); }, [ready, modelGen, onScene]);
+
   // The camera follows the reasoning: each stage flies to its pose; the 2D/3D pill still overrides afterwards.
   useEffect(() => { if (stage && ready) scene.current?.flyTo(POSES[stage]); }, [stage, ready, modelGen]);
+
+  // On-model editing: a slot tap adds or takes off one module and sends pv_kwp through the chooser's path.
+  const faces = useMemo(() => (editLead && model ? model.planes.filter((p) => p.is_target).map(slotsOf) : []), [editLead, model]);
+  const toggleSlot = useCallback((plane: string, i: number) => {
+    if (!edit || !editLead) return;
+    const now: Picks = Object.fromEntries(faces.map((f) => [f.plane.id, [...f.placed]]));
+    const cur = now[plane] ?? [];
+    now[plane] = cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort((a, b) => a - b);
+    const n = countOf(now);
+    if (n < 1) return; // the design keeps at least one module; the chooser's None is not offered for solar either
+    const kwp = Math.round(n * MODULE_WP) / 1000;
+    savePicks(editLead, kwp, now);
+    setPicksAll((a) => ({ ...a, [kwpKey(kwp)]: now }));
+    setLive({ kwp, picks: now, until: Date.now() + 20000 });
+    if (edit.setKit) edit.setKit({ pv_kwp: kwp, layout_slots: idsOf(now) });
+    else edit.setOverride("pv_kwp", kwp);
+  }, [edit, editLead, faces]);
+  const setUnit = useCallback((f: keyof Design, v: OverrideValue) => edit?.setOverride(f, v), [edit]);
 
   const seek = useCallback((h: number) => { scene.current?.seek(h); setHour({ h, playing: false }); }, []);
 
@@ -200,7 +362,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         const area = target.reduce((a, p) => a + p.area_m2, 0), fit = target.reduce((a, p) => a + (p.fits_panels ?? p.max_panels), 0);
         return {
           sentence: "The real roof, measured from the Bavarian 3D building model.",
-          eq: target.map((p) => `${facing(p.azimuth)} ${n1(p.area_m2)} m², ${Math.round(p.pitch)}°, azimuth ${p.azimuth ?? "none"}°`).join("; ") + ` → ${n1(area)} m² fits ${fit} modules`,
+          eq: target.map((p) => `${p.pitch < 3 ? "flat" : `faces ${facing(p.azimuth)}`}, ${n1(p.area_m2)} m², ${Math.round(p.pitch)}° pitch`).join("; ") + ` → ${n1(area)} m² fits ${fit} modules`,
           sources: [{ key: "lod2", citation: "LoD2 CityGML and DOP20 orthophoto, Bayerische Vermessungsverwaltung", url: "https://www.geodaten.bayern.de" }],
         };
       }
@@ -246,7 +408,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         const alts = layers.frontier.filter((p) => p.label && !p.chosen).map((p) => `${labelOf(p).toLowerCase()} ${n2(p.kwp)} kWp + ${n1(p.kwh)} kWh`);
         return {
           sentence: "Every size, through the same year: upfront cost against 20-year value.",
-          eq: `${c ? `recommended ${n2(c.kwp)} kWp + ${n1(c.kwh)} kWh: ${n0(c.capex_eur)} EUR → ${n0(c.npv_20y_eur)} EUR` : ""}${best && best !== c ? `; best value ${n2(best.kwp)} kWp + ${n1(best.kwh)} kWh: ${n0(best.capex_eur)} EUR → ${n0(best.npv_20y_eur)} EUR` : ""}${alts.length ? `; ${alts.join("; ")}` : ""}${layers.objective.sentence ? `. ${layers.objective.sentence}` : ""}`,
+          eq: `${c ? `recommended ${n2(c.kwp)} kWp + ${n1(c.kwh)} kWh: €${n0(c.capex_eur)} → €${n0(c.npv_20y_eur)}` : ""}${best && best !== c ? `; best value ${n2(best.kwp)} kWp + ${n1(best.kwh)} kWh: ${n0(best.capex_eur)} EUR → ${n0(best.npv_20y_eur)} EUR` : ""}${alts.length ? `; ${alts.join("; ")}` : ""}${layers.objective.sentence ? `. ${layers.objective.sentence}` : ""}`,
           sources: src(layers.objective.sources.length ? layers.objective.sources : ["knee", "discount", "pv_cost", "battery_cost"]),
         };
       }
@@ -294,7 +456,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     : designPt ? { y: model?.layout?.kwh_per_year ?? null, a: designPt.autarky_share, c: designPt.capex_eur, p: designPt.payback_years } : null;
   if (four && L >= 3 && L <= 6) {
     if (four.y != null) numbers.push({ k: "Yield", v: n0(four.y), u: "kWh" });
-    numbers.push({ k: "Autarky", v: pct(four.a), u: "" }, { k: "Investment", v: n0(four.c), u: "EUR" }, { k: "Payback", v: four.p == null ? "none" : n1(four.p), u: four.p == null ? "" : "years" });
+    numbers.push({ k: "Autarky", v: pct(four.a), u: "" }, { k: "Investment", v: `€${n0(four.c)}`, u: "" }, { k: "Payback", v: four.p == null ? "none" : n1(four.p), u: four.p == null ? "" : "years" });
   }
   // One run check: modules on the roof against the design, and the yield the economics used against the numbers shown.
   const cs = layers?.consistency;
@@ -319,8 +481,27 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const frontier = layers && L === 6 ? <FrontierChart frontier={layers.frontier} /> : null;
   const chart = battery ?? frontier;
 
+  // Zoom: a stacked + and − beside Face north; the scene clamps to the pinch and wheel limits and reports them.
+  const zoomPair = (
+    <div className={s.zoom} role="group" aria-label="Zoom">
+      <button type="button" title="Zoom in" aria-label="Zoom in" disabled={!zoomCan.in} onClick={() => scene.current?.zoomBy(1)}>
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+      </button>
+      <button type="button" title="Zoom out" aria-label="Zoom out" disabled={!zoomCan.out} onClick={() => scene.current?.zoomBy(-1)}>
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 7h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+      </button>
+    </div>
+  );
+  // + and − on the keyboard do the same while the model has focus.
+  const onKey = (e: ReactKeyboardEvent) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement).closest("input, textarea, select, [contenteditable]")) return;
+    const dir = e.key === "+" || e.key === "=" ? 1 : e.key === "-" || e.key === "−" || e.key === "_" ? -1 : 0;
+    if (!dir) return;
+    e.preventDefault(); scene.current?.zoomBy(dir as 1 | -1);
+  };
+
   return (
-    <section className={s.wrap} aria-label="How the design is computed, over the house">
+    <section className={homeowner ? `${s.wrap} ${s.homeowner}` : s.wrap} aria-label="How the design is computed, over the house">
       {!bare && <div className={s.strip} style={{ ["--n" as string]: nSteps }} role="group" aria-label="Layers">
         {ids.map((id, i) => (
           <button key={id} type="button" className={s.step} aria-pressed={L === id} onClick={() => setLayer(id)}>
@@ -329,18 +510,19 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         ))}
       </div>}
 
-      <div className={bare ? `${s.view} ${s.bareView}` : s.view}>
-        <div ref={host} className={s.host} />
+      <div ref={viewEl} className={bare ? `${s.view} ${s.bareView}` : s.view}>
+        <div ref={host} className={s.host} tabIndex={0} aria-label="3D model of the house; plus and minus zoom" onKeyDown={onKey} />
         <svg ref={svg} className={s.flows} aria-hidden="true" />
         <div ref={overlay} className={s.overlay} aria-hidden="true" />
-        {!ready && !absent && !layersErr && <div className={s.wait}>Loading the house</div>}
-        {ready && busy && <div className={s.wait}>Updating for this design</div>}
-        {ready && !glbOk && !glbErr && <div className={s.wait}>Loading the aerial photo</div>}
+        {photo.under}
+        {!ready && !absent && !layersErr && <>
+          <svg className={s.houseSkel} viewBox="0 0 240 160" aria-hidden><defs><linearGradient id="hsk" x1="0" x2="1"><stop offset="0" stopColor="#e3e6ef" /><stop offset="0.5" stopColor="#f3f4f8" /><stop offset="1" stopColor="#e3e6ef" /><animate attributeName="x1" values="-1;1" dur="1.2s" repeatCount="indefinite" /><animate attributeName="x2" values="0;2" dur="1.2s" repeatCount="indefinite" /></linearGradient></defs><path d="M30 84 L120 24 L210 84 V148 H30 Z" fill="url(#hsk)" /></svg>
+        </>}
         {glbErr && <div className={s.err}>{glbErr}<button type="button" onClick={() => setRetryGlb((x) => x + 1)}>Retry</button></div>}
         {layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTryN((x) => x + 1)}>Retry</button></div>}
 
-        {!bare && (numbers.length > 0 || check) && (
-          <div className={s.nwrap}>
+        {!bare && !homeowner && (numbers.length > 0 || check) && (
+          <div className={s.nwrap} data-cover>
             {numbers.length > 0 && (
               <dl className={s.numbers}>
                 {numbers.map((x) => <div key={x.k}><dt>{x.k}</dt><dd>{x.v}{x.u && <span>{x.u}</span>}</dd></div>)}
@@ -350,15 +532,24 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
           </div>
         )}
 
-        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { photo.setOn(false); setView(v); if (v === "3d" && L === 8) setLayer(3); }, photo: photoTool })}
-        {bare && <div className={`${s.tools} ${s.toolsBare}`}><div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div></div>}
+        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { setView(v); if (v === "3d" && L === 8) setLayer(3); }, recentre: () => scene.current?.refit(),
+          // Photo: the third view, offered while the Google mesh can show here; picking it is the 3D view with the mesh.
+          photo: photo.possible || photo.want ? { on: photo.want && view === "3d" && L !== 8, set: (on: boolean) => { photo.setOn(on); if (on) { setView("3d"); if (L === 8) setLayer(3); } } } : undefined,
+          // One toolbar: zoom and Face north ride in the caller's toolbar row (the needle keeps this view's ref).
+          zoom: { can: zoomCan, by: (d) => scene.current?.zoomBy(d) },
+          north: <button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button> })}
+        {bare && !tools && <div className={`${s.tools} ${s.toolsBare}`}>{zoomPair}<button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button></div>}
         {!bare && <div className={s.tools}>
           <div className={s.toggle} role="group" aria-label="View">
-            <button type="button" aria-pressed={L !== 8 && view === "3d" && !photoTool?.on} onClick={() => { photo.setOn(false); setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
-            <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => { photo.setOn(false); setView("2d"); }}>2D</button>
-            {photoTool && <button type="button" aria-pressed={photoTool.on} onClick={() => photoTool.set(true)}>Photo</button>}
+            <button type="button" aria-pressed={L !== 8 && view === "3d"} onClick={() => { setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
+            <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => setView("2d")}>2D</button>
           </div>
-          <div className={s.compass} title="North"><div ref={compass} className={s.needle}><i />N</div></div>
+          <LayersMenu className={s.layersBtn} />
+          <button type="button" className={s.compass} title="Reset view" aria-label="Reset view" onClick={() => scene.current?.refit()}>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></svg>
+          </button>
+          {zoomPair}
+          <button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button>
         </div>}
 
         {!bare && L === 2 && (
@@ -377,6 +568,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {!bare && chart && <div className={s.side}>{chart}</div>}
         {!bare && <ShadingPanel address={address} kwp={kwp} float />}
         {photo.overlay}
+        {editLead && ready && scene.current && view === "3d" && L !== 8 && !photo.on && (
+          <EditLayer scene={scene.current} sys={editSys} faces={faces} design={design} onToggle={toggleSlot} onSet={setUnit} />
+        )}
         {children}
       </div>
 
@@ -390,14 +584,12 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
           </div>
         )}
         {chart && <div className={s.below}>{L === 5 ? <BatteryChart layers={layers!} battery={design.battery_kwh} reduce={reduce} /> : <FrontierChart frontier={layers!.frontier} />}</div>}
-        {content && <p className={s.eq}>{content.eq}</p>}
-        {content && "items" in content && content.items && content.items.length > 0 && <ul className={s.items}>{content.items.map((x) => <li key={x}>{x}</li>)}</ul>}
-        {content && content.sources.length > 0 && (
+        {content && !homeowner && <p className={s.eq}>{content.eq}</p>}
+        {content && !homeowner && "items" in content && content.items && content.items.length > 0 && <ul className={s.items}>{content.items.map((x) => <li key={x}>{x}</li>)}</ul>}
+        {content && !homeowner && content.sources.length > 0 && (
           <p className={s.sources}>Sources: {content.sources.map((x, i) => <span key={x.key}>{i ? "; " : ""}{x.url ? <a href={x.url} target="_blank" rel="noreferrer">{x.citation}</a> : x.citation}</span>)}</p>
         )}
-        <p className={s.licence}>{LICENCE}</p>
       </div>}
-      {bare && <p className={`${s.licence} ${s.licenceBare}`}>{LICENCE}</p>}
     </section>
   );
 }

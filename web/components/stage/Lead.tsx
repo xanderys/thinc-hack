@@ -65,7 +65,7 @@ export default function Lead(p: Props) {
       const o = read.origin ?? {}, tag = o[f] ?? (f === "has_ev" || f === "ev_annual_km" ? o.ev : f === "electricity_price_ct_kwh" ? o.monthly_bill_eur && "estimated" : undefined);
       return tag === "form" ? "From the form" : tag === "estimated" ? "Estimated" : "From the call";
     }
-    if (f === p.question?.field && p.answer !== undefined) return fromBill && f === "annual_demand_kwh" ? `About ${n0(fromBill.kwh)} kWh from ${n0(fromBill.eur)} EUR a month at ${price} ct` : "You answered";
+    if (f === p.question?.field && p.answer !== undefined) return fromBill && f === "annual_demand_kwh" ? `About ${n0(fromBill.kwh)} kWh from €${n0(fromBill.eur)} a month at ${price} ct` : "You answered";
     return f === "annual_demand_kwh" && !p.asking && p.question?.field !== f ? "Assumed: not in the lead" : "Not in the lead";
   };
   const evWas = "has_ev" in p.changed && read && read.inputs.has_ev !== p.changed.has_ev ? (read.inputs.has_ev ? "yes" : "no") : undefined;
@@ -74,7 +74,7 @@ export default function Lead(p: Props) {
     addr,
     // Stated in the lead wins; otherwise the address estimate, labelled as one.
     read?.inputs.house_size_sqm ? `${n0(read.inputs.house_size_sqm)} m²` : p.roof?.floor_area_m2 ? `about ${n0(Math.round(p.roof.floor_area_m2 / 10) * 10)} m², estimated from the address, upper bound` : null,
-    read?.inputs.house_built_year ? `built ${read.inputs.house_built_year}` : p.roof?.build_year_estimate ? `built about ${p.roof.build_year_estimate}${p.roof.build_year_class ? ` (${p.roof.build_year_class.replace(/\s*[-–]\s*/, " to ")})` : ""}, estimated from the address` : null,
+    read?.inputs.house_built_year && !(p.roof?.build_year_class && p.roof.build_year_estimate != null && Math.abs(read.inputs.house_built_year - p.roof.build_year_estimate) < 0.5) ? `built ${read.inputs.house_built_year}` : p.roof?.build_year_estimate ? `built about ${p.roof.build_year_estimate}${p.roof.build_year_class ? ` (${p.roof.build_year_class.replace(/\s*[-–]\s*/, " to ")})` : ""}, estimated from the address` : null,
     i.has_solar ? `solar ${i.existing_solar_kwp ?? ""} kWp already` : "no solar",
     i.has_storage ? `battery ${i.existing_storage_kwh ?? ""} kWh already` : "no battery",
   ].filter(Boolean).join("; ");
@@ -101,7 +101,7 @@ export default function Lead(p: Props) {
           )}
           <h3 className="s-fh">Consumption</h3>
           <Fact k="Annual use" v={<span className={p.answer !== undefined && p.question?.field === "annual_demand_kwh" && !quote("annual_demand_kwh") ? "num asked" : "num"}>{quote("annual_demand_kwh") || p.answer !== undefined || (!p.asking && p.question?.field !== "annual_demand_kwh") ? `${n0(i.annual_demand_kwh)} kWh` : "Not known yet"}</span>} src={src("annual_demand_kwh")} />
-          <Fact k="Heating" v={<>{HEATING_WORD[i.heating_type]}{i.heating_cost_per_year_eur ? <>, <span className="num">{n0(i.heating_cost_per_year_eur)} EUR</span> a year</> : null}</>} src={src("heating_type")} />
+          <Fact k="Heating" v={<>{HEATING_WORD[i.heating_type]}{i.heating_cost_per_year_eur ? <>, <span className="num">€{n0(i.heating_cost_per_year_eur)}</span> a year</> : null}</>} src={src("heating_type")} />
           {i.electricity_price_ct_kwh != null && <Fact k="Price" v={<><span className="num">{i.electricity_price_ct_kwh} ct</span> per kWh</>} src={src("electricity_price_ct_kwh")} />}
           <h3 className="s-fh">Demand</h3>
           <Fact k="Electric car" v={p.question?.field === "has_ev" && p.answer === undefined && !quote("has_ev") ? "Not known yet" : i.has_ev ? <>Yes{i.ev_annual_km ? <>, <span className="num">{n0(i.ev_annual_km)} km</span> a year</> : null}</> : "No"} src={evWas ? "Changed in a sentence" : src("has_ev")} was={evWas} />
@@ -138,7 +138,7 @@ export default function Lead(p: Props) {
           {p.question.field === "annual_demand_kwh" && (
             <form className="s-bill" onSubmit={(e) => { e.preventDefault(); const eur = Number(billIn.replace(",", ".")); if (!(eur > 0)) return;
               const kwh = Math.round((eur * 12) / (price / 100) / 100) * 100; setBill({ eur, kwh }); p.onAnswer(kwh); }}>
-              <label>Or the monthly bill <input inputMode="decimal" className="num" value={billIn} onChange={(e) => setBillIn(e.target.value)} aria-label="Monthly bill in EUR" /> EUR</label>
+              <label>Or the monthly bill <input inputMode="decimal" className="num" value={billIn} onChange={(e) => setBillIn(e.target.value)} aria-label="Monthly bill in euros" /> € a month</label>
               <button className="btn ghost" type="submit" disabled={!(Number(billIn.replace(",", ".")) > 0)}>Use</button>
             </form>
           )}

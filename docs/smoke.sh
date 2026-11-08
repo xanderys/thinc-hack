@@ -56,4 +56,15 @@ r=$(curl -s "$B/api/inbox?limit=20")
 echo "$r" | python3 -c 'import sys,json;d=json.load(sys.stdin);d=d if isinstance(d,list) else d.get("rows",d.get("items",[]));assert len(d)==20' 2>/dev/null \
   && step "web GET /api/inbox 20 rows" ok || step "web GET /api/inbox 20 rows" bad "$(echo "$r" | head -c 200)"
 
+# Homeowner proposal: assert the page content, not just the status (the error view also answers 200)
+HOME="${HOME_URL:-https://marquee-home.vercel.app}"
+body=$(curl -s -m 40 "$HOME/start/proposal/f6e838cd85")
+{ echo "$body" | grep -q 'Your proposal' && echo "$body" | grep -q 'Your system'; } \
+  && step "home /start/proposal/f6e838cd85 has 'Your proposal' and 'Your system'" ok || step "home /start/proposal/f6e838cd85 has 'Your proposal' and 'Your system'" bad "$(echo "$body" | grep -o -E 'did not load|No lead with id' | head -1)"
+
+# The planner hero card renders client side, so check the lead's name through the proxy
+r=$(curl -s -m 20 "$B/api/leads/db67b84935")
+echo "$r" | python3 -c 'import sys,json;assert "Katrin Huber" in json.load(sys.stdin).get("customer_name","")' 2>/dev/null \
+  && step "planner lead db67b84935 is Katrin Huber" ok || step "planner lead db67b84935 is Katrin Huber" bad "$(echo "$r" | head -c 120)"
+
 exit $fail

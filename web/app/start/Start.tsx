@@ -4,10 +4,12 @@ import { ConversationProvider, useConversation } from "@elevenlabs/react";
 import { endTone, startRing, stopRing, tick, unlock } from "./sounds";
 import type { Lead } from "@/lib/api";
 import { designLine, n0, n2, pct } from "@/lib/stage";
-import Proposal, { span, TODAY_LINE } from "@/components/proposal/Proposal";
+import Proposal, { span } from "@/components/proposal/Proposal";
+import { pastLine } from "@/lib/past";
+import RoofNote from "@/components/home/RoofNote";
 import { HOME_FORM, homeFacts, INSTALLER_BRAND, homeFirstMessage, homeNote, homeVariables, type HomeAnswers, type InstallerId, type RoofInfo } from "./intake";
 
-type Props = { agentId: string; installerId: InstallerId };
+type Props = { agentId: string; installerId: InstallerId; test?: boolean };
 
 export default function Start(props: Props) {
   return (
@@ -22,6 +24,9 @@ type Step = "form" | "waiting" | "ringing" | "call" | "thanks" | "declined";
 type Opt = "people" | "heating" | "ev" | "bill_band" | "roof";
 
 const locationOk = (s: string) => /\b\d{5}\b/.test(s);
+// Optional; stored as E.164 with spaces and dashes removed.
+const phoneClean = (s: string) => s.replace(/[\s().-]/g, "");
+const phoneOk = (s: string) => !s.trim() || /^\+[1-9]\d{6,14}$/.test(phoneClean(s));
 const first = (s: string) => s.trim().split(/\s+/)[0] ?? "";
 // Engine statuses before the call has finished; everything else has a design to show.
 const CALLING = new Set(["draft", "in_call"]);
@@ -29,6 +34,7 @@ const CALLING = new Set(["draft", "in_call"]);
 const steps = (l: Lead) => l.history.filter((h) => h.step != null).length;
 // "now with a wallbox", "now 13.05 kWp of solar": the biggest news first.
 function whatsNew(a: Lead["draft"]["design"], b: Lead["draft"]["design"]): string {
+  if (!a || !b) return "";   // a draft still without its design
   const add: [keyof typeof a, string][] = [["wallbox_kw", "a wallbox"], ["heatpump_kw", "a heat pump"], ["battery_kwh", "a battery"]];
   for (const [f, w] of add) if (a[f] == null && b[f] != null) return `now with ${w}`;
   for (const [f, w] of add) if (a[f] != null && b[f] == null) return `now without ${w}`;
@@ -36,20 +42,28 @@ function whatsNew(a: Lead["draft"]["design"], b: Lead["draft"]["design"]): strin
   if (a.battery_kwh !== b.battery_kwh && b.battery_kwh != null) return `now a ${b.battery_kwh.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWh battery`;
   return "with the latest details";
 }
+// The engine's own words: {error}, FastAPI's {detail} (a string or a list of {msg}).
+function errorText(b: { error?: unknown; detail?: unknown }): string | null {
+  if (typeof b.error === "string" && b.error) return b.error;
+  if (typeof b.detail === "string" && b.detail) return b.detail;
+  if (Array.isArray(b.detail)) return b.detail.map((d: { msg?: string }) => d?.msg ?? JSON.stringify(d)).join("; ");
+  return null;
+}
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
-function Page({ agentId, installerId }: Props) {
+function Page({ agentId, installerId, test }: Props) {
   const brand = INSTALLER_BRAND[installerId];
   const [step, setStep] = useState<Step>("form");
   const [a, setA] = useState<HomeAnswers>({ name: "", location: "" });
-  const [miss, setMiss] = useState<"name" | "location" | null>(null);
+  const [miss, setMiss] = useState<"name" | "location" | "phone" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [leadError, setLeadError] = useState<string | null>(null);
   const [since, setSince] = useState<number | null>(null);
   const [now, setNow] = useState(0);
   const [speaker, setSpeaker] = useState(true);
   const connected = useRef(false);
   const ring = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const nameRef = useRef<HTMLInputElement>(null), placeRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null), placeRef = useRef<HTMLInputElement>(null), phoneRef = useRef<HTMLInputElement>(null);
 
   const roof = useRef<RoofInfo | null | undefined>(undefined);
   // v1.9: the lead exists from Submit; the engine refines its draft during the call.
@@ -66,6 +80,7 @@ function Page({ agentId, installerId }: Props) {
   const [signedAt, setSignedAt] = useState<number | null>(null);
   const [tickNow, setTickNow] = useState(0);
   const noted = useRef(false);
+  const declinedRef = useRef(false);
   const conversation = useConversation({
     onConnect: ({ conversationId }) => {
       connected.current = true; setSince(Date.now());
@@ -105,7 +120,8 @@ function Page({ agentId, installerId }: Props) {
       const r = await fetch(`/api/leads/${leadId}`, { cache: "no-store" }).catch(() => null);
       if (!r?.ok) return;
       const l: Lead = await r.json();
-      if (CALLING.has(l.status)) return;
+      // A declined call never moves the lead past "draft": its Submit draft is the design to show.
+      if (CALLING.has(l.status) && !declinedRef.current) return;
       const prev = leadSeen.current;
       leadSeen.current = l; setLead(l);
       if (l.status === "approved" && l.proposal_hash && l.proposal_hash !== shownHash.current) {
@@ -122,22 +138,30 @@ function Page({ agentId, installerId }: Props) {
   const submit = () => {
     if (!a.name.trim()) { setMiss("name"); nameRef.current?.focus(); return; }
     if (!locationOk(a.location)) { setMiss("location"); placeRef.current?.focus(); return; }
+    if (!phoneOk(a.phone ?? "")) { setMiss("phone"); phoneRef.current?.focus(); return; }
     setMiss(null); setError(null);
     unlock();   // the submit tap allows every sound that follows
     setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false);
-    setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null);
-    fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form" }) })
-      .then(async (r) => { const b = await r.json().catch(() => ({})); if (r.ok && b.lead_id) setLeadId(b.lead_id); })
-      .catch(() => {});
-    // Look the address up while the phone rings, so the call starts with it.
+    setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null); declinedRef.current = false;
+    setLeadError(null);
+    setStep("waiting");
+    // Look the address up while the lead is made, so the call starts with it.
     roof.current = undefined;
     const ctl = new AbortController(); setTimeout(() => ctl.abort(), 8000);
     fetch(`/start/roof?address=${encodeURIComponent(a.location)}`, { signal: ctl.signal })
       .then((r) => (r.ok ? r.json() : null)).catch(() => null).then((r: RoofInfo | null) => { roof.current = r; });
-    // The call back arrives a moment later, the way a phone call would.
-    ring.current = setTimeout(() => { setStep("ringing"); startRing(); try { navigator.vibrate?.([400, 200, 400]); } catch {} }, 1400);
-    setStep("waiting");
+    // The phone rings only once the engine holds the lead; on failure the form shows the engine's words and a retry.
+    const shown = Date.now();
+    fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), ...(a.phone?.trim() ? { phone: phoneClean(a.phone) } : {}), installer_id: installerId, facts: homeFacts(a), source: "form", ...(test ? { test: true } : {}) }) })
+      .then(async (r) => {
+        const b = await r.json().catch(() => ({}));
+        if (!r.ok || !b.lead_id) throw new Error(errorText(b) ?? `The engine answered ${r.status} with no lead.`);
+        setLeadId(b.lead_id);
+        // The call back arrives a moment after Submit, the way a phone call would.
+        ring.current = setTimeout(() => { setStep("ringing"); startRing(); try { navigator.vibrate?.([400, 200, 400]); } catch {} }, Math.max(0, 1400 - (Date.now() - shown)));
+      })
+      .catch((e: Error) => { setStartedAt(null); setLeadError(e.message || "The request did not reach the engine."); setStep("form"); });
   };
 
   // Accept is the user gesture. iPhone plays call audio only if the microphone and an audio context are unlocked
@@ -159,7 +183,7 @@ function Page({ agentId, installerId }: Props) {
   };
 
   const end = () => { if (connected.current) conversation.endSession(); else { endTone(); conversation.endSession(); setStep("form"); } };
-  const decline = () => { stopRing(); endTone(); setStep("declined"); };
+  const decline = () => { stopRing(); endTone(); declinedRef.current = true; setStep("declined"); };
 
   const pick = (k: Opt, legend: string, hint?: string) => (
     <fieldset className="h-q">
@@ -200,39 +224,21 @@ function Page({ agentId, installerId }: Props) {
       </div>
     );
 
-  if (summary && lead) {
-    const d = lead.draft, e = d.economics, v = d.variants?.[0];
-    const say = [
-      d.design.pv_kwp != null ? `${n2(d.design.pv_kwp)} kWp of solar panels on your roof.` : "No solar panels for now.",
-      d.design.battery_kwh != null ? `A ${n2(d.design.battery_kwh)} kWh battery keeps daytime sun for the evening.` : "No battery for now.",
-      d.design.heatpump_kw != null ? `A ${n2(d.design.heatpump_kw)} kW heat pump heats the house.` : "No heat pump for now.",
-      d.design.wallbox_kw != null ? `A wallbox for the car, ${n2(d.design.wallbox_kw)} kW.` : "No car charger for now.",
-    ];
+  // The design card: the same box from Submit until the design lands, so nothing moves when it arrives.
+  const design = (
+    <DesignCard lead={doneAt != null ? lead : null} took={took} signedAt={signedAt} signTook={signTook} brand={brand} onOpen={openProposal} />
+  );
+
+  if (summary && lead)
     return (
       <div className="h-page">{head}
         <section className="h-card h-in h-sum" key="sum">
           <h1>{updatedOnce.current ? `Your updated design, ${first(a.name)}` : `Your first design, ${first(a.name)}`}</h1>
-          <dl className="h-nums">
-            {e.annual && <div><dt>Solar a year</dt><dd>{n0(e.annual.pv_yield_kwh)} kWh</dd></div>}
-            <div><dt>Self-sufficiency</dt><dd>{pct(e.autarky_share)} %</dd></div>
-            <div><dt>Investment</dt><dd>{n0(e.capex_eur)} EUR</dd></div>
-            <div><dt>Payback</dt><dd>{e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`}</dd></div>
-          </dl>
-          <ul className="h-parts">{say.map((x) => <li key={x}>{x}</li>)}</ul>
-          {v && <p className="h-pref"><b>{v.label.split(" (")[0]}</b> {designLine(v.design)}</p>}
-          <dl className="h-times">
-            <div><dt>Enquiry to design</dt><dd>{Math.floor(took / 60)} min {took % 60} s</dd></div>
-            <div><dt>Enquiry to signature</dt><dd>{signedAt != null ? span(signTook) : clock(Math.floor(signTook / 1000))}</dd></div>
-            <p>{TODAY_LINE}</p>
-          </dl>
-          {lead.status === "approved" || lead.status === "signed" || lead.status === "question"
-            ? <button type="button" className="h-go" onClick={openProposal}>Open your proposal</button>
-            : <p className="h-send">{brand} will send the full offer.</p>}
+          {design}
         </section>
         {readyBanner}
       </div>
     );
-  }
 
   const banner = readyBanner || (notify && (
     <button type="button" key={update ?? "first"} className="ios-banner ios-note" onClick={() => { setSummary(true); setUpdate(null); }}>
@@ -247,6 +253,7 @@ function Page({ agentId, installerId }: Props) {
         <section className="h-card h-in" key="end">
           <h1>{step === "thanks" ? `Thanks ${first(a.name)}, ${brand} will send the offer.` : `No problem, ${first(a.name)}. ${brand} will call you back later.`}</h1>
           {startedAt != null && <p className="h-watch" aria-live="off">{doneAt != null ? `Enquiry to design: ${Math.floor(took / 60)} min ${took % 60} s` : `Your design: ${clock(took)}`}</p>}
+          {startedAt != null && design}
         </section>
         {banner}
       </div>
@@ -272,13 +279,20 @@ function Page({ agentId, installerId }: Props) {
             placeholder="Katharinenstraße 5, 82008 Unterhaching" onChange={(e) => setA({ ...a, location: e.target.value })} />
           {miss === "location" && <p className="h-why" role="alert">Add a postcode, or the full address.</p>}
         </div>
+        <div className="h-q">
+          <label htmlFor="h-phone">Phone (optional)</label>
+          <input id="h-phone" ref={phoneRef} className="h-input" type="tel" autoComplete="tel" inputMode="tel" value={a.phone ?? ""} aria-invalid={miss === "phone"}
+            placeholder="+49" onChange={(e) => setA({ ...a, phone: e.target.value })} />
+          {miss === "phone" && <p className="h-why" role="alert">Use the international format, for example +49 151 2345678.</p>}
+        </div>
         <p className="h-opt">Optional. Leave anything you are not sure of.</p>
         {pick("people", "People in the home")}
         {pick("heating", "Heating")}
         {pick("ev", "Electric car")}
-        {pick("bill_band", "Electricity bill", "EUR a month")}
+        {pick("bill_band", "Electricity bill", "€ a month")}
         {pick("roof", "Roof faces")}
-        <button type="submit" className="h-go" disabled={step !== "form"}>Submit</button>
+        <button type="submit" className="h-go" disabled={step !== "form"}>{step === "waiting" ? "Sending" : "Submit"}</button>
+        {leadError && step === "form" && <p className="h-why" role="alert">{leadError} <button type="button" className="h-retry" onClick={submit}>Retry</button></p>}
         {error && <p className="h-why" role="alert">ElevenLabs said: {error}</p>}
       </form>
 
@@ -296,8 +310,9 @@ function Page({ agentId, installerId }: Props) {
           <div className="ios-call-top">
             <h2>Rina</h2>
             <p>{brand}</p>
-            <p className="ios-time" aria-live="polite">{live ? clock(secs) : "Connecting"}</p>
-            {live && <p className="ios-mode">{conversation.isSpeaking ? "Rina is speaking" : "Listening"}</p>}
+            {/* Until the call connects, both lines hold their final size as skeletons. */}
+            <p className="ios-time" aria-live="polite">{live ? clock(secs) : <span className="ios-sk" style={{ width: "3.2ch" }}><span className="h-vh">Connecting</span></span>}</p>
+            <p className="ios-mode">{live ? (conversation.isSpeaking ? "Rina is speaking" : "Listening") : <span className="ios-sk" style={{ width: "9ch" }} />}</p>
           </div>
           {/* The iOS grid: mute, speaker and end work; keypad, add call, FaceTime and contacts are shown, not active. */}
           <div className="ios-keys">
@@ -317,6 +332,46 @@ function Page({ agentId, installerId }: Props) {
         </div>
       )}
       {step === "form" && banner}
+    </div>
+  );
+}
+
+// Blank bars sized like the real lines: no placeholder text, so nothing readable if the shimmer style is missing.
+const SK_PARTS = ["86%", "100%", "78%", "62%"];
+const nb = "\u00a0";
+const Bar = ({ w }: { w: string }) => <span className="h-bar" style={{ width: w }}>{nb}</span>;
+
+function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: Lead | null; took: number; signedAt: number | null; signTook: number; brand: string; onOpen: () => void }) {
+  const d = lead?.draft, e = d?.economics, v = d?.variants?.[0];
+  const say = d?.design ? [
+    d.design.pv_kwp != null ? `${n2(d.design.pv_kwp)} kWp of solar panels on your roof.` : "No solar panels for now.",
+    d.design.battery_kwh != null ? `A ${n2(d.design.battery_kwh)} kWh battery keeps daytime sun for the evening.` : "No battery for now.",
+    d.design.heatpump_kw != null ? `A ${n2(d.design.heatpump_kw)} kW heat pump heats the house.` : "No heat pump for now.",
+    d.design.wallbox_kw != null ? `A wallbox for the car, ${n2(d.design.wallbox_kw)} kW.` : "No car charger for now.",
+  ] : null;
+  const released = lead && (lead.status === "approved" || lead.status === "signed" || lead.status === "question");
+  return (
+    <div className={lead ? "h-design h-arrive" : "h-design h-sk"} aria-busy={!lead} aria-hidden={!lead || undefined}>
+      <dl className="h-nums">
+        <div><dt>Solar a year</dt><dd>{e ? (e.annual ? `${n0(e.annual.pv_yield_kwh)} kWh` : "None") : <Bar w="9ch" />}</dd></div>
+        <div><dt>Supplied by your system</dt><dd>{e ? `${pct(e.autarky_share)} %` : <Bar w="4ch" />}</dd></div>
+        <div><dt>Investment estimate</dt><dd>{e ? `€${n0(e.capex_eur)}` : <Bar w="10ch" />}</dd></div>
+        <div><dt>Payback</dt><dd>{e ? (e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`) : <Bar w="8ch" />}</dd></div>
+      </dl>
+      <p className="h-est">Prices are an estimate until the site visit.</p>
+      <ul className="h-parts">
+        {say ? say.map((x, i) => <li key={i}>{x}{i === 0 && lead && <RoofNote draft={lead.draft} className="h-roofnote" />}</li>)
+          : SK_PARTS.map((w, i) => <li key={i} style={{ width: w }}>{nb}</li>)}
+      </ul>
+      <p className="h-pref"><b>{v ? v.label.split(" (")[0] : <Bar w="12ch" />}</b> {v ? designLine(v.design) : <Bar w="20ch" />}</p>
+      <dl className="h-times">
+        <div><dt>Enquiry to design</dt><dd>{Math.floor(took / 60)} min {took % 60} s</dd></div>
+        <div><dt>Enquiry to signature</dt><dd>{signedAt != null ? span(signTook) : clock(Math.floor(signTook / 1000))}</dd></div>
+        {pastLine(lead?.facts.installer_id) && <p>{pastLine(lead?.facts.installer_id)}</p>}
+      </dl>
+      {released
+        ? <button type="button" className="h-go" onClick={onOpen}>Open your proposal</button>
+        : <p className="h-send">{brand} will send the full offer.</p>}
     </div>
   );
 }

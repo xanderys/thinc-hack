@@ -1,0 +1,145 @@
+/* @theme marquee */
+/*
+  Clase Labs system (~/Projects/clase-labs/DESIGN.md). Three values, no fourth.
+  Serif is the human voice, mono is the machine's: every engine number is mono.
+  Blue is never text on ink.
+*/
+@font-face { font-family: 'Instrument Serif'; src: url('fonts/instrument-serif-400.woff2') format('woff2'); font-weight: 400; }
+@font-face { font-family: 'Instrument Sans'; src: url('fonts/instrument-sans-400.woff2') format('woff2'); font-weight: 400; }
+@font-face { font-family: 'Instrument Sans'; src: url('fonts/instrument-sans-500.woff2') format('woff2'); font-weight: 500; }
+@font-face { font-family: 'Instrument Sans'; src: url('fonts/instrument-sans-600.woff2') format('woff2'); font-weight: 600; }
+@font-face { font-family: 'IBM Plex Mono'; src: url('fonts/ibm-plex-mono-400.woff2') format('woff2'); font-weight: 400; }
+@font-face { font-family: 'IBM Plex Mono'; src: url('fonts/ibm-plex-mono-500.woff2') format('woff2'); font-weight: 500; }
+
+:root {
+  --paper: #F4F1EA;
+  --ink: #0A0C14;
+  --blue: #0D1BFE;
+  --ink-2: #4A4C55;
+  --ink-3: #8A8B92;
+  --rule: #D6D1C5;
+  --on-dark-2: rgb(244 241 234 / .72);
+  --rule-dark: rgb(244 241 234 / .22);
+}
+
+section {
+  width: 1280px;
+  height: 720px;
+  padding: 80px 112px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 28px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+section.ink { background: var(--ink); color: var(--paper); }
+section.blue { background: var(--blue); color: var(--paper); }
+
+section::after, footer {
+  position: absolute;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  bottom: 40px;
+}
+section::after { right: 112px; left: auto; padding: 0; line-height: 1.4; }
+footer { line-height: 1.4; }
+footer { left: 112px; margin: 0; }
+section.ink::after, section.ink footer, section.blue::after, section.blue footer { color: var(--on-dark-2); }
+
+/* Human voice */
+h1, h2 {
+  font-family: 'Instrument Serif', serif;
+  font-weight: 400;
+  letter-spacing: -.02em;
+  margin: 0 0 28px;
+  max-width: 1000px;
+}
+h1 { font-size: 96px; line-height: 1.02; }
+h2 { font-size: 60px; line-height: 1.08; }
+
+p { margin: 0 0 14px; color: var(--ink-2); max-width: 860px; }
+section.ink p, section.blue p { color: var(--on-dark-2); }
+strong { font-weight: 600; color: inherit; }
+
+/* Machine voice */
+.label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 24px;
+}
+section.ink .label, section.blue .label { color: var(--on-dark-2); }
+
+.stat {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 132px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -.04em;
+  color: var(--blue);
+  margin: 0 0 24px;
+}
+section.ink .stat, section.blue .stat { color: var(--paper); }
+
+.data {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 19px;
+  line-height: 1.8;
+  color: var(--ink-2);
+  border-top: 1px solid var(--rule);
+  padding-top: 16px;
+  width: 100%;
+  max-width: 1056px;
+}
+.data b { font-weight: 500; color: var(--ink); }
+section.ink .data, section.blue .data { color: var(--on-dark-2); border-top-color: var(--rule-dark); }
+section.ink .data b, section.blue .data b { color: var(--paper); }
+
+/* Chamfer: large surfaces only */
+.panel { clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%); }
+img.panel { max-height: 380px; }
+
+/* Reonic's own checklist item this slide proves, verbatim */
+.brief {
+  position: absolute;
+  left: 112px;
+  right: 112px;
+  bottom: 68px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  margin: 0;
+  max-width: none;
+}
+section.ink .brief, section.blue .brief { color: var(--on-dark-2); }
+
+/* Board screenshot slide */
+section.board h2 { font-size: 48px; margin-bottom: 18px; }
+section.board p:not(.label):not(.brief) { font-size: 22px; max-width: none; }
+section.board .data { margin-top: 6px; max-width: none; }
+section.board img { display: block; margin-top: 14px; }
+
+/* Two columns: text left, product right */
+section.split .cols { display: grid; grid-template-columns: 400px 1fr; gap: 40px; align-items: center; width: 100%; }
+section.split h1 { font-size: 48px; margin-bottom: 20px; }
+section.split .data { font-size: 16px; line-height: 1.6; max-width: none; }
+section.split img { width: 100%; height: auto; display: block; border: 1px solid var(--rule-dark); }
+section.board img { height: 300px; width: auto; }
+section.board .data { font-size: 20px; }
+
+p { font-size: 24px; }
+section.board h2 { max-width: 1056px; }
+
+.data + p { margin-top: 22px; }

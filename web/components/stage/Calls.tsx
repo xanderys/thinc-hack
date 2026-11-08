@@ -2,11 +2,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { InstallerId } from "@/lib/api";
 import type { IntakeFacts, Source } from "@/app/start/intake";
+import { berlinStamp } from "@/lib/time";
 
 export type CallLead = { conversation_id: string; facts: IntakeFacts; sources: Record<string, Source>; inputs: Record<string, unknown> };
 type Row = { conversation_id: string; lead_id?: string | null; started_at: number | null; call_secs: number | null; status: string; title: string | null; customer_name?: string | null; address_or_postcode?: string | null };
 
-const when = (s: number | null) => s ? new Date(s * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+const when = (s: number | null) => s ? berlinStamp(new Date(s * 1000).toISOString()) : "";
 const live = (s: number | null, now: number) => { const t = s ? Math.max(0, Math.floor(now / 1000 - s)) : 0; return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
 const mins = (s: number | null) => s ? `${Math.max(1, Math.round(s / 60))} min` : "";
 

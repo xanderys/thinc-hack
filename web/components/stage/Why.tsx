@@ -5,7 +5,7 @@ import { n2, named } from "@/lib/stage";
 import { CONST, human } from "./Rules";
 
 const SRC: Record<string, string> = {
-  lead: "lead", answer: "you answered", pvgis: "PVGIS", lod2: "LoD2 roof", iwu: "IWU",
+  lead: "lead", answer: "you answered", pvgis: "PVGIS", lod2: "3D roof model", iwu: "IWU",
   "installer history": "installer history", catalogue: "catalogue", default: "assumed",
 };
 const SNAP: Partial<Record<ComponentKey, string>> = { pv: "snapped to whole modules", battery: "snapped to the installer's package" };
@@ -34,7 +34,7 @@ function terms(d: Derivation, answered: boolean, installer: string): Term[] {
       if (i === 0 && carry === v) continue;
       const x = num(m[2]) / (m[3] ? 100 : 1);
       const inp = d.inputs.find((p) => typeof p.value === "number" && Math.abs(p.value - x) < 1e-6 * Math.max(1, Math.abs(x)) + 0.005);
-      const src = inp ? (inp.name === "household use" && answered ? "you answered" : /^fitted/i.test(inp.source) ? `fitted on half of ${installer}'s projects` : SRC[inp.source] ?? inp.source) : undefined;
+      const src = inp ? (inp.name === "household use" && answered ? "you answered" : /^fitted/i.test(inp.source) ? `learned from half of ${installer}'s projects` : SRC[inp.source] ?? inp.source) : undefined;
       out.push({ op, v, u, name: inp ? human(inp.name, CONST) : note, src });
       if (op === "=") carry = v;
     }
@@ -87,7 +87,7 @@ export default function Why({ k, d, level, onMore, answered, installer, closing,
       {level >= 4 && (
         <dl className="srcs s-step">
           {d.inputs.map((p) => (
-            <div key={p.name}><dt>{human(p.name, CONST)}</dt><dd><span className="num">{typeof p.value === "number" ? (p.value < 1 && p.unit === "" ? `${Math.round(p.value * 100)}%` : fmt(p.value)) : p.value}</span>{p.unit && ` ${p.unit}`}<span className="src">{p.name === "household use" && answered ? "you answered" : /^fitted/i.test(p.source) ? `fitted on half of ${installer}'s projects` : SRC[p.source] ?? p.source}</span></dd></div>
+            <div key={p.name}><dt>{human(p.name, CONST)}</dt><dd><span className="num">{typeof p.value === "number" ? (p.value < 1 && p.unit === "" ? `${Math.round(p.value * 100)}%` : fmt(p.value)) : p.value}</span>{p.unit && ` ${p.unit}`}<span className="src">{p.name === "household use" && answered ? "you answered" : /^fitted/i.test(p.source) ? `learned from half of ${installer}'s projects` : SRC[p.source] ?? p.source}</span></dd></div>
           ))}
         </dl>
       )}

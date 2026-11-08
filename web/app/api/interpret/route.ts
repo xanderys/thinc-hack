@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Design, HomeInputs, InterpretChange, InterpretOverride, Overrides } from "@/lib/api";
+import { structured } from "@/lib/llm";
 
 export const dynamic = "force-dynamic";
 
@@ -62,12 +63,87 @@ Fields: annual_demand_kwh (household electricity per year, excluding heat pump a
 Rules: change only what the sentence implies. Future plans count ("buys an EV next year" sets has_ev true and ev_annual_km to 15000 if no distance is given). A new household member adds about 1000 kWh to annual_demand_kwh. A heat pump they only consider is not a switch; replacing the boiler with one is (heating_type Heatpump). note is under 12 words, British English, says why. Return no changes if the sentence says nothing about the home.
 components are planner decisions about the proposed system (pv, battery, heatpump, wallbox): "include" when they want one and the size is left to the engine, "none" when they rule it out, "bigger" or "smaller" for one size step, "set" with size when a size is named (kWp, kWh or kW). Replacing a gas or oil boiler with a heat pump sets heating_type to Heatpump and includes heatpump. Leave components empty when the sentence says nothing about the system.`;
 
+// v2.14 WhatsApp copilot: the engine sends each client reply here with the facts it is still asking for.
+type OpenFact = { field: string; label?: string; unit?: string; options?: unknown[] };
+const WA_SYSTEM = `You read one WhatsApp reply from a homeowner to their solar installer and pull out the facts the installer asked for.
+Return only facts the reply states or plainly implies; never guess, never fill a fact from typical values. A fact the reply touches but leaves vague goes in unclear, not in facts.
+Numbers are plain numbers in the unit given for that fact (convert "4.2 MWh" to 4200 for kWh, "about 4,500" to 4500, a monthly figure to a yearly one only when the unit is yearly). Yes and no answers are booleans.
+For a fact with options, the value is exactly one of the option values. Heating: gas boiler is Gas, oil is Oil, heat pump is Heatpump, district heating or electric heating is OtherNonRenewable, wood or pellets is OtherRenewable.
+confidence is 0 to 1 for how sure you are of the facts as a whole. No prose.`;
+
+function optionValues(o: OpenFact): unknown[] | null {
+  if (Array.isArray(o.options) && o.options.length) return o.options.map((x) => (x && typeof x === "object" && "value" in x ? (x as { value: unknown }).value : x));
+  if (o.field === "heating_type") return [...ENUMS.heating_type];
+  if (o.field in ENUMS) return [...(ENUMS as Record<string, readonly string[]>)[o.field]];
+  return null;
+}
+
+function coerce(o: OpenFact, v: unknown): unknown | undefined {
+  if (v == null) return undefined;
+  const opts = optionValues(o);
+  if (opts) { const hit = opts.find((x) => x === v || String(x) === String(v)); return hit === undefined ? undefined : hit; }
+  if ((BOOL as readonly string[]).includes(o.field)) { if (typeof v === "boolean") return v; if (v === "true" || v === "false") return v === "true"; return undefined; }
+  if ((NUM as readonly string[]).includes(o.field) || typeof v === "number") {
+    const n = typeof v === "number" ? v : Number(String(v).replace(/,/g, ""));
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  }
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
+async function whatsapp(req: NextRequest, body: { lead_id?: string; text?: string; open_facts?: OpenFact[] }) {
+  const secret = process.env.INTAKE_SECRET;
+  if (!secret) return NextResponse.json({ error: "INTAKE_SECRET is not set on this server." }, { status: 500 });
+  if (req.headers.get("x-intake-secret") !== secret) return NextResponse.json({ error: "Intake secret missing or wrong." }, { status: 401 });
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  const open = (Array.isArray(body.open_facts) ? body.open_facts : []).filter((o): o is OpenFact => !!o && typeof o.field === "string" && !!o.field);
+  if (!open.length) return NextResponse.json({ facts: {}, confidence: 1, unclear: [] });
+  if (!text) return NextResponse.json({ facts: {}, confidence: 0, unclear: open.map((o) => o.field) });
+
+  const fields = open.map((o) => o.field);
+  const schema = {
+    type: "object", additionalProperties: false, required: ["facts", "confidence", "unclear"],
+    properties: {
+      facts: { type: "array", items: { type: "object", additionalProperties: false, required: ["field", "value"], properties: {
+        field: { type: "string", enum: fields },
+        value: { anyOf: [{ type: "number" }, { type: "boolean" }, { type: "string" }] },
+      } } },
+      confidence: { type: "number" },
+      unclear: { type: "array", items: { type: "string", enum: fields } },
+    },
+  };
+  const asked = open.map((o) => {
+    const opts = optionValues(o);
+    return `- ${o.field}${o.label ? ` (${o.label})` : ""}${o.unit ? `, unit ${o.unit}` : ""}${opts ? `, one of ${opts.map((x) => JSON.stringify(x)).join(", ")}` : ""}`;
+  }).join("\n");
+  const r = await structured<{ facts: { field: string; value: unknown }[]; confidence: number; unclear: string[] }>(WA_SYSTEM, `Facts asked for:\n${asked}\n\nReply:\n${text}`, schema, 2048);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+
+  const facts: Record<string, unknown> = {};
+  const unclear = new Set((r.data.unclear ?? []).filter((f) => fields.includes(f)));
+  for (const f of r.data.facts ?? []) {
+    const o = open.find((x) => x.field === f.field);
+    if (!o || f.field in facts) continue;
+    const v = coerce(o, f.value);
+    if (v === undefined) { unclear.add(f.field); continue; }
+    facts[f.field] = v; unclear.delete(f.field);
+  }
+  const c = Number(r.data.confidence);
+  return NextResponse.json({ facts, confidence: Number.isFinite(c) ? Math.min(1, Math.max(0, c)) : 0, unclear: [...unclear] });
+}
+
 export async function POST(req: NextRequest) {
+  let body: Record<string, unknown>;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: "Body is not JSON" }, { status: 400 }); }
+  if (body?.mode === "whatsapp") return whatsapp(req, body as Parameters<typeof whatsapp>[1]);
+  return refine(body);
+}
+
+async function refine(body: Record<string, unknown>) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: "No ANTHROPIC_API_KEY in web/.env.local, so sentences cannot be read. Sliders still work." }, { status: 503 });
   }
   let sentence: string, inputs: HomeInputs, design: Partial<Design> = {}, current: Overrides = {}, typical: Partial<Design> = {};
-  try { ({ sentence, inputs, design = {}, overrides: current = {}, typical = {} } = await req.json()); } catch { return NextResponse.json({ error: "Body is not JSON" }, { status: 400 }); }
+  ({ sentence, inputs, design = {}, overrides: current = {}, typical = {} } = body as { sentence: string; inputs: HomeInputs; design?: Partial<Design>; overrides?: Overrides; typical?: Partial<Design> });
   if (!sentence?.trim()) return NextResponse.json({ error: "Write a sentence first." }, { status: 400 });
 
   const client = new Anthropic();

@@ -34,6 +34,7 @@ export interface RoofResult {
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
   pending?: boolean;   // the LoD2 measurement is still running; ask again in a few seconds
   floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";   // v1.6.1, upper bound
+  geometry?: { footprint_m2?: number | null; storeys?: number | null; height_m?: number | null; large_building?: boolean | null; source?: string; note?: string } | null; // v2.11: LoD2, outranks dwellings_class
   build_year_class?: string | null; build_year_estimate?: number | null; heating_class?: string | null; zensus_confidence?: string; // heating_class is the system type, never the fuel
 }
 
@@ -89,10 +90,12 @@ export type ComponentKey = "pv" | "battery" | "heatpump" | "wallbox";
 export interface Variant {   // v1.7
   key: "expert" | "value" | "independence" | "payback" | "upfront";
   label: string; design: Design; economics: Economics; note: string;
+  design_hash?: string;   // v2.11
 }
 
 export interface DesignResponse {
   design: Design;
+  roof?: { stated_azimuth_deg?: number | null; measured_azimuths_deg?: number[]; stated_direction_conflict?: boolean; source?: string; note?: string | null } | null; // v2.12
   explanation: string[];
   components: { pv: ComponentDetail; battery: ComponentDetail; heatpump: ComponentDetail; wallbox: ComponentDetail };
   plausibility: Plausibility[];
@@ -177,7 +180,7 @@ export interface InboxRow {
 
 // LLM edge, web only
 export interface ReadFact { field: keyof HomeInputs | "wants" | "monthly_bill_eur" | "postcode"; value: unknown; quote: string; }
-export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; source?: "call"; origin?: Record<string, "form" | "call" | "estimated">; postcode?: string; }
+export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; source?: "call"; origin?: Record<string, "form" | "call" | "estimated" | "whatsapp">; postcode?: string; }
 export interface WriteResponse { text: string; grounded: boolean; lines: Partial<Record<ComponentKey, string | null>>; cached?: boolean; }
 
 export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Installer A", "23c108b7": "Installer B" };
@@ -189,16 +192,28 @@ export interface LeadCreated { lead_id: string; draft: DesignResponse; facts: Ho
 export interface Lead {
   lead_id: string; status: LeadStatus; customer_name: string; address_or_postcode: string;
   facts: HomeInputs; draft: DesignResponse;
-  history: { step: number; field: string; answer: unknown; changed: LeadChange[]; at: string }[];
+  history: { step: number; field: string; answer: unknown; changed: LeadChange[]; at: string; source?: string }[];
   next_question: NextQuestion | null; questions_asked: number; created_at: string; updated_at: string;
-  proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | null; decision?: LeadDecision | null;   // v2.5
+  version?: number;   // optimistic concurrency: writes carry it back as base_version
+  proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | "edit" | null; decision?: LeadDecision | null;   // v2.5
+  sent?: { channel: string; at: string; text: string; link: string } | null;   // engine fe8b790: the last Send
+  approved?: { variant: Variant["key"] | "edit"; design: Design; economics?: Economics; investment_eur: number; design_hash: string; overrides?: Overrides } | null;   // v2.11
+  overrides?: Overrides;   // the planner's kit choices, written on each edit (intake step `overrides`)
+  phone?: string | null;   // v2.14, E.164; no phone, no WhatsApp
+  whatsapp?: LeadWhatsApp | null;   // v2.14
+  sources?: Record<string, string>;   // v2.14 per fact: "stated" | "estimated" | "whatsapp"
+  status_label?: string;
 }
+// v2.14 WhatsApp copilot: one conversation per lead, both directions logged.
+export interface WhatsAppMessage { dir: "out" | "in"; kind?: "text" | "voice" | "dry" | string; text: string; at: string; facts?: Record<string, unknown>; stated?: string[]; unclear?: string[]; transcript?: string | null }
+export interface LeadWhatsApp { state: "open" | "closed" | "none" | "dry" | "superseded" | "expired"; round?: number; open_facts?: { field: string; label?: string; unit?: string }[]; last_error?: string | null; messages: WhatsAppMessage[] }
+export interface WhatsAppAsk { conversation_id: string; sent: unknown; open_facts: { field: string; label?: string; unit?: string }[]; asking?: unknown; version?: number; whatsapp?: LeadWhatsApp }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).
-export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "signed" | "declined" | "question";
+export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "sent" | "signed" | "declined" | "question";   // sent: the Complete sheet sent the link
 export type DecisionAction = "sign" | "decline" | "question";
 export interface LeadDecision { action: DecisionAction; name?: string | null; decided_at: string; proposal_hash: string; has_signature: boolean; matches_current: boolean; question?: string | null; }
 export interface ApproveResponse { status: "approved"; approved_at: string; approved_variant: Variant["key"] | null; proposal_hash: string; }
 export interface DecisionBody { action: DecisionAction; name?: string; accepted?: boolean; signature_png?: string; question?: string; proposal_hash: string; }
 export interface DecisionResponse { ok: boolean; status: LeadStatus; decided_at: string; proposal_hash: string; }
-export interface LeadRow { lead_id: string; status: Lead["status"]; title: string; customer_name?: string; address_or_postcode?: string; created_at?: string; decision?: LeadDecision | null; proposal_hash?: string; }
+export interface LeadRow { lead_id: string; status: Lead["status"]; status_label?: string; title: string; customer_name?: string; address_or_postcode?: string; created_at?: string; decision?: LeadDecision | null; proposal_hash?: string; }
 export interface Priors { n_steps_logged: number; order: { field: string; mean_swing: number; times_asked: number }[]; }

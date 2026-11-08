@@ -151,6 +151,7 @@ export const HOME_FORM = {
 export interface HomeAnswers {
   name: string;
   location: string; // address, or postcode alone
+  phone?: string;   // optional, E.164
   people?: keyof typeof HOME_FORM.people;
   heating?: keyof typeof HOME_FORM.heating;
   ev?: keyof typeof HOME_FORM.ev;
@@ -272,6 +273,13 @@ export function mergeIntake(form: Partial<IntakeFacts>, call?: Partial<IntakeFac
   return { facts, sources };
 }
 
+// Roof direction as the engine's hourly simulation reads it (engine/app/hourly/sim.py: azimuth 180 is south, 0 north;
+// flat roofs carry modules on 15 degree south racks, engine/app/layout.py FLAT_TILT).
+const ROOF_FACTS: Record<Exclude<keyof typeof HOME_FORM.roof, "unknown">, Record<string, unknown>> = {
+  south: { roof_azimuth_deg: 180 }, north: { roof_azimuth_deg: 0 },
+  east_west: { roof_orientation: "east-west" }, flat: { roof_azimuth_deg: 180, roof_tilt_deg: 15 },
+};
+
 /** What the enquiry form states, as engine inputs for POST /api/leads (v1.9). "Don't know" stays out. */
 export function homeFacts(a: HomeAnswers): Record<string, unknown> {
   const f: Record<string, unknown> = {};
@@ -280,5 +288,6 @@ export function homeFacts(a: HomeAnswers): Record<string, unknown> {
   const ev = known(a.ev); if (ev) { f.has_ev = ev !== "none"; if (ev !== "none") f.ev_annual_km = 15000; }
   const b = known(a.bill_band) as keyof typeof BILL_EUR | undefined; if (b) { f.annual_demand_kwh = kwhFromBill(BILL_EUR[b]); f.electricity_price_ct_kwh = PRICE_CT; }
   if (p === "4") f.load_profile = "FamilyOfFour";
+  const r = known(a.roof); if (r) Object.assign(f, ROOF_FACTS[r as keyof typeof ROOF_FACTS]);
   return f;
 }

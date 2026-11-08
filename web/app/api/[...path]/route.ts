@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { callEngine } from "@/lib/engine";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
@@ -13,7 +14,8 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
     if (req.method === "PUT" && !text.trim()) body = {};
     else try { body = JSON.parse(text); } catch { return NextResponse.json({ error: "Body is not JSON" }, { status: 400 }); }
   }
-  const out = await callEngine(req.method, enginePath, req.nextUrl.searchParams, body);
+  const route = req.headers.get("x-client-route");
+  const out = await callEngine(req.method, enginePath, req.nextUrl.searchParams, body, route ? { "X-Client-Route": route.slice(0, 80) } : undefined);
   return NextResponse.json(out.body, { status: out.status });
 }
 

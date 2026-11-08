@@ -1,0 +1,372 @@
+/* Systems hero (8 Nov 2026): the model dominates, four Systems chips drive it, the offer is a tucked pass.
+   Global on purpose: the layout overrides reach the chain's module classes and Stage's facts row, gated by .sys-on. */
+
+/* "Systems" and the chips on one line. Where four chips do not fit, the chip row scrolls inside itself, never the page (360 to 1440). */
+.sys-head { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; flex-wrap: nowrap; }
+.sys-h { flex: none; margin: 0 2px 0 0; font-family: var(--font-sans), sans-serif; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--navy); }
+.sys-chips {
+  display: flex; gap: 4px; flex-wrap: nowrap; flex: 1 1 auto; min-width: 0;
+  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  padding: 3px; margin: -3px; /* room for the focus ring inside the scroller */
+}
+.sys-chips::-webkit-scrollbar { display: none; }
+.sys-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 9px 0 8px; white-space: nowrap;
+  border: 1px solid var(--rule-2); border-radius: 999px; background: #fff; color: var(--ink-2);
+  font: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: -0.01em; cursor: pointer;
+  transition: background-color 200ms var(--spring-smooth), border-color 200ms var(--spring-smooth), color 200ms var(--spring-smooth);
+}
+/* The part's own render, 20 px, on a small warm plate so the white battery reads; lighter on the selected navy chip. */
+.sys-chip i { flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-left: -3px; border-radius: 6px; background: #e4e0d6; }
+.sys-chip i img { display: block; width: 20px; height: 20px; object-fit: contain; }
+.sys-chip[aria-selected="true"] i { background: #f4f1ea; }
+.sys-chip[aria-selected="true"] { background: var(--navy); border-color: var(--navy); color: #fff; }
+.sys-chip.hot:not([aria-selected="true"]) { border-color: var(--c); background: #fff7e6; color: var(--ink); }
+.sys-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .sys-head { gap: 5px; } .sys-h { font-size: 14.5px; margin: 0; } .sys-chips { gap: 2px; }
+  /* An inset outline instead of a border: four chips and "Systems" fit one line from 375 to 480. */
+  .sys-chip { padding: 0 6px 0 3px; gap: 3px; font-size: 11px; letter-spacing: -0.02em; border: 0; box-shadow: inset 0 0 0 1px var(--rule-2); }
+  .sys-chip[aria-selected="true"] { box-shadow: none; }
+  .sys-chip.hot:not([aria-selected="true"]) { box-shadow: inset 0 0 0 1px var(--c); }
+  .sys-chip i { width: 18px; height: 18px; margin-left: 0; border-radius: 5px; }
+  .sys-chip i img { width: 18px; height: 18px; }
+}
+@media (min-width: 761px) { .sys-head { gap: 10px; } .sys-h { font-size: 18px; } .sys-chips { gap: 6px; } .sys-chip { min-height: 34px; padding: 0 12px 0 10px; gap: 6px; font-size: 13px; } }
+
+/* Proposed Design pass */
+.pc-card { background: #fff; border: 1px solid var(--rule); display: flex; flex-direction: column; min-height: 0; }
+.pc-pass {
+  all: unset; box-sizing: border-box; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;
+  display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto 1fr; grid-template-areas: "h chev" "figs chev"; align-items: center; gap: 2px 12px;
+  transition: grid-template-rows 500ms var(--spring-smooth), row-gap 500ms var(--spring-smooth);
+  padding: 12px 16px; width: 100%; position: relative;
+}
+.pc-pass:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pc-h { grid-area: h; font-family: var(--font-sans), sans-serif; font-size: 15px; font-weight: 600; color: var(--navy); letter-spacing: -0.01em; }
+.pc-figs { grid-area: figs; display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 15px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* Open: the figure line crossfades out and its row closes as the tiles come in below; tucked it shows inline.
+   The heading centres over the open card. */
+.pc-figs { min-height: 0; overflow: hidden; padding: 0 3px; margin: 0 -3px; transition: opacity 350ms var(--spring-smooth); }
+.pc-open .pc-pass { grid-template-rows: auto 0fr; row-gap: 0; }
+.pc-open .pc-figs { opacity: 0; }
+.pc-h { transition: opacity 200ms ease-out; }
+.pc-open .pc-h { grid-column: 1 / -1; grid-row: 1; justify-self: center; text-align: center; }
+@media (prefers-reduced-motion: reduce) {
+  .pc-pass { transition: none; }
+  .pc-figs { transition: opacity 200ms ease-out; }
+}
+.pc-none { grid-area: figs; font-size: 14px; font-weight: 500; color: var(--ink-2); }
+.pc-nobody { display: grid; gap: 12px; padding: 4px 12px 12px; font-size: 13.5px; color: var(--ink-2); }
+.pc-nobody p { margin: 0; }
+.pc-nobody .btn { width: 100%; min-height: 44px; justify-content: center; }
+.pc-fig { display: inline-block; border-radius: 6px; padding: 0 3px; margin: 0 -3px; }
+.pc-skel {
+  color: transparent; background: linear-gradient(90deg, var(--sheet-2) 0%, #e6e9f2 50%, var(--sheet-2) 100%) 0 0 / 200% 100%;
+  animation: pc-skel 1.2s linear infinite;
+}
+@keyframes pc-skel { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.pc-lit { animation: pc-lit 1400ms var(--spring-smooth) both; }
+@keyframes pc-lit { 0%, 30% { background-color: #fff0c2; } 100% { background-color: transparent; } }
+.pc-chev { grid-area: chev; color: var(--ink-3); transition: transform 300ms var(--spring-smooth); }
+.pc-open .pc-chev { transform: rotate(180deg); }
+.pc-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* Tucked: the hidden body neither scrolls nor catches a rubber-band. */
+.pc:not(.pc-open) .pc-body { overflow: hidden; }
+.pc-body > aside { border: 0; border-radius: 0; margin: 0; padding-top: 4px; padding-bottom: 0; }
+/* Approve stays at the bottom of the open card; the rest scrolls under it. */
+.pc-body [class*="offer_approve__"] { position: sticky; bottom: 0; z-index: 2; background: #fff; margin: 0 -12px; padding: 8px 12px 10px; border-top: 1px solid var(--rule); }
+.pc-clip { display: contents; }
+
+/* Phone: a Wallet pass peeking from the bottom edge, 16 px in from each side, right above the safe area. */
+.pc-bottom .pc-card {
+  position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--pc-lift, 0px)); z-index: 19; height: min(84dvh, 760px);
+  border-radius: 20px 20px 0 0; border-bottom: 0; box-shadow: 0 -6px 24px rgba(7, 27, 113, 0.10); will-change: transform;
+}
+.pc-bottom .pc-pass { padding-top: 16px; }
+.pc-grip { position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--rule-2); }
+.pc-bottom .pc-body { flex: 1; padding: 0 4px; }
+.pc-scrim { position: fixed; inset: 0; z-index: 18; background: rgba(7, 27, 113, 0.28); opacity: 0; pointer-events: none; }
+
+/* Desktop: the same card, 520 px, centred over the model just above the sentence bar; the clip hides the tucked body. */
+@media (min-width: 761px) {
+  .pc-bottom { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
+  .pc-bottom .pc-clip {
+    display: block; position: absolute; left: 50%; transform: translateX(-50%); width: clamp(480px, 40vw, 540px); max-width: calc(100% - 24px);
+    top: 12px; bottom: var(--pc-lift, 0px); overflow: hidden; pointer-events: none; border-radius: 20px 20px 0 0;
+  }
+  .pc-bottom .pc-card { position: absolute; left: 0; right: 0; bottom: 0; top: auto; height: min(100%, 680px); pointer-events: auto; border-radius: 20px 20px 0 0; border-bottom: 0; box-shadow: none; }
+  .pc-bottom .pc-body { padding-bottom: 0; }
+  .pc-bottom .pc-body [class*="offer_approve__"] { padding-bottom: 12px; }
+  .pc-bottom .pc-scrim { position: absolute; z-index: 0; border-radius: 12px; }
+}
+
+/* Reduce Motion: no slide, the panel crossfades in place. */
+.pc-reduce .pc-body { transition: opacity 200ms ease-out; opacity: 0; }
+.pc-reduce.pc-open .pc-body { opacity: 1; }
+.pc-reduce .pc-scrim { transition: opacity 200ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .pc-skel, .pc-lit { animation: none; } .pc-lit { background-color: #fff0c2; } .pc-chev { transition: none; } }
+
+/* ---------- Layout with the Systems hero on (.sys-on on the chain root) ---------- */
+/* Order on every width: facts row, the Systems chip row, then the model. */
+.sys-on [class*="chain_it__"] { display: none; }
+
+@media (max-width: 760px) {
+  /* Facts wrap onto short lines: no sideways scroll, no clipped chip. */
+  .st-open:has(.sys-on) > .t-bar { gap: 6px; padding-bottom: 4px; }
+  .st-open:has(.sys-on) .t-chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; gap: 4px; }
+  .st-open:has(.sys-on) .t-chip { flex: none; max-width: 100%; }
+  .st-open:has(.sys-on) .t-chip summary { min-height: 28px; font-size: 12px; padding: 0 8px; gap: 4px; white-space: nowrap; max-width: 100%; }
+  .st-open:has(.sys-on) .t-mail { display: none; }
+
+  /* The page ends where the tucked pass begins. */
+  .sys-on { padding-bottom: calc(var(--pc-peek, 76px) + env(safe-area-inset-bottom, 0px)); margin-top: 0; }
+  .sys-on .sys-under { order: 1; height: 46px; box-sizing: border-box; display: flex; align-items: center; margin: 0 -16px; padding: 0 16px; background: var(--paper); }
+  /* The model takes the whole height between the chip row and the tucked pass (at the top of the page). */
+  .sys-on [class*="chain_hero__"], .sys-on [class*="chain_hero__"][class*="chain_heroTall__"] {
+    order: 2; position: relative; top: auto; margin: 0 -16px;
+    height: var(--sys-hero-h, 52dvh); min-height: 320px;
+  }
+}
+
+@media (min-width: 761px) {
+  /* The left column folds away: the chip row on top, the model under it at full width. */
+  .sys-on, .st-open > .sys-on[class*="chain_root__"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); row-gap: 8px; }
+  .sys-on .sys-under { grid-column: 1; grid-row: 1; }
+  .sys-on [class*="chain_hero__"], .st-open > .sys-on [class*="chain_hero__"] { grid-column: 1; grid-row: 2; }
+  /* The model toolbar moves to the top right: the bottom centre belongs to the pass. */
+  .sys-on.sys-on [class*="chain_hero__"] [class*="chain_toolbar__"] { top: 12px; bottom: auto; left: auto; right: 12px; transform: none; }
+}
+
+/* ---------- The system card: glass, inside the canvas, at a corner, never over the house ---------- */
+.sc { display: contents; }
+.sc-card {
+  position: absolute; z-index: 4; top: 12px; left: 12px; width: 340px; max-width: calc(100% - 24px); box-sizing: border-box;
+  padding: 11px 13px 12px; border-radius: 14px; color: var(--ink);
+  background: rgba(250, 248, 243, 0.76); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.75); box-shadow: inset 0 0 0 0.5px rgba(7, 27, 113, 0.12);
+}
+.sc-anim { display: grid; gap: 6px; animation: sc-in 767ms var(--spring-smooth-500) both; }
+@keyframes sc-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.sc-top { display: flex; align-items: flex-start; gap: 8px; }
+.sc-h { flex: 1; margin: 0; font-family: var(--font-sans), sans-serif; font-size: 15.5px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.25; color: var(--navy); font-variant-numeric: tabular-nums; }
+.sc-i {
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin: -4px -6px -4px 0; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--accent); cursor: pointer;
+}
+.sc-i[aria-expanded="true"] { background: var(--accent); color: #fff; }
+.sc-i:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sc-body { display: grid; gap: 4px; font-size: 13px; line-height: 1.4; color: var(--ink-2); font-variant-numeric: tabular-nums; transition: opacity 200ms ease-out; }
+.sc-body p { margin: 0; }
+.sc-card[data-pending] .sc-body { opacity: 0.5; }
+.sc-extra { margin-top: 2px; padding-top: 6px; border-top: 1px solid rgba(7, 27, 113, 0.10); }
+/* The shading scrubber inside the card: no box of its own, one thin row. */
+.sc-extra [class*="ShadingScrubber_strip__"] { background: transparent; border: 0; padding: 0; gap: 2px; }
+.sc-extra [class*="ShadingScrubber_stripHead__"] [class*="ShadingScrubber_chip__"] { min-height: 28px; padding: 3px 9px; font-size: 12px; }
+.sc-extra [class*="ShadingScrubber_monthsC__"] button { height: 26px; }
+/* The derivation: hangs off the card (outside its measured box), scrolls inside itself. */
+.sc-pop {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px); max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior: contain;
+  display: grid; gap: 10px; padding: 12px; border-radius: 14px; font-size: 12.5px; color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.94); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border: 1px solid var(--rule); animation: sc-pop 500ms var(--spring-smooth) both;
+}
+.sc-pop p { margin: 0; }
+.sc-pop > * { min-width: 0; }
+@keyframes sc-pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 760px) {
+  /* Phone: the bottom edge, above the model toolbar; the derivation opens upwards. */
+  /* Above the zoom and compass stack at the bottom right (two 40 px buttons, 12 px inset), so nothing sits under it. */
+  .sc-card { top: auto; left: 8px; right: 8px; bottom: 104px; width: auto; max-width: none; padding: 9px 11px 10px; }
+  .sc-h { font-size: 14.5px; }
+  .sc-body { font-size: 12.5px; line-height: 1.35; }
+  /* Up to the canvas top: 100% here is the card's own height (absolute box), 62 px its offset from the bottom. */
+  .sc-pop { top: auto; bottom: calc(100% + 6px); max-height: calc(var(--sys-hero-h, 400px) - 100% - 104px - 20px); background: rgba(255, 255, 255, 0.97); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-anim { animation: sc-fade 200ms ease-out both; }
+  .sc-pop { animation: sc-fade 200ms ease-out both; }
+}
+@keyframes sc-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* Heat pump: the x-ray's shares live in the card (one block), so its floating legend and leaders stay hidden here. */
+.sys-on .xr-card, .sys-on svg:has(+ .xr-card) { display: none !important; }
+.sc-shares i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 5px 0 1px; vertical-align: 0; }
+/* The scrubber in the Panels card is always open: month row and hour, then the moment's readout; its source sits behind the card's i. */
+.sc-extra [class*="ShadingScrubber_srcBtn__"] { display: none; }
+
+/* ---------- Bigger canvas (8 Nov 2026, P1): compact header, facts on one scrolling line, the model takes the rest ---------- */
+/* Facts: one line that scrolls inside itself; an open fact's editor anchors to the bar, so the scroller never clips it. */
+.st-open:has(.sys-on) > .t-bar { position: relative; }
+.st-open:has(.sys-on) .t-chips { flex-wrap: nowrap !important; overflow-x: auto !important; overscroll-behavior-x: contain; scrollbar-width: none; min-width: 0; }
+.st-open:has(.sys-on) .t-chips::-webkit-scrollbar { display: none; }
+.st-open:has(.sys-on) .t-chip, .st-open:has(.sys-on) .t-chip[open] { position: static; flex: none; }
+.st-open:has(.sys-on) .t-edit { top: calc(100% + 2px); left: 0; }
+.b-open:has(.sys-on) .b-head-photo { display: none; }
+
+@media (max-width: 760px) {
+  .b-open:has(.sys-on) { padding-top: 8px; }
+  .b-open:has(.sys-on) .b-open-h { padding-bottom: 6px; }
+  .b-open:has(.sys-on) .b-open-h h1 { font-size: 21px; }
+  /* Address and verdict share the second line. */
+  .b-open:has(.sys-on) .b-open-lines { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; width: 100%; }
+  .b-open:has(.sys-on) .b-l1 { grid-column: 1 / -1; }
+  .b-open:has(.sys-on) .b-open-h p { margin-top: 2px; font-size: 13px; }
+  .b-open:has(.sys-on) .b-l2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st-open:has(.sys-on) { padding-top: 6px; }
+  .st-open:has(.sys-on) > .t-bar { padding-bottom: 2px; gap: 4px; }
+  .st-open:has(.sys-on) .t-chips { margin: 0 -16px; padding: 0 16px; }
+  .sys-on .sys-under { height: 44px; margin-bottom: -8px; }
+}
+
+@media (min-width: 761px) {
+  /* Header and facts on one line: the open card's header and Stage's facts bar share the first row. */
+  .b-open:has(.sys-on) { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 20px; align-items: center; padding-top: 10px; }
+  .b-open:has(.sys-on) > .b-open-h { grid-column: 1; grid-row: 1; border-bottom: 0; padding-bottom: 0; }
+  .b-open:has(.sys-on) > :not(.b-open-h):not(.st-open) { grid-column: 1 / -1; }
+  .b-open:has(.sys-on) > .st-open { display: contents; }
+  .b-open:has(.sys-on) .st-open > .t-bar { grid-column: 2; grid-row: 1; padding: 0; }
+  .b-open:has(.sys-on) .st-open > :not(.t-bar) { grid-column: 1 / -1; }
+  .b-open:has(.sys-on) .b-open-h h1 { font-size: 22px; }
+  .b-open:has(.sys-on) .b-open-h p { margin-top: 1px; font-size: 13px; }
+  .b-open:has(.sys-on) .b-open-lines { display: grid; grid-template-columns: auto auto; column-gap: 10px; align-items: center; }
+  .b-open:has(.sys-on) .b-l1 { grid-column: 1 / -1; }
+  /* The model runs to the bottom of the viewport; the pass overlays its foot. */
+  .sys-on[class*="chain_root__"] { margin-top: 6px; height: max(480px, var(--sys-root-h, calc(100dvh - var(--chain-top, 190px) + 12px))); margin-bottom: 0; }
+  /* Edge to edge: the model leaves the page's side margins and square-cuts its corners. */
+  .b-open:has(.sys-on) .sys-on [class*="chain_hero__"] { width: 100vw; margin-left: calc(50% - 50vw); border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; }
+}
+
+/* ---------- iPhone pass (8 Nov 2026): one toolbar row, a short card above it, no run-out under the canvas ---------- */
+/* Face north rides in the toolbar row as one more 34 px button. */
+.tb-north { display: contents; }
+[class*="chain_toolbar__"] .tb-north [class*="spatial_compass__"] { width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; }
+/* The scrubber's own chip folds into the card's: the card chip opens it, the tint follows. */
+.sc-more {
+  all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 11px;
+  border-radius: 999px; border: 1px solid var(--rule-2, var(--rule)); background: #fff; font-size: 12.5px; font-weight: 600; color: var(--ink-2);
+}
+.sc-more::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-2px); transition: transform 300ms var(--spring-smooth); }
+.sc-more[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sc-more[aria-expanded="true"]::after { transform: rotate(-135deg) translateY(-1px); }
+.sc-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sc-extra .sc-more + * { margin-top: 6px; }
+.sc-extra [class*="ShadingScrubber_stripHead__"] [class*="ShadingScrubber_chip__"] { display: none; }
+@media (prefers-reduced-motion: reduce) { .sc-more::after { transition: none; } }
+
+@media (max-width: 760px) {
+  /* Nothing below the model: the page ends where the canvas meets the pass. */
+  .sys-on { padding-bottom: 0; margin-bottom: 0; }
+  /* One centred row that fits 390: 36 px targets, nothing clipped, never wrapping. */
+  .sys-on [class*="chain_hero__"] [class*="chain_toolbar__"] {
+    left: 50%; right: auto; transform: translateX(-50%); bottom: 8px; max-width: calc(100% - 12px); flex-wrap: nowrap; white-space: nowrap; gap: 1px; padding: 3px;
+  }
+  .sys-on [class*="chain_toolbar__"] [class*="chain_tb__"], [class*="chain_toolbar__"] .tb-north [class*="spatial_compass__"] { width: 36px; height: 36px; flex: none; }
+  .sys-on [class*="chain_toolbar__"] [class*="chain_seg__"] { margin: 0 2px; flex: none; }
+  .sys-on [class*="chain_toolbar__"] [class*="chain_seg__"] button { padding: 8px 8px; font-size: 12.5px; }
+  /* The card: bottom of the canvas, right above the toolbar, at most about 35 % of the canvas; scrolls inside if longer. */
+  /* The cap and the scroll sit on the inner block, so the i popover above the card is never clipped. */
+  .sc-card { bottom: 58px; }
+  .sc-anim { max-height: calc(var(--sys-hero-h, 560px) * 0.35 - 20px); overflow-y: auto; overscroll-behavior: contain; }
+  .sc-pop { max-height: calc(var(--sys-hero-h, 400px) - 100% - 58px - 20px); }
+}
+@media (max-width: 760px) {
+  /* No run-out under the model: Stage's and the page's bottom padding go while the Systems layout is on. */
+  .st-open:has(.sys-on) { padding-bottom: 0 !important; }
+  main:has(.sys-on) { padding-bottom: 0 !important; }
+}
+
+/* ---------- Figures on the cards (8 Nov 2026): no prose, the engine's numbers drawn ---------- */
+.sc-h b { font-weight: 650; }
+.sc-sub { font-weight: 400; color: var(--ink-3); }
+.sc-h .sc-sub { font-size: 0.92em; }
+/* Panels: Roof and Home, value text beside each bar; the covered share sits on the Home bar. */
+.fg-pair { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; font-size: 12.5px; color: var(--ink-2); }
+.fg-k { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-2); font-weight: 600; }
+.fg-tag { font-style: normal; font-weight: 500; font-size: 10.5px; color: var(--ink-3); border: 1px solid var(--rule-2, var(--rule)); border-radius: 999px; padding: 0 5px; }
+.fg-track { position: relative; height: 14px; border-radius: 4px; background: rgba(7, 27, 113, 0.07); overflow: hidden; }
+.fg-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.fg-fill { background: #2a3bc4; }
+.fg-rest { background: #c9cef6; }
+.fg-cover { background: #2a3bc4; display: flex; align-items: center; justify-content: flex-end; padding-right: 5px; box-sizing: border-box; }
+.fg-cover span { font-size: 10.5px; font-weight: 650; color: #fff; font-variant-numeric: tabular-nums; }
+.fg-v { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.fg-v b { color: var(--ink); font-weight: 600; }
+/* A stacked split: 2 px surface gaps between parts, each part named and valued underneath. */
+.fg-split { display: grid; gap: 6px; }
+.fg-bar { display: flex; gap: 2px; height: 12px; }
+.fg-bar i { display: block; min-width: 4px; border-radius: 4px; }
+.fg-bar i.fg-gap { background: transparent; border: 1px dotted var(--ink-4); min-width: 0; }
+.fg-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.fg-legend li { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.fg-legend li i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.fg-legend b { color: var(--ink); font-weight: 600; }
+/* Wallbox: three linked figures with a thin connector. */
+.fg-chain { list-style: none; margin: 0; padding: 0; display: flex; align-items: flex-end; gap: 0; flex-wrap: nowrap; }
+.fg-chain li { display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fg-chain b { font-size: 16px; font-weight: 650; color: var(--ink); }
+.fg-chain li > span:not(.fg-arrow) { font-size: 11.5px; color: var(--ink-3); }
+.fg-arrow { align-self: center; display: inline-block; width: 18px; height: 1px; margin: 0 8px; background: var(--ink-3); position: relative; }
+.fg-arrow::after { content: ""; position: absolute; right: 0; top: -3px; width: 6px; height: 6px; border-top: 1px solid var(--ink-3); border-right: 1px solid var(--ink-3); transform: rotate(45deg); }
+.fg-fig { margin: 0; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.fg-fig b { font-size: 15px; font-weight: 650; color: var(--ink); }
+.sc-body { gap: 8px; }
+/* The Shading chip carries the figure; the scrubber's own head line would repeat it. */
+.sc-extra [class*="ShadingScrubber_stripHead__"] { display: none; }
+.sc-more b { font-weight: 650; }
+.sc-more[aria-expanded="true"] .sc-sub { color: rgba(255, 255, 255, 0.8); }
+@media (max-width: 400px) { .fg-chain b { font-size: 15px; } .fg-arrow { width: 12px; margin: 0 5px; } .fg-chain li > span:not(.fg-arrow) { font-size: 11px; } }
+/* Home: household then car, 2 px gap, the total at the end of the row; the legend names both and the roof's share. */
+.fg-stack { display: flex; gap: 2px; height: 14px; min-width: 8px; }
+.fg-stack i { display: block; min-width: 4px; border-radius: 4px; }
+.fg-pair .fg-stack { justify-self: start; }
+.fg-under { grid-column: 2 / -1; margin-top: -2px; }
+.fg-cov { color: var(--ink-3); }
+
+.pc-open .pc-card { z-index: 21; }
+/* The tucked pass as a cover for the framing: same width as the pass, its peek height, at the canvas foot. Desktop only. */
+.pc-cover { display: none; }
+@media (min-width: 761px) {
+  .pc-bottom .pc-cover { display: block; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: clamp(480px, 40vw, 540px); max-width: calc(100% - 24px); height: var(--pc-peek, 76px); pointer-events: none; visibility: hidden; }
+}
+/* Fold: the title is the toggle; folded, the card is one line and the house re-frames into the room it gave back. */
+.sc-fold { all: unset; cursor: pointer; display: inline; border-radius: 4px; }
+.sc-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sc-fold::after { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 0 2px 8px; border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3); transform: rotate(45deg); transition: transform 300ms var(--spring-smooth); }
+.sc-fold[aria-expanded="false"]::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.sc-card[data-folded] { padding-top: 8px; padding-bottom: 8px; }
+@media (prefers-reduced-motion: reduce) { .sc-fold::after { transition: none; } }
+@media (min-width: 761px) { main:has(.sys-on) { padding-bottom: 0 !important; } }
+
+/* Facts row (Facts.tsx, .fc-row) under the Systems layout: one line that scrolls inside itself on every width; the
+   open fact's panel sits below the row in flow, so the scroller never clips it. The WhatsApp control portals into it. */
+.st-open:has(.sys-on) .fc-row { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; gap: 6px; padding-bottom: 1px; }
+.st-open:has(.sys-on) .fc-row::-webkit-scrollbar { display: none; }
+.st-open:has(.sys-on) .fc-row > * { flex: none; }
+.st-open:has(.sys-on) .fc { min-height: 32px; font-size: 13px; white-space: nowrap; }
+@media (max-width: 760px) {
+  .st-open:has(.sys-on) .fc-row { margin: 0 -16px; padding: 0 16px 1px; }
+}
+/* The facts row scrolls inside itself: every box above it may shrink below its content width. */
+.st-open:has(.sys-on) > .t-bar, .st-open:has(.sys-on) .t-bar > *, .st-open:has(.sys-on) .fc-wrap { min-width: 0; max-width: 100%; }
+.b-open:has(.sys-on) .st-open > .t-bar { min-width: 0; overflow: hidden; }
+
+@media (max-width: 760px) {
+  /* Phone: the card sits at the top of the canvas under the chip row, full width less 12 px a side; the house frames in
+     the free area below it and the toolbar at the foot stays clear. The i opens downwards. */
+  .sc-card { top: 8px; bottom: auto; left: 12px; right: 12px; }
+  .sc-pop { top: calc(100% + 6px); bottom: auto; max-height: calc(var(--sys-hero-h, 400px) - 100% - 8px - 70px); }
+}
+/* Undo in the open card's header row, left of the chevron: a text button, one edit at a time. */
+.pc-card { position: relative; }
+.pc-undo { all: unset; box-sizing: border-box; position: absolute; top: 10px; right: 44px; z-index: 2; min-height: 36px; padding: 0 10px; display: grid; place-items: center;
+  border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--accent); cursor: pointer; animation: figFadeIn 300ms ease-out both; }
+.pc-bottom .pc-undo { top: 14px; }
+.pc-undo:disabled { color: var(--ink-4); cursor: default; }
+.pc-undo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@keyframes figFadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* Heat pump sizing: the bill's size bold, the envelope's upper bound lighter on the next line. */
+.fg-size { display: grid; gap: 1px; }
+.fg-size .fg-fig b { font-size: 14px; }
+.fg-light { color: var(--ink-3); font-size: 12.5px; }

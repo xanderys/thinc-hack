@@ -94,9 +94,9 @@ export function FrontierChart({ frontier }: { frontier: FrontierPoint[] }) {
     <svg className={s.chart} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Upfront cost against 20-year value for every size the engine swept">
       {yTicks.map((v) => <g key={v}><line x1={pad.l} x2={W - pad.r} y1={Y(v)} y2={Y(v)} className={s.cGrid} /><text x={pad.l - 4} y={Y(v) + 3} className={s.cTick} textAnchor="end">{eur(v / 1000)}k</text></g>)}
       <line x1={pad.l} x2={W - pad.r} y1={H - pad.b} y2={H - pad.b} className={s.cAxis} />
-      <text x={pad.l} y={H - 6} className={s.cTick}>{eur(x0)} EUR</text>
-      <text x={W - pad.r} y={H - 6} className={s.cTick} textAnchor="end">{eur(x1)} EUR upfront</text>
-      <text x={pad.l + 2} y={pad.t - 2} className={s.cTick}>20-year value, EUR</text>
+      <text x={pad.l} y={H - 6} className={s.cTick}>€{eur(x0)}</text>
+      <text x={W - pad.r} y={H - 6} className={s.cTick} textAnchor="end">€{eur(x1)} upfront</text>
+      <text x={pad.l + 2} y={pad.t - 2} className={s.cTick}>20-year value in €</text>
       {shown.map((p, i) => <circle key={i} cx={X(p.capex_eur)} cy={Y(p.npv_20y_eur)} r={2.2} className={s.cDot} />)}
       <path d={line} className={s.cLine} />
       {labelled.map((p, i) => {
