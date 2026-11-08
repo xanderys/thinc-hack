@@ -316,6 +316,9 @@ export function registerGlb(root: THREE.Object3D, outlines: THREE.Object3D | nul
         m.material = m.userData.real; m.userData.white = false;
       }
     });
+    // Neighbours' flattened roofs are context for the white look only: over the satellite picture, which already
+    // shows those roofs, they read as frosted boxes.
+    root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && (m.name || m.parent?.name || "").toLowerCase().startsWith("context")) m.visible = white; });
     refreshLines();
   };
   apply();

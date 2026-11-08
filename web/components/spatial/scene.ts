@@ -32,7 +32,9 @@ const springOut = (t: number) => (t <= 0 ? 0 : 1 - (1 + OMEGA * t) * Math.exp(-O
 const DAY_SECONDS = 12;
 
 // prio: when two labels come within 24 px the lesser hides. tap: a roof plane's label that shows only once that plane is tapped.
-export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string; prio?: number; tap?: string };
+// unit: a pill that belongs to a part on the model. Each frame it sits on the part's own top (top, in the part's
+// frame) and hides when the roof or walls stand between the camera and the part's centre (mid).
+export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string; prio?: number; tap?: string; unit?: { obj: THREE.Object3D; top: THREE.Vector3; mid: THREE.Vector3 } };
 const GAP = 24;
 // On-model chips: one line each, never more than four on screen; a chip that would overlap another tries below,
 // left and right of its anchor before it hides.
@@ -131,6 +133,8 @@ export class SpatialScene {
   // when snapUnits moves it onto the wall after the building model loads.
   private wbAt = new THREE.Vector3();
   private battAt = new THREE.Vector3();
+  private occluders: THREE.Mesh[] = []; // the house's roof and walls, for hiding a pill whose part is behind them
+  private occRay = new THREE.Raycaster();
   private gridPole = new THREE.Group(); // the grid connection, shown only with the day flow's "Grid" label
   private inverterUnit: THREE.Object3D | null = null;
   private hpUnit: THREE.Object3D | null = null;
@@ -501,6 +505,8 @@ export class SpatialScene {
       });
       // The target footprint comes with the roof model; until it is in, flatten later.
       this.glbRoot = gltf.scene; this.flattened = false;
+      this.occluders = [];
+      gltf.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && /^(roof|walls)/.test((m.name || m.parent?.name || "").toLowerCase())) this.occluders.push(m); });
       if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene);
       sharpen(gltf.scene, this.renderer);
       this.ctxOff.push(registerGlb(gltf.scene, this.ctxLines));
@@ -891,8 +897,11 @@ export class SpatialScene {
   kitLabels(batt: string | null, wb: string | null): Label[] {
     const out: Label[] = [];
     this.pillAnchors();
-    if (batt) out.push({ key: "kit-batt", at: this.battAt, html: `<b>${batt}</b>`, cls: "chip c-bat", prio: 5e6 });
-    if (wb && this.wallbox) out.push({ key: "kit-wb", at: this.wbAt, html: `<b>${wb}</b>`, cls: "chip c-ev", prio: 5e6 });
+    const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    if (batt) out.push({ key: "kit-batt", at: this.battAt, html: `<b>${batt}</b>`, cls: "chip c-bat", prio: 5e6,
+      unit: this.batteryBox ? { obj: this.batteryBox, top: V(0, BATTERY.h / 2, 0), mid: V(0, 0, 0) } : undefined });
+    if (wb && this.wallbox) out.push({ key: "kit-wb", at: this.wbAt, html: `<b>${wb}</b>`, cls: "chip c-ev", prio: 5e6,
+      unit: { obj: this.wallbox, top: V(0, WALLBOX.h, 0), mid: V(0, WALLBOX.h / 2, 0) } });
     return out;
   }
 
@@ -917,6 +926,16 @@ export class SpatialScene {
       el.style.display = kw > 0.03 ? "" : "none";
       el.setAttribute("stroke-width", String(Math.min(26, 1.5 + kw * 3.2)));
     });
+  }
+
+  // The roof or a wall stands between the camera and this point, more than 0.6 m in front of it (so the glass wall a
+  // part is mounted on, or stands behind, does not count). 3D only: the plan view looks straight down.
+  private behindHouse(pt: THREE.Vector3) {
+    if (this.camera !== this.persp || !this.occluders.length) return false;
+    const from = this.persp.position, d = from.distanceTo(pt);
+    this.occRay.set(from, pt.clone().sub(from).normalize());
+    this.occRay.far = d - 0.6;
+    return this.occRay.intersectObjects(this.occluders, false).length > 0;
   }
 
   private project(v: THREE.Vector3) {
@@ -1168,9 +1187,9 @@ export class SpatialScene {
         const el = this.labelEls.get(x.key);
         if (!el) return;
         if (x.key.startsWith("node-") && el.innerHTML !== x.html) { el.innerHTML = x.html; this.labelSize.delete(x.key); }
-        const p = this.project(x.at);
+        const p = this.project(x.unit ? x.unit.obj.localToWorld(x.unit.top.clone()) : x.at);
         const batt = x.key === "node-batt", chip = !!x.cls?.includes("chip");
-        let ok = p.ok && (!x.tap || x.tap === this.tapped) && (!chip || chips < MAX_CHIPS);
+        let ok = p.ok && (!x.tap || x.tap === this.tapped) && (!chip || chips < MAX_CHIPS) && (!x.unit || (x.unit.obj.visible && !this.behindHouse(x.unit.obj.localToWorld(x.unit.mid.clone()))));
         let dx = 0, dy = 0;
         if (ok) {
           let sz = this.labelSize.get(x.key);
