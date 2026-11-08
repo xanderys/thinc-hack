@@ -475,11 +475,12 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const id = leadRef.current;
     if (!id) { done(); return null; }
     const screen = { design: res.design, capex: res.economics.capex_eur };
-    const before = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
-    if (!before.ok) return before.error;
-    const offer = offerOf(before.data, screen, typeof want === "string" ? want : null);
+    // The draft the card holds carries every offer's design_hash: no read of the lead before saving (read only when it is missing).
+    let held: { lead: LeadT; version: number | null } | null = drafted?.variants?.some((v) => v.design_hash) ? { lead: { draft: drafted } as unknown as LeadT, version: baseVersion.current } : null;
+    if (!held) { const before = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`); if (!before.ok) return before.error; held = { lead: before.data, version: before.data.version ?? baseVersion.current }; }
+    const offer = offerOf(held.lead, screen, typeof want === "string" ? want : null);
     const body = offer ? { variant: offer.key, design_hash: offer.hash } : { variant: "edit" as const, design: res.design, overrides };
-    const r = await approveLead(id, body, before.data.version ?? baseVersion.current);
+    const r = await approveLead(id, body, held.version);
     if (!r.ok) { if (r.status === 409) stale(id); return r.status === 409 ? `${MISMATCH} (${r.error})` : r.error; }
     const v = (r.data as { version?: number }).version; if (v != null) baseVersion.current = v;
     const after = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);

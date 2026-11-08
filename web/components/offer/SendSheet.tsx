@@ -29,8 +29,9 @@ async function copyText(x: string): Promise<boolean> {
 }
 
 
-export default function SendSheet({ leadId, name, link, version, onClose, onSent }: {
-  leadId: string; name: string; link: string; version?: number | null; onClose: () => void; onSent: (version?: number) => void;
+export default function SendSheet({ leadId, name, link, version, saving = false, onClose, onSent }: {
+  // saving: Complete is still being stored (Send waits, the preview waits).
+  leadId: string; name: string; link: string; version?: number | null; saving?: boolean; onClose: () => void; onSent: (version?: number) => void;
 }) {
   const [ch, setCh] = useState<Channel>("whatsapp");
   const [state, setState] = useState<"idle" | "busy" | "sent" | "copied">("idle");
@@ -38,7 +39,7 @@ export default function SendSheet({ leadId, name, link, version, onClose, onSent
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const [stored, setStored] = useState<string | null>(null);   // the text the engine logged for the last send
-  const preview = useWhatsAppPreview(leadId, "send");   // the engine's exact text (a dry run until its preview route lands)
+  const preview = useWhatsAppPreview(leadId, "send", !saving);   // the engine composes it once the lead is Complete   // the engine's exact text (a dry run until its preview route lands)
   const msg = stored ?? preview.text;
   const href = preview.link ?? link;
   // Esc closes the sheet first (capture phase), before the Proposed Design pass or the board hear it.
@@ -87,7 +88,7 @@ export default function SendSheet({ leadId, name, link, version, onClose, onSent
         )}
         <div className={s.sheetGo}>
           <button type="button" className="btn ghost" onClick={onClose}>{state === "sent" ? "Done" : "Close"}</button>
-          {state !== "sent" && <button type="button" className="btn" onClick={go} disabled={state === "busy"} aria-busy={state === "busy" || undefined}>{ch === "copy" ? "Copy link" : "Send"}</button>}
+          {state !== "sent" && <button type="button" className="btn" onClick={go} disabled={state === "busy" || saving} aria-busy={state === "busy" || saving || undefined}>{ch === "copy" ? "Copy link" : "Send"}</button>}
         </div>
       </div>
     </div>

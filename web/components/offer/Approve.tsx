@@ -17,8 +17,9 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
   const [sent, setSent] = useState(false);
   const [lead, setLead] = useState<Read | null>(null);
   const go = async () => {
-    setBusy(true); setFail(null);
-    try { const e = await onApprove(want ?? undefined); setFail(e || null); if (!e && leadId) setSheet(true); } finally { setBusy(false); }
+    // The sheet opens at once; Send waits on the save. A failed save closes it and says why.
+    setBusy(true); setFail(null); if (leadId) setSheet(true);
+    try { const e = await onApprove(want ?? undefined); setFail(e || null); if (e) setSheet(false); } finally { setBusy(false); }
   };
   useEffect(() => {
     if (!leadId) return;
@@ -63,7 +64,7 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
       </div>
       {fail && !complete && !signed && <span className={s.failS} role="alert">{fail}</span>}
       {dec && dec.matches_current === false && <span className={s.warnS}>Signed a different version than the one on screen</span>}
-      {sheet && leadId && <SendSheet leadId={leadId} name={lead?.customer_name ?? ""} link={link} version={lead?.version} onClose={close} onSent={() => { setSent(true); void reread(); }} />}
+      {sheet && leadId && <SendSheet leadId={leadId} name={lead?.customer_name ?? ""} link={link} version={lead?.version} saving={busy} onClose={close} onSent={() => { setSent(true); void reread(); }} />}
     </div>
   );
 }

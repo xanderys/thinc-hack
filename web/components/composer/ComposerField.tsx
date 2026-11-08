@@ -5,7 +5,7 @@ import s from "./composer.module.css";
 export type ComposerFieldProps = {
   value: string; onChange: (v: string) => void; onSend: () => void;
   onAttach: (file: File) => void; onMicStart: () => void; onMicStop: () => void;
-  busy?: boolean; recording?: boolean;
+  busy?: boolean; recording?: boolean; elapsed?: number;
   /** The reply and error line above the field. */
   line?: ReactNode;
   /** Right of the field, left of the send arrow: the expand chevron slot. */
@@ -13,7 +13,7 @@ export type ComposerFieldProps = {
   fieldRef?: Ref<HTMLTextAreaElement>;
 };
 
-export default function ComposerField({ value, onChange, onSend, onAttach, onMicStart, onMicStop, busy, recording, line, trailing, fieldRef }: ComposerFieldProps) {
+export default function ComposerField({ value, onChange, onSend, onAttach, onMicStart, onMicStop, busy, recording, elapsed = 0, line, trailing, fieldRef }: ComposerFieldProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
   const files = useRef<HTMLInputElement>(null);
   const dock = useRef<HTMLDivElement>(null);
@@ -42,6 +42,7 @@ export default function ComposerField({ value, onChange, onSend, onAttach, onMic
           aria-label="Add a house" onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onSend(); } }} />
         {trailing}
+        {recording && <span className={s.secs} aria-live="off">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}</span>}
         <button type="button" className={`${s.glyph} ${recording ? s.on : ""}`} aria-label="Hold to talk" aria-pressed={!!recording} disabled={busy}
           onPointerDown={(e) => { onMicStart(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ } }} onPointerUp={onMicStop} onPointerCancel={onMicStop} onMouseDown={onMicStart} onMouseUp={onMicStop} onTouchStart={onMicStart} onTouchEnd={(e) => { e.preventDefault(); onMicStop(); }} onTouchCancel={onMicStop} onContextMenu={(e) => e.preventDefault()}>
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="7.5" y="2.5" width="5" height="10" rx="2.5" /><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" /></svg>
