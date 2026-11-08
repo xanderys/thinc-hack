@@ -9,7 +9,7 @@
 .panel > * { flex: none; }
 /* Desktop: beside the house, full height of the canvas, scrolling on its own. */
 .docked {
-  position: absolute; top: 12px; right: 12px; bottom: max(64px, calc(var(--say-h, 0px) + 42px)); z-index: 4; width: 380px;
+  position: absolute; top: 12px; right: 12px; bottom: var(--offer-bottom, max(64px, calc(var(--say-h, 0px) + 42px))); z-index: 4; width: 380px;
   overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
 }
 /* Phone: docked under the model, in the page flow. */
@@ -59,6 +59,7 @@
 @media (hover: hover) { .vtab[aria-checked="false"]:hover { border-color: var(--rule-2); } }
 .vtGlyph { color: var(--navy); padding-top: 1px; }
 .vtBody { display: grid; gap: 3px; min-width: 0; }
+.vtMark { margin-left: 8px; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #1b7a39; background: #e3f4e8; vertical-align: 1px; }
 .vtName { font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .vtLine { font-size: 12px; color: var(--ink-3); }
 .vtPrice { font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
@@ -101,6 +102,8 @@
   .vtab { transition: none; }
 }
 @media (max-width: 760px) {
+  /* The sentence bar is fixed to the foot of a phone screen: anything scrolled into view stops above it. */
+  .under button { scroll-margin-bottom: calc(var(--say-h, 64px) + 16px); }
   .panel { padding: 10px; }
   .tiles { gap: 3px; }
   .tiles dt { font-size: 10.5px; }
