@@ -95,6 +95,15 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const consumed = useRef<unknown>(redraft);
   const redraftRef = useRef<unknown>(redraft); redraftRef.current = redraft;
   const rootRef = useRef<HTMLDivElement>(null);
+  const heroRef = useRef<HTMLDivElement>(null);
+  // Phone: the step strip sticks just under the sticky house, whatever height the house has on this step.
+  useEffect(() => {
+    const h = heroRef.current, r = rootRef.current;
+    if (!h || !r) return;
+    const ro = new ResizeObserver(() => r.style.setProperty("--hero-h", `${Math.round(h.getBoundingClientRect().height)}px`));
+    ro.observe(h);
+    return () => ro.disconnect();
+  }, []);
   // One screen on desktop: the chain takes the height left under the top bar.
   useLayoutEffect(() => {
     const el = rootRef.current;
@@ -269,11 +278,13 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   return (
     <div className={`${s.root} ${expanded ? "" : s.isCollapsed}`} ref={rootRef}>
-      {!expanded && (
-        <div className={s.collapsed}>
-          <div className={s.scrub} role="group" aria-label="How the design was reached">
+      {/* The step strip: on a phone it is always there, pinned under the house; a tap moves the camera and scrolls
+          to that step's card. On desktop it stands in for the cards when the eye folds them. */}
+      {(!expanded || narrow) && (
+        <div className={`${s.collapsed} ${narrow ? s.stripPhone : ""}`}>
+          <div className={s.scrub} role="group" aria-label="Steps">
             {TITLES.map((t, i) => (
-              <button key={t} type="button" aria-pressed={stage === i + 1} className={moved.has(i + 1) ? s.hot : undefined} onClick={() => go(i + 1)} style={FIVE ? stepStyle(i) : undefined}>
+              <button key={t} type="button" aria-pressed={stage === i + 1} className={moved.has(i + 1) ? s.hot : undefined} onClick={() => { go(i + 1); if (narrow && expanded) requestAnimationFrame(() => rootRef.current?.querySelector(`[data-step="${i + 1}"]`)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" })); }} style={FIVE ? stepStyle(i) : undefined}>
                 <span className={s.num}>{i + 1}</span>{t}
               </button>
             ))}
@@ -285,7 +296,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
           const n = i + 1, open = n === stage, built = n <= stage || !auto;
           const bar = bars[n];
           return (
-            <li key={moved.has(n) ? `${t}-m${updated}` : t} className={`${s.item} ${open ? s.open : ""} ${built ? "" : s.pending} ${moved.has(n) ? s.flash : ""}`} style={FIVE ? stepStyle(i) : undefined}>
+            <li data-step={n} key={moved.has(n) ? `${t}-m${updated}` : t} className={`${s.item} ${open ? s.open : ""} ${built ? "" : s.pending} ${moved.has(n) ? s.flash : ""}`} style={FIVE ? stepStyle(i) : undefined}>
               <button type="button" className={s.ih} onClick={() => go(n)} aria-expanded={open}>
                 <span className={s.num}>{n}</span>
                 <span className={s.it}>{t}{multi && FIVE && (n <= 2 || n === N) && <span className={s.flatTag}>Single-family figure</span>}</span>
@@ -341,7 +352,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         })}
       </ol>}
 
-      <div className={`${s.hero} ${onPanels && shading ? s.heroTall : ""}`}>
+      <div ref={heroRef} className={`${s.hero} ${onPanels && shading ? s.heroTall : ""}`}>
         {address && spatial !== false ? (
           <SpatialDemo inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatmap ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && !shading && !heatmap}>

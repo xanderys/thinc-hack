@@ -290,3 +290,15 @@
   .shadeCard { display: none; }
   .offerUnder { display: block; order: -1; min-width: 0; }
 }
+
+/* Phone order: the house (sticky), the shading strip on Panels, the step strip pinned under the house, the step
+   cards, then the Offer panel; the sentence bar stays fixed at the bottom. */
+@media (max-width: 760px) {
+  .hero { order: 1; }
+  .shadeUnder { order: 2; }
+  .stripPhone { order: 3; position: sticky; top: var(--hero-h, 46vh); z-index: 4; background: var(--paper); margin: -10px -16px 8px; padding: 6px 16px; width: auto; }
+  .stripPhone .scrub { margin: 0; padding: 0; }
+  .rail { order: 4; }
+  .offerUnder { order: 5; margin-top: 12px; }
+  .item { scroll-margin-top: calc(var(--hero-h, 46vh) + 64px); }
+}

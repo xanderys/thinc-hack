@@ -830,3 +830,5 @@ input, select, textarea { border-radius: 8px; }
 .masthead .back:focus-visible { outline: 2px solid var(--paper); outline-offset: -2px; }
 @media (min-width: 1024px) { body:has(.b-open) .masthead { padding-left: 24px; padding-right: 24px; } }
 .b-open-h { padding-right: 0; }
+/* Header cleanup at every width: no estimate disclaimer line and no Rina line under the verdict sentence. */
+.b-open-h .b-small, .b-open-h .b-rina { display: none; }
