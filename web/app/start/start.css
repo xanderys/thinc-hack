@@ -160,3 +160,5 @@ body:has(.start-root) main { max-width: none; padding: 0; }
 /* The scene gives way first on short screens, so the fact line never runs under the keys. */
 .ios-scene { min-height: 0; flex: 1 1 0; }
 .ios-scene-3d { min-height: 120px; }
+/* One line of figures: wallbox and heat pump sit with the kWp, battery and price. */
+.ios-figs { flex-wrap: nowrap; gap: 12px; font-size: 14px; white-space: nowrap; }

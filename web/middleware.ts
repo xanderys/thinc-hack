@@ -60,6 +60,14 @@ export async function middleware(req: NextRequest) {
     if (await released(req, p === "/api/explain/layers")) return NextResponse.next();
     return new NextResponse("Not found", { status: 404 });
   }
+  // Claude's reading of a homeowner answer on the call: only while the lead is on its call, 30 a minute per lead.
+  if (p === "/api/call/extract" && req.method === "POST") {
+    const b = await bodyOf(req), id = typeof b?.lead_id === "string" ? b.lead_id : null;
+    if (!id || typeof b?.answer !== "string") return new NextResponse("Not found", { status: 404 });
+    if (factLimited(id)) return new NextResponse(JSON.stringify({ error: "Too many answers; try again in a minute." }), { status: 429, headers: { "content-type": "application/json" } });
+    if (CALLING.has((await statusOf(id, req.nextUrl.origin)) ?? "")) return NextResponse.next();
+    return new NextResponse("Not found", { status: 404 });
+  }
   // A fact heard on the call: only call facts, only the record_fact fields, only while the lead is on its call.
   if (p === "/api/intake/step" && req.method === "POST") {
     const b = await bodyOf(req), id = typeof b?.lead_id === "string" ? b.lead_id : null;

@@ -187,10 +187,38 @@ function Page({ agentId, installerId, test }: Props) {
     if (dropped.length) return `error: the engine did not take ${dropped.join(", ")}; ask the homeowner again`;
     return ok ? "ok" : `error: the fact was not saved (${b?.error ?? r?.status ?? "no connection"}); ask the homeowner again`;
   };
+  // Claude reads each homeowner answer against Rina's question (/api/call/extract) and writes only the facts it is sure of.
+  const turns = useRef<{ role: string; text: string }[]>([]);
+  const extract = async (question: string, answer: string) => {
+    const id = leadIdRef.current;
+    if (!id || !answer.trim()) return null;
+    const before = callLeadRef.current?.draft, t0 = performance.now();
+    const r = await fetch("/api/call/extract", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ lead_id: id, question, answer, turns: turns.current.slice(-4) }) }).catch(() => null);
+    const b = r ? await r.json().catch(() => null) : null;
+    const facts: Record<string, unknown> = b?.facts ?? {};
+    console.info("call/extract", { question, answer, status: r?.status, facts, ms: Math.round(performance.now() - t0) });
+    if (!r?.ok || !Object.keys(facts).length) return b;
+    const n = Date.now(), said = Object.entries(facts).map(([f, v]) => factLabel(f, v)).join(", ");
+    if (b?.draft?.design) setCallLead((c) => (c ? { ...c, draft: b.draft, ...(typeof b.version === "number" ? { version: b.version } : {}) } : c));
+    const after = b?.draft;
+    const same = before?.design && after?.design && (["pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"] as const).every((k) => (before.design[k] ?? null) === (after.design[k] ?? null));
+    const a0 = before?.economics?.autarky_share, a1 = after?.economics?.autarky_share;
+    const aut = a0 != null && a1 != null && Math.round(a0 * 100) !== Math.round(a1 * 100) ? `, autarky ${Math.round(a0 * 100)} % to ${Math.round(a1 * 100)} %` : "";
+    setHeard({ text: same ? `${said}: kit unchanged${aut}` : `${said}, from the call${aut}`, n });
+    void pull.current().catch(() => {});
+    return b;
+  };
+  const onTurn = (m: { message: string; source?: string; role?: string }) => {
+    const role = m.role === "user" || m.source === "user" ? "user" : "agent";
+    const prevAgent = [...turns.current].reverse().find((t) => t.role === "agent")?.text ?? "";
+    turns.current = [...turns.current, { role, text: m.message }].slice(-12);
+    if (role === "user") void extract(prevAgent, m.message);
+  };
   // "ok" only once the engine holds the fact; anything else tells Rina to ask again.
   useConversationClientTool("record_fact", recordFact);
   // Test leads only: the headless check calls the same handler the agent calls.
-  useEffect(() => { if (test) (window as unknown as { __recordFact?: typeof recordFact }).__recordFact = recordFact; });
+  useEffect(() => { if (test) Object.assign(window, { __recordFact: recordFact, __extract: extract, __turn: onTurn }); });
   const conversation = useConversation({
     onConnect: ({ conversationId }) => {
       connected.current = true; ended.current = false; setSince(Date.now());
@@ -198,6 +226,7 @@ function Page({ agentId, installerId, test }: Props) {
       try { window.parent?.postMessage({ type: "marquee:lead", conversation_id: conversationId }, location.origin); } catch {}
     },
     onDisconnect: () => { if (connected.current) { endTone(); setStep("thanks"); endCall(); } },
+    onMessage: (m) => onTurn(m as { message: string; source?: string; role?: string }),
     onError: (m) => setError(String(m)),   // stays on the call screen with the words and a retry
   });
   // The enquiry note goes in once the call is up, with the address lookup if it has arrived.
@@ -264,7 +293,7 @@ function Page({ agentId, installerId, test }: Props) {
     if (!phoneOk(a.phone ?? "")) { setMiss("phone"); phoneRef.current?.focus(); return; }
     setMiss(null); setError(null);
     unlock();   // the submit tap allows every sound that follows
-    setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false); setCallLead(null); setHeard(null); setRedesigns(0);
+    setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false); setCallLead(null); setHeard(null); setRedesigns(0); turns.current = [];
     setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null); declinedRef.current = false;
     setLeadError(null);
     setStep("waiting");
