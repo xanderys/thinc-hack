@@ -2,7 +2,8 @@
 // ticks, what to confirm on site, Approve. Always visible: beside the house on desktop, under it on a phone.
 // It holds no design state of its own; every change goes through Stage (overrides, variants, Approve).
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Design, DesignResponse, Economics, OverrideValue, Overrides } from "@/lib/api";
+import type { Design, DesignResponse, Economics, HomeInputs, OverrideValue, Overrides, Variant as EngineVariant } from "@/lib/api";
+import { call } from "@/lib/client";
 import type { Variant as StageVariant } from "@/components/stage/Plan";
 import type { Check, RoofModel } from "@/components/spatial/types";
 import { facing } from "@/components/spatial/facing";
@@ -18,9 +19,10 @@ export type OfferProps = {
   res: DesignResponse; economics: Economics; breakEven: number | null;
   cause: string | null; pending: boolean;
   variants: StageVariant[]; onVariant: (v: StageVariant) => void;
-  checks?: Check[] | null; model?: RoofModel | null;
+  checks?: Check[] | null; checksFresh?: boolean; model?: RoofModel | null;
   overrides: Overrides; setOverride: (f: keyof Design, v: OverrideValue | undefined) => void;
   approvedAt: string | null; onApprove: () => void; leadId?: string | null;
+  inputs?: HomeInputs;   // the facts the design on screen was drawn from; a fact change re-reads the offers
   docked?: boolean;   // inside the canvas on desktop: marks itself as cover so the house fits beside it
 };
 
@@ -34,6 +36,13 @@ const isInfo = (c: Check) => c.level === "info" || !!c.informational;
 const isFail = (c: Check) => !c.pass && !isRef(c) && !isInfo(c);
 const refOut = (c: Check) => isRef(c) && (c.inside_band != null ? !c.inside_band : !c.pass);
 const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+
+// Engine offers in Stage's variant shape, so a pick runs through Stage's onVariant like any other.
+function asStage(vs: EngineVariant[], d: Design): StageVariant[] {
+  const same = (x: Design) => JSON.stringify(x) === JSON.stringify(d);
+  return vs.map((v) => ({ name: v.label.split(" (")[0], tag: "", design: v.design, e: v.economics, note: v.note, current: same(v.design),
+    overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } }));
+}
 
 function useReduce() {
   const [r, setR] = useState(false);
@@ -97,19 +106,28 @@ export default function OfferPanel(p: OfferProps) {
   if (d.heatpump_kw) lines.push({ f: "heatpump_kw", text: `${n1(d.heatpump_kw)} kW heat pump` });
   else if (handSet("heatpump_kw") === null) lines.push({ f: "heatpump_kw", text: "No heat pump" });
 
-  // The four offers come from the last run without fixed sizes (none, or only "include" from a sentence): a refine
-  // with a variant's or a hand-set size reports the offers relative to those sizes, which would turn the planners'
-  // pick into the edit. With fixed sizes the offers stay as they were and only the selection follows the screen.
-  const fixedSizes = Object.values(overrides).some((v) => v !== "include" && v !== undefined);
-  const frozen = useRef<Row[]>([]);
+  // One source for the four offers: the engine's recommendation for the facts on screen, read without any fixed
+  // sizes (a refine reports its offers relative to the sizes it was given, so its planners' pick is the edit).
+  // Select, inline override, Undo and sentence only move the mark; "Your edit" follows the design on screen.
+  const factsKey = JSON.stringify(p.inputs ?? null);
+  const opening = useRef<Row[] | null>(null);   // until the first read lands: the offers of the draft the card opened with
+  if (!opening.current) opening.current = rowsOf(p.variants).filter((r) => r.key !== "edit");
+  const [offers, setOffers] = useState<{ key: string; rows: Row[] } | null>(null);
+  useEffect(() => {
+    if (!p.inputs) return;
+    const ac = new AbortController();
+    call<DesignResponse>("/api/design", { inputs: p.inputs }, ac.signal).then((r) => {
+      if (r.ok && r.data.variants?.length) setOffers({ key: factsKey, rows: rowsOf(asStage(r.data.variants, r.data.design)).filter((x) => x.key !== "edit") });
+    }).catch(() => {});
+    return () => ac.abort();
+  }, [factsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const offersPending = !!p.inputs && offers?.key !== factsKey;
   const rows = useMemo(() => {
     const same = (x: Design) => (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (x[k] ?? null) === (d[k] ?? null));
-    const fresh = rowsOf(p.variants);
-    if (!fixedSizes || !frozen.current.length) frozen.current = fresh.filter((r) => r.key !== "edit");
-    const four = (fixedSizes ? frozen.current : fresh.filter((r) => r.key !== "edit")).map((r) => ({ ...r, selected: same(r.design) }));
+    const four = (offers?.rows ?? opening.current ?? []).map((r) => ({ ...r, selected: same(r.design) }));
     if (!four.length || four.some((r) => r.selected)) return four;
     return [...four, { key: "edit" as const, name: "Your edit", line: "as you changed it", design: d, e, pick: null, selected: true }];
-  }, [p.variants, fixedSizes, d, e]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [offers, d, e]); // eslint-disable-line react-hooks/exhaustive-deps
   const tiles = [
     { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
     { k: "Autarky", v: pc(e.autarky_share) },
@@ -136,9 +154,9 @@ export default function OfferPanel(p: OfferProps) {
             canNone={l.f !== "pv_kwp" && l.f !== "inverter_kw"} glyph={PART[l.f]} onChoose={choose} />
         ))}
       </div>
-      <VariantTabs rows={rows} pending={pending} onPick={(r) => { if (!r.pick) return; setHand(new Set()); p.onVariant(r.pick); }} />
+      <VariantTabs rows={rows} pending={pending || offersPending} onPick={(r) => { if (!r.pick) return; setHand(new Set()); p.onVariant(r.pick); }} />
       {checks && checks.length > 0 && (
-        <div className={s.ticks}>
+        <div className={s.ticks} data-pending={pending || p.checksFresh === false || undefined}>
           <ul>
             {ticks.map((c) => {
               const tone = isFail(c) ? "fail" : isInfo(c) ? "info" : "pass";

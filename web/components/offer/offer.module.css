@@ -80,6 +80,8 @@
 .ticks li[data-tone="pass"] i { background: #e3f4e8; color: #1b7a39; }
 .ticks li[data-tone="info"] i { background: var(--sheet-2); color: var(--ink-3); }
 .ticks li[data-tone="fail"] i { background: #fde8e4; color: #b42d17; }
+.ticks[data-pending] { opacity: 0.35; }
+.ticks[data-pending] b, .ticks[data-pending] p { color: transparent; background: var(--sheet-2); border-radius: 4px; }
 .refS, .passS { margin: 6px 0 0; font-size: 12px; line-height: 1.4; }
 .refS { color: #7a4f00; }
 .passS { color: #1b7a39; }
