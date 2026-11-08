@@ -49,13 +49,9 @@ const ROWS: { key: Variant["key"]; name: string }[] = [
   { key: "expert", name: "Planners' pick" }, { key: "independence", name: "Most independence" },
   { key: "payback", name: "Best payback" }, { key: "upfront", name: "Lowest upfront cost" },
 ];
-function rowsOf(variants: Variant[], key: Key, mine?: { design: Design; economics: DesignResponse["economics"] }) {
-  const rows = ROWS.flatMap((r) => { const v = variants.find((x) => x.key === r.key); return v ? [{ ...r, v }] : []; });
-  // A design the planner set by hand is none of the four offers: it leads the list as the one proposed.
-  if (key === "edit" && mine) return [{ key: "edit" as Variant["key"], name: "Your planner's design", v: { key: "expert", label: "", note: "", design: mine.design, economics: mine.economics } as Variant }, ...rows];
-  const picked = variants.find((x) => x.key === key);
-  if (picked && !rows.some((r) => r.key === key)) rows.push({ key: key as Variant["key"], name: picked.label, v: picked });
-  return rows;
+// The other offers, for the installer to talk through; the proposed one is the page itself.
+function rowsOf(variants: Variant[], key: Key) {
+  return ROWS.flatMap((r) => { const v = variants.find((x) => x.key === r.key); return v && r.key !== key ? [{ ...r, v }] : []; });
 }
 
 type Props = {
@@ -80,6 +76,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
     const ctl = new AbortController();
     const facts = buildFacts(lead.facts, { ...lead.draft, design, economics: e })
       .filter((f) => !TECH.test(f))
+      .map((f) => f.replace(/autarky (\d+)%/i, "$1% of the home's electricity supplied by the system"))
       .map((f) => Object.values(INSTALLER_NAME).reduce((s, n) => s.split(n).join(brand), f));
     fetch("/api/write", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ facts, mode: "homeowner", lead_id: lead.lead_id }), signal: ctl.signal })
       .then(async (r) => (r.ok ? ((await r.json()) as WriteResponse) : "failed" as const))
@@ -92,6 +89,8 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const yieldKwh = e.annual?.pv_yield_kwh;
   const be = e.break_even_year !== undefined ? e.break_even_year : e.payback_years == null ? null : Math.ceil(e.payback_years);
   const name = lead.customer_name?.trim();
+  const alts = rowsOf(variants, key);
+  const own = e.annual ? Math.max(0, e.annual.load_kwh - e.annual.grid_import_kwh) : null;
 
   return (
     <article className="pp" aria-label="Your proposal">
@@ -121,18 +120,27 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
 
       <section className="pp-kpis" aria-label="Key figures">
         {yieldKwh != null && <Kpi label="Yield a year" value={`${n0(yieldKwh)} kWh`} />}
-        <Kpi label="Autarky" value={pc(e.autarky_share)} />
+        <div className="pp-kpi">
+          <span>Supplied by your system</span><b>{pc(e.autarky_share)}</b>
+          <small>{pc(e.autarky_share)} of your electricity supplied by your system</small>
+          {e.annual && own != null && (
+            <details className="pp-more-d">
+              <summary>Details</summary>
+              <p>{n0(own)} of the {n0(e.annual.load_kwh)} kWh your home uses a year comes from your panels and battery; {n0(e.annual.grid_import_kwh)} kWh still comes from the grid.</p>
+            </details>
+          )}
+        </div>
         <Kpi label="Investment estimate" value={eur(e.capex_eur)} note="An estimate until the site visit." />
         <Kpi label="Break-even" value={be == null ? "over 20 years" : `${n0(be)} years`} />
       </section>
 
-      {variants.length > 0 && (
-        <section className="pp-card" aria-label="Variants">
-          <h2>Variants</h2>
+      {alts.length > 0 && (
+        <section className="pp-card" aria-labelledby="pp-alts">
+          <h2 id="pp-alts">Alternatives for your installer to discuss</h2>
           <ul className="pp-vars">
-            {rowsOf(variants, key, { design, economics: e }).map(({ key: k, name: label, v }) => (
-              <li key={k} className={k === key ? "on" : undefined} aria-current={k === key ? "true" : undefined}>
-                <span className="pp-vname">{label}{k === key && <span className="pp-pill blue">Proposed</span>}</span>
+            {alts.map(({ key: k, name: label, v }) => (
+              <li key={k}>
+                <span className="pp-vname">{label}</span>
                 <Chips d={v.design} />
                 <span className="pp-vnum">{eur(v.economics.capex_eur)}<small>estimate</small></span>
               </li>
@@ -150,7 +158,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
             return (
               <li key={k} className={v == null ? "off" : undefined}>
                 <span className={`pp-dot ${k}`} aria-hidden />
-                <span className="pp-pname"><b>{NAME[k]}</b><span className="pp-size">{v == null ? "Not included" : `${n2(v)} ${UNIT[k]}`}</span></span>
+                <span className="pp-pname"><b>{NAME[k]}</b>{v == null && <span className="pp-size">Not included</span>}</span>
                 {lines?.[k] && <p>{lines[k]}</p>}
                 {!write && <span className="pp-wait" aria-hidden />}
               </li>
@@ -293,16 +301,16 @@ export function ProposalSkeleton() {
       </header>
       <section className="pp-house" aria-hidden><div className="pp-housebox pp-skb" /></section>
       <section className="pp-kpis" aria-hidden>
-        {[["Yield a year", "10,000 kWh"], ["Autarky", "70 %"], ["Investment estimate", "€20,000"], ["Break-even", "10 years"]].map(([l, x], i) => (
+        {[["Yield a year", "10,000 kWh"], ["Supplied by your system", "70 %"], ["Investment estimate", "€20,000"], ["Break-even", "10 years"]].map(([l, x], i) => (
           <div key={l} className="pp-kpi"><span>{l}</span><b className="pp-skt">{x}</b>{i === 2 && <small className="pp-skt">An estimate until the site visit.</small>}</div>
         ))}
       </section>
       <section className="pp-card" aria-hidden>
-        <h2>Variants</h2>
+        <h2>Alternatives for your installer to discuss</h2>
         <ul className="pp-vars">
-          {v.map((x, i) => (
+          {v.slice(1).map((x) => (
             <li key={x}>
-              <span className="pp-vname"><span className="pp-skt">{x}</span>{i === 0 && <span className="pp-pill pp-skt">Proposed</span>}</span>
+              <span className="pp-vname"><span className="pp-skt">{x}</span></span>
               <span className="pp-chips"><span className="pp-pill pp-skt">10.24 kWp</span><span className="pp-pill pp-skt">10 kWh</span></span>
               <span className="pp-vnum"><span className="pp-skt">€20,000</span><small className="pp-skt">estimate</small></span>
             </li>
@@ -316,7 +324,7 @@ export function ProposalSkeleton() {
           {KEYS.filter((k) => !OPTIONAL.has(k)).map((k) => (
             <li key={k}>
               <span className="pp-dot pp-skb" aria-hidden />
-              <span className="pp-pname"><b className="pp-skt">{NAME[k]}</b><span className="pp-size pp-skt">10.24 {UNIT[k]}</span></span>
+              <span className="pp-pname"><b className="pp-skt">{NAME[k]}</b></span>
               <span className="pp-wait" aria-hidden />
             </li>
           ))}
