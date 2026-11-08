@@ -1,0 +1,10 @@
+# Brief: on-model editing (P0, Xander, Sun 8 Nov 2026 about 06:00 Munich)
+
+Top priority on the scene lane (Opus); walls polish parks behind it. Like Reonic's plus-circles: every system input becomes a dynamic, inviting control ON the model, not only in cards or the chooser. A planner can add and change the number directly on the house.
+
+1. PANELS: each roof face shows the engine's slot grid as dotted outline frames where a module fits; an empty slot carries a small glass "+" circle, tap adds a module there; tap a placed module to remove it (it fades out, the slot outline returns). The face label count and kWp, the Panels card bars, the tiles, kit rows and the tucked pass tween live. The change is an override on the lead (same path as the chooser: `pv_kwp` = count x module Wp, plus `layout_slots` with the chosen slot ids, stored opaque by the engine), persists, Undo reverts, Complete sends the shown design. The engine re-runs economics for the new count without re-laying out the roof (the layout is the planner's).
+2. BATTERY: tap the unit on the inner wall for a kWh stepper popover on the model (None / 5 / 7 / 10 / 15, plus and minus). When the design has no battery, a dotted outline of the unit sits where it would go with a "+" to add one.
+3. WALLBOX: dotted outline on the wall by the drive with a "+" to add; tap the unit for a kW segmented (11 / 22) and a remove action; the car appears with it.
+4. HEAT PUMP: dotted outline of the outdoor unit beside the house with a "+"; tap for a kW stepper and remove.
+
+Interaction rules: hit targets at least 44 px; apple-motion springs for add and remove (bounce 0, crossfade under Reduce Motion); hover and press states on desktop; outlines and controls visible only for the selected chip's system (Panels chip shows slot frames, Battery chip the battery outline, and so on) so the model is never cluttered. Both widths. Homeowner site read-only (no editing there). Preview to the Chief-of-Staff on a TEST lead: add and remove modules and a battery, check the numbers and persistence (reload keeps the edits).
