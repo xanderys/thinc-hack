@@ -2,6 +2,7 @@
 // The open card's reasoning chain: the house is the hero for the whole page, eight stages build on it.
 // Each stage adds one sentence to the rail, a working-shown bar or check list where the engine has one,
 // and moves the camera to the part of the house it explains. A change re-runs the chain from the stage it moved.
+import { call } from "@/lib/client";
 import { isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
@@ -16,7 +17,6 @@ import type { Variant } from "@/components/stage/Plan";
 import House from "@/components/stage/House";
 import Why from "@/components/stage/Why";
 import s from "./chain.module.css";
-import WhatsAppClient from "@/components/whatsapp/WhatsAppClient";
 import OfferPanel, { type OfferProps } from "@/components/offer/OfferPanel";
 import ShadingPanel from "@/components/spatial/ShadingScrubber";
 import { EnvelopeBar, HeatPumpStep } from "@/components/spatial/EnvelopeBar";
@@ -151,8 +151,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   useEffect(() => {
     if (!flat) return;
     const ac = new AbortController();
-    fetch("/api/explain/layers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ inputs: { ...inputs, ...(address ? { address } : {}) }, design: res.design, ...(leadId ? { lead_id: leadId } : {}) }), signal: ac.signal })
-      .then((r) => (r.ok ? r.json() : null)).then((l) => { if (l) onLayers(l as Layers); }).catch(() => {});
+    // call() asks again quietly (2, 4, 8 s) when the engine is slow or answers 502; the canvas keeps its skeleton meanwhile.
+    call<Layers>("/api/explain/layers", { inputs: { ...inputs, ...(address ? { address } : {}) }, design: res.design, ...(leadId ? { lead_id: leadId } : {}) }, ac.signal)
+      .then((r) => { if (r.ok) onLayers(r.data); }).catch(() => {});
     return () => ac.abort();
   }, [flatKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -492,8 +493,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   return (
     <div className={`${s.root} ${expanded ? "" : s.isCollapsed} ${SYS ? "sys-on" : ""}`} ref={rootRef}>
-      {/* WhatsApp copilot (v2.14): portals into the facts row above when it is there. */}
-      <WhatsAppClient leadId={leadId ?? null} />
       {/* The step strip: on a phone it is always there, pinned under the house; a tap moves the camera and scrolls
           to that step's card. On desktop it stands in for the cards when the eye folds them. */}
 
