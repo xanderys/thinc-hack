@@ -1,4 +1,4 @@
-// The rolling offer: four numbers, the parts list (each line a chooser), the four offers, the sanity
+// The rolling offer: six numbers in two rows, the parts list (each line a chooser), the four offers, the sanity
 // ticks, what to confirm on site, Approve. Always visible: beside the house on desktop, under it on a phone.
 // It holds no design state of its own; every change goes through Stage (overrides, variants, Approve).
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -12,7 +12,8 @@ import KitSheet from "./KitSheet";
 import VariantTabs, { rowsOf, type Row } from "./VariantTabs";
 import InlineOverride from "./InlineOverride";
 import Approve from "./Approve";
-import { scrub } from "./facts";
+import { checkLine, findCheck } from "./facts";
+import Info, { InfoRows } from "./Info";
 import s from "./offer.module.css";
 
 export type OfferProps = {
@@ -31,11 +32,6 @@ const PART: Record<keyof Design, Part> = { pv_kwp: "pv", inverter_kw: "inverter"
 const UNIT: Record<keyof Design, string> = { pv_kwp: "kWp", inverter_kw: "kW", battery_kwh: "kWh", wallbox_kw: "kW", heatpump_kw: "kW" };
 const COMP: Partial<Record<keyof Design, "pv" | "battery" | "wallbox" | "heatpump">> = { pv_kwp: "pv", battery_kwh: "battery", wallbox_kw: "wallbox", heatpump_kw: "heatpump" };
 
-// Until the engine sends level, Reonic's battery guide is a reference line, never a red failure.
-const isRef = (c: Check) => c.level === "reference" || (!c.level && /battery per daily/i.test(c.name));
-const isInfo = (c: Check) => c.level === "info" || !!c.informational;
-const isFail = (c: Check) => !c.pass && !isRef(c) && !isInfo(c);
-const refOut = (c: Check) => isRef(c) && (c.inside_band != null ? !c.inside_band : !c.pass);
 
 // Engine offers in Stage's variant shape, so a pick runs through Stage's onVariant like any other.
 function asStage(vs: EngineVariant[], d: Design): StageVariant[] {
@@ -147,39 +143,31 @@ export default function OfferPanel(p: OfferProps) {
     if (!four.length || four.some((r) => r.selected)) return four.map(mark);
     return [...four, { key: "edit" as const, name: "Your edit", line: "as you changed it", design: d, e, pick: null, selected: true }].map(mark);
   }, [offers, d, e, approved, cause]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Two figures behind an "i": payback and break-even on the Break-even tile, DC/AC ratio on the inverter row.
+  const line = (re: RegExp) => { const c = findCheck(checks, re); return c ? checkLine(c) : null; };
+  const pay = [line(/payback/i), line(/break.?even/i)].filter((x): x is { label: string; value: string } => !!x);
+  const payInfo = pay.length ? <Info label="Payback and break-even"><InfoRows rows={pay} /></Info> : undefined;
+  const dcac = line(/dc\s*\/\s*ac/i);
+  // Two rows of three, no number twice: what is fitted and what it costs, then what it gives back.
   const tiles = [
+    { k: "Solar", v: d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "None" },
+    { k: "Battery", v: d.battery_kwh ? `${n2(d.battery_kwh)} kWh` : "None" },
+    { k: "Investment", v: eur(e.capex_eur) },
     { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
     { k: "Autarky", v: pc(e.autarky_share) },
-    { k: "Investment", v: eur(e.capex_eur) },
-    { k: "Break-even", v: breakEven == null ? "20+ years" : `${breakEven} years` },
+    { k: "Break-even", v: breakEven == null ? "20+ years" : `${breakEven} years`, info: payInfo },
   ];
 
-  const ticks = (checks ?? []).filter((c) => !isRef(c) && scrub(c.name));
-  const ref = (checks ?? []).find(isRef);
-  const val = (c: Check) => c.value == null ? "" : typeof c.value !== "number" ? String(c.value) : c.unit === "share" ? pc(c.value) : c.unit === "%" ? `${n0(c.value)} %` : `${c.value >= 100 ? n0(c.value) : n2(c.value)}${c.unit && c.unit.length < 8 ? ` ${c.unit}` : ""}`;
-  const refMsg = ref && (scrub(ref.message) ?? `Battery ${n2(Number(ref.value))} kWh per kWh of daily use`);
 
   return (
     <aside ref={box} className={`${s.panel} ${p.docked ? s.docked : s.under}`} aria-label="Offer" data-cover={p.docked ? "" : undefined}>
       <Tiles items={tiles} mode={reduce ? "fade" : mode} pending={pending} />
-      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} note="Estimates until the site visit" changed={hl.parts} flash={hl.n}
-        edit={(f, label) => (
-          <InlineOverride field={f} text={label} unit={UNIT[f]} sizes={sizes[f] ?? []} current={d[f]} set={handSet(f)} fixed={overrides[f] !== undefined}
+      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} info={dcac ? { inverter_kw: <Info label="DC/AC ratio"><InfoRows rows={[dcac]} /></Info> } : undefined} note="Estimates until the site visit" changed={hl.parts} flash={hl.n}
+        edit={(f, label, content) => (
+          <InlineOverride field={f} text={label} content={content} unit={UNIT[f]} sizes={sizes[f] ?? []} current={d[f]} set={handSet(f)} fixed={overrides[f] !== undefined}
             canNone={f !== "pv_kwp" && f !== "inverter_kw"} onChoose={choose} />
         )} />
       <VariantTabs rows={rows} pending={pending || offersPending} onPick={(r) => { if (!r.pick) return; setHand(new Set()); p.onVariant(r.pick); }} />
-      {checks && checks.length > 0 && (
-        <details className={`${s.ticks} ${s.checks}`} data-pending={pending || p.checksFresh === false || undefined}>
-          <summary>Checks</summary>
-          <ul>
-            {ticks.map((c) => {
-              const tone = isFail(c) ? "fail" : isInfo(c) ? "info" : "pass";
-              return <li key={c.name} data-tone={tone}><i aria-hidden="true">{tone === "fail" ? "!" : tone === "pass" ? "✓" : "i"}</i>{scrub(c.name)} <b>{val(c)}</b></li>;
-            })}
-          </ul>
-          {refMsg && <p className={refOut(ref!) ? s.refS : s.passS}>{refMsg}</p>}
-        </details>
-      )}
       <p className={s.confirm}>Confirm on site: roof condition and shade (estimated from the 3D model), meter and grid connection, battery location</p>
       <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} onApproved={setApproved} undo={p.undo} />
     </aside>
