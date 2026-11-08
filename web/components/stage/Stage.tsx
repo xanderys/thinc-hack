@@ -19,6 +19,7 @@ import { approveLead, matches, offerOf } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
 import { DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
 import { COMPONENT_DESIGN_FIELD } from "@/lib/api";
+import { berlinTime } from "@/lib/time";
 
 const UNIT: Record<keyof Design, string> = { pv_kwp: "kWp", inverter_kw: "kW", battery_kwh: "kWh", heatpump_kw: "kW", wallbox_kw: "kW" };
 type Snap = { changed: Partial<HomeInputs>; overrides: Overrides };
@@ -431,7 +432,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!res) return null;
     const at = new Date();
     try { sessionStorage.setItem("marquee.approved", JSON.stringify({ lead_id: leadRef.current, inputs: pref === "expert" ? inputs : { ...inputs, preference: pref }, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
-    const done = () => { setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })); if (leadRef.current) onApproved?.(leadRef.current); };
+    const done = () => { setApprovedAt(berlinTime(at.toISOString())); if (leadRef.current) onApproved?.(leadRef.current); };
     const id = leadRef.current;
     if (!id) { done(); return null; }
     const screen = { design: res.design, capex: res.economics.capex_eur };

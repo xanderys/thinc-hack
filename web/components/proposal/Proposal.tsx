@@ -19,6 +19,7 @@ import { Facts } from "@/components/offer/VariantTabs";
 import { variantFacts } from "@/components/offer/facts";
 import { pastLine } from "@/lib/past";
 import "./proposal.css";
+import { berlinStamp } from "@/lib/time";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
 
@@ -30,7 +31,7 @@ const UNIT: Record<ComponentKey, string> = { pv: "kWp", battery: "kWh", heatpump
 
 const eur = (x: number) => `€${n0(x)}`;
 const pc = (x: number) => `${Math.round(x * 100)} %`;
-const when = (d: Date) => d.toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const when = (d: Date) => berlinStamp(d.toISOString());
 export const span = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min` : `${Math.floor(s / 60)} min ${s % 60} s`; };
 // A street and number before the first comma, as in "Katharinenstraße 5, 82008 Unterhaching".
 const hasStreet = (s: string) => s.includes(",") && /[A-Za-zÄÖÜäöüß.]{3,}\s+\d+\s*[a-zA-Z]?$/.test(s.split(",")[0].trim());
@@ -76,7 +77,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const alts = rowsOf(variants, key);
   const own = e.annual ? Math.max(0, e.annual.load_kwh - e.annual.grid_import_kwh) : null;
 
-  const mark = lead.approved ? `Approved: ${key === "edit" ? "Planner's adjusted design" : ROWS.find((r) => r.key === key)?.name ?? "Planners' pick"}` : null;
+  const mark = lead.status === "declined" ? "Declined" : lead.approved ? `Approved: ${key === "edit" ? "Planner's adjusted design" : ROWS.find((r) => r.key === key)?.name ?? "Planners' pick"}` : null;
   const figs = [
     { k: "kwp" as const, v: design.pv_kwp ? `${n2(design.pv_kwp)} kWp` : "No solar" },
     { k: "kwh" as const, v: design.battery_kwh ? `${n2(design.battery_kwh)} kWh` : "No battery" },
@@ -209,7 +210,6 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
         <div className="pp-l pp-sighead"><span id="pp-sig-l">Signature</span><button type="button" className="pp-link" onClick={() => { sig.current?.clear(); setInked(false); }} disabled={!inked}>Clear</button></div>
         <Signature ref={sig} labelledBy="pp-sig-l" onInk={setInked} />
         <label className="pp-tick"><input type="checkbox" checked={tick} onChange={(ev) => setTick(ev.target.checked)} /><span>I accept this proposal</span></label>
-        <p className="pp-time">{when(now)}</p>
         <button type="button" className="pp-go" disabled={!ready} onClick={() => send("sign")}>{busy === "sign" ? "Signing" : "Sign"}</button>
       </fieldset>
       {error && <p className="pp-err" role="alert">{error.text} <button type="button" className="pp-link" onClick={() => send(error.act)}>Try again</button></p>}
