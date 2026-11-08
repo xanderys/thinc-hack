@@ -78,6 +78,8 @@ export class Systems {
   private pipes: Partial<Record<"pvHome" | "pvBatt" | "battHome" | "gridBox" | "boxCar", Pipe>> = {};
   private car = new THREE.Group();
   private plug: THREE.Mesh | null = null; // the charging cable from the wallbox to the parked car
+  private glyph: THREE.Group | null = null; // the car's charge, a small battery over its roof (setCharge)
+  private glyphFill: THREE.Mesh | null = null;
   private carAt = new THREE.Vector3(); private carV = new THREE.Vector3(); private carGoal = new THREE.Vector3();
   private carMoving = false;
   private h = 6; private soc = 0.2;
@@ -115,9 +117,11 @@ export class Systems {
 
     // The car (kitMeshes.ts): a low-poly hatchback parked on the drive beside the wallbox, nose to the north, its
     // charging flap level with the wall unit. The cable runs from the unit down the wall and across to the flap.
+    if (this.glyph) this.car.remove(this.glyph); // kept across a rebuild, put back below
     this.car.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); (m.material as THREE.Material | undefined)?.dispose?.(); });
     this.car.clear();
     this.car.add(car());
+    if (this.glyph) this.car.add(this.glyph);
     const wbObj = this.host.wallbox;
     wbObj?.updateWorldMatrix(true, false);
     const out = wbObj ? WALLBOX_OUTLET.clone().applyMatrix4(wbObj.matrixWorld) : new THREE.Vector3(box.max.x + 0.1, 1.05, box.max.z - 1.5);
@@ -145,6 +149,25 @@ export class Systems {
     this.car.position.copy(this.carAt);
     this.plugged();
   }
+  // The car's charge 0..1: a small battery glyph floating over its roof, its green fill following the value.
+  setCharge(c: number) {
+    if (!this.glyph) {
+      const g = new THREE.Group(), W = 0.7, H = 0.3;
+      const frame = new THREE.Mesh(new THREE.PlaneGeometry(W + 0.08, H + 0.08), new THREE.MeshBasicMaterial({ color: "#151826", side: THREE.DoubleSide }));
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshBasicMaterial({ color: "#F4F1EA", side: THREE.DoubleSide }));
+      back.position.z = 0.002;
+      const fill = new THREE.Mesh(new THREE.PlaneGeometry(1, H), new THREE.MeshBasicMaterial({ color: "#24a148", side: THREE.DoubleSide }));
+      fill.position.z = 0.004;
+      const nub = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.14), frame.material);
+      nub.position.x = (W + 0.08) / 2 + 0.03;
+      g.add(frame, back, fill, nub);
+      g.position.set(0, 2.1, 0); g.rotation.y = Math.PI / 2; // over the roof, facing the house side
+      this.glyph = g; this.glyphFill = fill; this.car.add(g);
+    }
+    const W = 0.7, w = Math.max(0.001, c * W);
+    this.glyphFill!.scale.x = w; this.glyphFill!.position.x = -W / 2 + w / 2;
+  }
+
   // The cable reaches the car once it is parked in the Wallbox view; until then it hangs in its loop on the unit.
   private plugged() {
     const on = this.sys === "wallbox" && !this.carMoving && this.host.wbOn;

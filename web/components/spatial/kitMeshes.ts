@@ -48,12 +48,14 @@ export const BATTERY = { w: 0.9, h: 1.5, d: 0.6 };
 export const batteryHeight = (modules: number) => 0.04 + modules * (0.25 + 0.018) + 0.08;
 export const batteryFor = (kwh: number) => battery(batteryModules(kwh));
 export function battery(modules: number): THREE.Group {
-  const g = new THREE.Group(), body = lam(KIT.housing), seam = lam(KIT.seam), led = new THREE.MeshBasicMaterial({ color: KIT.led }), mh = 0.25, sh = 0.018;
+  const g = new THREE.Group(), body = lam(KIT.housing), seam = lam(KIT.seam), mh = 0.25, sh = 0.018;
+  const led = () => new THREE.MeshBasicMaterial({ color: KIT.led }); // one per light, so a fill level can dim some
   let y = 0.04;
   g.add(box(BATTERY.w - 0.06, 0.04, BATTERY.d - 0.06, seam, 0, 0.02)); // plinth
   for (let i = 0; i < modules; i++) {
     g.add(box(BATTERY.w, mh, BATTERY.d, body, 0, y + mh / 2));
-    g.add(box(0.16, 0.025, 0.01, led, -BATTERY.w / 2 + 0.16, y + mh / 2, BATTERY.d / 2 + 0.005)); // status light
+    const l = box(0.16, 0.025, 0.01, led(), -BATTERY.w / 2 + 0.16, y + mh / 2, BATTERY.d / 2 + 0.005); // status light
+    l.name = "led"; l.userData.i = i; g.add(l);
     y += mh;
     g.add(box(BATTERY.w - 0.04, sh, BATTERY.d - 0.04, seam, 0, y + sh / 2));
     y += sh;

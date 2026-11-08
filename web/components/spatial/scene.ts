@@ -52,6 +52,7 @@ export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string
 const GAP = 24;
 // On-model chips: one line each, never more than four on screen; a chip that would overlap another tries below,
 // left and right of its anchor before it hides.
+const XRAY_WARM = new THREE.Color("#F7E3CF"), XRAY_COOL = new THREE.Color("#DCE6F2"); // the x-ray glass by day and by night
 const MAX_CHIPS = 4, CHIP_GAP = 6, STUB = 10; // STUB: px of leader between a unit and its pill
 const kwpS = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 2 });
 
@@ -846,6 +847,41 @@ export class SpatialScene {
   }
 
   setBattery(on: boolean) { this.battOn = on; this.fadeTo(this.batteryBox ?? null, on); }
+  // Component views (docs/briefs/component-views.md): three cheap, idempotent hooks; never called, nothing changes.
+  // Battery charge 0..1: that share of the tower's lights stays lit (bottom up) and a green band on its front rises.
+  private battFill: number | null = null;
+  setBatteryFill(f: number) {
+    this.battFill = Math.max(0, Math.min(1, f));
+    this.applyFill();
+  }
+  private applyFill() {
+    const o = this.batteryBox, f = this.battFill;
+    if (!o || f == null) return;
+    const lit = Math.round(f * this.battN);
+    o.traverse((x) => { if (x.name === "led") ((x as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set((x.userData.i as number) < lit ? "#24a148" : "#5a5d66"); });
+    let band = o.getObjectByName("fill") as THREE.Mesh | undefined;
+    if (!band) {
+      band = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 1), new THREE.MeshBasicMaterial({ color: "#24a148" }));
+      band.name = "fill"; band.position.set(BATTERY.w / 2 - 0.07, 0, BATTERY.d / 2 + 0.006);
+      o.add(band);
+    }
+    const h = Math.max(0.001, f * (batteryHeight(this.battN) - 0.12));
+    band.scale.y = h; band.position.y = 0.04 + h / 2; band.visible = f > 0.001;
+  }
+  // The car's charge 0..1, as a small battery glyph over its roof (systems.ts).
+  setCarCharge(c: number) { this.systems.setCharge(Math.max(0, Math.min(1, c))); }
+  // The heat pump x-ray's glass follows the hour: warmer by day, cooler at night (applied each frame while set).
+  private xrayHour: number | null = null;
+  setXrayHour(h: number) { this.xrayHour = ((h % 24) + 24) % 24; }
+  private applyXrayHour() {
+    if (this.xrayHour == null) return;
+    const m = this.xray.shellMesh()?.material as THREE.MeshLambertMaterial | undefined;
+    if (!m) return;
+    const day = Math.max(0, Math.sin((Math.PI * (this.xrayHour - 6)) / 12)); // 0 at night, 1 at noon
+    m.color.copy(XRAY_COOL).lerp(XRAY_WARM, day);
+    m.emissive.copy(m.color).multiplyScalar(0.45);
+  }
+
   // The battery tower grows with the design's kWh, one module per band, the same tower as its parts-list icon.
   setBatteryKwh(kwh: number | null) {
     const n = batteryModules(kwh && kwh > 0 ? kwh : 9);
@@ -860,6 +896,7 @@ export class SpatialScene {
     this.fades.delete(old);
     this.batteryBox = next;
     this.fadeTo(next, this.battOn);
+    this.applyFill();
     this.pillAnchors();
     this.systems.rebuild(); // the flow into the battery ends on the tower's new top
   }
@@ -1513,6 +1550,7 @@ export class SpatialScene {
       this.opts.compass.style.transform = `rotate(${ang.toFixed(3)}rad)`;
     }
     this.systems.frame(dt);
+    this.applyXrayHour();
     this.renderer.render(this.scene, this.camera);
   };
 
