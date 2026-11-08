@@ -77,3 +77,7 @@ OpenScreen https://github.com/AlanRoybal/openscreen-studio, Screenize https://gi
 13. **Look.** Take the palette from the installer's world (offer documents, data sheets, roof plans) as in the CLAUDE.md look rules. Transitions 200 to 400 ms, springs with no bounce. Show the generated proposal PDF for 2 s as proof of output, copying Reonic's tablet shot.
 
 closed: nothing opened (no browser tabs, no background processes; yt-dlp subtitle downloads finished and exited; temp transcripts are in the session scratchpad).
+
+## Music reference
+
+Apple "Don't Blink" (https://www.youtube.com/watch?v=jk6sz25OZgw): the track is "Tiger Rhythm" by Surkin, a French electro-house track identified by Shazam on 8 Nov 2026 (two of three samples matched). It is a commercial track, so an upload carries a Content ID risk.

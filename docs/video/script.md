@@ -1,4 +1,6 @@
-# Marquee product walkthrough, shot list (target 2:35, hard max 3:00)
+# Marquee launch video, shot list (9:16, hard max 2:00, event rule)
+
+Changes 8 Nov 04:30 Munich (Xander): vertical 9:16; intro is Zi Yuan sketching, then a photoreal hologram of the hero house revealed by the pan; app beats built as motion graphics from 1290x2796 stills; Beat 2 (form and Rina call) dropped to fit 2:00; music is Xander's pick; Xander records the VO.
 
 Pure screen recording at 1920x1080. VO at about 2.3 words a second; spoken numbers ("ten point three five") run long, so each beat has slack. Every figure below was read off production on 8 Nov 2026, about 10:30 Munich. Re-read each figure on the take and change the line if the screen differs.
 
