@@ -259,7 +259,11 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         const refine = () => call<RefineResponse>("/api/refine", { inputs, overrides, ...(lid && baseVersion.current != null ? { lead_id: lid, base_version: baseVersion.current } : {}) }, ctl.signal);
         // Opening on stored kit edits reads them like the board does (no lead id, one shared call); a refine that carries
         // the lead id and its version follows an actual edit only.
-        const r = fixed ? await (lid && why ? serialWrite(lid, "refine", async () => { let x = await refine(); if (!x.ok && x.status === 409) { const g = await call<LeadT>(`/api/leads/${lid}`); if (g.ok && g.data.version != null) { baseVersion.current = g.data.version; x = await refine(); } } return x; }) : refineOf(inputs, overrides, ctl.signal)) : await designOf(inputs, ctl.signal);
+        // A kit edit (a tap on the model, the chooser) prices at once: its refine is one light call outside the lead's
+        // write queue (on the engine a lead id only adds a staleness check, it stores nothing); the lead write that
+        // persists the edit runs in the queue beside it, so the price no longer waits for it.
+        const kitEdit = !!why?.startsWith("Changed by hand");
+        const r = fixed ? await (lid && why && !kitEdit ? serialWrite(lid, "refine", async () => { let x = await refine(); if (!x.ok && x.status === 409) { const g = await call<LeadT>(`/api/leads/${lid}`); if (g.ok && g.data.version != null) { baseVersion.current = g.data.version; x = await refine(); } } return x; }) : refineOf(inputs, overrides, ctl.signal)) : await designOf(inputs, ctl.signal);
         if (r.ok) keep(k, r.data);
         land(r, asked, why, fixed, lid);
         setBusy(false);
@@ -496,8 +500,6 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
         canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-      {slow && !roof?.pending && !err && <p className="s-roof" role="status">Measuring the roof</p>}
-      {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
       {!res && <OpenSkeleton />}
       {res?.design && <Chain setKit={setKit} res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={canUndo} onUndo={onUndo} answered={answer != null} redraft={moved}
         decide={<Decide slim pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />} />}
