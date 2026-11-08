@@ -36,6 +36,8 @@ type Spec = {
   state: (i: HomeInputs, roof?: RoofResult | null) => "stated" | "estimated" | "missing";
   value: (i: HomeInputs, roof?: RoofResult | null) => string;
 };
+// The second line under an estimated value: the word is the mark, the tone alone is not.
+const MARK: Partial<Record<Field, string>> = { electricity_price_ct_kwh: "assumed", house_size_sqm: "estimated from the building", house_built_year: "estimated" };
 const SPECS: Spec[] = [
   { f: "annual_demand_kwh", label: "Household use", glyph: "bolt", state: () => "stated", value: (i) => `${n0(i.annual_demand_kwh)} kWh` },
   { f: "heating_type", label: "Heating", glyph: "flame", state: (i) => i.heating_type === "Unknown" ? "missing" : "stated", value: (i) => heatWord(i.heating_type) },
@@ -132,12 +134,12 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
     const on = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(null); };
     addEventListener("keydown", on); return () => removeEventListener("keydown", on);
   }, [open]);
-  const cell = (key: string, g: Glyph, label: string, st: string, value: string | null, via: boolean, field: Field | "phone") => (
+  const cell = (key: string, g: Glyph, label: string, st: string, value: string | null, via: boolean, field: Field | "phone", mark?: string) => (
     <button key={key} type="button" className="fq" data-state={st} aria-expanded={open === field} aria-controls="fc-panel" onClick={() => setOpen((o) => o === field ? null : field)}>
       <Glyph g={g} />
       {st === "missing"
         ? <span className="fq-need">Needs: {label.toLowerCase()}</span>
-        : <span className="fq-t"><span className="k">{label}</span><span className="v">{value}</span>{via && <span className="via">via WhatsApp</span>}</span>}
+        : <span className="fq-t"><span className="k">{label}</span><span className="v">{value}</span>{mark && <span className="mk">{mark}</span>}{via && <span className="via">via WhatsApp</span>}</span>}
     </button>
   );
   return (
@@ -149,7 +151,7 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
               const base = s.state(inputs, roof);
               // The engine's own word for each fact (lead.sources) sets the tone; a missing value stays missing.
               const st = base === "missing" ? base : edited.has(s.f) ? "stated" : sources?.[s.f] ? (sources[s.f] === "estimated" ? "estimated" : "stated") : base;
-              return cell(s.f, s.glyph, s.label, st, st === "missing" ? null : s.value(inputs, roof), origin?.[s.f] === "whatsapp" && st !== "missing", s.f);
+              return cell(s.f, s.glyph, s.label, st, st === "missing" ? null : s.value(inputs, roof), origin?.[s.f] === "whatsapp" && st !== "missing", s.f, st === "estimated" ? MARK[s.f] ?? "estimated" : undefined);
             })}
             {onPhone && cell("phone", "phone", "Phone", phone ? "stated" : "missing", phone ? maskPhone(phone) : null, false, "phone")}
           </div>

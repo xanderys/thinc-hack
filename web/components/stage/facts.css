@@ -106,3 +106,4 @@
 .b-open:has(.bk) .b-open-h { border-radius: 0 0 12px 12px; border-top-color: var(--rule); }
 .b-open:has(.bk):has(.fq-wrap[data-open]) .b-open-h { border-radius: 0; }
 @media (max-width: 760px) { .bk { flex-wrap: wrap; } .bk-rows { flex-basis: 100%; } }
+.fq .mk { font-size: 11px; color: var(--ink-3); }
