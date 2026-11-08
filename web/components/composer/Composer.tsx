@@ -17,6 +17,8 @@ export default function Composer() {
   const field = useRef<HTMLTextAreaElement | null>(null);
   const [row, setRow] = useState<{ name: string; place: string; id?: string } | null>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
+  const [secs, setSecs] = useState(0);
+  const starting = useRef(false);
   const want = useRef(false);   // the button is still held
   const voiced = useRef(false);   // the field holds a transcript
   const kept = useRef<Facts | null>(null);   // facts kept while the address is still missing
@@ -29,12 +31,17 @@ export default function Composer() {
     const t0 = Date.now();
     const check = () => {
       const card = row.id ? board.querySelector(`[style*="card-${row.id}"]`) : null;
-      if ((card && !card.querySelector(".b-skel")) || Date.now() - t0 > (row.id ? 45000 : 90000)) setRow(null);
+      if (card || Date.now() - t0 > (row.id ? 45000 : 90000)) setRow(null);
     };
     const mo = new MutationObserver(check); mo.observe(board, { childList: true, subtree: true, attributes: true });
     const iv = setInterval(check, 2000);
     return () => { mo.disconnect(); clearInterval(iv); h.remove(); setHost(null); };
   }, [row?.id, !!row]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!rec) return;
+    setSecs(0); const t0 = Date.now(); const iv = setInterval(() => setSecs(Math.floor((Date.now() - t0) / 1000)), 250);
+    return () => clearInterval(iv);
+  }, [rec]);
   useEffect(() => () => { media.current?.stream.getTracks().forEach((t) => t.stop()); }, []);
 
   const run = useCallback(async (input: string, source: Source) => {
@@ -51,9 +58,11 @@ export default function Composer() {
 
   async function startRec() {
     want.current = true;
-    if (busy || rec || media.current) return;
+    if (busy || rec || media.current || starting.current) return;
+    starting.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      starting.current = false;
       if (!want.current) { stream.getTracks().forEach((t) => t.stop()); return; }   // released before the permission came back
       const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
       const r = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
@@ -61,7 +70,7 @@ export default function Composer() {
       r.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       media.current = { r, chunks, stream };
       r.start(); setRec(true); setFail(null);
-    } catch (e) { want.current = false; setFail({ src: "Microphone said", msg: (e as Error).message, retry: startRec }); }
+    } catch (e) { starting.current = false; want.current = false; setFail({ src: "Microphone said", msg: (e as Error).message, retry: startRec }); }
   }
   async function stopRec() {
     want.current = false;
@@ -98,5 +107,5 @@ export default function Composer() {
     <ul className={s.newrow}><li><button type="button" className={s.newcard} disabled={!row.id} onClick={() => row.id && openCard(row.id)}>
       <h3>{row.name}</h3><p>{row.place}</p><span className="b-skel b-skel-line" aria-hidden /><span className="b-skel b-skel-line short" aria-hidden />
     </button></li></ul>, host) : null;
-  return <div /* composer mount */>{pinned}<div aria-hidden style={{ height: "var(--composer-h, 96px)" }} /><ComposerField value={text} onChange={setText} onSend={submit} onAttach={pick} onMicStart={() => void startRec()} onMicStop={() => void stopRec()} busy={busy} recording={rec} line={line} fieldRef={field} /></div>;
+  return <div /* composer mount */>{pinned}<div aria-hidden style={{ height: "var(--composer-h, 96px)" }} /><ComposerField value={text} onChange={setText} onSend={submit} onAttach={pick} onMicStart={() => void startRec()} onMicStop={() => void stopRec()} busy={busy} recording={rec} elapsed={secs} line={line} fieldRef={field} /></div>;
 }
