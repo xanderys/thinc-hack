@@ -51,7 +51,7 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
       media.current = { r, chunks, stream }; r.start(250); setRec(true);
       t0.current = Date.now(); setElapsed(0);
       tick.current = setInterval(() => setElapsed(Math.floor((Date.now() - t0.current) / 1000)), 250);
-    } catch (e) { setMicErr(e instanceof DOMException && e.name === "NotAllowedError" ? "Microphone access is blocked in this browser." : "No microphone found."); }
+    } catch (e) { setMicErr(e instanceof DOMException && e.name === "NotAllowedError" ? "Microphone access is blocked in this browser." : "The microphone is not available."); }
     finally { starting.current = false; }
   }
   async function stopRec() {
