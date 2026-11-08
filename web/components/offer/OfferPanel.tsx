@@ -110,6 +110,16 @@ export default function OfferPanel(p: OfferProps) {
     p.setOverride(f, v);
   };
   const handSet = (f: keyof Design) => (hand.has(f) ? overrides[f] : undefined);
+  // On open, the lead's stored kit edits carry their lock again; a stored offer-tab pick (all sizes equal to an offer) does not.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current) return;
+    const keys = Object.keys(overrides) as (keyof Design)[];
+    if (!keys.length) return;
+    seeded.current = true;
+    const tab = (res.variants ?? []).some((v) => (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (v.design[k] ?? null) === (overrides[k] ?? null)));
+    if (!tab && !hand.size) setHand(new Set(keys));
+  }, [overrides]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One source for the four offers: the engine's recommendation for the facts on screen, read without any fixed
   // sizes (a refine reports its offers relative to the sizes it was given, so its planners' pick is the edit).
