@@ -30,7 +30,7 @@ type LeadLike = Pick<Lead, "status" | "facts" | "address_or_postcode"> & Partial
 const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-GB");
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
-export const offerEur = (x: number | null) => x == null ? "No offer" : `${n0(x)} EUR, estimate`;
+export const offerEur = (x: number | null) => x == null ? "No offer" : `€${n0(x)}, estimate`;
 
 const isPostcode = (s: string | undefined | null) => !!s && /^\s*\d{5}\s*$/.test(s);
 // A roof face is usable when it is flat enough to tilt panels on, or not facing north (more than 60 degrees off north).
@@ -71,7 +71,7 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
   const confidence_line = `${stated} of ${total} facts stated, ${roofWords}, ${useWords}`;
 
   const confirm_on_site = [
-    hasStreet && measuredRoof(roof) ? "roof condition and shade (estimate from the surface model)" : "roof size, condition and shade (not measured yet)",
+    hasStreet && measuredRoof(roof) ? "roof condition and shade (estimated from the 3D model)" : "roof size, condition and shade (not measured yet)",
     "meter and grid connection",
     ...(d?.battery_kwh ? ["battery location"] : []),
     ...(d?.heatpump_kw ? ["heat pump location and the radiators"] : []),

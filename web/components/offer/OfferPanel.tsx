@@ -192,7 +192,7 @@ export default function OfferPanel(p: OfferProps) {
           {refMsg && <p className={refOut(ref!) ? s.refS : s.passS}>{refMsg}</p>}
         </div>
       )}
-      <p className={s.confirm}>Confirm on site: roof condition and shade (estimate from the surface model), meter and grid connection, battery location</p>
+      <p className={s.confirm}>Confirm on site: roof condition and shade (estimated from the 3D model), meter and grid connection, battery location</p>
       <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} onApproved={setApproved} />
     </aside>
   );

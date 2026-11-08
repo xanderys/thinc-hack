@@ -16,7 +16,7 @@ export default function OptimumBlock({ design, economics, optimum }: { design: D
   const money = [
     { name: "Investment", ours: fmt.eur(economics.capex_eur), opt: fmt.eur(o.capex_eur), delta: signed(d.capex_eur, fmt.eur) },
     { name: "Saving a year", ours: fmt.eur(economics.annual_saving_eur), opt: fmt.eur(o.annual_saving_eur), delta: signed(d.annual_saving_eur, fmt.eur) },
-    { name: "Payback", ours: economics.payback_years == null ? "n/a" : `${fmt.n(economics.payback_years, 1)} yrs`, opt: o.payback_years == null ? "n/a" : `${fmt.n(o.payback_years, 1)} yrs`, delta: signed(d.payback_years, (v) => `${fmt.n(v, 1)} yrs`) },
+    { name: "Payback", ours: economics.payback_years == null ? "n/a" : `${fmt.n(economics.payback_years, 1)} years`, opt: o.payback_years == null ? "n/a" : `${fmt.n(o.payback_years, 1)} years`, delta: signed(d.payback_years, (v) => `${fmt.n(v, 1)} years`) },
     { name: "Autarky", ours: fmt.pct(economics.autarky_share), opt: fmt.pct(o.autarky_share), delta: signed(d.autarky_share == null ? null : Math.round(d.autarky_share * 100), (v) => `${v} pts`) },
   ];
   return (

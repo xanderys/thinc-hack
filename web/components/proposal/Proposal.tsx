@@ -101,7 +101,6 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
         {yieldKwh != null && <Kpi label="Yield a year" value={`${n0(yieldKwh)} kWh`} />}
         <div className="pp-kpi">
           <span>Supplied by your system</span><b>{pc(e.autarky_share)}</b>
-          <small>{pc(e.autarky_share)} of your electricity supplied by your system</small>
           {e.annual && own != null && (
             <details className="pp-more-d">
               <summary>Details</summary>

@@ -182,7 +182,7 @@ export default function Planner() {
             <div className="refine">
               <h2>Tell it what changes</h2>
               {llm === false ? (
-                <p className="note">Sentence input is off: no ANTHROPIC_API_KEY in web/.env.local. The fields and Fix controls still work.</p>
+                <p className="note">Sentence changes are off. Use the fields and Fix controls.</p>
               ) : (
                 <form className="say" onSubmit={(ev) => { ev.preventDefault(); if (sentence.trim()) interpret(); }}>
                   <input value={sentence} onChange={(ev) => setSentence(ev.target.value)} placeholder="The family buys an EV next year"
