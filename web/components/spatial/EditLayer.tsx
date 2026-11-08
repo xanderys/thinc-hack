@@ -127,7 +127,7 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet }
           {unit === "battery" && (
             <div className={s.seg} role="radiogroup" aria-label="Battery size">
               <button type="button" role="radio" aria-checked={!v} onClick={() => set(null)}>None</button>
-              {steps.map((x) => <button key={x} type="button" role="radio" aria-checked={x === v} onClick={() => set(x)}>{x}</button>)}
+              {steps.map((x) => <button key={x} type="button" role="radio" aria-checked={x === v} onClick={() => set(x)}>{x} kWh</button>)}
             </div>
           )}
           {unit !== "battery" && <button type="button" className={s.remove} onClick={() => set(null)}>Remove</button>}
