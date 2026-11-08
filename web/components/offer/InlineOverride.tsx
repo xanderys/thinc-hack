@@ -13,7 +13,7 @@ export default function InlineOverride({ field, text, unit, sizes, current, set,
   field: LineField; text: string; unit: string; sizes: number[]; current: number | null;
   set: OverrideValue | undefined;   // what the planner chose here by hand (lock and "set by you")
   fixed: boolean;                   // any override on this field, a variant's included
-  canNone: boolean; glyph: string;
+  canNone: boolean; glyph?: string;   // omitted inside the kit sheet, where the row already shows the part
   onChoose: (f: LineField, v: OverrideValue | undefined) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -21,9 +21,10 @@ export default function InlineOverride({ field, text, unit, sizes, current, set,
   useEffect(() => {
     if (!open) return;
     const off = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    addEventListener("pointerdown", off); addEventListener("keydown", esc);
-    return () => { removeEventListener("pointerdown", off); removeEventListener("keydown", esc); };
+    // Capture phase on window: Esc closes the chooser and stops there, so the board's Esc (close the lead) never runs.
+    const esc = (e: KeyboardEvent) => { if (e.key !== "Escape") return; e.stopPropagation(); e.preventDefault(); setOpen(false); };
+    addEventListener("pointerdown", off); addEventListener("keydown", esc, true);
+    return () => { removeEventListener("pointerdown", off); removeEventListener("keydown", esc, true); };
   }, [open]);
   const fmt = (v: number) => `${unit === "kWp" ? n2(v) : n1(v)} ${unit}`;
   const locked = set !== undefined;
@@ -31,7 +32,7 @@ export default function InlineOverride({ field, text, unit, sizes, current, set,
   return (
     <div className={s.line} ref={ref} data-open={open || undefined}>
       <button type="button" className={s.lineBtn} aria-expanded={open} onClick={() => setOpen((x) => !x)}>
-        <Glyph k={glyph} size={15} />
+        {glyph && <Glyph k={glyph} size={15} />}
         <span className={s.lineText}>{text}</span>
         {locked && <span className={s.set}><Glyph k="lock" size={12} />set by you</span>}
       </button>
