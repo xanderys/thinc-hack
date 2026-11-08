@@ -66,7 +66,7 @@ export default function CopilotShell() {
     const set = () => {
       const w = card.offsetWidth, h = card.offsetHeight; if (!w || !h) return;
       let r: { left: number; top: number; width: number; height: number } | null = null;
-      if (asCircle) r = { left: innerWidth - 16 - 56, top: innerHeight - 16 - 56 - safe(), width: 56, height: 56 };
+      if (asCircle) { const c = document.querySelector<HTMLElement>("[data-copilot-circle]"); r = c ? { left: c.offsetLeft, top: c.offsetTop, width: 56, height: 56 } : { left: innerWidth - 16 - 56, top: innerHeight - 16 - 56 - safe(), width: 56, height: 56 }; }
       else { const f = el.querySelector("form")?.getBoundingClientRect(); if (f && f.width) r = { left: f.left, top: f.top, width: f.width, height: f.height }; }
       if (!r) return;
       el.style.setProperty("--from", `translate(${r.left - card.offsetLeft}px, ${r.top - card.offsetTop}px) scale(${r.width / w}, ${r.height / h})`);
@@ -82,7 +82,7 @@ export default function CopilotShell() {
     };
     set(); addEventListener("resize", set); const t = setTimeout(set, 600);
     return () => { removeEventListener("resize", set); clearTimeout(t); };
-  }, [path, asCircle]);
+  }, [path, asCircle, open]);
   // Opening by focus or tap puts the cursor in the Thread's own field.
   useEffect(() => { if (open) { const t = setTimeout(() => (cardEl.current?.querySelector("textarea") as HTMLTextAreaElement | null)?.focus(), 120); return () => clearTimeout(t); } }, [open]);
 
@@ -123,7 +123,7 @@ export default function CopilotShell() {
           </div>
         </section>
       </div>
-      <button type="button" className={s.circle} aria-label="Open the copilot" title={sug.line || undefined} data-on={asCircle && !open ? "1" : undefined} data-off={off} tabIndex={asCircle && !open ? 0 : -1} onClick={() => setOpen(true)}>
+      <button type="button" className={s.circle} data-copilot-circle aria-label="Open the copilot" title={sug.line || undefined} data-on={asCircle && !open ? "1" : undefined} data-off={off} tabIndex={asCircle && !open ? 0 : -1} onClick={() => setOpen(true)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}<img src="/copilot/friday.png" alt="Copilot" width={56} height={56} draggable={false} />{sug.dot && <span className={s.dot} aria-hidden />}
       </button>
     </Ctx.Provider>
