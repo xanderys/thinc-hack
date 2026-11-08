@@ -187,7 +187,6 @@ export class Xray {
     const edge = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0, depthWrite: false });
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), edge);
     edges.renderOrder = 6; this.sg.add(edges);
-
     // Facades (vertical faces grouped by plane), for the x-ray's leader targets and glow sheets.
     const ctr = box.getCenter(new THREE.Vector3());
     const groups = new Map<string, Facade>();
@@ -358,7 +357,7 @@ export class Xray {
     if (s) {
       // The shell shows whenever the glass look or the x-ray does; the x-ray tints it towards the wall's share.
       const o = Math.max(this.gf, this.f);
-      s.glass.color.copy(FROST); if (this.wallTint) s.glass.color.lerp(this.wallTint, 0.62 * this.f);
+      s.glass.color.copy(FROST); if (this.wallTint) s.glass.color.lerp(this.wallTint, 0.4 * this.f);   // a tint on the glass, same alpha
       s.glass.emissive.copy(s.glass.color).multiplyScalar(0.45);
       s.glass.opacity = SHELL_K * o; s.edge.opacity = EDGE_K * o;
       this.sg.visible = o > 0.005;
