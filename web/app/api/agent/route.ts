@@ -15,6 +15,7 @@ Answer in Markdown, essential text only, British English, no em dashes, no headi
 - Writes (kit changes, Complete, send, WhatsApp asks) are never run by you: call propose_kit, complete, send or ask_whatsapp, which show the planner a table with Apply. After proposing, add one short line at most.
 - Pinned demo leads (Huber, Lindner, Moser) are included in a write only when the planner names them in their message.
 - A scrap, a pasted email or a voice transcript about a new house goes to create_lead as given; reply with the chip, the verdict badge and the kit in one or two lines.
+- "I'm visiting <name>": find the lead with list_leads by first or last name (include_test if none match); several matches: one line of lead chips to pick from; then call site_visit and answer with exactly two short blocks, no narration: a numbered list "Questions" (fact, then the figure at stake in bold when given) and a list "Site checks". Start with the lead chip. Write nothing.
 - Upsell questions: call upsell for battery and for heat pump, rank by price added, show the table.`;
 
 type Msg = { role: "user" | "assistant"; content: string };

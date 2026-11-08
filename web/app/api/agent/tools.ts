@@ -163,6 +163,46 @@ async function createLead(text: string, test: boolean) {
   return summary(l, d, await verdict(l, d));
 }
 
+// Before a site visit: the facts still open that move the design (ranked, with the figure at stake when the engine
+// gives one), and the checks only a visit confirms, for the systems in this design. Reads only.
+const FACT: Record<string, string> = {
+  annual_demand_kwh: "Yearly electricity use", heating_type: "What heats the house", heating_demand_kwh: "Heating use a year", heating_cost_per_year_eur: "Heating bill a year",
+  boiler_age_years: "Boiler age", has_ev: "Electric car now or planned", ev_annual_km: "Kilometres a year by car", num_inhabitants: "People in the household",
+  has_solar: "Existing solar", existing_solar_kwp: "Size of the existing solar", has_storage: "Existing battery", preference: "What matters most: price, payback or independence",
+  house_size_sqm: "Living area", house_built_year: "Year built",
+};
+type Blocker = { field: string; label?: string; state?: string; moves?: string | string[]; delta_eur?: number | null; delta_text?: string | null };
+async function siteVisit(id: string) {
+  const l = await lead(id) as L & { blockers?: Blocker[]; sources?: Record<string, string>; next_question?: { field?: string; question?: string; expected_swing?: string } | null };
+  const d = (await shown(l)).design;
+  let questions: { fact: string; state: string; at_stake: string | null }[];
+  if (Array.isArray(l.blockers) && l.blockers.length) {
+    questions = [...l.blockers].sort((a, b) => Math.abs(b.delta_eur ?? 0) - Math.abs(a.delta_eur ?? 0))
+      .map((b) => ({ fact: b.label ?? FACT[b.field] ?? b.field, state: b.state ?? "estimated", at_stake: b.delta_text ?? (b.delta_eur != null ? `€${Math.round(Math.abs(b.delta_eur)).toLocaleString("en-GB")}` : null) }));
+  } else {
+    const src = l.sources ?? {}, first = l.next_question?.field, F = l.facts as unknown as Record<string, unknown>, ht = F.heating_type as string | undefined;
+    const open = Object.keys(FACT).filter((k) => src[k] === "estimated" || src[k] === "missing" || (src[k] == null && F[k] == null));
+    // Heating facts matter when a heat pump is drafted or a fossil boiler could be replaced; the car's kilometres only with a wallbox.
+    const moving = open.filter((k) => {
+      if (k === "existing_solar_kwp" || k === "existing_storage_kwh") return false;
+      if (k === "ev_annual_km") return !!d.wallbox_kw;
+      if (/heating_demand|heating_cost|boiler/.test(k)) return !!d.heatpump_kw || !ht || ht === "Gas" || ht === "Oil";
+      return true;
+    });
+    moving.sort((a, b) => (a === first ? -1 : b === first ? 1 : Object.keys(FACT).indexOf(a) - Object.keys(FACT).indexOf(b)));
+    questions = moving.slice(0, 5).map((k) => ({ fact: FACT[k], state: src[k] === "missing" || src[k] == null ? "missing" : "estimated", at_stake: k === first ? (l.next_question?.expected_swing ?? null) : null }));
+  }
+  const checks = [
+    "Meter cabinet and grid connection: space for the new meter and the feed-in",
+    "Roof covering, age and condition, rafters and structural load",
+    ...(d.battery_kwh ? ["Inverter and battery location, and the cable run to the meter"] : ["Inverter location, and the cable run to the meter"]),
+    ...(d.heatpump_kw ? ["Heat pump outdoor unit position and noise distance to the neighbour", "Existing radiators and flow temperature"] : []),
+    ...(d.wallbox_kw ? ["Wallbox location and its cable run"] : []),
+    "Scaffold and access",
+  ];
+  return { lead_id: l.lead_id, name: l.customer_name, address: l.address_or_postcode, design: d, questions, site_checks: checks, source: Array.isArray(l.blockers) && l.blockers.length ? "engine blockers" : "lead sources" };
+}
+
 const obj = (props: Record<string, unknown>, required: string[] = []) => ({ type: "object" as const, properties: props, required, additionalProperties: false });
 const ids = { type: "array", items: { type: "string" } };
 const OPS = { type: "array", items: obj({ lead_id: { type: "string" }, name: { type: "string" } }, ["lead_id", "name"]) };
@@ -179,6 +219,7 @@ export const TOOLS: Anthropic.Tool[] = [
   { name: "send", description: "Propose sending the proposal to the homeowner. Shown with Apply, never run directly. Only Complete leads can be sent.", input_schema: obj({ ops: OPS, channel: { type: "string", enum: ["whatsapp", "copy"] } }, ["ops"]) },
   { name: "ask_whatsapp", description: "Propose asking the homeowner on WhatsApp for missing facts. Shown with Apply, never run directly.", input_schema: obj({ ops: OPS, facts: { type: "array", items: { type: "string", enum: ["annual_demand_kwh", "heating_type", "has_ev", "heating_demand_kwh", "has_solar", "num_inhabitants"] } } }, ["ops"]) },
   { name: "create_lead", description: "Create a lead from a scrap, an email or a voice transcript, exactly as the planner gave it. Returns the new lead with its design and verdict.", input_schema: obj({ text: { type: "string" } }, ["text"]) },
+  { name: "site_visit", description: "Before a site visit: the open facts that move the design, ranked with the figure at stake, and the on-site checks for the systems in this design. Reads only.", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
   { name: "stats", description: "How close the engine comes to the expert designs on unseen projects: the eval scoreboard.", input_schema: obj({}) },
 ];
 
@@ -191,6 +232,7 @@ export async function runTool(name: string, input: Record<string, unknown>, said
     case "refine": { const l = await lead(id); const d = await refine(l, { ...(l.overrides ?? {}), ...(input.overrides as Ov) }); return d ? { design: d.design, economics: d.economics } : { error: "The engine refused these overrides." }; }
     case "upsell": return upsell(input.part as "battery" | "heatpump", input.ids as string[] | undefined, !!input.include_test);
     case "create_lead": { const r = await createLead(String(input.text ?? ""), test); if ("lead_id" in r) emit({ t: "created", lead_id: r.lead_id }); return r; }
+    case "site_visit": return siteVisit(String(input.lead_id ?? ""));
     case "stats": { const r = await callEngine("GET", "/api/eval", S(), undefined, H()); const b = r.body as Record<string, unknown>; return Object.fromEntries(Object.entries(b ?? {}).filter(([k]) => !/per_project|rows|projects/.test(k)).map(([k, v]) => [k, v])); }
     case "propose_kit": case "complete": case "send": case "ask_whatsapp": {
       const action = name === "propose_kit" ? "kit" : name === "ask_whatsapp" ? "ask" : name;
