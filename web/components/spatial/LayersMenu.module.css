@@ -13,3 +13,5 @@
 .ground button[aria-pressed="true"] { border-color: var(--ink, #0a0c14); }
 .age { margin: 0; padding: 4px 12px 2px; font-size: 11px; line-height: 1.35; color: var(--ink-3, #6b6d75); white-space: normal; }
 .age:first-of-type { border-top: 1px solid var(--rule, #e2ded4); margin-top: 4px; padding-top: 7px; }
+/* The data licence: one plain line at the foot of the menu (it is no longer drawn on the canvas). */
+.licence { margin: 4px 0 0; padding: 7px 12px 4px; border-top: 1px solid var(--rule, #e2ded4); font-size: 10.5px; line-height: 1.35; color: var(--ink-3, #6b6d75); white-space: normal; }

@@ -23,6 +23,7 @@ export type OfferProps = {
   overrides: Overrides; setOverride: (f: keyof Design, v: OverrideValue | undefined) => void;
   approvedAt: string | null; onApprove: (want?: unknown) => Promise<string | null> | void; leadId?: string | null;
   inputs?: HomeInputs;   // the facts the design on screen was drawn from; a fact change re-reads the offers
+  undo?: { can: boolean; run: () => void };   // Undo beside Approve (the last edit to the design)
   docked?: boolean;   // inside the canvas on desktop: marks itself as cover so the house fits beside it
 };
 
@@ -170,7 +171,7 @@ export default function OfferPanel(p: OfferProps) {
         </details>
       )}
       <p className={s.confirm}>Confirm on site: roof condition and shade (estimated from the 3D model), meter and grid connection, battery location</p>
-      <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} onApproved={setApproved} />
+      <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} onApproved={setApproved} undo={p.undo} />
     </aside>
   );
 }

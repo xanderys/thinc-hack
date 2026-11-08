@@ -30,6 +30,11 @@ export const useViewOpts = () => useSyncExternalStore(onWhite, viewOpts, viewOpt
 
 // One line per picture on screen, years only; nothing for a picture the engine has no date for.
 // "Aerial photo flown 2023, building model 2021", "Google imagery, date not published".
+// The licence line for the data on the canvas: the Bavarian geodata, plus Google's ground credit when that ground shows.
+// It lives in the Layers menu footer, never on the canvas.
+export const LICENCE = "Bayerische Vermessungsverwaltung, www.geodaten.bayern.de, CC BY 4.0";
+export const licenceLine = (o: State) => `${LICENCE}${o.google && o.ground === "google" && o.credit ? `, ground: ${o.credit}` : ""}`;
+
 export function imageryLines(o: State): string[] {
   const year = (d?: string | null) => (d && /\d{4}/.exec(d)?.[0]) || null;
   const googleGround = o.google && o.ground === "google";

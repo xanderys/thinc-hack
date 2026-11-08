@@ -8,7 +8,7 @@ import s from "./offer.module.css";
 
 const hm = (iso?: string | null) => (iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "");
 
-export default function Approve({ leadId, approvedAt, onApprove, stale, want, onApproved }: { leadId?: string | null; approvedAt: string | null; onApprove: (want?: unknown) => Promise<string | null> | void; stale?: boolean; want?: string | null; onApproved?: (a: Lead["approved"] | null) => void }) {
+export default function Approve({ leadId, approvedAt, onApprove, stale, want, onApproved, undo }: { undo?: { can: boolean; run: () => void }; leadId?: string | null; approvedAt: string | null; onApprove: (want?: unknown) => Promise<string | null> | void; stale?: boolean; want?: string | null; onApproved?: (a: Lead["approved"] | null) => void }) {
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState<string | null>(null);
   const go = async () => { setBusy(true); setFail(null); try { const e = await onApprove(want ?? undefined); setFail(e || null); } finally { setBusy(false); } };
@@ -25,6 +25,9 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
   const approved = approvedAt ?? (!stale && lead?.status === "approved" ? hm(lead.approved_at) : null);
   return (
     <div className={s.approve}>
+      <div className={s.approveRow}>
+      {/* Undo reverts the last edit to the design (moved here from the model toolbar, where it read as restart). */}
+      {undo && <button type="button" className={s.undoBtn} onClick={undo.run} disabled={!undo.can} title="Revert the last edit">Undo</button>}
       {signed ? (
         <span className={s.done} data-k="signed">Signed{dec?.name ? ` by ${dec.name}` : ""} {hm(dec?.decided_at)}</span>
       ) : approved ? (
@@ -32,6 +35,7 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
       ) : (
         <button type="button" className={`btn ${s.approveBtn}`} onClick={go} disabled={busy}>{busy ? "Approving" : "Approve"}</button>
       )}
+      </div>
       {fail && !approved && !signed && <span className={s.failS} role="alert">{fail}</span>}
       {dec && dec.matches_current === false && <span className={s.warnS}>Signed a different version than the one on screen</span>}
     </div>

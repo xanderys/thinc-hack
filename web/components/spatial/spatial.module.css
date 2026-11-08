@@ -145,3 +145,12 @@
   .massTag { top: 8px; bottom: auto; left: 8px; }
   .licenceBare { top: 32px; bottom: auto; left: 8px; max-width: calc(100% - 16px); font-size: 9.5px; line-height: 1.3; }
 }
+
+/* Zoom: + over −, beside Face north; 34 px wide like the compass, 44 px tall touch targets on a phone. */
+.zoom { display: flex; flex-direction: column; border: 1px solid var(--ink); background: var(--paper); }
+.zoom button { all: unset; box-sizing: border-box; width: 34px; height: 30px; display: grid; place-items: center; color: var(--ink); cursor: pointer; transition: opacity 200ms ease-out; }
+.zoom button + button { border-top: 1px solid var(--rule-strong, #d6d3cb); }
+.zoom button:disabled { opacity: 0.3; cursor: default; }
+.zoom button:focus-visible, .host:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.toolsBare .zoom { align-self: flex-end; }
+@media (pointer: coarse) { .zoom button { width: 40px; height: 40px; } }
