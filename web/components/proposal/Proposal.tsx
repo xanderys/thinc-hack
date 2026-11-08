@@ -2,7 +2,6 @@
 // v2.5: the homeowner's one-page proposal and sign step. Every number comes from the lead the engine serves.
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
-import House from "@/components/stage/House";
 import type { ComponentKey, Design, DesignResponse, Lead, LeadStatus, Variant } from "@/lib/api";
 import { KEYS, n0, n2 } from "@/lib/stage";
 import { decide } from "@/lib/proposal";
@@ -78,7 +77,8 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const alts = rowsOf(variants, key);
   const own = e.annual ? Math.max(0, e.annual.load_kwh - e.annual.grid_import_kwh) : null;
 
-  const mark = lead.status === "declined" ? "Declined" : lead.approved ? `Approved: ${key === "edit" ? "Planner's adjusted design" : ROWS.find((r) => r.key === key)?.name ?? "Planners' pick"}` : null;
+  // The homeowner sees the installer and a neutral state only: never variant names or which one the planner chose.
+  const mark = lead.status === "signed" ? "Signed" : lead.status === "declined" ? "Declined" : "Your proposal";
   const figs = [
     { k: "kwp" as const, v: design.pv_kwp ? `${n2(design.pv_kwp)} kWp` : "No solar" },
     { k: "kwh" as const, v: design.battery_kwh ? `${n2(design.battery_kwh)} kWh` : "No battery" },
@@ -96,7 +96,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
     <article className="pp pp-dock" aria-label="Your proposal">
       <header className="pp-top">
         <p className="pp-brand">{brand}</p>
-        {mark && <p className="pp-mark">{mark}</p>}
+        <p className="pp-mark">{mark}</p>
       </header>
       <SystemsChips active={sys} onPick={setSys} />
       <section className="pp-stage" aria-label="Your home">
@@ -106,7 +106,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
               <HomeSystems sys={sys} design={design} economics={e} layers={layers} demandKwh={lead.facts.annual_demand_kwh} pending={!layers} note={<RoofNote draft={lead.draft} />} />
             </SpatialDemo>
           </div>
-        ) : <div className="pp-drawing"><House design={design} /></div>}
+        ) : <div className="pp-skb" style={{ height: "100%", borderRadius: 20 }} aria-hidden />}
       </section>
       <ProposedCard title="Proposed Design" figs={figs} pending={false} lift={76}>
         <div className="pp-open">
@@ -197,7 +197,7 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
     return <section className="pp-card pp-done" aria-live="polite"><h2>Declined</h2><p>{when(new Date(shown.at))}</p></section>;
 
   const asked = status === "question" && shown?.action === "question";
-  const open = status === "approved";
+  const open = status === "approved" || status === "sent";   // the Complete sheet sends the link: signing opens as for approved
   const ready = open && name.trim().length > 1 && inked && tick && !busy;
 
   return (

@@ -124,7 +124,7 @@ function Page({ agentId, installerId, test }: Props) {
       if (CALLING.has(l.status) && !declinedRef.current) return;
       const prev = leadSeen.current;
       leadSeen.current = l; setLead(l);
-      if (l.status === "approved" && l.proposal_hash && l.proposal_hash !== shownHash.current) {
+      if ((l.status === "approved" || l.status === "sent") && l.proposal_hash && l.proposal_hash !== shownHash.current) {
         shownHash.current = l.proposal_hash;
         if (!openRef.current) setReady(l.proposal_hash);
       }
@@ -349,7 +349,7 @@ function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: L
     d.design.heatpump_kw != null ? `A ${n2(d.design.heatpump_kw)} kW heat pump heats the house.` : "No heat pump for now.",
     d.design.wallbox_kw != null ? `A wallbox for the car, ${n2(d.design.wallbox_kw)} kW.` : "No car charger for now.",
   ] : null;
-  const released = lead && (lead.status === "approved" || lead.status === "signed" || lead.status === "question");
+  const released = lead && (lead.status === "approved" || lead.status === "sent" || lead.status === "signed" || lead.status === "question");
   return (
     <div className={lead ? "h-design h-arrive" : "h-design h-sk"} aria-busy={!lead} aria-hidden={!lead || undefined}>
       <dl className="h-nums">
