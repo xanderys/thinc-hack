@@ -8,9 +8,9 @@ import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import type { SystemName } from "./system";
 import "./systems.css";
 
-type Props = { sys: SystemName; head: string; children: ReactNode; info?: ReactNode; pending?: boolean; extra?: ReactNode; extraLabel?: string; onMore?: (open: boolean) => void };
+type Props = { sys: SystemName; head: ReactNode; label: string; children: ReactNode; info?: ReactNode; pending?: boolean; extra?: ReactNode; extraLabel?: ReactNode; onMore?: (open: boolean) => void };
 
-export default function SystemCard({ sys, head, children, info, pending, extra, extraLabel, onMore }: Props) {
+export default function SystemCard({ sys, head, label, children, info, pending, extra, extraLabel, onMore }: Props) {
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);   // the extra (Panels: the shading scrubber) folds behind its own chip
   useEffect(() => { setMore(false); }, [sys]);
@@ -28,7 +28,7 @@ export default function SystemCard({ sys, head, children, info, pending, extra, 
   return (
     <div ref={root} className="sc" data-sys={sys}>
       {/* The section stays mounted so the canvas keeps measuring it (data-cover); the inner key replays the spring. */}
-      <section className="sc-card" data-cover aria-label={head} data-pending={pending || undefined}>
+      <section className="sc-card" data-cover aria-label={label} data-pending={pending || undefined}>
         <div key={sys} className="sc-anim">
           <div className="sc-top">
             <h3 className="sc-h">{head}</h3>
@@ -38,7 +38,7 @@ export default function SystemCard({ sys, head, children, info, pending, extra, 
               </button>
             )}
           </div>
-          <div className="sc-body">{children}</div>
+          {children ? <div className="sc-body">{children}</div> : null}
           {extra && (extraLabel
             ? <div className="sc-extra">
                 <button type="button" className="sc-more" aria-expanded={more} onClick={() => { const v = !more; setMore(v); onMore?.(v); }}>{extraLabel}</button>
