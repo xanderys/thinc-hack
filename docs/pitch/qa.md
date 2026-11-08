@@ -40,15 +40,17 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
 
 **Where do the prices come from?** Public German market rates in a rate card the installer replaces with its own catalogue on day one; the dataset carries no prices, so we never claim price accuracy. Every € in the app sits behind an "i" that reads "Market estimate, not the installer's price list", with the unit rates and the arithmetic.
 
-**What does the hero earn over 20 years?** Break-even in year 10, IRR 8.19%, €16,796 after 20 years, with the €3,150 battery replacement at year 15 and the €2,100 residual counted. Market-rate estimate, not the installer's prices.
+**What does the hero earn over 20 years?** Saving €1,430 a year, break-even in year 10 (simple payback 10.4 years), IRR 8.1%, €16,867 after 20 years with the €3,150 battery replacement in year 15 and the €2,100 residual credit in year 20 counted, NPV €8,320 on the same basis. Market-rate estimate from a rate card, not the installer's prices.
 
-**Is the battery oversized?** By HTW Berlin's guide (at most 1.5 kWh per 1,000 kWh of use) the hero would take 7.5 kWh; the design has 10 kWh, Installer A's package above 4,100 kWh. The rule follows what the installer sold, and the planner can pick the 5 kWh pack.
+**Is the battery oversized?** By HTW Berlin's guide (at most 1.5 kWh per 1,000 kWh of use) the hero would take 7.5 kWh; the design has 10 kWh (EcoFlow), Installer A's package above 4,100 kWh. The rule follows what the installer sold, and the planner can pick the 5 kWh pack.
 
-**How many modules fit the hero's roof?** 40 modules, 18 kWp; the design uses 23.
+**How many modules fit the hero's roof?** 40 modules, 18.52 kWp at 463 W; the design uses 23 (10.65 kWp), and the Most independence variant uses the full roof.
 
 **What does the Check page replay show?** Drawn from unseen homes with no match-first order: 3 of 20 match the expert on all four decisions at once, 15%, in line with the sealed 18.6% on 633; by part, panels sit within tolerance on 41% and the battery on 50%. All four at once is the strict test; the sealed figure is the one to quote.
 
 **How big is the hero's heat load?** Upper bound from the building envelope, 17.2 kW; sized from the bill, 8.7 kW. The envelope figure is 39,000 kWh a year on 188 m² heated over two storeys, 92 W/m², inside the 60 to 99 W/m² tables for a 1984 to 1994 home. Heat-loss kW stays off the slides.
+
+**What is the hero's design?** 23 Sunpro 463 W modules, 10.65 kWp, a Sigenergy 10 kW inverter (DC/AC 1.07), an EcoFlow 10 kWh battery, no heat pump, no wallbox; 9,858 kWh a year, 76.5% autarky, €14,887 estimate. Sizes snap to the SKU catalogue; the rules decide the size band, the catalogue the part.
 
 **Where is the AI?** No language model sizes anything. The engine is readable rules fitted on the data plus hourly physics. Claude only reads a pasted enquiry into facts in the web layer, and ElevenLabs carries Rina's voice.
 
