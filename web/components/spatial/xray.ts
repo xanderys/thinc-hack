@@ -121,7 +121,7 @@ export class Xray {
       const t = (v / hi) * 0.82, [r, g, b] = thermal(t); // white is kept for the windows (no mesh); drawn elements stop at orange
       return { col: new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace), s: t };
     };
-    return { roof: c("roof") ?? c("ceiling"), wall: c("wall"), floor: c("floor"), hi: 1 };
+    const none = null as ReturnType<typeof c>; return { roof: none, wall: none, floor: none, hi: 1 }; // normal materials in the Heat pump view (the three loss labels stay); the infrared ramp read as a rendering bug
   }
 
   // The three elements losing most at the design temperature, as on-model labels in whole kW.
