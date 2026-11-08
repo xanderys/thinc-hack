@@ -154,8 +154,8 @@ def _num(v):
     return x
 
 
-BOOLS = {"has_ev", "has_wallbox", "has_solar", "has_storage"}
-STRINGS = {"installer_id", "load_profile", "address", "postcode", "preference", "roof_orientation", "offer_date"}
+BOOLS = {"has_ev", "ev_planned", "has_wallbox", "has_solar", "has_storage"}
+STRINGS = {"installer_id", "heating_stated", "load_profile", "address", "postcode", "preference", "roof_orientation", "offer_date"}
 
 
 def normalise(answers, dropped: list | None = None) -> dict:
@@ -178,13 +178,20 @@ def normalise(answers, dropped: list | None = None) -> dict:
             out[k] = None
         elif k == "heating_type":
             t = str(v).strip().lower()
-            out[k] = next((h for key, h in HEATING.items() if key in t), None) or str(v)
+            hit = next((key for key in HEATING if key in t), None)
+            out[k] = HEATING[hit] if hit else str(v)
+            if hit and hit not in ("unknown", "dont know", "don't know"):  # v2.14: the stated word stays for the chip (District, Electric)
+                out["heating_stated"] = {"heatpump": "Heat pump", "waermepumpe": "Heat pump", "wärmepumpe": "Heat pump"}.get(hit, hit.capitalize())
         elif k in BOOLS:
             out[k] = _bool(v)
         elif k in STRINGS or k == "roof":
             out[k] = v
         else:
             out[k] = _num(v)
+    if out.get("ev_planned") is True:  # a planned car is sized like one on the drive
+        out["has_ev"] = True
+    elif out.get("has_ev") is False:  # "No" clears a plan too
+        out["ev_planned"] = False
     return out
 
 
@@ -200,6 +207,7 @@ def map_intake(f: dict, dropped: list | None = None) -> tuple[dict, dict]:
     if "ev" in f:
         ev = str(f.pop("ev")).strip().lower()
         out["has_ev"] = ev in ("now", "planned", "yes", "true")
+        out["ev_planned"] = ev == "planned"
     if "home_office" in f:
         v = f.pop("home_office")
         try:

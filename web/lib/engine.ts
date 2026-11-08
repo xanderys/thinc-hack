@@ -54,7 +54,8 @@ export async function callEngine(method: string, path: string, search: URLSearch
       },
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
-      signal: AbortSignal.timeout(20000),
+      // A refine or a lead step on an address the engine has never fetched waits for its roof: up to 55 s on the first call.
+      signal: AbortSignal.timeout(path === "/api/refine" || path === "/api/intake/step" ? 60000 : 20000),
     });
     const text = await res.text();
     let parsed: unknown;

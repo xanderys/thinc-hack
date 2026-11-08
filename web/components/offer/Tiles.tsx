@@ -2,6 +2,7 @@
 // edit the old figure takes the label's place with an arrow for 1.5 s (the tile keeps its height); a variant
 // switch is a plain crossfade. One spring, 0.35 s, bounce 0; under Reduce Motion the figure changes at once.
 import { useEffect, useState, type ReactNode } from "react";
+import Num from "./Num";
 import s from "./offer.module.css";
 
 export type TileMode = "arrow" | "fade";
@@ -13,7 +14,7 @@ function Tile({ k, v, mode, info }: { k: string; v: string; mode: TileMode; info
   return (
     <div data-info={info ? "" : undefined}>
       <dt>{f.was ? <span key={`w${f.n}`} className={s.was}>{f.was} <span aria-label="to">→</span></span> : k}</dt>
-      <dd><span key={f.n} className={f.n ? (f.mode === "arrow" ? s.figIn : s.figFade) : undefined}>{f.v}</span></dd>
+      <dd><Num v={v} lit /></dd>
       {info && <span className={s.tileInfo}>{info}</span>}
     </div>
   );

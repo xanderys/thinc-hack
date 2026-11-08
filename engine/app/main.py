@@ -21,6 +21,7 @@ from fastapi import Header
 
 from . import data, leads, roofs
 from . import imagery
+from .whatsapp import conversation as wa
 from . import model as model_mod
 
 
@@ -103,6 +104,12 @@ def startup():
         threading.Thread(target=warm_inbox, daemon=True).start()
     leads.load_all()  # before anything can create or step a lead
     snapshot_untouched()
+    for l in leads.LEADS.values():  # the pinned demo leads carry Xander's number for the WhatsApp copilot
+        if l.get("pinned") and not l.get("phone"):
+            l["phone"] = DEMO_PHONE
+            leads.save(l)
+    wa.configure(_wa_order, _wa_step)
+    wa.start()
     leads.expire_stale()
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
     threading.Thread(target=lambda: (roofs.warm(), roofs.warm_google(), roofs.warm_models(), roofs.warm_venue(), refresh_all_leads()),
@@ -212,9 +219,11 @@ class HomeInputs(BaseModel):
     house_size_sqm: Optional[float] = None
     house_built_year: Optional[float] = None
     has_ev: bool = False
+    ev_planned: bool = False  # v2.14: the car is planned, not here yet; sized like has_ev
     ev_annual_km: Optional[float] = None
     has_wallbox: bool = False
     heating_type: Literal["Gas", "Oil", "Heatpump", "OtherNonRenewable", "OtherRenewable", "Unknown"] = "Unknown"
+    heating_stated: Optional[str] = None  # v2.14: the heating as stated (District, Electric); heating_type is the kind sizing uses
     heating_cost_per_year_eur: Optional[float] = None
     heating_demand_kwh: Optional[float] = None
     electricity_price_ct_kwh: Optional[float] = None
@@ -669,6 +678,7 @@ class LeadReq(BaseModel):
     facts: Optional[dict] = None
     source: Literal["form", "call"] = "form"
     test: bool = False  # scratch lead from an agent: hidden from GET /api/leads unless include_test=1
+    phone: Optional[str] = None  # v2.14: the homeowner's mobile (E.164); the WhatsApp copilot never messages a lead without one
 
 
 class StepReq(BaseModel):
@@ -677,6 +687,8 @@ class StepReq(BaseModel):
     answers: Union[dict, list, None] = None  # older shape: HomeInputs fields or [{field, value}]
     note: Optional[str] = None
     base_version: Optional[int] = None
+    phone: Optional[str] = None  # v2.14: the homeowner's mobile (E.164), stored on the lead
+    source: Optional[Literal["whatsapp", "call", "form", "planner"]] = None  # v2.14: where the stated facts came from (chips show "via WhatsApp")
     overrides: Optional[dict] = None  # v2.13: the planner's kit choices (as /api/refine), stored on the lead; {} clears them
 
 
@@ -821,8 +833,13 @@ def create_lead(req: LeadReq, request: Request, x_intake_secret: Optional[str] =
            **leads.where(req.address_or_postcode), **mapped}
     raw["_given"] = [k for k in raw if k != "installer_id"] + (["installer_id"] if req.installer_id else [])
     lead = _new_lead(eng, raw, req.customer_name, req.address_or_postcode, req.source, block=False)
+    if req.phone:
+        if not wa.e164(req.phone):
+            return err(422, f"phone {req.phone!r} is not a phone number (E.164, 8 to 15 digits).")
+        lead["phone"] = wa.e164(req.phone)
     if req.test:
         lead["test"] = True
+    if req.phone or req.test:
         leads.save(lead)
     if meta:
         lead["meta"] = meta
@@ -861,6 +878,14 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     stale = _stale(lead, req.base_version)
     if stale is not None:
         return stale
+    if req.phone is not None:
+        if not wa.e164(req.phone):
+            return err(422, f"phone {req.phone!r} is not a phone number (E.164, 8 to 15 digits).")
+        if lead and lead.get("phone") != wa.e164(req.phone):
+            lead["phone"] = wa.e164(req.phone)
+            leads.save(lead)
+        if lead and req.facts_so_far is None and not req.answers and req.overrides is None:  # phone only: no redraft
+            return {"version": int(lead.get("version") or 0), "phone": lead["phone"], "status": lead["status"]}
     if req.overrides is not None:  # a kit edit on the Proposed Design card: kept on the lead so a reload shows it
         ov = _clean_overrides(req.overrides)
         if not lead:
@@ -870,9 +895,10 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
                 lead["overrides"] = ov
             else:
                 lead.pop("overrides", None)
-            if lead.get("status") in ("approved", "signed"):  # the design on screen moved after release: release it again
+            if lead.get("status") in ("approved", "sent", "signed"):  # the design on screen moved after release: release it again
                 lead["status"], lead["approved_at"] = "done", None
                 lead.pop("approved", None)
+                lead.pop("sent", None)
             lead["updated_at"] = leads.now()
             leads.save(lead)
         if req.facts_so_far is None and not req.answers:  # overrides only: no redraft, no history step
@@ -887,6 +913,8 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
             raw = {"installer_id": ans.get("installer_id") or "2a8ba8e2", **ans}
             raw["_given"] = [k for k in ans]
             lead = _new_lead(eng, raw, name, place, "call", block=False, lead_id=req.lead_id)
+            if req.phone:
+                lead["phone"] = wa.e164(req.phone)
             lead["meta"] = meta
             lead["history"].append({"step": 0, "field": None, "answer": ans, "changed": [], "note": "call started", "at": lead["created_at"]})
             leads.save(lead)
@@ -894,6 +922,10 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
                     "done": lead["next_question"] is None, "step": 0, "dropped": dropped}
     if meta:
         lead.setdefault("meta", {}).update(meta)
+    if req.source:
+        for k in ans:
+            if lead["inputs"].get(k) != ans[k] or k not in (lead["inputs"].get("_given") or []):
+                lead.setdefault("fact_sources", {})[k] = req.source
     # only fields that are new or changed count as this step's answer
     ans = {k: v for k, v in ans.items() if lead["inputs"].get(k) != v or k not in (lead["inputs"].get("_given") or [])}
     asked = (lead.get("next_question") or {}).get("field")
@@ -915,18 +947,19 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     step = lead["questions_asked"] + 1
     t = leads.now()
     field_asked = asked if asked in ans else (next(iter(ans)) if ans else None)
-    was_done = lead.get("status") in ("done", "approved", "signed", "declined", "question")  # refinement after the call
+    was_done = lead.get("status") in ("done", "approved", "sent", "signed", "declined", "question")  # refinement after the call
     prev_status = lead.get("status")
     lead.update(inputs=inp, unknown=unknown, draft=draft, next_question=nq, questions_asked=step, updated_at=t,
                 status="done" if (nq is None or was_done) else "in_call")
     route = ((leads.REQUEST.get() or {}).get("client_route") or "").lower()
-    if lead["status"] == "in_call" and prev_status != "in_call" and ("sentence" in route or "hand" in route):
+    if lead["status"] == "in_call" and prev_status != "in_call" and ("sentence" in route or "hand" in route or req.source == "whatsapp"):
         lead["status"] = prev_status or "draft"  # a planner's edit is not a call: only Rina's steps open "On a call"
-    if prev_status in ("approved", "signed", "declined", "question") and not changed:
+    if prev_status in ("approved", "sent", "signed", "declined", "question") and not changed:
         lead["status"] = prev_status  # nothing moved: the approval and any decision stand
-    elif prev_status in ("approved", "signed") and changed:
+    elif prev_status in ("approved", "sent", "signed") and changed:
         lead["approved_at"] = None  # the design changed after the planner released it: release it again
         lead.pop("approved", None)
+        lead.pop("sent", None)
     if not lead.get("customer_name") and meta.get("customer_name"):
         lead["customer_name"] = meta["customer_name"]
     if not lead.get("address_or_postcode") and (ans.get("address") or ans.get("postcode")):
@@ -964,7 +997,7 @@ def refresh_lead(lead: dict) -> dict:
     """A draft made by an earlier engine is recomputed (same pipeline, with the roof) before it is shown, and saved."""
     if lead.get("draft_stamp") == engine_stamp() or STATE.get("engine") is None:
         return lead
-    if lead.get("decision") or lead.get("status") in ("approved", "signed", "declined", "question"):
+    if lead.get("decision") or lead.get("status") in ("approved", "sent", "signed", "declined", "question"):
         return lead  # the homeowner saw or answered this proposal: its numbers and hash stay as released
     try:
         lead["draft"] = engine().predict(dict(lead["inputs"]))
@@ -1010,6 +1043,22 @@ def _stale(lead: dict, base_version) -> Optional[JSONResponse]:
         "version": lead.get("version"), "lead": _lead_out(lead)}))
 
 
+def _sources(lead: dict) -> dict:
+    """Per public fact: "whatsapp" when the homeowner stated it there, "stated" when given any other way, else "estimated"."""
+    inp, fs = lead.get("inputs") or {}, lead.get("fact_sources") or {}
+    given = set(((lead.get("initial") or {}).get("inputs") or {}).get("_given") or []) | set(fs)
+    for h in lead.get("history") or []:
+        if isinstance(h.get("answer"), dict):
+            given |= set(h["answer"])
+    if not lead.get("initial"):
+        given |= set(inp.get("_given") or [])
+    return {k: ("whatsapp" if fs.get(k) == "whatsapp" else "stated" if k in given else "estimated") for k in _public(inp)}
+
+
+STATUS_LABEL = {"draft": "Draft", "in_call": "On a call", "done": "Ready", "approved": "Complete", "sent": "Sent", "signed": "Signed",
+                "declined": "Declined", "question": "Question", "ended": "Ended"}
+
+
 def _lead_out(lead: dict) -> dict:
     dec = lead.get("decision")
     if dec:
@@ -1017,6 +1066,8 @@ def _lead_out(lead: dict) -> dict:
     return {"lead_id": lead["lead_id"], "version": int(lead.get("version") or 0), "status": lead["status"],
             "customer_name": lead["customer_name"], "approved_at": lead.get("approved_at"), "approved_variant": lead.get("approved_variant"),
             "proposal_hash": current_hash(lead), "decision": dec, "approved": lead.get("approved"), "overrides": lead.get("overrides") or {},
+            "status_label": STATUS_LABEL.get(lead["status"], lead["status"]), "sent": lead.get("sent"), "phone": lead.get("phone"),
+            "whatsapp": wa.public(lead), "fact_sources": lead.get("fact_sources") or {}, "sources": _sources(lead),
             "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
             "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"], "pinned": bool(lead.get("pinned")),
             "created_at": lead["created_at"], "updated_at": lead["updated_at"]}
@@ -1066,7 +1117,7 @@ def pin_lead(lead_id: str, req: Optional[PinReq] = None, x_intake_secret: Option
 @app.put("/api/leads/{lead_id}/reset")
 def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     """Rehearsal reset: facts back to the creation snapshot, redrafted with the one pipeline; steps, approval and any
-    decision (and its signature) are dropped. Pinned and aliases stay."""
+    decision (and its signature) and kit overrides are dropped. Pinned and aliases stay; version still goes up (409 guard)."""
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
@@ -1080,7 +1131,7 @@ def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     draft = eng.predict(dict(inp))
     unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
     nq, spread = _question(eng, inp, unknown)
-    for k in ("decision", "approved_at", "approved_variant", "approved_hash", "approved"):
+    for k in ("decision", "approved_at", "approved_variant", "approved_hash", "approved", "overrides", "sent", "fact_sources"):  # kit edits go too
         lead.pop(k, None)
     (SIG_DIR / f"{lead['lead_id']}.png").unlink(missing_ok=True)
     lead.update(inputs=inp, draft=draft, unknown=unknown, next_question=nq, next_spread=spread, questions_asked=0, history=[],
@@ -1088,6 +1139,109 @@ def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     leads.save(lead)
     return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "status": lead["status"], "design": draft["design"], "reset_to": snap.get("at"),
             "pinned": bool(lead.get("pinned"))}
+
+
+DEMO_PHONE = "+6586936789"
+
+
+def _wa_order(lead: dict) -> list:
+    """Facts missing or estimated on the lead, the one that moves the design most first (the next-question ranking)."""
+    inp = dict(lead["inputs"])
+    unknown = [c for c in (lead.get("unknown") or []) if c in leads.CANDIDATES]  # the step keeps this list exact
+    try:
+        ranked = sorted(engine().ask(inp, unknown), key=lambda q: -q.get("spread", 0))
+        order = [q["field"] for q in ranked]
+    except Exception:
+        log.exception("whatsapp order")
+        order = []
+    return order + [f for f in unknown if f not in order]
+
+
+def _wa_step(lead_id: str, facts: dict) -> dict:
+    out = intake_step(StepReq(lead_id=lead_id, facts_so_far=facts, source="whatsapp"), os.environ.get("INTAKE_SECRET"))
+    if isinstance(out, JSONResponse):
+        raise RuntimeError(json.loads(out.body).get("error") or f"intake step answered {out.status_code}")
+    return out
+
+
+def _find_lead(lead_id: str):
+    return leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
+
+
+class PhoneReq(BaseModel):
+    phone: Optional[str] = None  # null removes it
+    base_version: Optional[int] = None
+
+
+@app.put("/api/leads/{lead_id}/phone")
+def set_phone(lead_id: str, req: PhoneReq, x_intake_secret: Optional[str] = Header(None)):
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = _find_lead(lead_id)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    stale = _stale(lead, req.base_version)
+    if stale is not None:
+        return stale
+    if req.phone and not wa.e164(req.phone):
+        return err(422, f"phone {req.phone!r} is not a phone number (E.164, 8 to 15 digits).")
+    if req.phone:
+        lead["phone"] = wa.e164(req.phone)
+    else:
+        lead.pop("phone", None)
+    lead["updated_at"] = leads.now()
+    leads.save(lead)
+    return {"version": int(lead.get("version") or 0), "phone": lead.get("phone")}
+
+
+class WaAskReq(BaseModel):
+    facts: Optional[list[str]] = None  # ask about these fields; default: missing or estimated facts by design impact
+    base_version: Optional[int] = None
+
+
+@app.post("/api/leads/{lead_id}/whatsapp/ask")
+def whatsapp_ask(lead_id: str, req: Optional[WaAskReq] = None, x_intake_secret: Optional[str] = Header(None)):
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    req = req or WaAskReq()
+    lead = _find_lead(lead_id)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    stale = _stale(lead, req.base_version)
+    if stale is not None:
+        return stale
+    bad = [f for f in (req.facts or []) if f not in wa.ASK]
+    if bad:
+        return err(422, f"Cannot ask about {', '.join(bad)}. Askable: {', '.join(wa.ASK)}.")
+    try:
+        out = wa.ask(lead, req.facts)
+    except wa.ConversationError as e:
+        return err(e.code, str(e))
+    return {**out, "version": int(lead.get("version") or 0), "whatsapp": wa.public(lead)}
+
+
+class SendReq(BaseModel):
+    channel: Literal["whatsapp", "copy"]
+    base_version: Optional[int] = None
+
+
+@app.post("/api/leads/{lead_id}/send")
+def send_proposal(lead_id: str, req: SendReq, x_intake_secret: Optional[str] = Header(None)):
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = _find_lead(lead_id)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    stale = _stale(lead, req.base_version)
+    if stale is not None:
+        return stale
+    if lead.get("status") not in ("approved", "sent"):
+        return err(409, "Complete the design before sending the proposal.")
+    try:
+        sent = wa.send_proposal(lead, req.channel)
+    except wa.ConversationError as e:
+        return err(e.code, str(e))
+    return {"version": int(lead.get("version") or 0), "status": lead["status"], "status_label": STATUS_LABEL["sent"], "sent": sent}
 
 
 @app.get("/api/leads")
@@ -1104,7 +1258,7 @@ def list_leads(limit: int = 20, include_test: bool = False, x_intake_secret: Opt
         dec = l.get("decision")
         if dec:
             dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(l)}
-        out.append({"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
+        out.append({"lead_id": l["lead_id"], "status": l["status"], "status_label": STATUS_LABEL.get(l["status"], l["status"]), "whatsapp_state": (l.get("whatsapp") or {}).get("state", "none"), "title": leads.title(l), "customer_name": l["customer_name"],
                     "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
                     "approved_at": l.get("approved_at"), "decision": dec, "created_at": l.get("created_at"), "updated_at": l["updated_at"],
                     "pinned": bool(l.get("pinned")), "test": bool(l.get("test"))})
@@ -1164,10 +1318,11 @@ def approve_lead(lead_id: str, req: Optional[ApproveReq] = None, x_intake_secret
     lead["approved"] = {"variant": variant, "design": {k: sel["design"].get(k) for k in model_mod.SIZES},
                         "economics": sel.get("economics"), "investment_eur": capex, "design_hash": h,
                         **({"overrides": ov} if variant == "edit" else {})}
+    lead.pop("sent", None)  # a new completion is sent again
     lead.update(status="approved", approved_at=leads.now(), approved_variant=variant, updated_at=leads.now())
     lead["approved_hash"] = current_hash(lead)
     leads.save(lead)
-    return {"version": int(lead.get("version") or 0), "ok": True, "status": "approved", "approved_at": lead["approved_at"], "approved_variant": variant,
+    return {"version": int(lead.get("version") or 0), "ok": True, "status": "approved", "status_label": "Complete", "approved_at": lead["approved_at"], "approved_variant": variant,
             "proposal_hash": lead["approved_hash"]}
 
 
@@ -1196,7 +1351,7 @@ def lead_decision(lead_id: str, req: DecisionReq, request: Request):
     if stale is not None:
         return stale
     if req.action == "sign":
-        if lead.get("status") not in ("approved", "signed"):
+        if lead.get("status") not in ("approved", "sent", "signed"):
             return err(409, "The planner has not released this proposal yet.")
         if not req.accepted:
             return err(422, "Signing needs accepted: true.")

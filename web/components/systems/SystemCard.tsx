@@ -4,14 +4,16 @@
 // beside it and never sits under it. The derivation (bars, equations, Why) waits behind the "i" in a popover that
 // hangs off the card and leaves the house where it is.
 // Motion: a chip change springs the new card in (0.5 s smooth spring, bounce 0, from 8 px); Reduce Motion: a crossfade.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import type { SystemName } from "./system";
 import "./systems.css";
 
-type Props = { sys: SystemName; head: string; children: ReactNode; info?: ReactNode; pending?: boolean; extra?: ReactNode };
+type Props = { sys: SystemName; head: ReactNode; label: string; children: ReactNode; info?: ReactNode; pending?: boolean; extra?: ReactNode; extraLabel?: ReactNode; onMore?: (open: boolean) => void };
 
-export default function SystemCard({ sys, head, children, info, pending, extra }: Props) {
+export default function SystemCard({ sys, head, label, children, info, pending, extra, extraLabel, onMore }: Props) {
   const [open, setOpen] = useState(false);
+  const [more, setMore] = useState(false);   // the extra (Panels: the shading scrubber) folds behind its own chip
+  useEffect(() => { setMore(false); }, [sys]);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { setOpen(false); }, [sys]);
   // Esc or a press anywhere outside closes the popover; the pass and the lead keep their own Esc.
@@ -26,7 +28,7 @@ export default function SystemCard({ sys, head, children, info, pending, extra }
   return (
     <div ref={root} className="sc" data-sys={sys}>
       {/* The section stays mounted so the canvas keeps measuring it (data-cover); the inner key replays the spring. */}
-      <section className="sc-card" data-cover aria-label={head} data-pending={pending || undefined}>
+      <section className="sc-card" data-cover aria-label={label} data-pending={pending || undefined}>
         <div key={sys} className="sc-anim">
           <div className="sc-top">
             <h3 className="sc-h">{head}</h3>
@@ -36,11 +38,26 @@ export default function SystemCard({ sys, head, children, info, pending, extra }
               </button>
             )}
           </div>
-          <div className="sc-body">{children}</div>
-          {extra && <div className="sc-extra">{extra}</div>}
+          {children ? <div className="sc-body">{children}</div> : null}
+          {extra && (extraLabel
+            ? <div className="sc-extra">
+                <button type="button" className="sc-more" aria-expanded={more} onClick={() => { const v = !more; setMore(v); onMore?.(v); }}>{extraLabel}</button>
+                {more && extra}
+              </div>
+            : <div className="sc-extra">{extra}</div>)}
         </div>
-        {info && open && <div id={id} className="sc-pop" role="dialog" aria-label="How this was worked out" data-esc-first>{info}</div>}
+        {info && open && <div id={id} className="sc-pop" role="dialog" aria-label="How this was worked out" data-esc-first><InfoGuard>{info}</InfoGuard></div>}
       </section>
     </div>
   );
+}
+
+// A throw inside the working (a field the engine left out) shows its own words in the popover, never takes the card down.
+class InfoGuard extends Component<{ children: ReactNode }, { error: string | null }> {
+  state = { error: null as string | null };
+  static getDerivedStateFromError(e: unknown) { return { error: e instanceof Error ? e.message : String(e) }; }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return <p>The working could not be shown: {this.state.error} <button type="button" className="btn" onClick={() => this.setState({ error: null })}>Try again</button></p>;
+  }
 }
