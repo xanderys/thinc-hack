@@ -182,7 +182,7 @@ export default function OfferPanel(p: OfferProps) {
             canNone={f !== "pv_kwp" && f !== "inverter_kw"} onChoose={choose}
             brands={brandsOf(PART_SKU[f] && skus[PART_SKU[f]!])} brand={brandFor(f)} onBrand={(b) => pickBrand(f, b)} />
         )} />
-      <p className={s.confirm}>Confirm on site: roof condition and shade (estimated from the 3D model), meter and grid connection, battery location</p>
+      <p className={s.confirm}>The visit confirms roof condition, shade (estimated from the 3D model), meter and grid connection, and battery location.</p>
       <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} onApproved={setApproved} undo={p.undo} />
     </aside>
   );
