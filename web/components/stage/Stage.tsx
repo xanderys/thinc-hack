@@ -192,18 +192,56 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     }
   }
 
+  // Every design the card has seen, keyed by the facts and the fixed sizes (not the lead version: a kit write bumps the
+  // version without changing any variant). A variant tab whose design is here switches at once, with no pending state.
+  const designs = useRef(new Map<string, DesignResponse | RefineResponse>());
+  const keyOf = (i: HomeInputs, o: Overrides) => JSON.stringify([i, Object.fromEntries(Object.entries(o).sort(([x], [y]) => x.localeCompare(y)))]);
+  const keep = (k: string, r: DesignResponse | RefineResponse) => { const m = designs.current; m.delete(k); m.set(k, r); if (m.size > 32) m.delete(m.keys().next().value!); };
+
   // Design, or refine when the planner has fixed something.
   useEffect(() => {
     if (!ready) return;
     const ctl = new AbortController();
+    const asked = inputs, why = cause.current, fixed = Object.keys(overrides).length > 0;
+    const k = keyOf(inputs, overrides);
+    const hit = designs.current.get(k);
+    if (hit) { land({ ok: true, data: hit }, asked, why, fixed, null); return; }
     if (cause.current) setPending((p) => p ?? Date.now());
-    const asked = inputs, why = cause.current;
     const t = setTimeout(async () => {
       setBusy(true);
       try {
-        const fixed = Object.keys(overrides).length > 0;
         const lid = leadRef.current;
         const r = fixed ? await call<RefineResponse>("/api/refine", { inputs, overrides, ...(lid && baseVersion.current != null ? { lead_id: lid, base_version: baseVersion.current } : {}) }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
+        if (r.ok) keep(k, r.data);
+        land(r, asked, why, fixed, lid);
+        setBusy(false);
+      } catch { /* superseded */ }
+    }, why?.startsWith("Changed by hand") ? 250 : 0);   // typed sizes wait 250 ms for the next key; taps go at once
+    return () => { clearTimeout(t); ctl.abort(); };
+  }, [ready, inputs, overrides, retry]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Each offer of the agent's draft is fetched once in the background after the draft lands, so a tab switch reads
+  // from memory. Runs one request at a time and stops when the facts change.
+  useEffect(() => {
+    if (!ready || !drafted?.variants?.length) return;
+    const ctl = new AbortController(), i = inputs;
+    const t = setTimeout(async () => {
+      for (const v of drafted.variants ?? []) {
+        if (ctl.signal.aborted) return;
+        const o: Overrides = v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw };
+        const k = keyOf(i, o);
+        if (designs.current.has(k)) continue;
+        try {
+          const r = Object.keys(o).length ? await call<RefineResponse>("/api/refine", { inputs: i, overrides: o }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs: i }, ctl.signal);
+          if (r.ok) keep(k, r.data);
+        } catch { return; }
+      }
+    }, 300);   // after first paint
+    return () => { clearTimeout(t); ctl.abort(); };
+  }, [ready, drafted, inputs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // One path for a design that arrived, from the engine or from memory.
+  function land(r: { ok: true; data: DesignResponse | RefineResponse } | { ok: false; error: string; status?: number }, asked: HomeInputs, why: string | null, fixed: boolean, lid: string | null) {
         if (r.ok) {
           const before = last.current;
           if (before && cause.current) {
@@ -221,11 +259,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
           setPrev(before); last.current = r.data; setRes(r.data); setResIn(asked); setResCause(why); setErr(null); setPending(null);
           if (!fixed) setDrafted(r.data);
         } else if (r.status === 409 && lid && fixed) stale(lid); else { setErr(r.error); setPending(null); }
-        setBusy(false);
-      } catch { /* superseded */ }
-    }, why?.startsWith("Changed by hand") ? 250 : 0);   // typed sizes wait 250 ms for the next key; taps go at once
-    return () => { clearTimeout(t); ctl.abort(); };
-  }, [ready, inputs, overrides, retry]);
+  }
 
   useEffect(() => {
     if (!err?.includes("restarting")) return;
