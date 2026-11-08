@@ -85,7 +85,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const tiles = [
     ...figs.map((f, i) => ({ k: ["Solar", "Battery", "Investment"][i], v: f.v })),
     ...(yieldKwh != null ? [{ k: "Yield", v: `${n0(yieldKwh)} kWh` }] : []),
-    { k: "Autarky", v: pc(e.autarky_share) },
+    { k: "Supplied by your system", v: pc(e.autarky_share) },
     { k: "Break-even", v: be == null ? "20+ years" : `${n0(be)} years` },
   ];
   const decided = lead.status === "signed" ? "Signed" : lead.status === "declined" ? "Declined" : lead.status === "question" ? "Question sent" : "Sign";
