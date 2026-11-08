@@ -10,7 +10,7 @@ const sans = Geist({ variable: "--font-sans", subsets: ["latin"], display: "swap
 const mono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"], display: "swap" });
 const serif = Noto_Serif({ variable: "--font-serif", subsets: ["latin"], weight: ["400"], display: "swap" });
 
-export const metadata: Metadata = { title: "Planner", description: "System design from home facts" };
+export const metadata: Metadata = { title: "Marquee", description: "System design from home facts" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
