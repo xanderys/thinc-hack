@@ -8,7 +8,7 @@ import Glyph from "./Glyph";
 import s from "./offer.module.css";
 
 export type RowKey = "expert" | "independence" | "payback" | "upfront" | "edit";
-export type Row = { key: RowKey; name: string; line: string; design: Design; e: Economics | null; pick: StageVariant | null; selected: boolean };
+export type Row = { key: RowKey; name: string; line: string; design: Design; e: Economics | null; pick: StageVariant | null; selected: boolean; approved?: boolean };
 
 const BY_NAME: Record<string, RowKey> = { "Most independence": "independence", "Best payback": "payback", "Lowest upfront cost": "upfront" };
 const NAME: Record<RowKey, string> = { expert: "Planners' pick", independence: "Most independence", payback: "Best payback", upfront: "Lowest upfront cost", edit: "Your edit" };
@@ -67,7 +67,7 @@ export default function VariantTabs({ rows, onPick, pending }: { rows: Row[]; on
           onClick={() => { if (!r.selected && r.pick) onPick(r); }}>
           <span className={s.vtGlyph}><Glyph k={r.key} size={18} /></span>
           <span className={s.vtBody}>
-            <span className={s.vtName}>{r.name}</span>
+            <span className={s.vtName}>{r.name}{r.approved && <span className={s.vtMark}>Approved</span>}</span>
             <span className={s.vtLine}>{r.line}</span>
             <SizeChips d={r.design} />
           </span>

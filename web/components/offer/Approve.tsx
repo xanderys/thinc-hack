@@ -8,12 +8,15 @@ import s from "./offer.module.css";
 
 const hm = (iso?: string | null) => (iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "");
 
-export default function Approve({ leadId, approvedAt, onApprove, stale }: { leadId?: string | null; approvedAt: string | null; onApprove: () => void; stale?: boolean }) {
+export default function Approve({ leadId, approvedAt, onApprove, stale, want, onApproved }: { leadId?: string | null; approvedAt: string | null; onApprove: (want?: unknown) => Promise<string | null> | void; stale?: boolean; want?: string | null; onApproved?: (a: Lead["approved"] | null) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [fail, setFail] = useState<string | null>(null);
+  const go = async () => { setBusy(true); setFail(null); try { const e = await onApprove(want ?? undefined); setFail(e || null); } finally { setBusy(false); } };
   const [lead, setLead] = useState<Pick<Lead, "status" | "approved_at" | "decision"> | null>(null);
   useEffect(() => {
     if (!leadId) return;
     const ac = new AbortController();
-    call<Lead>(`/api/leads/${encodeURIComponent(leadId)}`, undefined, ac.signal).then((r) => { if (r.ok) setLead({ status: r.data.status, approved_at: r.data.approved_at, decision: r.data.decision }); }).catch(() => {});
+    call<Lead>(`/api/leads/${encodeURIComponent(leadId)}`, undefined, ac.signal).then((r) => { if (!r.ok) return; setLead({ status: r.data.status, approved_at: r.data.approved_at, decision: r.data.decision }); onApproved?.(r.data.status === "approved" || r.data.status === "signed" ? r.data.approved ?? null : null); }).catch(() => {});
     return () => ac.abort();
   }, [leadId, approvedAt]);
   const dec = lead?.decision;
@@ -27,8 +30,9 @@ export default function Approve({ leadId, approvedAt, onApprove, stale }: { lead
       ) : approved ? (
         <span className={s.done}>Approved {approved}</span>
       ) : (
-        <button type="button" className={`btn ${s.approveBtn}`} onClick={onApprove}>Approve</button>
+        <button type="button" className={`btn ${s.approveBtn}`} onClick={go} disabled={busy}>{busy ? "Approving" : "Approve"}</button>
       )}
+      {fail && !approved && !signed && <span className={s.failS} role="alert">{fail}</span>}
       {dec && dec.matches_current === false && <span className={s.warnS}>Signed a different version than the one on screen</span>}
     </div>
   );

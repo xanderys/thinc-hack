@@ -126,6 +126,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   useEffect(() => {
     if (!wantScene || !host.current || !overlay.current || !svg.current) return;
     let dead = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     import("./scene").then(({ SpatialScene }) => {
       if (dead || !host.current || !overlay.current || !svg.current) return;
       const sc = new SpatialScene(host.current, overlay.current, svg.current, {
@@ -135,9 +136,15 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
       scene.current = sc;
       setReady(true);
       setGlbErr(null);
-      sc.loadGlb(glbUrl, (e) => { if (!dead) { setGlbErr(e); setGlbOk(!e); } });
+      // A cold engine can miss the first glb request: one quiet retry after 4 s before the error shows.
+      const load = (n: number) => sc.loadGlb(glbUrl, (e) => {
+        if (dead) return;
+        if (e && n < 1) { retry = setTimeout(() => { if (!dead) load(n + 1); }, 4000); return; }
+        setGlbErr(e); setGlbOk(!e);
+      });
+      load(0);
     });
-    return () => { dead = true; scene.current?.dispose(); scene.current = null; setReady(false); setGlbOk(false); prevLayer.current = 0; };
+    return () => { dead = true; if (retry) clearTimeout(retry); scene.current?.dispose(); scene.current = null; setReady(false); setGlbOk(false); prevLayer.current = 0; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantScene, glbUrl, reduce, retryGlb]);
 
@@ -156,7 +163,8 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   // Ground picture and imagery dates for the layers menu (satGround.ts, whiteMode.ts).
   const groundOrigin = (model as unknown as { origin_utm32?: unknown } | null)?.origin_utm32;
   const groundKey = isOrigin(groundOrigin) ? groundOrigin.join(",") : "";
-  useEffect(() => { if (glbOk && isOrigin(groundOrigin)) scene.current?.groundFor(groundOrigin); }, [glbOk, groundKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Handed to the scene whenever both exist, in any order; the scene starts it once its glb is in.
+  useEffect(() => { if (ready && isOrigin(groundOrigin)) scene.current?.groundFor(groundOrigin); }, [ready, groundKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
   const vo = useViewOpts();
   const credit = vo.google && vo.ground === "google" && vo.credit ? ` · Ground: ${vo.credit}` : "";
@@ -424,10 +432,10 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {photo.under}
         {!ready && !absent && !layersErr && <>
           <svg className={s.houseSkel} viewBox="0 0 240 160" aria-hidden><defs><linearGradient id="hsk" x1="0" x2="1"><stop offset="0" stopColor="#e3e6ef" /><stop offset="0.5" stopColor="#f3f4f8" /><stop offset="1" stopColor="#e3e6ef" /><animate attributeName="x1" values="-1;1" dur="1.2s" repeatCount="indefinite" /><animate attributeName="x2" values="0;2" dur="1.2s" repeatCount="indefinite" /></linearGradient></defs><path d="M30 84 L120 24 L210 84 V148 H30 Z" fill="url(#hsk)" /></svg>
-          <div className={s.wait}>Building the 3D model of the house</div>
+          {!homeowner && <div className={s.wait}>Building the 3D model of the house</div>}
         </>}
-        {ready && busy && <div className={s.wait}>Updating for this design</div>}
-        {ready && !glbOk && !glbErr && <div className={s.wait}>Fetching the aerial photo</div>}
+        {ready && busy && !homeowner && <div className={s.wait}>Updating for this design</div>}
+        {ready && !glbOk && !glbErr && !homeowner && <div className={s.wait}>Fetching the aerial photo</div>}
         {glbErr && <div className={s.err}>{glbErr}<button type="button" onClick={() => setRetryGlb((x) => x + 1)}>Retry</button></div>}
         {layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTryN((x) => x + 1)}>Retry</button></div>}
 

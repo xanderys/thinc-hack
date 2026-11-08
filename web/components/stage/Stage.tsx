@@ -10,9 +10,9 @@ import Chain from "@/components/chain/Chain";
 import Refine, { type Moved } from "@/components/stage/Refine";
 import TopBar, { Decide } from "@/components/stage/TopBar";
 import OpenSkeleton from "@/components/stage/Skeleton";
-import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
+import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
 import { call, send } from "@/lib/client";
-import { approveLead } from "@/lib/proposal";
+import { approveLead, matches, offerOf } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
 import { buildFacts, DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
 import { COMPONENT_DESIGN_FIELD } from "@/lib/api";
@@ -24,7 +24,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const COMPONENT_FIELD_SET: Record<string, true> = { pv_kwp: true, inverter_kw: true, battery_kwh: true, heatpump_kw: true, wallbox_kw: true };
 
 // A house opened from the board: the lead's id (refinements write back to it) and what was read.
-export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null };   // draft: shown at once, before the first design call returns
+export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null; approved?: LeadT["approved"] };   // draft: shown at once, before the first design call returns
 // While Rina's call runs: the lead's facts so far, the step count, what the last answer changed and what she is asking.
 export type Live = { version?: number | null; step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null };
 
@@ -134,7 +134,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!seed) return;
     if (seed.read.inputs.installer_id) setInstaller(seed.read.inputs.installer_id as InstallerId);
     setLead(seed.text ?? "");
-    begin(seed.read, seed.leadId, seed.draft ?? null);
+    begin(seed.read, seed.leadId, seed.draft ?? null, seed.approved ?? null);
   }, [seed?.leadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Each answer from the call: the facts move, the design reruns, and what moved carries the engine's why.
@@ -153,12 +153,19 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts } });
   }, [live?.step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null) {
+  async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null, approved: LeadT["approved"] = null) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
     const r = { data };
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(draft); setPrev(null); last.current = draft;
     setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
     setRead(r.data); setRoof(null);
+    // An approved lead opens on what was approved: the same sizes and price as the homeowner's proposal.
+    if (approved?.design && draft) {
+      const d = approved.design;
+      setOverrides(approved.overrides && Object.keys(approved.overrides).length ? approved.overrides : { pv_kwp: d.pv_kwp, battery_kwh: d.battery_kwh, wallbox_kw: d.wallbox_kw, heatpump_kw: d.heatpump_kw });
+      const shown = { ...draft, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
+      setRes(shown); last.current = shown;
+    }
     const where = r.data.inputs.address ? `address=${encodeURIComponent(r.data.inputs.address)}` : r.data.postcode ? `postcode=${r.data.postcode}` : null;
     // A pending roof means the 3D measurement is still running: design on the standard face, ask again every 3 s.
     const gen = ++roofGen.current;
@@ -348,19 +355,46 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       const v = k in was ? was[k] : base[k];
       if (v !== undefined && v !== null) back[k] = v;
     }
-    if (leadRef.current && Object.keys(back).length) void writeLead("undo", back as Partial<HomeInputs>).then((x) => { if (!x.ok && x.error) setSayErr(`Undone here; the lead did not update: ${x.error}`); });
+    const id = leadRef.current;
+    if (id && Object.keys(back).length) void writeLead("undo", back as Partial<HomeInputs>).then(async (x) => {
+      if (!x.ok) { if (x.error) setSayErr(`Undone here; the lead did not update: ${x.error}`); return; }
+      // The facts on screen come from the engine, not from the local snapshot: read the lead again and redraw from it.
+      const r = await call<LeadT>(`/api/leads/${id}`);
+      if (!r.ok) { setSayErr(`Undone, but the lead could not be read back: ${r.error}`); return; }
+      if (leadRef.current !== id) return;
+      if (r.data.version != null) baseVersion.current = r.data.version;
+      const facts = r.data.facts as unknown as Record<string, unknown>;
+      cause.current = "Undone:";
+      setRead((cur) => cur && { ...cur, inputs: { ...cur.inputs, ...Object.fromEntries(Object.entries(facts).filter(([k, v]) => v !== null && v !== undefined && k !== "installer_id")) } as HomeInputs });
+      setChanged({});
+    });
   }
 
-  function onApprove() {
-    if (!res) return;
+  // Approve releases exactly the design on screen (engine v2.11). A marked offer goes as its key with the lead's own
+  // design_hash for it; anything else goes as "edit" with the design and the overrides, which the engine re-runs and
+  // stores. The lead is read again afterwards and Approved shows only when the stored approval equals the screen.
+  const MISMATCH = "Approval did not match the design on screen, try again";
+  async function onApprove(want?: unknown): Promise<string | null> {
+    if (!res) return null;
     const at = new Date();
     try { sessionStorage.setItem("marquee.approved", JSON.stringify({ inputs: pref === "expert" ? inputs : { ...inputs, preference: pref }, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
     const done = () => { setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })); if (leadRef.current) onApproved?.(leadRef.current); };
     const id = leadRef.current;
-    if (!id) { done(); return; }
-    // v2.5: release the proposal to the homeowner; the variant on screen is the one they sign.
-    const key = (res.variants ?? drafted?.variants ?? []).find((v) => same(v.design, res.design))?.key;
-    approveLead(id, key, baseVersion.current).then((r) => { if (r.status === 409) stale(id); else if (r.ok) { const v = (r.data as { version?: number }).version; if (v != null) baseVersion.current = v; setErr(null); done(); } else setErr(r.error); });
+    if (!id) { done(); return null; }
+    const screen = { design: res.design, capex: res.economics.capex_eur };
+    const before = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
+    if (!before.ok) return before.error;
+    const offer = offerOf(before.data, screen, typeof want === "string" ? want : null);
+    const body = offer ? { variant: offer.key, design_hash: offer.hash } : { variant: "edit" as const, design: res.design, overrides };
+    const r = await approveLead(id, body, before.data.version ?? baseVersion.current);
+    if (!r.ok) { if (r.status === 409) stale(id); return r.status === 409 ? `${MISMATCH} (${r.error})` : r.error; }
+    const v = (r.data as { version?: number }).version; if (v != null) baseVersion.current = v;
+    const after = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
+    if (!after.ok) return after.error;
+    if (after.data.version != null) baseVersion.current = after.data.version;
+    const got = after.data.approved;
+    if (after.data.status !== "approved" || !got || !matches({ design: got.design, capex: got.investment_eur }, screen)) return MISMATCH;
+    setErr(null); done(); return null;
   }
 
   const onVariant = useCallback((v: Variant) => {

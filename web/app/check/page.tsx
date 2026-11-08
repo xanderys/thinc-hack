@@ -54,15 +54,20 @@ function Headline({ ev, err, retry }: { ev: EvalX | null; err: string | null; re
   if (err) return <section className={s.sec}><h2>Scoreboard</h2><Err src="Engine" msg={err} retry={retry} /></section>;
   if (!ev) return <section className={s.head} aria-busy="true"><h2>Scoreboard</h2><p className={s.wait} style={{ color: "rgba(255,255,255,.7)" }}>Loading</p></section>;
   const o = ev.overall;
+  // One named population: the sealed test half (633 homes), production engine, lowest option, our bands.
+  const ft = ev.final_test, prod = ft?.production.replace(/-readout$/, "");
+  const half = ft?.rows.filter((r) => r.population === "test half" && r.ground_truth === "lowest option" && r.band === "ours") ?? [];
+  const sealed = half.find((r) => r.engine === prod), textbook = half.find((r) => r.engine === "textbook");
   return (
     <section className={s.head}>
-      <h2>Whole design within tolerance on {n0(ev.split.test)} held-out signed projects</h2>
+      <h2>Whole design within tolerance on {n0(sealed?.n ?? ev.split.test)} {sealed ? "sealed held-out signed homes, scored once" : "held-out signed projects"}</h2>
       <dl className={s.figs}>
-        <div className={s.us}><dt>Marquee draft</dt><dd>{pct1(o.design_match_share)}</dd></div>
-        {o.ceiling_design_match_share != null && <div className={s.them}><dt>Two planners agreeing</dt><dd>{pct1(o.ceiling_design_match_share)}</dd></div>}
-        <div className={s.them}><dt>Textbook rule</dt><dd>{pct1(o.textbook_design_match_share ?? o.baseline_design_match_share)}</dd></div>
+        <div className={s.us}><dt>Marquee draft</dt><dd>{pct1(sealed?.all_four ?? o.design_match_share)}</dd></div>
+        {!sealed && o.ceiling_design_match_share != null && <div className={s.them}><dt>Agreement with designs for similar recorded homes</dt><dd>{pct1(o.ceiling_design_match_share)}</dd></div>}
+        {sealed ? textbook && <div className={s.them}><dt>Textbook rule</dt><dd>{pct1(textbook.all_four)}</dd></div>
+          : <div className={s.them}><dt>Textbook rule</dt><dd>{pct1(o.textbook_design_match_share ?? o.baseline_design_match_share)}</dd></div>}
       </dl>
-      <p className={s.src}>{o.definition}. Source: <a href="/api/eval" target="_blank" rel="noreferrer"><code>GET /api/eval</code></a></p>
+      <p className={s.src}>{o.definition}{sealed ? `, on the test half the rules were not fitted on (${sealed.engine}, lowest offered option)` : ""}. Source: {sealed ? <><Doc path="engine/lab/reports/final_test_v2.md" />, </> : null}<a href="/api/eval" target="_blank" rel="noreferrer"><code>GET /api/eval</code></a></p>
     </section>
   );
 }
@@ -195,12 +200,16 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
   );
 }
 
-// The first part outside tolerance, from the row's own fields.
+// Every part outside tolerance, named with the sizes and by how much, from the row's own fields.
 function miss(r: InboxRow) {
-  const k = KEYS.find((x) => !r.within[x]);
-  if (!k) return "";
-  const f = COMPONENT_DESIGN_FIELD[k];
-  return `${NAME[k]}: expert fitted ${sz(r.expert[f], UNIT[k])}, draft ${sz(r.draft[f], UNIT[k])}.`;
+  return KEYS.filter((k) => r.within[k] === false).map((k) => {
+    const f = COMPONENT_DESIGN_FIELD[k], e = r.expert[f] as number | null, d = r.draft[f] as number | null, u = UNIT[k];
+    if (d == null) return `${NAME[k]}: expert fitted ${sz(e, u)}, draft left it out.`;
+    if (e == null) return `${NAME[k]}: draft added ${sz(d, u)}, expert fitted none.`;
+    const diff = n2(Math.abs(d - e));
+    if (sz(d, u) === sz(e, u)) return `${NAME[k]}: draft ${sz(d, u)}, expert ${sz(e, u)}, flagged outside tolerance by rounding.`;
+    return `${NAME[k]}: draft ${sz(d, u)}, expert ${sz(e, u)}, ${diff} ${u} ${d > e ? "over" : "under"}.`;
+  }).join(" ");
 }
 
 function Replay({ ev }: { ev: EvalX | null }) {
@@ -267,53 +276,28 @@ function Replay({ ev }: { ev: EvalX | null }) {
 }
 
 function ByComponent({ ev }: { ev: EvalX }) {
-  const tb = ev.baselines?.textbook?.rule, fs = ev.baselines?.floor_slope?.rule, rot = ev.rule_of_thumb_comparison;
+  const ft = ev.final_test;
+  const half = ft?.rows.filter((r) => r.population === "test half" && r.ground_truth === "lowest option" && r.band === "ours") ?? [];
+  const prod = ft?.production.replace(/-readout$/, "");
+  const us = half.find((r) => r.engine === prod), tb = half.find((r) => r.engine === "textbook");
+  if (!us) return null;
+  const val = (r: typeof us | undefined, k: ComponentKey) => r ? pct1((r as unknown as Record<string, number>)[k === "heatpump" ? "heatpump" : k === "pv" ? "pv" : k]) : "";
   return (
     <section className={s.sec}>
-      <h2>Per part, against the ceiling and two baselines</h2>
-      <p className={s.lede}>Share of the {n0(ev.split.test)} held-out projects within tolerance. Ceiling: how often planners at the same installer agree with each other on near-identical homes.</p>
+      <h2>Per part, sealed test half</h2>
+      <p className={s.lede}>Share of the {n0(us.n)} sealed held-out homes within tolerance, per part.</p>
       <div className={`${s.panel} ${s.scroll}`}>
         <table className={s.t}>
-          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r}>Ceiling</th><th className={s.r}>Textbook</th><th className={s.r}>Floor plus slope</th><th>Tolerance</th></tr></thead>
+          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r}>Textbook</th><th>Tolerance</th></tr></thead>
           <tbody>
-            <tr className={s.prod}><td>Whole design</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.ceiling_design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.textbook_design_match_share ?? ev.overall.baseline_design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.floor_slope_design_match_share)}</td><td className={s.dim}>all four at once</td></tr>
-            {KEYS.map((k) => { const c = ev.components[k]; return (
-              <tr key={k}><td>{NAME[k]}</td><td className={`${s.r} ${s.n}`}>{pct1(c.within_tolerance_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(c.ceiling_within_tolerance_share)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{pct1(c.textbook_within_tolerance_share ?? c.baseline_within_tolerance_share)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{pct1(c.floor_slope_within_tolerance_share)}</td><td className={s.dim}>{c.tolerance}</td></tr>
-            ); })}
+            <tr className={s.prod}><td>Whole design</td><td className={`${s.r} ${s.n}`}>{pct1(us.all_four)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{tb ? pct1(tb.all_four) : ""}</td><td className={s.dim}>all four at once</td></tr>
+            {KEYS.map((k) => (
+              <tr key={k}><td>{NAME[k]}</td><td className={`${s.r} ${s.n}`}>{val(us, k)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{val(tb, k)}</td><td className={s.dim}>{ev.components[k]?.tolerance}</td></tr>
+            ))}
           </tbody>
         </table>
       </div>
-      <ul className={s.note} style={{ paddingLeft: 18 }}>
-        {tb && <li>Textbook: {tb}.</li>}
-        {fs && <li>Floor plus slope: {fs}.</li>}
-        {ev.ceiling && <li>{ev.ceiling.method}{ev.ceiling.covered_test_share != null && ` ${pct1(ev.ceiling.covered_test_share)} of test homes covered.`}</li>}
-        <li>{ev.split.method}.</li>
-      </ul>
-
-      <h3>Per installer</h3>
-      <div className={`${s.panel} ${s.scroll}`}>
-        <table className={s.t}>
-          <thead><tr><th>Installer</th><th className={s.r}>Held-out projects</th><th className={s.r}>Draft</th><th className={s.r}>Textbook</th></tr></thead>
-          <tbody>{(Object.entries(ev.per_installer) as [InstallerId, Eval["per_installer"][InstallerId]][]).map(([k, v]) => (
-            <tr key={k}><td>{INSTALLER_NAME[k] ?? k}</td><td className={`${s.r} ${s.n}`}>{n0(v.test)}</td><td className={`${s.r} ${s.n}`}>{pct1(v.design_match_share)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{pct1(v.baseline_design_match_share)}</td></tr>
-          ))}</tbody>
-        </table>
-      </div>
-
-      {rot && (<>
-        <h3>Solar per 1,000 kWh of annual use</h3>
-        <div className={`${s.panel} ${s.scroll}`}>
-          <table className={s.t}>
-            <thead><tr><th>Who</th><th className={s.r}>kWp per MWh</th></tr></thead>
-            <tbody>
-              <tr><td>Reonic rule of thumb</td><td className={`${s.r} ${s.n}`}>{rot.reonic_kwp_per_mwh.toFixed(2)}</td></tr>
-              {Object.entries(rot.planners_kwp_per_mwh).map(([k, v]) => <tr key={k}><td>Planners, {k === "all" ? "both installers" : INSTALLER_NAME[k as InstallerId] ?? k}</td><td className={`${s.r} ${s.n}`}>{v.toFixed(2)}</td></tr>)}
-            </tbody>
-          </table>
-        </div>
-        <p className={s.note}>{rot.note}</p>
-      </>)}
-      <Src><Api path="/api/eval" />, <Doc path="docs/domain.md" />, <Doc path="docs/data-insights.md" />, <a href="/classic/check">full tables</a></Src>
+      <Src><Api path="/api/eval" /> (<code>final_test</code>), <Doc path="engine/lab/reports/final_test_v2.md" /></Src>
     </section>
   );
 }
@@ -388,31 +372,6 @@ function Deviations({ ev }: { ev: EvalX }) {
   );
 }
 
-// Aggregates from engine/lab/qualification_backtest.md (engine-lab); the engine does not serve them.
-const BACKTEST = [
-  { set: "258 held-out board", n: 258, visit: [211, 0.818], call: [45, 0.174], decline: [2, 0.008] },
-  { set: "Clean 126", n: 126, visit: [101, 0.802], call: [23, 0.183], decline: [2, 0.016] },
-] as const;
-
-function Backtest() {
-  return (
-    <section className={s.sec}>
-      <h2>Priority verdict backtest</h2>
-      <p className={s.lede}>The lead verdict rule replayed on held-out homes. Every project was a signed sale, so each Decline is a false decline.</p>
-      <div className={`${s.panel} ${s.scroll}`}>
-        <table className={s.t}>
-          <thead><tr><th>Set</th><th className={s.r}>Priority</th><th className={s.r}>Call first</th><th className={s.r}>Decline</th></tr></thead>
-          <tbody>{BACKTEST.map((b) => (
-            <tr key={b.set}><td>{b.set}</td>{[b.visit, b.call, b.decline].map(([c, p], i) => <td key={i} className={`${s.r} ${s.n}`}>{c} ({pct1(p)})</td>)}</tr>
-          ))}</tbody>
-        </table>
-      </div>
-      <p className={s.note}>Both declines are homes where the draft proposes no solar. Call first fires almost only on the 4,500 kWh default. Roof, north-only and homeowner-declined clauses are not testable on the pack.</p>
-      <Src><Doc path="engine/lab/qualification_backtest.md" branch="engine-lab" />, <Doc path="docs/qualification.md" /></Src>
-    </section>
-  );
-}
-
 function Synthetic({ ev }: { ev: EvalX }) {
   const y = ev.synthetic;
   if (!y) return null;
@@ -472,7 +431,6 @@ export default function Check() {
         <Recommenders ev={ev} />
         <Deviations ev={ev} />
       </>}
-      <Backtest />
       {ev && <Synthetic ev={ev} />}
       <ResetDemo />
     </div>

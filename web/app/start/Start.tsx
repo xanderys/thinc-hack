@@ -5,6 +5,7 @@ import { endTone, startRing, stopRing, tick, unlock } from "./sounds";
 import type { Lead } from "@/lib/api";
 import { designLine, n0, n2, pct } from "@/lib/stage";
 import Proposal, { span, TODAY_LINE } from "@/components/proposal/Proposal";
+import RoofNote from "@/components/home/RoofNote";
 import { HOME_FORM, homeFacts, INSTALLER_BRAND, homeFirstMessage, homeNote, homeVariables, type HomeAnswers, type InstallerId, type RoofInfo } from "./intake";
 
 type Props = { agentId: string; installerId: InstallerId; test?: boolean };
@@ -36,6 +37,13 @@ function whatsNew(a: Lead["draft"]["design"], b: Lead["draft"]["design"]): strin
   if (a.battery_kwh !== b.battery_kwh && b.battery_kwh != null) return `now a ${b.battery_kwh.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWh battery`;
   return "with the latest details";
 }
+// The engine's own words: {error}, FastAPI's {detail} (a string or a list of {msg}).
+function errorText(b: { error?: unknown; detail?: unknown }): string | null {
+  if (typeof b.error === "string" && b.error) return b.error;
+  if (typeof b.detail === "string" && b.detail) return b.detail;
+  if (Array.isArray(b.detail)) return b.detail.map((d: { msg?: string }) => d?.msg ?? JSON.stringify(d)).join("; ");
+  return null;
+}
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 function Page({ agentId, installerId, test }: Props) {
@@ -44,6 +52,7 @@ function Page({ agentId, installerId, test }: Props) {
   const [a, setA] = useState<HomeAnswers>({ name: "", location: "" });
   const [miss, setMiss] = useState<"name" | "location" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [leadError, setLeadError] = useState<string | null>(null);
   const [since, setSince] = useState<number | null>(null);
   const [now, setNow] = useState(0);
   const [speaker, setSpeaker] = useState(true);
@@ -66,6 +75,7 @@ function Page({ agentId, installerId, test }: Props) {
   const [signedAt, setSignedAt] = useState<number | null>(null);
   const [tickNow, setTickNow] = useState(0);
   const noted = useRef(false);
+  const declinedRef = useRef(false);
   const conversation = useConversation({
     onConnect: ({ conversationId }) => {
       connected.current = true; setSince(Date.now());
@@ -105,7 +115,8 @@ function Page({ agentId, installerId, test }: Props) {
       const r = await fetch(`/api/leads/${leadId}`, { cache: "no-store" }).catch(() => null);
       if (!r?.ok) return;
       const l: Lead = await r.json();
-      if (CALLING.has(l.status)) return;
+      // A declined call never moves the lead past "draft": its Submit draft is the design to show.
+      if (CALLING.has(l.status) && !declinedRef.current) return;
       const prev = leadSeen.current;
       leadSeen.current = l; setLead(l);
       if (l.status === "approved" && l.proposal_hash && l.proposal_hash !== shownHash.current) {
@@ -125,19 +136,26 @@ function Page({ agentId, installerId, test }: Props) {
     setMiss(null); setError(null);
     unlock();   // the submit tap allows every sound that follows
     setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false);
-    setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null);
-    fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form", ...(test ? { test: true } : {}) }) })
-      .then(async (r) => { const b = await r.json().catch(() => ({})); if (r.ok && b.lead_id) setLeadId(b.lead_id); })
-      .catch(() => {});
-    // Look the address up while the phone rings, so the call starts with it.
+    setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null); declinedRef.current = false;
+    setLeadError(null);
+    setStep("waiting");
+    // Look the address up while the lead is made, so the call starts with it.
     roof.current = undefined;
     const ctl = new AbortController(); setTimeout(() => ctl.abort(), 8000);
     fetch(`/start/roof?address=${encodeURIComponent(a.location)}`, { signal: ctl.signal })
       .then((r) => (r.ok ? r.json() : null)).catch(() => null).then((r: RoofInfo | null) => { roof.current = r; });
-    // The call back arrives a moment later, the way a phone call would.
-    ring.current = setTimeout(() => { setStep("ringing"); startRing(); try { navigator.vibrate?.([400, 200, 400]); } catch {} }, 1400);
-    setStep("waiting");
+    // The phone rings only once the engine holds the lead; on failure the form shows the engine's words and a retry.
+    const shown = Date.now();
+    fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form", ...(test ? { test: true } : {}) }) })
+      .then(async (r) => {
+        const b = await r.json().catch(() => ({}));
+        if (!r.ok || !b.lead_id) throw new Error(errorText(b) ?? `The engine answered ${r.status} with no lead.`);
+        setLeadId(b.lead_id);
+        // The call back arrives a moment after Submit, the way a phone call would.
+        ring.current = setTimeout(() => { setStep("ringing"); startRing(); try { navigator.vibrate?.([400, 200, 400]); } catch {} }, Math.max(0, 1400 - (Date.now() - shown)));
+      })
+      .catch((e: Error) => { setStartedAt(null); setLeadError(e.message || "The request did not reach the engine."); setStep("form"); });
   };
 
   // Accept is the user gesture. iPhone plays call audio only if the microphone and an audio context are unlocked
@@ -159,7 +177,7 @@ function Page({ agentId, installerId, test }: Props) {
   };
 
   const end = () => { if (connected.current) conversation.endSession(); else { endTone(); conversation.endSession(); setStep("form"); } };
-  const decline = () => { stopRing(); endTone(); setStep("declined"); };
+  const decline = () => { stopRing(); endTone(); declinedRef.current = true; setStep("declined"); };
 
   const pick = (k: Opt, legend: string, hint?: string) => (
     <fieldset className="h-q">
@@ -261,7 +279,8 @@ function Page({ agentId, installerId, test }: Props) {
         {pick("ev", "Electric car")}
         {pick("bill_band", "Electricity bill", "EUR a month")}
         {pick("roof", "Roof faces")}
-        <button type="submit" className="h-go" disabled={step !== "form"}>Submit</button>
+        <button type="submit" className="h-go" disabled={step !== "form"}>{step === "waiting" ? "Sending" : "Submit"}</button>
+        {leadError && step === "form" && <p className="h-why" role="alert">{leadError} <button type="button" className="h-retry" onClick={submit}>Retry</button></p>}
         {error && <p className="h-why" role="alert">ElevenLabs said: {error}</p>}
       </form>
 
@@ -305,8 +324,10 @@ function Page({ agentId, installerId, test }: Props) {
   );
 }
 
-// Placeholder text sized like the real thing; under .h-sk it is invisible and shimmers.
-const SK_PARTS = ["10.24 kWp of solar panels on your roof.", "A 10.24 kWh battery keeps daytime sun for the evening.", "A 10.24 kW heat pump heats the house.", "A wallbox for the car, 11 kW."];
+// Blank bars sized like the real lines: no placeholder text, so nothing readable if the shimmer style is missing.
+const SK_PARTS = ["86%", "100%", "78%", "62%"];
+const nb = "\u00a0";
+const Bar = ({ w }: { w: string }) => <span className="h-bar" style={{ width: w }}>{nb}</span>;
 
 function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: Lead | null; took: number; signedAt: number | null; signTook: number; brand: string; onOpen: () => void }) {
   const d = lead?.draft, e = d?.economics, v = d?.variants?.[0];
@@ -315,19 +336,22 @@ function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: L
     d.design.battery_kwh != null ? `A ${n2(d.design.battery_kwh)} kWh battery keeps daytime sun for the evening.` : "No battery for now.",
     d.design.heatpump_kw != null ? `A ${n2(d.design.heatpump_kw)} kW heat pump heats the house.` : "No heat pump for now.",
     d.design.wallbox_kw != null ? `A wallbox for the car, ${n2(d.design.wallbox_kw)} kW.` : "No car charger for now.",
-  ] : SK_PARTS;
+  ] : null;
   const released = lead && (lead.status === "approved" || lead.status === "signed" || lead.status === "question");
   return (
     <div className={lead ? "h-design h-arrive" : "h-design h-sk"} aria-busy={!lead} aria-hidden={!lead || undefined}>
       <dl className="h-nums">
-        <div><dt>Solar a year</dt><dd>{e ? (e.annual ? `${n0(e.annual.pv_yield_kwh)} kWh` : "None") : "10,000 kWh"}</dd></div>
-        <div><dt>Self-sufficiency</dt><dd>{e ? `${pct(e.autarky_share)} %` : "70 %"}</dd></div>
-        <div><dt>Investment estimate</dt><dd>{e ? `${n0(e.capex_eur)} EUR` : "20,000 EUR"}</dd></div>
-        <div><dt>Payback</dt><dd>{e ? (e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`) : "10.5 years"}</dd></div>
+        <div><dt>Solar a year</dt><dd>{e ? (e.annual ? `${n0(e.annual.pv_yield_kwh)} kWh` : "None") : <Bar w="9ch" />}</dd></div>
+        <div><dt>Supplied by your system</dt><dd>{e ? `${pct(e.autarky_share)} %` : <Bar w="4ch" />}</dd></div>
+        <div><dt>Investment estimate</dt><dd>{e ? `${n0(e.capex_eur)} EUR` : <Bar w="10ch" />}</dd></div>
+        <div><dt>Payback</dt><dd>{e ? (e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`) : <Bar w="8ch" />}</dd></div>
       </dl>
       <p className="h-est">Prices are an estimate until the site visit.</p>
-      <ul className="h-parts">{say.map((x, i) => <li key={i}>{x}</li>)}</ul>
-      <p className="h-pref"><b>{v ? v.label.split(" (")[0] : "Planners' pick"}</b> {v ? designLine(v.design) : "10.24 kWp, 10.24 kWh"}</p>
+      <ul className="h-parts">
+        {say ? say.map((x, i) => <li key={i}>{x}{i === 0 && lead && <RoofNote draft={lead.draft} className="h-roofnote" />}</li>)
+          : SK_PARTS.map((w, i) => <li key={i} style={{ width: w }}>{nb}</li>)}
+      </ul>
+      <p className="h-pref"><b>{v ? v.label.split(" (")[0] : <Bar w="12ch" />}</b> {v ? designLine(v.design) : <Bar w="20ch" />}</p>
       <dl className="h-times">
         <div><dt>Enquiry to design</dt><dd>{Math.floor(took / 60)} min {took % 60} s</dd></div>
         <div><dt>Enquiry to signature</dt><dd>{signedAt != null ? span(signTook) : clock(Math.floor(signTook / 1000))}</dd></div>

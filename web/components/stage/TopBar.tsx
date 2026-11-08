@@ -26,7 +26,7 @@ const FACTS: Kind[] = [
   { f: "has_ev", label: "Electric car", show: (i) => i.has_ev ? `Yes${i.ev_annual_km ? `, ${n0(i.ev_annual_km)} km` : ""}` : "No", edit: "bool" },
   { f: "num_inhabitants", label: "Household", show: (i) => i.num_inhabitants ? `${i.num_inhabitants} people` : "Not known", edit: "num", unit: "people" },
   { f: "house_size_sqm", label: "Floor area", show: (i, roof) => !i.house_size_sqm ? "Not known" : `${n0(i.house_size_sqm)} m²${estimated(i.house_size_sqm, roof?.floor_area_m2) ? ", estimated from the building" : ""}`, edit: "num", unit: "m²" },
-  { f: "house_built_year", label: "Built", show: (i) => i.house_built_year ? String(i.house_built_year) : "Not known", edit: "num" },
+  { f: "house_built_year", label: "Built", show: (i, roof) => !i.house_built_year ? "Not known" : roof?.build_year_class && roof.build_year_estimate != null && Math.abs(i.house_built_year - roof.build_year_estimate) < 0.5 ? `estimated, ${roof.build_year_class}` : String(i.house_built_year), edit: "num" },
 ];
 
 // A lead made from an address alone carries the roof model's floor-area estimate as its fact; the chip says so.

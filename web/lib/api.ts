@@ -34,6 +34,7 @@ export interface RoofResult {
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
   pending?: boolean;   // the LoD2 measurement is still running; ask again in a few seconds
   floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";   // v1.6.1, upper bound
+  geometry?: { footprint_m2?: number | null; storeys?: number | null; height_m?: number | null; large_building?: boolean | null; source?: string; note?: string } | null; // v2.11: LoD2, outranks dwellings_class
   build_year_class?: string | null; build_year_estimate?: number | null; heating_class?: string | null; zensus_confidence?: string; // heating_class is the system type, never the fuel
 }
 
@@ -89,10 +90,12 @@ export type ComponentKey = "pv" | "battery" | "heatpump" | "wallbox";
 export interface Variant {   // v1.7
   key: "expert" | "value" | "independence" | "payback" | "upfront";
   label: string; design: Design; economics: Economics; note: string;
+  design_hash?: string;   // v2.11
 }
 
 export interface DesignResponse {
   design: Design;
+  roof?: { stated_azimuth_deg?: number | null; measured_azimuths_deg?: number[]; stated_direction_conflict?: boolean; source?: string; note?: string | null } | null; // v2.12
   explanation: string[];
   components: { pv: ComponentDetail; battery: ComponentDetail; heatpump: ComponentDetail; wallbox: ComponentDetail };
   plausibility: Plausibility[];
@@ -192,7 +195,8 @@ export interface Lead {
   history: { step: number; field: string; answer: unknown; changed: LeadChange[]; at: string }[];
   next_question: NextQuestion | null; questions_asked: number; created_at: string; updated_at: string;
   version?: number;   // optimistic concurrency: writes carry it back as base_version
-  proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | null; decision?: LeadDecision | null;   // v2.5
+  proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | "edit" | null; decision?: LeadDecision | null;   // v2.5
+  approved?: { variant: Variant["key"] | "edit"; design: Design; economics?: Economics; investment_eur: number; design_hash: string; overrides?: Overrides } | null;   // v2.11
 }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).
 export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "signed" | "declined" | "question";
