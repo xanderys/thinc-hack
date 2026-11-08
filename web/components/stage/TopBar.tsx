@@ -23,7 +23,7 @@ const FACTS: Kind[] = [
   { f: "annual_demand_kwh", label: "Annual use", show: (i) => `${n0(i.annual_demand_kwh)} kWh`, edit: "num", unit: "kWh" },
   { f: "heating_type", label: "Heating", show: (i) => HEATING_WORD[i.heating_type], edit: "heat" },
   { f: "electricity_price_ct_kwh", label: "Price", show: (i) => i.electricity_price_ct_kwh != null ? `${i.electricity_price_ct_kwh} ct/kWh` : "37 ct/kWh, assumed", edit: "num", unit: "ct/kWh" },
-  { f: "has_ev", label: "Electric car", show: (i) => i.has_ev ? `Electric car${i.ev_annual_km ? `, ${n0(i.ev_annual_km)} km a year` : ""}` : "No", edit: "bool" },
+  { f: "has_ev", label: "Electric car", show: (i) => i.has_ev ? (i.ev_annual_km ? `${n0(i.ev_annual_km)} km a year` : "Yes") : "No", edit: "bool" },
   { f: "num_inhabitants", label: "Household", show: (i) => i.num_inhabitants ? `${i.num_inhabitants} people` : "Not known", edit: "num", unit: "people" },
   { f: "house_size_sqm", label: "Floor area", show: (i, roof) => !i.house_size_sqm ? "Not known" : `${n0(i.house_size_sqm)} m²${estimated(i.house_size_sqm, roof?.floor_area_m2) ? ", estimated from the building" : ""}`, edit: "num", unit: "m²" },
   { f: "house_built_year", label: "Built", show: (i, roof) => !i.house_built_year ? "Not known" : roof?.build_year_class && roof.build_year_estimate != null && Math.abs(i.house_built_year - roof.build_year_estimate) < 0.5 ? `estimated, ${roof.build_year_class}` : String(i.house_built_year), edit: "num" },
