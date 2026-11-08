@@ -82,8 +82,10 @@
 @media (max-width: 760px) {
   /* Facts row compact above the model: one scrolling line of small chips. */
   .st-open:has(.sys-on) > .t-bar { gap: 6px; padding-bottom: 4px; }
-  .st-open:has(.sys-on) .t-chip { flex: none; max-width: none; }
-  .st-open:has(.sys-on) .t-chip summary { min-height: 30px; font-size: 12.5px; padding: 0 10px; white-space: nowrap; max-width: none; }
+  /* Facts wrap onto short lines: no sideways scroll, no clipped chip. */
+  .st-open:has(.sys-on) .t-chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; gap: 4px; }
+  .st-open:has(.sys-on) .t-chip { flex: none; max-width: 100%; }
+  .st-open:has(.sys-on) .t-chip summary { min-height: 28px; font-size: 12px; padding: 0 8px; gap: 4px; white-space: nowrap; max-width: 100%; }
   .st-open:has(.sys-on) .t-mail { display: none; }
 
   .sys-on { padding-bottom: 150px; margin-top: 0; }

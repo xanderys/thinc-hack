@@ -98,6 +98,7 @@ export class Systems {
 
   // The house changed (a new model): rebuild the pipes and the car's parking spot from the new anchors.
   rebuild() {
+    this.onTop = false; // new panel meshes: override() applies the Heat pump draw order again
     Object.values(this.pipes).forEach((p) => p?.dispose());
     this.pipes = {};
     this.battery.clear(); this.charge.clear(); this.car.clear();
@@ -141,7 +142,8 @@ export class Systems {
     if (sys === "battery" && prev !== "battery") { this.h = 6; this.soc = 0.2; }
     this.override();
     if (sys === "heatpump") H.setLabels(H.xray.set(this.env) as unknown[]);
-    const pose = sys === "panels" ? POSES.solar : sys === "battery" ? POSES.storage : sys === "wallbox" ? POSES.extras : sys === "heatpump" ? POSES.heatpump : null;
+    // Heat pump: the high angle from the south, so both roof faces and their modules read under the x-ray.
+    const pose = sys === "panels" ? POSES.solar : sys === "battery" ? POSES.storage : sys === "wallbox" ? POSES.extras : sys === "heatpump" ? POSES.heat : null;
     if (pose) H.flyTo(pose);
   }
 
@@ -152,11 +154,29 @@ export class Systems {
     this.charge.visible = s === "wallbox";
     this.car.visible = s === "wallbox";
     if (H.batteryBox) H.batteryBox.visible = s !== "wallbox" && s !== "panels" && s !== "heatpump";
-    if (!s) return;
+    if (!s) { this.panelsOnTop(false); return; }
     H.panels.visible = true; // the kit is the same in every system
+    this.panelsOnTop(s === "heatpump");
     H.sunGroup.visible = s === "panels" || s === "battery";
     H.kit.visible = s === "battery" || s === "wallbox";
     if (H.wallbox) H.wallbox.visible = s === "wallbox" ? true : H.wallbox.visible;
+  }
+
+  // Heat pump: the x-ray roof fill sits 3 cm under the modules and wins the depth fight, and the far roof face hides its
+  // modules from this pose. The panels draw last and through the shell (transparent pass, still fully opaque, no depth
+  // test), so all of them show under the x-ray. Undone on leaving.
+  private onTop = false;
+  private panelsOnTop(on: boolean) {
+    if (on === this.onTop) return;
+    this.onTop = on;
+    this.host.panels.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh && !(o as THREE.LineSegments).isLineSegments) return;
+      const u = o.userData as { ro?: number; tr?: boolean };
+      const mats = ([] as THREE.Material[]).concat((m.material as THREE.Material | THREE.Material[]) ?? []);
+      if (on) { u.ro = o.renderOrder; u.tr = mats.some((x) => x.transparent); o.renderOrder = 10; mats.forEach((x) => { x.transparent = true; x.depthTest = false; x.needsUpdate = true; }); }
+      else { o.renderOrder = u.ro ?? 0; mats.forEach((x) => { x.transparent = !!u.tr; x.depthTest = true; x.needsUpdate = true; }); }
+    });
   }
 
   frame(dt: number) {

@@ -204,7 +204,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     `${n2(d.pv_kwp ?? 0)} kWp${mods}${multi ? ", shared roof" : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh` : "None",
     d.wallbox_kw ? `${n1(d.wallbox_kw)} kW` : inputs.has_ev ? "None" : "None, no EV",
-    multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : "None, not asked",
+    multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : SYS ? "No heat pump in this design" : "None, not asked",
     `${eur(e.capex_eur)}${breakEven ? `, break-even in ${breakEven} years` : ""}`,
   ];
   const head8: string[] = [
@@ -230,16 +230,18 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     const f = t?.split(/(?<=\.)\s/)[0]?.trim();
     return f && f.length <= 150 && !/installer|signed|similar|tolerance|source|rule of thumb/i.test(f) ? f : null;
   };
+  const heatingKnown = !!inputs.heating_type && !/unknown|not_known|none/i.test(String(inputs.heating_type));
   const faces = bars[1] ? bars[1].segments.filter((g) => g.unit === "kWp").length : 0;
   const line2: Record<number, string | null> = {
     1: a ? `About ${n0(a.pv_yield_kwh)} kWh a year${faces ? ` from ${faces} face${faces === 1 ? "" : "s"}` : ""}, for a home using ${n0((inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0))} kWh${layers?.ev ? " including the car" : ""}.${res.roof?.stated_direction_conflict ? ` ${res.roof.note ?? res.explanation.find((x) => /^Roof measured from the building model/.test(x)) ?? "Roof measured from the building model; the stated direction was not found."}` : ""}` : null,
     2: d.battery_kwh ? plain(bars[2]?.sentence) ?? "Carries the midday surplus into the evening." : "No battery in this design.",
     3: d.wallbox_kw ? plain(bars[3]?.sentence) ?? `Charges the car at home, ${n0(layers?.ev?.annual_kwh ?? 0)} kWh a year.` : inputs.has_ev ? "No wallbox in this design." : "No electric car, so no wallbox.",
-    4: d.heatpump_kw ? "Sized from the heating bill." : "Not asked for.",
+    4: d.heatpump_kw ? "Sized from the heating bill." : !SYS ? "Not asked for." : plain(res.components.heatpump?.reason?.replace(/^No heat pump[:,]\s*/i, "").replace(/^./, (x) => x.toUpperCase())) ?? (heatingKnown ? "The lead did not ask for one." : "Heating facts not asked yet."),
   };
 
 
-  const view = VIEWS[stage - 1];
+  // Systems: Heat pump looks from high in the south (as scene.setSystem does) so the whole kit stays in view.
+  const view: StageView = SYS && stage === 4 ? "heat" : VIEWS[stage - 1];
 
   // One call per chip: the scene frames the system and shows its layer (scene.setSystem on branch layers).
   useEffect(() => { if (SYS) setSystem(systemOf(stage)); }, [stage]);
