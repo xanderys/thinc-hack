@@ -63,7 +63,7 @@ footer: Marquee
 
 ---
 
-<p class="label">Design: rules read from 1,570 signed designs</p>
+<p class="label">Rules from Reonic’s 1,619 projects, the second half sealed</p>
 
 ## Each installer’s habits, written as rules a planner can check.
 
