@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { setClientCard, useClientCard } from "./clientCard";
 import type { HeatingType, HomeInputs, RoofResult } from "@/lib/api";
 import { n0 } from "@/lib/stage";
 import { maskPhone } from "@/lib/phone";
@@ -119,16 +120,9 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
 /** The facts row. An explicit edit calls onFact (the existing intake-step path); opening a chip never writes. slot: room for a button at the row's end. */
 export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phone, onPhone, sources }: { sources?: Record<string, string>; phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
   const [open, setOpen] = useState<Field | "phone" | null>(null);
-  // The one-line row (Systems layout) always opens at its start: the facts first, the WhatsApp control last; a control
-  // portalled in later (or a restored scroll) must never leave the row showing only its last item.
-  const rowRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const r = rowRef.current; if (!r) return;
-    r.scrollLeft = 0;
-    const mo = new MutationObserver(() => { if (r.scrollLeft > 0 && !r.matches(":focus-within")) r.scrollLeft = 0; });
-    mo.observe(r, { childList: true });
-    return () => mo.disconnect();
-  }, []);
+  const card = useClientCard();
+  useEffect(() => () => setClientCard(false), []);
+  useEffect(() => { if (!card) setOpen(null); }, [card]);
   // A fact the planner sets here is stated from then on, whatever the lead said before.
   const [edited, setEdited] = useState<Set<string>>(new Set());
   const specs = SPECS.filter((s) => s.f !== hidden);
@@ -138,28 +132,32 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
     const on = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(null); };
     addEventListener("keydown", on); return () => removeEventListener("keydown", on);
   }, [open]);
+  const cell = (key: string, g: Glyph, label: string, st: string, value: string | null, via: boolean, field: Field | "phone") => (
+    <button key={key} type="button" className="fq" data-state={st} aria-expanded={open === field} aria-controls="fc-panel" onClick={() => setOpen((o) => o === field ? null : field)}>
+      <Glyph g={g} />
+      {st === "missing"
+        ? <span className="fq-need">Needs: {label.toLowerCase()}</span>
+        : <span className="fq-t"><span className="k">{label}</span><span className="v">{value}</span>{via && <span className="via">via WhatsApp</span>}</span>}
+    </button>
+  );
   return (
-    <div className="fc-wrap">
-      <div ref={rowRef} className="fc-row" data-facts-row="">
-        {specs.map((s) => {
-          const base = s.state(inputs, roof);
-          // The engine's own word for each fact (lead.sources) sets the tone; a missing value stays missing.
-          const st = base === "missing" ? base : edited.has(s.f) ? "stated" : sources?.[s.f] ? (sources[s.f] === "estimated" ? "estimated" : "stated") : base;
-          return (
-            <button key={s.f} type="button" className="fc" data-state={st} aria-expanded={open === s.f} aria-controls="fc-panel" onClick={() => setOpen((o) => o === s.f ? null : s.f)}>
-              <Glyph g={s.glyph} /><span className="k">{s.label}</span>{st !== "missing" && <span className="v">{s.value(inputs, roof)}</span>}{origin?.[s.f] === "whatsapp" && st !== "missing" && <span className="via">via WhatsApp</span>}
-            </button>
-          );
-        })}
-        {onPhone && (
-          <button type="button" className="fc" data-state={phone ? "stated" : "missing"} aria-expanded={open === "phone"} aria-controls="fc-panel" onClick={() => setOpen((o) => o === "phone" ? null : "phone")}>
-            <Glyph g="phone" /><span className="k">Phone</span>{phone && <span className="v">{maskPhone(phone)}</span>}
-          </button>
-        )}
-        {slot != null && <span className="fc-slot">{slot}</span>}
+    <div className="fq-wrap" data-open={card ? "" : undefined}>
+      <div className="fq-body" id="fq-body" inert={!card}>
+        <div className="fq-clip">
+          <div className="fq-grid" data-facts-row="">
+            {specs.map((s) => {
+              const base = s.state(inputs, roof);
+              // The engine's own word for each fact (lead.sources) sets the tone; a missing value stays missing.
+              const st = base === "missing" ? base : edited.has(s.f) ? "stated" : sources?.[s.f] ? (sources[s.f] === "estimated" ? "estimated" : "stated") : base;
+              return cell(s.f, s.glyph, s.label, st, st === "missing" ? null : s.value(inputs, roof), origin?.[s.f] === "whatsapp" && st !== "missing", s.f);
+            })}
+            {onPhone && cell("phone", "phone", "Phone", phone ? "stated" : "missing", phone ? maskPhone(phone) : null, false, "phone")}
+          </div>
+          {open === "phone" && onPhone && <div className="fc-panel" id="fc-panel" role="group" aria-label="Phone" key="phone"><PhoneField value={phone} onSet={(v) => { onPhone(v); setOpen(null); }} /></div>}
+          {cur && <div className="fc-panel" id="fc-panel" role="group" aria-label={cur.label} key={cur.f}><Panel spec={cur} i={inputs} roof={roof} onFact={(f, v, l) => { onFact(f, v, l); setEdited((x) => new Set(x).add(f === "ev_annual_km" ? "has_ev" : f)); if (f !== "ev_annual_km" && !(f === "has_ev" && v === true)) setOpen(null); }} /></div>}
+          {slot != null && <div className="fq-slot">{slot}</div>}
+        </div>
       </div>
-      {open === "phone" && onPhone && <div className="fc-panel" id="fc-panel" role="group" aria-label="Phone" key="phone"><PhoneField value={phone} onSet={(v) => { onPhone(v); setOpen(null); }} /></div>}
-      {cur && <div className="fc-panel" id="fc-panel" role="group" aria-label={cur.label} key={cur.f}><Panel spec={cur} i={inputs} roof={roof} onFact={(f, v, l) => { onFact(f, v, l); setEdited((x) => new Set(x).add(f === "ev_annual_km" ? "has_ev" : f)); if (f !== "ev_annual_km" && !(f === "has_ev" && v === true)) setOpen(null); }} /></div>}
     </div>
   );
 }

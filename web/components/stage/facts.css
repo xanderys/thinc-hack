@@ -1,18 +1,42 @@
 /* The facts row: one chip per fact, one control panel under the row for the open chip. Own file, own classes (fc-). */
-.fc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.fc-slot { margin-left: auto; display: inline-flex; align-items: center; min-width: 0; }
-.fc { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; max-width: 100%; padding: 0 12px 0 10px; font: inherit; font-size: 14px; color: var(--ink); background: var(--sheet-2); border: 1px solid var(--rule); border-radius: 18px; cursor: pointer; transition: border-color 180ms, background-color 180ms; }
-.fc svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-3); }
-.fc .k { color: var(--ink-3); white-space: nowrap; }
-.fc .v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc .via { font-size: 11px; color: var(--ink-3); border-left: 1px solid var(--rule-2); padding-left: 7px; white-space: nowrap; }
-.fc:hover { border-color: var(--rule-2); }
-.fc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.fc[aria-expanded="true"] { border-color: var(--accent); background: var(--paper); }
-.fc[aria-expanded="true"] svg { color: var(--accent); }
-.fc[data-state="estimated"] .v { color: var(--ink-3); font-style: italic; }
-.fc[data-state="missing"] { background: transparent; border: 1px dotted var(--ink-4); }
-.fc[data-state="missing"] .k { color: var(--ink-2); }
+/* The client card: the board draws the face (name, status, address, verdict, chevron), this draws the facts under it. */
+.b-open:has(.fq-wrap) .b-open-h { border: 1px solid var(--rule-2); border-radius: 12px; background: var(--sheet-2); padding: 10px 6px 10px 14px; align-items: center; transition: border-radius 350ms var(--spring-snappy-350); }
+.b-open:has(.fq-wrap[data-open]) .b-open-h { border-radius: 12px 12px 0 0; border-bottom-color: var(--rule); }
+.cc-chev { all: unset; box-sizing: border-box; flex: none; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 22px; cursor: pointer; color: var(--ink-2); }
+.cc-chev:hover { color: var(--ink); }
+.cc-chev:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cc-chev svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform 500ms var(--spring-snappy-350); }
+.cc-chev[aria-expanded="true"] svg { transform: rotate(180deg); }
+.b-open-h .cc-chev { border-radius: 22px; }
+.fq-wrap[data-open] { border: 1px solid var(--rule-2); border-top: 0; border-radius: 0 0 12px 12px; background: var(--sheet-2); }
+.fq-body { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 500ms var(--spring-snappy-350), opacity 200ms ease-out; }
+.fq-wrap[data-open] .fq-body { grid-template-rows: 1fr; opacity: 1; }
+.fq-clip { min-height: 0; overflow: hidden; display: grid; gap: 10px; }
+.fq-wrap[data-open] .fq-clip { padding: 10px 14px 14px; }
+.fq-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 18px; }
+.fq { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 6px 8px; border-radius: 8px; cursor: pointer; min-width: 0; }
+.fq:hover { background: var(--sheet); }
+.fq:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fq[aria-expanded="true"] { background: var(--paper); box-shadow: inset 0 0 0 1px var(--accent); }
+.fq svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-3); }
+.fq[aria-expanded="true"] svg { color: var(--accent); }
+.fq-t { display: grid; min-width: 0; line-height: 1.25; }
+.fq .k { font-size: 12px; color: var(--ink-3); }
+.fq .v { font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
+.fq .via { font-size: 11px; color: var(--ink-3); }
+.fq[data-state="estimated"] .v { color: var(--ink-3); font-style: italic; }
+.fq-need { font-size: 13px; color: var(--ink-2); border: 1px dotted var(--ink-4); border-radius: 14px; padding: 4px 10px; min-width: 0; overflow-wrap: anywhere; }
+.fq-slot { display: flex; min-width: 0; }
+.fq-slot > * { max-width: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .fq-body { transition: opacity 160ms linear; }
+  .cc-chev svg, .b-open:has(.fq-wrap) .b-open-h { transition: none; }
+}
+@media (min-width: 761px) {
+  /* Under the Systems layout the facts bar shared the header's row; the card stacks them. */
+  .b-open:has(.sys-on) > .b-open-h:has(~ .st-open .fq-wrap), .b-open:has(.sys-on) > .b-open-h { grid-column: 1 / -1; }
+  .b-open:has(.sys-on) .st-open > .t-bar:has(.fq-wrap) { grid-column: 1 / -1; grid-row: 2; }
+}
 .fc-panel { margin-top: 8px; padding: 12px 14px; background: var(--paper); border: 1px solid var(--rule-2); border-radius: 12px; display: grid; gap: 12px; max-width: 520px; }
 .fc-panel .fc-h { font-size: 12.5px; color: var(--ink-3); }
 .fc-seg { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -37,9 +61,7 @@
 @keyframes fc-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes fc-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (max-width: 760px) {
-  .fc { min-height: 34px; font-size: 13px; padding: 0 10px 0 8px; gap: 6px; }
   .fc-panel { max-width: none; }
-  .fc-slot { margin-left: 0; width: 100%; }
 }
 
 .fc-phone { display: grid; gap: 10px; }
