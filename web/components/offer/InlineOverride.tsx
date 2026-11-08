@@ -21,9 +21,10 @@ export default function InlineOverride({ field, text, unit, sizes, current, set,
   useEffect(() => {
     if (!open) return;
     const off = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    addEventListener("pointerdown", off); addEventListener("keydown", esc);
-    return () => { removeEventListener("pointerdown", off); removeEventListener("keydown", esc); };
+    // Capture phase on window: Esc closes the chooser and stops there, so the board's Esc (close the lead) never runs.
+    const esc = (e: KeyboardEvent) => { if (e.key !== "Escape") return; e.stopPropagation(); e.preventDefault(); setOpen(false); };
+    addEventListener("pointerdown", off); addEventListener("keydown", esc, true);
+    return () => { removeEventListener("pointerdown", off); removeEventListener("keydown", esc, true); };
   }, [open]);
   const fmt = (v: number) => `${unit === "kWp" ? n2(v) : n1(v)} ${unit}`;
   const locked = set !== undefined;
