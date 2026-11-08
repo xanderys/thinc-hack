@@ -95,6 +95,7 @@ export interface Variant {   // v1.7
 
 export interface DesignResponse {
   design: Design;
+  roof?: { stated_azimuth_deg?: number | null; measured_azimuths_deg?: number[]; stated_direction_conflict?: boolean; source?: string; note?: string | null } | null; // v2.12
   explanation: string[];
   components: { pv: ComponentDetail; battery: ComponentDetail; heatpump: ComponentDetail; wallbox: ComponentDetail };
   plausibility: Plausibility[];
