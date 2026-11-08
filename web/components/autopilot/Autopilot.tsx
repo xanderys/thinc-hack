@@ -2,13 +2,13 @@
 // The board's "Run autopilot" button and the agent log that slides up above the composer while a run streams.
 import { useEffect, useRef, useState } from "react";
 import { berlinTime } from "@/lib/time";
-import { closeLog, openLog, startRun, useRun, type ApEvent } from "./store";
+import { askRun, cancelRun, closeLog, confirmRun, openLog, useRun, type ApEvent } from "./store";
 import s from "./autopilot.module.css";
 
 // ?dry=1 runs without sending; ?mock=1 plays the scripted run (off production only); ?leads=a,b and ?wait=s narrow a check run.
 const flags = () => {
   const q = new URLSearchParams(location.search), ids = q.get("leads")?.split(",").filter(Boolean), w = q.get("wait");
-  return { ...(q.get("dry") === "1" ? { dry: true } : {}), ...(q.get("mock") === "1" ? { mock: true } : {}), ...(ids?.length ? { lead_ids: ids } : {}), ...(w != null && /^\d+$/.test(w) ? { wait_s: Number(w) } : {}) };
+  return { ...(q.get("dry") === "1" ? { dry: true } : {}), ...(q.get("mock") === "1" ? { mock: true } : {}), ...(ids?.length ? { lead_ids: ids } : {}), ...(w != null && /^\d+$/.test(w) ? { wait_s: Number(w) } : {}), ...(q.get("confirm") === "1" ? { confirm: true } : {}) };
 };
 
 export function RunButton() {
@@ -18,9 +18,9 @@ export function RunButton() {
     if (flags().mock) return;   // the mock run calls nothing real
     fetch("/api/autopilot/status", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((b) => setElsewhere(!!b?.running)).catch(() => {});
   }, [run.phase]);
-  const busy = run.phase === "running";
+  const busy = run.phase === "running" || run.phase === "confirm";
   const go = () => {
-    startRun(flags());
+    askRun(flags());
   };
   return (
     <div className={s.bar}>
@@ -56,7 +56,7 @@ export function AgentLog() {
   useEffect(() => { const el = list.current; if (el) el.scrollTop = el.scrollHeight; }, [run.events.length, run.open]);
   useEffect(() => {
     if (!run.open || run.phase === "running") return;
-    const on = (e: KeyboardEvent) => { if (e.key === "Escape") closeLog(); };
+    const on = (e: KeyboardEvent) => { if (e.key === "Escape") { if (run.phase === "confirm") cancelRun(); else closeLog(); } };
     addEventListener("keydown", on); return () => removeEventListener("keydown", on);
   }, [run.open, run.phase]);
   if (!run.open) return null;
@@ -66,9 +66,17 @@ export function AgentLog() {
     <section className={s.log} aria-label="Autopilot" aria-live="polite">
       <header className={s.head}>
         <h2>Autopilot</h2>
-        {run.phase !== "running" && <button type="button" className="btn ghost" onClick={closeLog}>Close</button>}
+        {run.phase === "confirm" ? <button type="button" className="btn ghost" onClick={cancelRun}>Cancel</button>
+          : run.phase !== "running" && <button type="button" className="btn ghost" onClick={closeLog}>Close</button>}
       </header>
-      <ol className={s.lines} ref={list}>
+      {run.phase === "confirm" && (
+        <div className={s.confirm}>
+          {run.sends == null ? <span className={`b-skel ${s.skelT}`} aria-hidden />
+            : <span>Sends {run.sends} WhatsApp{run.sends === 1 ? "" : "s"} to homeowners.</span>}
+          <button type="button" className={`btn ${s.run}`} onClick={confirmRun} disabled={run.sends == null}>Run</button>
+        </div>
+      )}
+      {run.phase !== "confirm" && <ol className={s.lines} ref={list}>
         {lines.map((e, i) => (
           <li key={`${e.lead_id}:${e.step}:${i}`} className={s.line} data-state={e.state}>
             <Glyph step={e.step} glyph={e.glyph} state={e.state} />
@@ -81,10 +89,10 @@ export function AgentLog() {
           <li className={s.line} aria-hidden><span className={`b-skel ${s.skelG}`} /><span className={`b-skel ${s.skelT}`} /></li>
         )}
         {summary && <li className={`${s.line} ${s.sum}`} data-state="done"><Glyph step="summary" glyph={summary.glyph} state={summary.state} /><span className={s.text}>{summary.text}</span><time className={`${s.at} num`} dateTime={summary.at}>{berlinTime(summary.at)}</time></li>}
-      </ol>
+      </ol>}
       {run.error && (
         <div className="error" role="alert"><span><span className="src">Engine said</span>{run.error}</span>
-          {run.phase !== "running" && <button className="btn ghost" onClick={() => startRun(flags())}>Retry</button>}
+          {run.phase !== "running" && <button className="btn ghost" onClick={() => askRun(flags())}>Retry</button>}
         </div>
       )}
     </section>
