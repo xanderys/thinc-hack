@@ -105,8 +105,8 @@ def startup():
     leads.load_all()  # before anything can create or step a lead
     snapshot_untouched()
     for l in leads.LEADS.values():  # the pinned demo leads carry Xander's number for the WhatsApp copilot
-        if l.get("pinned") and not l.get("phone"):
-            l["phone"] = DEMO_PHONE
+        if DEMO_PHONE and l.get("pinned") and not l.get("phone"):
+            l["phone"] = wa.e164(DEMO_PHONE)
             leads.save(l)
     wa.configure(_wa_order, _wa_step)
     wa.start()
@@ -1212,7 +1212,7 @@ def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
             "pinned": bool(lead.get("pinned"))}
 
 
-DEMO_PHONE = "+6586936789"
+DEMO_PHONE = os.environ.get("MARQUEE_DEMO_PHONE") or None  # the demo homeowner's number, from ~/.config/marquee/engine.env only
 
 
 def _wa_order(lead: dict) -> list:
