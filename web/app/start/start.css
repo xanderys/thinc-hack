@@ -157,3 +157,6 @@ body:has(.start-root) main { max-width: none; padding: 0; }
   .ios-heard-t { animation: ios-heard-r 900ms linear both; }
   @keyframes ios-heard-r { from { background: rgba(255, 255, 255, 0.24); } to { background: rgba(255, 255, 255, 0.08); } }
 }
+/* The scene gives way first on short screens, so the fact line never runs under the keys. */
+.ios-scene { min-height: 0; flex: 1 1 0; }
+.ios-scene-3d { min-height: 120px; }
