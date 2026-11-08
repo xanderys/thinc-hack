@@ -478,12 +478,14 @@ export class SpatialScene {
       if (!m.isMesh) return;
       const name = (m.name || m.parent?.name || "").toLowerCase(), ctx = name.startsWith("context"), walls = name.startsWith("walls");
       if (!ctx && !walls) return;
-      const g = m.geometry.clone(), pos = g.attributes.position as THREE.BufferAttribute;
+      // Per triangle, not per corner: a wall triangle with one corner outside the house would stay half up as a
+      // slanted sliver, so a triangle stands only when all three corners are the house's.
+      const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone(), pos = g.attributes.position as THREE.BufferAttribute;
       inv.copy(m.matrixWorld).invert();
-      for (let i = 0; i < pos.count; i++) {
-        v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
-        const mine = own && v.x >= own.min.x && v.x <= own.max.x && v.z >= own.min.z && v.z <= own.max.z;
-        if (ctx || !mine) { v.y = ground + 0.02; v.applyMatrix4(inv); pos.setXYZ(i, v.x, v.y, v.z); }
+      const inside = (i: number) => { v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld); return !!own && v.x >= own.min.x && v.x <= own.max.x && v.z >= own.min.z && v.z <= own.max.z; };
+      for (let t = 0; t + 2 < pos.count; t += 3) {
+        if (!ctx && inside(t) && inside(t + 1) && inside(t + 2)) continue;
+        for (let i = t; i < t + 3; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld); v.y = ground + 0.02; v.applyMatrix4(inv); pos.setXYZ(i, v.x, v.y, v.z); }
       }
       pos.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
       m.geometry = g;
