@@ -87,7 +87,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (r.ok && r.data?.version != null) baseVersion.current = r.data.version;
     return r.ok ? { ok: true } : { ok: false, error: r.error };
   }
-  // A kit choice (chooser, offer tab, undo) is written to the lead at once, so a reload and Approve see the same design.
+  // A kit choice (chooser, undo; never an offer tab) is written to the lead at once, so a reload and Approve see the same design.
   async function writeKit(route: string, kit: Overrides) {
     const id = leadRef.current;
     if (!id) return;
@@ -402,7 +402,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   const onVariant = useCallback((v: Variant) => {
     if (!v.overrides) return;
     setHistory((h) => [...h, { changed, overrides }]); cause.current = `Switched to ${v.name}:`; setApprovedAt(null);
-    setOverrides(v.overrides); void writeKit("kit-variant", v.overrides);
+    setOverrides(v.overrides);   // a tab is a view: nothing is written to the lead (the chooser, Undo and Approve write)
   }, [changed, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
   const openRef = useRef<HTMLDivElement>(null);
   const flag = res ? pickFlag(res) : null;
