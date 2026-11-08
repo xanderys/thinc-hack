@@ -41,13 +41,13 @@
 .pc-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .pc-body > aside { border: 0; border-radius: 0; margin: 0; padding-top: 4px; padding-bottom: 0; }
 /* Approve stays at the bottom of the open card; the rest scrolls under it. */
-.pc-body [class*="offer_approve__"] { position: sticky; bottom: 0; z-index: 2; background: #fff; margin: 0 -12px; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--rule); }
+.pc-body [class*="offer_approve__"] { position: sticky; bottom: 0; z-index: 2; background: #fff; margin: 0 -12px; padding: 8px 12px 10px; border-top: 1px solid var(--rule); }
 .pc-clip { display: contents; }
 
-/* Phone: fixed above the sentence bar, rising over the page; a scrim dims what it covers. */
+/* Phone: a Wallet pass peeking from the bottom edge, 16 px in from each side, right above the safe area. */
 .pc-bottom .pc-card {
-  position: fixed; left: 0; right: 0; bottom: var(--say-h, 64px); z-index: 19; height: min(84dvh, 760px);
-  border-radius: 16px 16px 0 0; border-bottom: 0; box-shadow: 0 -6px 24px rgba(7, 27, 113, 0.10); will-change: transform;
+  position: fixed; left: 16px; right: 16px; bottom: env(safe-area-inset-bottom, 0px); z-index: 19; height: min(84dvh, 760px);
+  border-radius: 20px 20px 0 0; border-bottom: 0; box-shadow: 0 -6px 24px rgba(7, 27, 113, 0.10); will-change: transform;
 }
 .pc-bottom .pc-pass { padding-top: 16px; }
 .pc-grip { position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--rule-2); }
@@ -56,17 +56,16 @@
 
 /* Desktop: the same card, 520 px, centred over the model just above the sentence bar; the clip hides the tucked body. */
 @media (min-width: 761px) {
-  .pc-bottom { position: absolute; inset: 0; z-index: 7; pointer-events: none; --pc-b: 12px; }
+  .pc-bottom { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
   .pc-bottom .pc-clip {
     display: block; position: absolute; left: 50%; transform: translateX(-50%); width: clamp(480px, 40vw, 540px); max-width: calc(100% - 24px);
-    top: 12px; bottom: var(--pc-b); overflow: hidden; pointer-events: none; border-radius: 16px;
+    top: 12px; bottom: 0; overflow: hidden; pointer-events: none; border-radius: 20px 20px 0 0;
   }
-  .pc-bottom .pc-card { position: absolute; left: 0; right: 0; bottom: 0; top: auto; height: min(100%, 680px); pointer-events: auto; border-radius: 16px; border-bottom: 1px solid var(--rule); box-shadow: none; }
+  .pc-bottom .pc-card { position: absolute; left: 0; right: 0; bottom: 0; top: auto; height: min(100%, 680px); pointer-events: auto; border-radius: 20px 20px 0 0; border-bottom: 0; box-shadow: none; }
   .pc-bottom .pc-body { padding-bottom: 0; }
   .pc-bottom .pc-body [class*="offer_approve__"] { padding-bottom: 12px; }
   .pc-bottom .pc-scrim { position: absolute; z-index: 0; border-radius: 12px; }
 }
-@media (min-width: 1024px) { .st-open .pc-bottom { --pc-b: calc(var(--say-h, 58px) + 38px); } }
 
 /* Reduce Motion: no slide, the panel crossfades in place. */
 .pc-reduce .pc-body { transition: opacity 200ms ease-out; opacity: 0; }
@@ -89,11 +88,11 @@
   .st-open:has(.sys-on) .t-mail { display: none; }
 
   /* The last info block scrolls clear of the tucked pass and the sentence bar. */
-  .sys-on { padding-bottom: calc(var(--say-h, 64px) + var(--pc-peek, 76px) + 24px); margin-top: 0; }
+  .sys-on { padding-bottom: calc(var(--pc-peek, 76px) + env(safe-area-inset-bottom, 0px) + 24px); margin-top: 0; }
   .sys-on [class*="chain_hero__"] { position: relative; top: auto; order: 1; height: 36vh; min-height: 250px; margin-bottom: 0; }
   /* The chip row sits right under the model and never goes under the tucked pass. */
   .sys-on .sys-under {
-    order: 2; position: sticky; z-index: 6; bottom: calc(var(--say-h, 64px) + var(--pc-peek, 76px));
+    order: 2; position: sticky; z-index: 6; bottom: calc(var(--pc-peek, 76px) + env(safe-area-inset-bottom, 0px));
     margin: 0 -16px; padding: 8px 16px; background: var(--paper);
   }
   .sys-on [class*="chain_rail__"] { order: 3; }
@@ -103,10 +102,9 @@
 
 @media (min-width: 761px) {
   /* The left column folds away: the model takes the full width, the chip row sits under it, one info block over it. */
-  .sys-on, .st-open > .sys-on[class*="chain_root__"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; row-gap: 8px; }
+  .sys-on, .st-open > .sys-on[class*="chain_root__"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; row-gap: 8px; }
   .sys-on [class*="chain_hero__"], .st-open > .sys-on [class*="chain_hero__"] { grid-column: 1; grid-row: 1; }
   .sys-on .sys-under { grid-column: 1; grid-row: 2; }
-  .sys-on [class*="chain_say__"], .st-open > .sys-on [class*="chain_say__"] { grid-column: 1; grid-row: 3; }
   .sys-info {
     position: absolute; top: 12px; left: 12px; z-index: 4; width: 340px; max-height: calc(100% - 24px - var(--pc-peek, 76px) - 60px);
     display: flex; flex-direction: column; background: #fff; border: 1px solid var(--rule); border-radius: 12px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
@@ -114,10 +112,6 @@
   .sys-info [class*="chain_rail__"] { overflow: visible; padding: 0; flex: none; }
   .sys-info [class*="chain_item__"] { border: 0; border-radius: 0; }
   .sys-info .sys-shade { border-top: 1px solid var(--rule); padding: 8px 12px 10px; }
-  /* The model toolbar moves to the top right: the bottom centre belongs to the pass and the sentence bar. */
+  /* The model toolbar moves to the top right: the bottom centre belongs to the pass. */
   .sys-on.sys-on [class*="chain_hero__"] [class*="chain_toolbar__"] { top: 12px; bottom: auto; left: auto; right: 12px; transform: none; }
-}
-@media (min-width: 1024px) {
-  .st-open > .sys-on[class*="chain_root__"] { grid-template-rows: minmax(0, 1fr) auto; }
-  .st-open > .sys-on [class*="chain_say__"] { grid-column: 1; grid-row: 1; }
 }

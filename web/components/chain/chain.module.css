@@ -108,13 +108,6 @@
 .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 .save { border: 0; background: var(--accent); color: #fff; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 600; opacity: 0.55; cursor: default; }
 
-.say { grid-column: 2; grid-row: 2; }
-.say :global(.s-refine) { margin: 0; padding: 0; border: 0; gap: 6px; }
-.say :global(.s-h3) { display: none; }
-.say :global(.s-refine > div) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-.say :global(.s-say) { flex: 1; min-width: 260px; }
-.say :global(.s-listen) { margin: 0; }
-.say :global(.s-moved) { display: none; }
 .varList { display: none; }
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
@@ -140,17 +133,9 @@
   .variants { display: none; }
   .toolbar { bottom: 8px; padding: 3px; }
   .inert, .toolbar .sep:first-of-type, .save { display: none; }
-  .say { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--paper); border-top: 1px solid var(--rule); padding: 8px 16px calc(8px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 760px) {
   .item { scroll-margin-top: calc(46vh + 12px); }
-  .say :global(.s-refine > div) { flex-wrap: nowrap; }
-  .say :global(.s-say) { min-width: 0; }
-  .say :global(.s-listen .btn) { white-space: nowrap; }
-  /* Phone: the bar holds the sentence and the mic only; chips and notes are on the chain's Moved marks. */
-  .say :global(.s-chips), .say :global(.s-quiet) { display: none; }
-  .say :global(.s-refine > div) { flex-wrap: wrap; }
-  .say :global(.s-refine .error) { flex-basis: 100%; order: -1; }
 }
 /* v2.7: Reonic guides shown amber, info ticks neutral, rule-of-thumb line, optimiser caption */
 .checks li.refRow { background: #fff7e6; }
@@ -170,7 +155,6 @@
 /* Draft first: after the first open the chain waits as a strip under the model. */
 .root.isCollapsed { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; }
 .isCollapsed .hero { grid-column: 1; grid-row: 1; }
-.isCollapsed .say { grid-column: 1; grid-row: 3; }
 .collapsed { grid-column: 1; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .scrub { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; }
 .scrub button { display: inline-flex; align-items: center; gap: 6px; flex: none; min-height: 36px; padding: 0 10px 0 4px; border: 1px solid var(--rule); background: #fff; border-radius: 999px; font: inherit; font-size: 13px; color: var(--ink-2); cursor: pointer; transition: background-color 200ms, border-color 200ms; }
@@ -299,10 +283,6 @@
   .shadeUnder { order: 2; }
   .stripPhone { order: 3; position: sticky; top: var(--hero-h, 46vh); z-index: 4; background: var(--paper); margin: -10px -16px 8px; padding: 6px 16px; width: auto; }
   .stripPhone .scrub { margin: 0; padding: 0; width: 100%; max-width: 100%; }
-  /* Nothing wider than the phone: the bar and its form shrink to the screen instead of scrolling the page sideways. */
-  .say { width: auto; max-width: 100vw; min-width: 0; }
-  .say :global(.s-refine), .say :global(.s-refine > div), .say :global(.s-say) { min-width: 0; max-width: 100%; }
-  .say :global(.s-say input) { width: 0; min-width: 0; }
   .rail { order: 4; }
   .rail > li { scroll-margin-top: calc(var(--hero-h, 46vh) + 62px); }
   .offerUnder { order: 5; margin-top: 12px; }

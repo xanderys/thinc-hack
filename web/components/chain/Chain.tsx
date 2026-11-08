@@ -57,7 +57,7 @@ type Props = {
   pending?: number | null; cause?: string | null;   // an edit waiting on the engine (since); what made the design on screen
   variants: Variant[]; onVariant: (v: Variant) => void; canUndo: boolean; onUndo: () => void; decide?: ReactNode;
   redraft?: unknown;   // changes on every refinement (sentence, hand change, call step); a new design without one is not a redraft
-  answered: boolean; refine: ReactNode;
+  answered: boolean;
 };
 
 // Phone width: the Offer panel docks under the model instead of beside it (same break as chain.module.css).
@@ -73,7 +73,7 @@ function useReduce() {
   return r;
 }
 
-export default function Chain({ res, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, refine, decide, redraft }: Props) {
+export default function Chain({ res, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, decide, redraft }: Props) {
   const reduce = useReduce();
   const causeRef = useRef(cause); causeRef.current = cause;
   // A change made from the Offer panel or Undo keeps the planner in the Offer: no stage or camera move on the re-run.
@@ -409,7 +409,6 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       {FIVE && onPanels && address && spatial !== false && (!SYS || narrow) && <div className={s.shadeUnder}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}
       {narrow && !SYS && <div className={s.offerUnder}>{offer(false)}</div>}
       {narrow && SYS && card}
-      <div className={s.say}>{refine}</div>
       {prev && JSON.stringify(prev.design) !== JSON.stringify(res.design) && <span className={s.srOnly} aria-live="polite">Draft updated.</span>}
     </div>
   );
