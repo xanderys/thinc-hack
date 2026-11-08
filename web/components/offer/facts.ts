@@ -35,7 +35,7 @@ export const breakEvenOf = (e: Economics | null | undefined): number | null =>
   e ? ((e as { break_even_year?: number | null }).break_even_year ?? e.payback_years ?? null) : null;
 
 export type Fact = { label: string; value: string; note?: string };
-// Price, break-even, and the difference from the planners' pick (left out for the pick itself). Same order everywhere.
+// Price, break-even, and the difference from the planners' pick (for the pick itself, none). Same shape everywhere.
 export function variantFacts(e: Economics | null | undefined, d: Partial<Design>, ref: Partial<Design> | null): Fact[] {
   const out: Fact[] = [];
   if (e) {
@@ -43,7 +43,6 @@ export function variantFacts(e: Economics | null | undefined, d: Partial<Design>
     const be = breakEvenOf(e);
     out.push({ label: "Break-even", value: be == null ? "20+ years" : `${n0(be)} years` });
   }
-  const diff = differs(d, ref);
-  if (diff) out.push({ label: "Change", value: diff });
+  out.push({ label: "Change", value: differs(d, ref) ?? "none, the planners' pick" });
   return out;
 }

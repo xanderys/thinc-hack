@@ -21,11 +21,18 @@ export default function InlineOverride({ field, text, unit, sizes, current, set,
   useEffect(() => {
     if (!open) return;
     const off = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    // Capture phase on window: Esc closes the chooser and stops there, so the board's Esc (close the lead) never runs.
-    const esc = (e: KeyboardEvent) => { if (e.key !== "Escape") return; e.stopPropagation(); e.preventDefault(); setOpen(false); };
-    addEventListener("pointerdown", off); addEventListener("keydown", esc, true);
-    return () => { removeEventListener("pointerdown", off); removeEventListener("keydown", esc, true); };
+    addEventListener("pointerdown", off);
+    return () => removeEventListener("pointerdown", off);
   }, [open]);
+  // Esc closes the chooser and stops there: neither the Proposed Design pass nor the board (close the lead) sees it.
+  // Registered once on mount, capture phase on window, so it runs before handlers added when the pass opens.
+  const openRef = useRef(open);
+  openRef.current = open;
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key !== "Escape" || !openRef.current) return; e.stopImmediatePropagation(); e.preventDefault(); setOpen(false); };
+    addEventListener("keydown", esc, true);
+    return () => removeEventListener("keydown", esc, true);
+  }, []);
   const fmt = (v: number) => `${unit === "kWp" ? n2(v) : n1(v)} ${unit}`;
   const locked = set !== undefined;
   const pick = (v: OverrideValue | undefined) => { setOpen(false); if (v === undefined && !fixed) return; if (locked && v === set) return; onChoose(field, v); };
