@@ -248,7 +248,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   const variants: Variant[] = useMemo(() => {
     if (!res) return [];
     // Engine v1.7: four offers the homeowner can choose between; the preference only reorders them.
-    const ev = (Object.keys(overrides).length ? drafted?.variants : null) ?? res.variants ?? drafted?.variants;
+    // The variants of the design on screen: refine returns them for the current facts and overrides (an EV sentence's
+    // wallbox included), so the agent's earlier draft is only the fallback for an engine that sends none.
+    const ev = res.variants ?? drafted?.variants;
     if (ev?.length) {
       const order = [...ev].sort((a, b) => (b.key === pref ? 1 : 0) - (a.key === pref ? 1 : 0));
       // After a sentence or a hand change the design on screen may match none of the offers: list it first as Current.

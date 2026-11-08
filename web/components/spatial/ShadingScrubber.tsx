@@ -1,5 +1,5 @@
 "use client";
-// Chip "Shading simulation", its card (Shading X %, Y kWh a year loss, source) and the month and hour scrubber.
+// Chip "Shading", its card (Shading X %, Y kWh a year loss, source) and the month and hour scrubber.
 // Renders nothing until GET /api/roof/shading is ready for this address and kWp.
 import { useEffect, useRef, useState } from "react";
 import { dayHours, SHADE_GRADIENT, setShadeAt, setShadeOn, useShadeView, useShading } from "@/lib/shading";
@@ -55,7 +55,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact 
 
   return (
     <div className={float ? `${s.wrap} ${s.float}` : s.wrap} data-cover={float ? "" : undefined}>
-      <button type="button" className={s.chip} aria-pressed={on} onClick={() => setShadeOn(!on)}>Shading simulation</button>
+      <button type="button" className={s.chip} aria-pressed={on} onClick={() => setShadeOn(!on)}>Shading</button>
       {on && (
         <div className={s.card}>
           <p className={s.head}>Shading <b>{pct1(data.total.shade_share)}</b>, <b>{n0(data.total.loss_kwh_year)}</b> kWh a year loss</p>

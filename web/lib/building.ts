@@ -18,7 +18,10 @@ const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
 
 export function isMultiUnit(model: BuildingShape | null | undefined, inputs: Partial<HomeInputs> | null | undefined): MultiUnit {
   const people = inputs?.num_inhabitants ?? null;
-  const stated = inputs?.house_size_sqm ?? (people ? people * 40 : 140);
+  // A stated size over 100 m2 a person is usually the whole building's floor area (read from the model), not the
+  // household's; then the household is taken at 40 m2 a person.
+  const given = inputs?.house_size_sqm ?? null;
+  const stated = given != null && !(people && given / people > 100) ? given : people ? people * 40 : 140;
   const fp = model?.footprint_m2 ?? model?.plan?.floor_area_m2 ?? null;
   const h = model?.height_m ?? null;
   // The LoD2 height runs to the ridge; take a roof off before counting storeys.
