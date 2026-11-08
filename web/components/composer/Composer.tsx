@@ -90,13 +90,24 @@ export default function Composer() {
     if (blob.size < 800) return;
     const go = async () => {
       setBusy(true); setFail(null); setReply(null);
-      const fd = new FormData(); fd.append("audio", blob, "voice.webm");
-      let j: { text?: string; error?: string; detail?: unknown } = {};
-      try { const res = await fetch("/api/leads/transcribe", { method: "POST", body: fd }); j = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` })); if (!res.ok && !j.error) j.error = typeof j.detail === "string" ? j.detail : `${res.status} ${res.statusText}`; }
-      catch (e) { j = { error: (e as Error).message }; }
+      let said = "", last = "";
+      // WalaoFlow first (16 kHz mono PCM); the engine's speech to text when it is unreachable.
+      try {
+        const res = await fetch("/api/leads/dictate", { method: "POST", headers: { "content-type": "application/octet-stream" }, body: await pcm16k(blob) });
+        const j = await res.json().catch(() => ({}));
+        if (res.ok && typeof j.text === "string") said = j.text; else last = j.error ?? `${res.status} ${res.statusText}`;
+      } catch (e) { last = (e as Error).message; }
+      if (!said.trim()) {
+        const fd = new FormData(); fd.append("audio", blob, "voice.webm");
+        try {
+          const res = await fetch("/api/leads/transcribe", { method: "POST", body: fd });
+          const j = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` }));
+          if (res.ok && typeof j.text === "string") said = j.text; else last = (typeof j.error === "string" ? j.error : typeof j.detail === "string" ? j.detail : `${res.status} ${res.statusText}`);
+        } catch (e) { last = (e as Error).message; }
+      }
       setBusy(false);
-      if (j.error || !j.text?.trim()) { setFail({ src: "Transcriber said", msg: j.error ?? "Nothing was heard.", retry: go }); return; }
-      await run(j.text.trim(), "voice");
+      if (!said.trim()) { setFail({ src: "Transcriber said", msg: last || "Nothing was heard.", retry: go }); return; }
+      setText((t) => (t.trim() ? `${t.trim()} ${said.trim()}` : said.trim())); field.current?.focus();
     };
     await go();
   }
@@ -133,6 +144,19 @@ export default function Composer() {
       </form>
     </div>
   );
+}
+
+async function pcm16k(blob: Blob): Promise<ArrayBuffer> {
+  const ctx = new AudioContext();
+  try {
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(buf.duration * 16000)), 16000);
+    const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
+    const f = (await off.startRendering()).getChannelData(0);
+    const out = new Int16Array(f.length);
+    for (let i = 0; i < f.length; i++) out[i] = Math.max(-1, Math.min(1, f[i])) * 0x7fff;
+    return out.buffer;
+  } finally { void ctx.close(); }
 }
 
 function announce(id: string) { dispatchEvent(new CustomEvent("marquee:lead-created", { detail: id })); }
