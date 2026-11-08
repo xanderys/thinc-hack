@@ -122,6 +122,37 @@ def add_hashes(out: dict, top_key: str = "expert") -> dict:
     return out
 
 
+COMPASS_DEG = {"north": 0, "north-east": 45, "east": 90, "south-east": 135, "south": 180, "south-west": 225, "west": 270,
+               "north-west": 315}
+
+
+def stated_direction_check(inp: dict, out: dict):
+    """A stated roof direction against the measured LoD2 faces: the measured design stands; a conflict is flagged
+    (out["roof"]) and said in the explanation. Without a building model the stated direction drives the yield as before."""
+    az = inp.get("roof_azimuth_deg")
+    if az is None:
+        az = COMPASS_DEG.get(str(inp.get("roof_orientation") or "").strip().lower())
+    if az is None or not inp.get("address") or not out["design"].get("pv_kwp"):
+        return
+    from . import layout as L
+    lo = L.layout(inp, out["design"]["pv_kwp"])
+    if not lo:
+        return
+    faces = sorted({round(float(p["azimuth"])) % 360 for p in lo["planes"].get("planes", [])
+                    if p.get("is_target") and p.get("azimuth") is not None})
+    if not faces:
+        return
+    off = min(min(abs(f - az) % 360, 360 - abs(f - az) % 360) for f in faces)
+    conflict = off > 45
+    name = next((k for k, v in COMPASS_DEG.items() if min(abs(v - az) % 360, 360 - abs(v - az) % 360) <= 22.5), f"{az:g} degree")
+    out["roof"] = {"stated_azimuth_deg": float(az), "measured_azimuths_deg": faces, "stated_direction_conflict": conflict,
+                   "source": "LoD2 building model"}
+    if conflict:
+        note = f"Roof measured from the building model; your stated {name} face was not found."
+        out["roof"]["note"] = note
+        out["explanation"] = [note] + list(out.get("explanation") or [])
+
+
 MIN_PV_FOR_BATTERY = 2.0  # kWp; below it a planner would not sign a battery (engine guard over the rules)
 
 R5_DESIGN = {"pv": ("pv_kwp", "kWp"), "battery": ("battery_kwh", "kWh"), "bat_kwp": ("battery_kwh", "kWh"),
@@ -302,6 +333,10 @@ class Engine:
             from . import layout as L
             lo = L.layout(inp, out["design"].get("pv_kwp")) if inp.get("address") else None
             out["same_run_id"] = L.run_id(inp, out["design"], lo["pv_planes"] if lo else None)
+        except Exception:
+            pass
+        try:
+            stated_direction_check(inp, out)
         except Exception:
             pass
         add_hashes(out, "edit" if overrides else "expert")
