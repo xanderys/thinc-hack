@@ -11,6 +11,7 @@ from typing import Literal, Optional, Union
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -41,6 +42,23 @@ log = logging.getLogger("engine")
 app = FastAPI(title="Reonic planner engine")
 from . import shading_routes  # noqa: E402  GET /api/roof/shading (branch shading)
 app.include_router(shading_routes.router)
+@app.middleware("http")
+async def _who(request: Request, call_next):
+    """Records who sent each write, so a write to a pinned lead is logged with its source (leads.PINNED_LOG)."""
+    tok = None
+    if request.method in ("POST", "PUT", "DELETE") and request.url.path.startswith(("/api/leads", "/api/intake")):
+        h = request.headers
+        tok = leads.REQUEST.set({"route": f"{request.method} {request.url.path}", "client": request.client.host if request.client else None,
+                                 "forwarded_for": h.get("x-forwarded-for"), "user_agent": h.get("user-agent"),
+                                 "origin": h.get("origin") or h.get("referer"), "with_secret": bool(h.get("x-intake-secret")),
+                                 "client_route": h.get("x-client-route")})
+    try:
+        return await call_next(request)
+    finally:
+        if tok is not None:
+            leads.REQUEST.reset(tok)
+
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 STATE: dict = {"engine": None, "eval": None, "error": None}
@@ -231,6 +249,8 @@ class DesignReq(BaseModel):
 class RefineReq(BaseModel):
     inputs: HomeInputs
     overrides: Optional[dict] = None
+    lead_id: Optional[str] = None       # refine never writes a lead; with base_version it only checks freshness
+    base_version: Optional[int] = None
 
 
 class ValidateReq(BaseModel):
@@ -372,6 +392,11 @@ FIELDS = {"pv_kwp": "pv", "battery_kwh": "battery", "heatpump_kw": "heatpump", "
 
 @app.post("/api/refine")
 def refine(req: RefineReq):
+    if req.lead_id and req.base_version is not None:
+        lead = leads.LEADS.get(req.lead_id) or next((l for l in leads.LEADS.values() if req.lead_id in l.get("aliases", [])), None)
+        stale = _stale(lead, req.base_version)
+        if stale is not None:
+            return stale
     eng = engine()
     inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
     check_inputs(inp)
@@ -483,6 +508,32 @@ def project(project_id: str):
     return err(404, f"No project with id {project_id}")
 
 
+_TILE_IDX: dict = {}
+LARGE_FOOTPRINT_M2, LARGE_STOREYS, LARGE_HEIGHT_M = 300.0, 4, 12.0
+
+
+def _geometry(r: dict, building=None, tile=None) -> dict:
+    """The measured building (LoD2) the web trusts over a census class on conflict: footprint, storeys, height, and
+    large_building when the geometry alone says it is not a single-family house."""
+    fp, st, h = r.get("footprint_m2"), r.get("storeys"), None
+    if building and tile:
+        try:
+            if tile not in _TILE_IDX:
+                p = roofs.ROOT / "roof" / ".cache" / "lod2" / f"{tile}.v2.json"
+                _TILE_IDX[tile] = {x["id"]: x.get("height") for x in json.loads(p.read_text())} if p.exists() else {}
+            h = _TILE_IDX[tile].get(building)
+        except Exception:
+            h = None
+    if not fp:
+        return {"footprint_m2": None, "storeys": None, "height_m": None, "large_building": None, "source": None,
+                "note": "no measured building"}
+    large = bool(fp >= LARGE_FOOTPRINT_M2 or (st or 0) >= LARGE_STOREYS or (h or 0) >= LARGE_HEIGHT_M)
+    return {"footprint_m2": fp, "storeys": st, "height_m": round(h, 1) if h else None, "large_building": large,
+            "source": f"LoD2 building {building}" if building else (r.get("source") or "roof lookup"),
+            "note": (f"large_building when footprint >= {LARGE_FOOTPRINT_M2:g} m2, storeys >= {LARGE_STOREYS} or height >= "
+                     f"{LARGE_HEIGHT_M:g} m; measured geometry, so it outranks a census dwellings class")}
+
+
 def _imagery(lat, lon, building=None, tile=None) -> dict:
     try:
         return imagery.block(lat, lon, building, tile)
@@ -495,7 +546,8 @@ def roof(address: str = "", postcode: str = ""):
     if address.strip():
         r = roofs.lookup_or_pending(address)  # pending: true while a new 2 km tile downloads; poll again
         if isinstance(r, dict) and not r.get("pending"):
-            r = {**r, "imagery": _imagery(r.get("lat"), r.get("lon"), *imagery.from_notes(r.get("notes")))}
+            b, tile = imagery.from_notes(r.get("notes"))
+            r = {**r, "imagery": _imagery(r.get("lat"), r.get("lon"), b, tile), "geometry": _geometry(r, b, tile)}
         return r
     if postcode.strip():
         r = roofs.postcode_lookup(postcode)
@@ -616,6 +668,7 @@ class LeadReq(BaseModel):
     installer_id: Optional[Literal["2a8ba8e2", "23c108b7"]] = None
     facts: Optional[dict] = None
     source: Literal["form", "call"] = "form"
+    test: bool = False  # scratch lead from an agent: hidden from GET /api/leads unless include_test=1
 
 
 class StepReq(BaseModel):
@@ -623,6 +676,7 @@ class StepReq(BaseModel):
     facts_so_far: Optional[dict] = None   # v1.9: voice intake names, latest value per field
     answers: Union[dict, list, None] = None  # older shape: HomeInputs fields or [{field, value}]
     note: Optional[str] = None
+    base_version: Optional[int] = None
 
 
 def _facts(raw: dict, block: bool = True) -> dict:
@@ -753,9 +807,12 @@ def create_lead(req: LeadReq, request: Request, x_intake_secret: Optional[str] =
            **leads.where(req.address_or_postcode), **mapped}
     raw["_given"] = [k for k in raw if k != "installer_id"] + (["installer_id"] if req.installer_id else [])
     lead = _new_lead(eng, raw, req.customer_name, req.address_or_postcode, req.source, block=False)
+    if req.test:
+        lead["test"] = True
+        leads.save(lead)
     if meta:
         lead["meta"] = meta
-    return {"lead_id": lead["lead_id"], "draft": lead["draft"], "facts": _public(lead["inputs"]), "unknown": lead["unknown"],
+    return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "draft": lead["draft"], "facts": _public(lead["inputs"]), "unknown": lead["unknown"],
             "next_question": lead["next_question"]}
 
 
@@ -764,6 +821,12 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     eng = engine()
+    ctx = leads.REQUEST.get()
+    if ctx is not None:  # the pinned-lead log shows which path sent the step (sentence box, Listening or the voice call)
+        ctx["step_body"] = {"facts_so_far": req.facts_so_far, "answers": req.answers, "note": req.note}
+        ctx["path_guess"] = ("call (ev word or customer facts)" if isinstance(req.facts_so_far, dict) and
+                             ({"ev", "customer_name", "address", "heating_age", "monthly_bill_eur"} & set(req.facts_so_far))
+                             else "sentence (HomeInputs fields)" if req.facts_so_far or req.answers else None)
     dropped: list = []  # the call never fails on one bad value: it is skipped and named here
     if req.facts_so_far is not None:
         ans, meta = leads.map_intake(req.facts_so_far, dropped)
@@ -781,6 +844,9 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
             msg = e.errors()[0]["msg"] if hasattr(e, "errors") else str(e)
             dropped.append({"field": k, "value": ans.pop(k), "reason": msg})
     lead = leads.LEADS.get(req.lead_id) or next((l for l in leads.LEADS.values() if req.lead_id in l.get("aliases", [])), None)
+    stale = _stale(lead, req.base_version)
+    if stale is not None:
+        return stale
     if not lead:  # upsert: link to the homeowner page's lead by name and place, else start one from what is known
         name = meta.get("customer_name") or ""
         place = ans.get("address") or ans.get("postcode") or ""
@@ -794,7 +860,7 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
             lead["meta"] = meta
             lead["history"].append({"step": 0, "field": None, "answer": ans, "changed": [], "note": "call started", "at": lead["created_at"]})
             leads.save(lead)
-            return {"design": lead["draft"]["design"], "draft": lead["draft"], "changed": [], "next_question": lead["next_question"],
+            return {"version": int(lead.get("version") or 0), "design": lead["draft"]["design"], "draft": lead["draft"], "changed": [], "next_question": lead["next_question"],
                     "done": lead["next_question"] is None, "step": 0, "dropped": dropped}
     if meta:
         lead.setdefault("meta", {}).update(meta)
@@ -823,10 +889,14 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     prev_status = lead.get("status")
     lead.update(inputs=inp, unknown=unknown, draft=draft, next_question=nq, questions_asked=step, updated_at=t,
                 status="done" if (nq is None or was_done) else "in_call")
+    route = ((leads.REQUEST.get() or {}).get("client_route") or "").lower()
+    if lead["status"] == "in_call" and prev_status != "in_call" and ("sentence" in route or "hand" in route):
+        lead["status"] = prev_status or "draft"  # a planner's edit is not a call: only Rina's steps open "On a call"
     if prev_status in ("approved", "signed", "declined", "question") and not changed:
         lead["status"] = prev_status  # nothing moved: the approval and any decision stand
     elif prev_status in ("approved", "signed") and changed:
         lead["approved_at"] = None  # the design changed after the planner released it: release it again
+        lead.pop("approved", None)
     if not lead.get("customer_name") and meta.get("customer_name"):
         lead["customer_name"] = meta["customer_name"]
     if not lead.get("address_or_postcode") and (ans.get("address") or ans.get("postcode")):
@@ -840,7 +910,7 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     if field_asked:
         model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
     _full_draft_later(lead["lead_id"], inp)
-    return {"design": draft["design"], "draft": draft, "changed": changed, "next_question": nq, "done": nq is None, "step": step,
+    return {"version": int(lead.get("version") or 0), "design": draft["design"], "draft": draft, "changed": changed, "next_question": nq, "done": nq is None, "step": step,
             "dropped": dropped}
 
 
@@ -864,6 +934,8 @@ def refresh_lead(lead: dict) -> dict:
     """A draft made by an earlier engine is recomputed (same pipeline, with the roof) before it is shown, and saved."""
     if lead.get("draft_stamp") == engine_stamp() or STATE.get("engine") is None:
         return lead
+    if lead.get("decision") or lead.get("status") in ("approved", "signed", "declined", "question"):
+        return lead  # the homeowner saw or answered this proposal: its numbers and hash stay as released
     try:
         lead["draft"] = engine().predict(dict(lead["inputs"]))
         lead["draft_stamp"] = engine_stamp()
@@ -880,6 +952,9 @@ def refresh_all_leads():
 
 def proposal_of(lead: dict, variant: Optional[str] = None) -> tuple[dict, str, float]:
     """(design, variant key, investment) of what the homeowner is offered: the approved variant, else the planners' design."""
+    ap = lead.get("approved")
+    if ap and variant in (None, ap.get("variant")):  # what the planner released, exactly as selected
+        return {k: ap["design"].get(k) for k in model_mod.SIZES}, ap["variant"], float(ap.get("investment_eur") or 0)
     key = variant or lead.get("approved_variant") or "expert"
     draft = lead.get("draft") or {}
     v = next((x for x in draft.get("variants") or [] if x.get("key") == key), None)
@@ -889,23 +964,29 @@ def proposal_of(lead: dict, variant: Optional[str] = None) -> tuple[dict, str, f
 
 
 def proposal_hash(design: dict, variant: str, investment: float) -> str:
-    """sha256 over {"design": the five sizes, "variant": key, "investment_eur": capex}, keys sorted, compact JSON."""
-    body = json.dumps({"design": design, "variant": variant, "investment_eur": round(float(investment), 2)},
-                      sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(body.encode()).hexdigest()
+    return model_mod.proposal_hash(design, variant, investment)
 
 
 def current_hash(lead: dict) -> str:
     return proposal_hash(*proposal_of(lead))
 
 
+def _stale(lead: dict, base_version) -> Optional[JSONResponse]:
+    """409 with the current lead when the client edited an older version; None (go ahead) when no base_version was sent."""
+    if base_version is None or lead is None or int(base_version) >= int(lead.get("version") or 0):
+        return None
+    return JSONResponse(status_code=409, content=jsonable_encoder({
+        "error": f"This lead changed since you loaded it (your version {base_version}, now {lead.get('version')}). Reload and try again.",
+        "version": lead.get("version"), "lead": _lead_out(lead)}))
+
+
 def _lead_out(lead: dict) -> dict:
     dec = lead.get("decision")
     if dec:
         dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(lead)}
-    return {"lead_id": lead["lead_id"], "status": lead["status"], "customer_name": lead["customer_name"],
-            "approved_at": lead.get("approved_at"), "approved_variant": lead.get("approved_variant"),
-            "proposal_hash": current_hash(lead), "decision": dec,
+    return {"lead_id": lead["lead_id"], "version": int(lead.get("version") or 0), "status": lead["status"],
+            "customer_name": lead["customer_name"], "approved_at": lead.get("approved_at"), "approved_variant": lead.get("approved_variant"),
+            "proposal_hash": current_hash(lead), "decision": dec, "approved": lead.get("approved"),
             "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
             "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"], "pinned": bool(lead.get("pinned")),
             "created_at": lead["created_at"], "updated_at": lead["updated_at"]}
@@ -949,7 +1030,7 @@ def pin_lead(lead_id: str, req: Optional[PinReq] = None, x_intake_secret: Option
         return err(404, f"No lead with id {lead_id}")
     lead["pinned"] = req.pinned if req else True
     leads.save(lead)
-    return {"lead_id": lead["lead_id"], "pinned": lead["pinned"]}
+    return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "pinned": lead["pinned"]}
 
 
 @app.put("/api/leads/{lead_id}/reset")
@@ -969,22 +1050,23 @@ def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     draft = eng.predict(dict(inp))
     unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
     nq, spread = _question(eng, inp, unknown)
-    for k in ("decision", "approved_at", "approved_variant", "approved_hash"):
+    for k in ("decision", "approved_at", "approved_variant", "approved_hash", "approved"):
         lead.pop(k, None)
     (SIG_DIR / f"{lead['lead_id']}.png").unlink(missing_ok=True)
     lead.update(inputs=inp, draft=draft, unknown=unknown, next_question=nq, next_spread=spread, questions_asked=0, history=[],
                 status=snap.get("status") or "draft", updated_at=leads.now(), draft_stamp=engine_stamp())
     leads.save(lead)
-    return {"lead_id": lead["lead_id"], "status": lead["status"], "design": draft["design"], "reset_to": snap.get("at"),
+    return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "status": lead["status"], "design": draft["design"], "reset_to": snap.get("at"),
             "pinned": bool(lead.get("pinned"))}
 
 
 @app.get("/api/leads")
-def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
+def list_leads(limit: int = 20, include_test: bool = False, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     leads.expire_stale()
-    rows = sorted(leads.LEADS.values(), key=lambda l: l["updated_at"], reverse=True)[: max(1, min(limit, 200))]
+    rows = sorted((l for l in leads.LEADS.values() if include_test or not l.get("test")), key=lambda l: l["updated_at"],
+                  reverse=True)[: max(1, min(limit, 200))]
     for l in rows:
         refresh_lead(l)
     out = []
@@ -995,12 +1077,20 @@ def list_leads(limit: int = 20, x_intake_secret: Optional[str] = Header(None)):
         out.append({"lead_id": l["lead_id"], "status": l["status"], "title": leads.title(l), "customer_name": l["customer_name"],
                     "address_or_postcode": l["address_or_postcode"], "questions_asked": l["questions_asked"],
                     "approved_at": l.get("approved_at"), "decision": dec, "created_at": l.get("created_at"), "updated_at": l["updated_at"],
-                    "pinned": bool(l.get("pinned"))})
+                    "pinned": bool(l.get("pinned")), "test": bool(l.get("test"))})
     return out
 
 
 class ApproveReq(BaseModel):
-    variant: Optional[Literal["expert", "value", "payback", "independence", "upfront"]] = None
+    variant: Optional[Literal["expert", "value", "payback", "independence", "upfront", "edit"]] = None
+    design_hash: Optional[str] = None     # the design_hash of the design the planner saw (draft, variant or refine)
+    overrides: Optional[dict] = None      # with variant "edit": the planner's own changes (as /api/refine)
+    design: Optional[dict] = None         # the design shown (the five sizes); a hand edit is approved exactly as this
+    base_version: Optional[int] = None
+
+
+def _approve_conflict(lead: dict, msg: str) -> JSONResponse:
+    return JSONResponse(status_code=409, content=jsonable_encoder({"error": msg, "version": lead.get("version"), "lead": _lead_out(lead)}))
 
 
 @app.put("/api/leads/{lead_id}/approve")
@@ -1011,19 +1101,49 @@ def approve_lead(lead_id: str, req: Optional[ApproveReq] = None, x_intake_secret
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
+    stale = _stale(lead, req.base_version if req else None)
+    if stale is not None:
+        return stale
     refresh_lead(lead)
-    variant = (req.variant if req else None) or "expert"
-    if variant != "expert" and not any(v.get("key") == variant for v in (lead.get("draft") or {}).get("variants") or []):
-        return err(422, f"This lead has no {variant} variant.")
+    if not req or not (req.design_hash or req.design):
+        return _approve_conflict(lead, "Approval needs the design you saw: its design_hash, or the design itself.")
+    variant, draft = req.variant or ("edit" if req.design else None), lead.get("draft") or {}
+    if not variant:
+        return _approve_conflict(lead, "Approval needs the selected variant.")
+    shown = {k: (req.design or {}).get(k) or None for k in model_mod.SIZES} if req.design else None
+    if variant == "edit":
+        ov = {k: v for k, v in (req.overrides or {}).items() if k in FIELDS}
+        if not ov and shown:  # the hand edit as shown: every size fixed, none re-sized
+            ov = {k: (shown[k] if shown[k] is not None else None) for k in model_mod.SIZES}
+        if not ov:
+            return _approve_conflict(lead, "An edited design needs the overrides it was made with.")
+        sel = engine().predict(dict(lead["inputs"]), ov)
+        sel = {"design": sel["design"], "economics": sel["economics"]}
+    elif variant == "expert":
+        sel = {"design": draft.get("design") or {}, "economics": draft.get("economics") or {}}
+    else:
+        sel = next((v for v in draft.get("variants") or [] if v.get("key") == variant), None)
+        if sel is None:
+            return _approve_conflict(lead, f"This lead has no {variant} variant.")
+    capex = (sel.get("economics") or {}).get("capex_eur") or 0.0
+    h = proposal_hash(sel["design"], variant, capex)
+    if shown is not None and {k: sel["design"].get(k) or None for k in model_mod.SIZES} != shown:
+        return _approve_conflict(lead, f"The {variant} design differs from the one on screen; nothing was approved. Reload and approve again.")
+    if req.design_hash and h != req.design_hash:
+        return _approve_conflict(lead, f"The {variant} design changed since you saw it; nothing was approved. Reload and approve again.")
+    lead["approved"] = {"variant": variant, "design": {k: sel["design"].get(k) for k in model_mod.SIZES},
+                        "economics": sel.get("economics"), "investment_eur": capex, "design_hash": h,
+                        **({"overrides": ov} if variant == "edit" else {})}
     lead.update(status="approved", approved_at=leads.now(), approved_variant=variant, updated_at=leads.now())
     lead["approved_hash"] = current_hash(lead)
     leads.save(lead)
-    return {"ok": True, "status": "approved", "approved_at": lead["approved_at"], "approved_variant": variant,
+    return {"version": int(lead.get("version") or 0), "ok": True, "status": "approved", "approved_at": lead["approved_at"], "approved_variant": variant,
             "proposal_hash": lead["approved_hash"]}
 
 
 class DecisionReq(BaseModel):
     action: Literal["sign", "decline", "question"]
+    base_version: Optional[int] = None
     name: Optional[str] = None
     accepted: Optional[bool] = None
     signature_png: Optional[str] = None
@@ -1042,6 +1162,9 @@ def lead_decision(lead_id: str, req: DecisionReq, request: Request):
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
+    stale = _stale(lead, req.base_version)
+    if stale is not None:
+        return stale
     if req.action == "sign":
         if lead.get("status") not in ("approved", "signed"):
             return err(409, "The planner has not released this proposal yet.")
@@ -1079,7 +1202,7 @@ def lead_decision(lead_id: str, req: DecisionReq, request: Request):
     lead.update(status=status, decision=dec, updated_at=t)
     lead.setdefault("history", []).append({"step": None, "field": None, "answer": {}, "changed": [], "note": f"homeowner: {req.action}", "at": t})
     leads.save(lead)
-    return {"ok": True, "status": status, "decided_at": t, "proposal_hash": req.proposal_hash,
+    return {"version": int(lead.get("version") or 0), "ok": True, "status": status, "decided_at": t, "proposal_hash": req.proposal_hash,
             "matches_current": req.proposal_hash == current_hash(lead)}
 
 

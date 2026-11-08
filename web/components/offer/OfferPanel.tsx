@@ -2,7 +2,7 @@
 // ticks, what to confirm on site, Approve. Always visible: beside the house on desktop, under it on a phone.
 // It holds no design state of its own; every change goes through Stage (overrides, variants, Approve).
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Design, DesignResponse, Economics, HomeInputs, OverrideValue, Overrides, Variant as EngineVariant } from "@/lib/api";
+import type { Design, DesignResponse, Economics, HomeInputs, Lead, OverrideValue, Overrides, Variant as EngineVariant } from "@/lib/api";
 import { call } from "@/lib/client";
 import type { Variant as StageVariant } from "@/components/stage/Plan";
 import type { Check, RoofModel } from "@/components/spatial/types";
@@ -54,6 +54,29 @@ export default function OfferPanel(p: OfferProps) {
   const { res, economics: e, breakEven, cause, pending, checks, model, overrides } = p;
   const d = res.design, a = e.annual;
   const reduce = useReduce();
+  // Docked: the panel ends above the sentence bar and the model toolbar wherever they sit, so nothing floats over
+  // its tabs and a click or tap lands on what it shows.
+  const box = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = box.current, host = el?.offsetParent as HTMLElement | null;
+    if (!p.docked || !el || !host) return;
+    const covers = () => [...document.querySelectorAll<HTMLElement>('[class*="chain_say__"], [role="toolbar"][aria-label="Model"]')];
+    const fit = () => {
+      const h = host.getBoundingClientRect(), me = el.getBoundingClientRect();
+      let bottom = 64;
+      for (const c of covers()) {
+        const r = c.getBoundingClientRect();
+        if (!r.height || r.right <= me.left || r.left >= me.right || r.top >= h.bottom || r.bottom <= me.top) continue;
+        bottom = Math.max(bottom, Math.round(h.bottom - r.top + 12));
+      }
+      el.style.setProperty("--offer-bottom", `${bottom}px`);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(host); covers().forEach((c) => ro.observe(c));
+    addEventListener("resize", fit);
+    return () => { ro.disconnect(); removeEventListener("resize", fit); };
+  }, [p.docked]);
   const mode: TileMode = cause && !/^Switched to/.test(cause) ? "arrow" : "fade";
 
   // Boxes that changed light once; the counter restarts the ring.
@@ -122,12 +145,15 @@ export default function OfferPanel(p: OfferProps) {
     return () => ac.abort();
   }, [factsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const offersPending = !!p.inputs && offers?.key !== factsKey;
+  // The approved offer, as the lead stores it, so a reopened card marks the tab the homeowner was sent.
+  const [approved, setApproved] = useState<Lead["approved"] | null>(null);
   const rows = useMemo(() => {
-    const same = (x: Design) => (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (x[k] ?? null) === (d[k] ?? null));
+    const same = (x: Design, y: Partial<Design> = d) => (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (x[k] ?? null) === (y[k] ?? null));
+    const mark = <R extends Row>(r: R): R => ({ ...r, approved: !cause && !!approved?.design && same(r.design, approved.design) && (approved.variant === r.key || approved.variant === "edit" || r.key === "edit") });
     const four = (offers?.rows ?? opening.current ?? []).map((r) => ({ ...r, selected: same(r.design) }));
-    if (!four.length || four.some((r) => r.selected)) return four;
-    return [...four, { key: "edit" as const, name: "Your edit", line: "as you changed it", design: d, e, pick: null, selected: true }];
-  }, [offers, d, e]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!four.length || four.some((r) => r.selected)) return four.map(mark);
+    return [...four, { key: "edit" as const, name: "Your edit", line: "as you changed it", design: d, e, pick: null, selected: true }].map(mark);
+  }, [offers, d, e, approved, cause]); // eslint-disable-line react-hooks/exhaustive-deps
   const tiles = [
     { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
     { k: "Autarky", v: pc(e.autarky_share) },
@@ -141,7 +167,7 @@ export default function OfferPanel(p: OfferProps) {
   const refMsg = ref && (ref.message ?? `Battery ${n2(Number(ref.value))} kWh per kWh of daily use: ${refOut(ref) ? "above" : "inside"} Reonic's guide`);
 
   return (
-    <aside className={`${s.panel} ${p.docked ? s.docked : s.under}`} aria-label="Offer" data-cover={p.docked ? "" : undefined}>
+    <aside ref={box} className={`${s.panel} ${p.docked ? s.docked : s.under}`} aria-label="Offer" data-cover={p.docked ? "" : undefined}>
       <Tiles items={tiles} mode={reduce ? "fade" : mode} pending={pending} />
       <KitDiagram kit={{ ...d, modules }} changed={hl.parts} flash={hl.n} />
       <ul className={s.unpriced}>
@@ -166,8 +192,8 @@ export default function OfferPanel(p: OfferProps) {
           {refMsg && <p className={refOut(ref!) ? s.refS : s.passS}>{refMsg}</p>}
         </div>
       )}
-      <p className={s.confirm}>Confirm on site: roof condition and shade (estimate from the surface model), meter and grid connection, battery location</p>
-      <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} />
+      <p className={s.confirm}>Confirm on site: roof condition and shade (estimated from the 3D model), meter and grid connection, battery location</p>
+      <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} onApproved={setApproved} />
     </aside>
   );
 }

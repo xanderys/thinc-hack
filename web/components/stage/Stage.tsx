@@ -24,7 +24,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const COMPONENT_FIELD_SET: Record<string, true> = { pv_kwp: true, inverter_kw: true, battery_kwh: true, heatpump_kw: true, wallbox_kw: true };
 
 // A house opened from the board: the lead's id (refinements write back to it) and what was read.
-export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null };   // draft: shown at once, before the first design call returns
+export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null; approved?: LeadT["approved"] };   // draft: shown at once, before the first design call returns
 // While Rina's call runs: the lead's facts so far, the step count, what the last answer changed and what she is asking.
 export type Live = { version?: number | null; step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null };
 
@@ -134,7 +134,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!seed) return;
     if (seed.read.inputs.installer_id) setInstaller(seed.read.inputs.installer_id as InstallerId);
     setLead(seed.text ?? "");
-    begin(seed.read, seed.leadId, seed.draft ?? null);
+    begin(seed.read, seed.leadId, seed.draft ?? null, seed.approved ?? null);
   }, [seed?.leadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Each answer from the call: the facts move, the design reruns, and what moved carries the engine's why.
@@ -153,12 +153,19 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts } });
   }, [live?.step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null) {
+  async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null, approved: LeadT["approved"] = null) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
     const r = { data };
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(draft); setPrev(null); last.current = draft;
     setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
     setRead(r.data); setRoof(null);
+    // An approved lead opens on what was approved: the same sizes and price as the homeowner's proposal.
+    if (approved?.design && draft) {
+      const d = approved.design;
+      setOverrides(approved.overrides && Object.keys(approved.overrides).length ? approved.overrides : { pv_kwp: d.pv_kwp, battery_kwh: d.battery_kwh, wallbox_kw: d.wallbox_kw, heatpump_kw: d.heatpump_kw });
+      const shown = { ...draft, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
+      setRes(shown); last.current = shown;
+    }
     const where = r.data.inputs.address ? `address=${encodeURIComponent(r.data.inputs.address)}` : r.data.postcode ? `postcode=${r.data.postcode}` : null;
     // A pending roof means the 3D measurement is still running: design on the standard face, ask again every 3 s.
     const gen = ++roofGen.current;
@@ -348,7 +355,19 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       const v = k in was ? was[k] : base[k];
       if (v !== undefined && v !== null) back[k] = v;
     }
-    if (leadRef.current && Object.keys(back).length) void writeLead("undo", back as Partial<HomeInputs>).then((x) => { if (!x.ok && x.error) setSayErr(`Undone here; the lead did not update: ${x.error}`); });
+    const id = leadRef.current;
+    if (id && Object.keys(back).length) void writeLead("undo", back as Partial<HomeInputs>).then(async (x) => {
+      if (!x.ok) { if (x.error) setSayErr(`Undone here; the lead did not update: ${x.error}`); return; }
+      // The facts on screen come from the engine, not from the local snapshot: read the lead again and redraw from it.
+      const r = await call<LeadT>(`/api/leads/${id}`);
+      if (!r.ok) { setSayErr(`Undone, but the lead could not be read back: ${r.error}`); return; }
+      if (leadRef.current !== id) return;
+      if (r.data.version != null) baseVersion.current = r.data.version;
+      const facts = r.data.facts as unknown as Record<string, unknown>;
+      cause.current = "Undone:";
+      setRead((cur) => cur && { ...cur, inputs: { ...cur.inputs, ...Object.fromEntries(Object.entries(facts).filter(([k, v]) => v !== null && v !== undefined && k !== "installer_id")) } as HomeInputs });
+      setChanged({});
+    });
   }
 
   // Approve releases exactly the design on screen (engine v2.11). A marked offer goes as its key with the lead's own

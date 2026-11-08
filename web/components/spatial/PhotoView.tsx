@@ -65,8 +65,8 @@ export function usePhoto(origin: unknown, scene: SpatialScene | null, active: bo
     const ac = new AbortController();
     fetch(`/api/tiles/status?o=${encodeURIComponent(oKey)}`, { signal: ac.signal })
       .then((r) => r.json())
-      .then((s: Status) => { setStatus(s); if (s.mode !== "google" || !s.root) meshOff(`Photo mesh unavailable: ${s.error ?? "no tiles here"}`); })
-      .catch((e) => { if ((e as Error).name !== "AbortError") meshOff(`Photo mesh unavailable: ${msg(e)}`); });
+      .then((s: Status) => { setStatus(s); if (s.mode !== "google" || !s.root) meshOff(`Photo 3D unavailable: ${s.error ?? "no tiles here"}`); })
+      .catch((e) => { if ((e as Error).name !== "AbortError") meshOff(`Photo 3D unavailable: ${msg(e)}`); });
     return () => ac.abort();
   }, [wanted, status, oKey]);
 
@@ -88,9 +88,9 @@ export function usePhoto(origin: unknown, scene: SpatialScene | null, active: bo
         if (dead) return;
         const ok = photoCapable(scene);
         setCapable(ok);
-        if (!ok) meshOff("Photo mesh unavailable: this device's graphics are too limited");
+        if (!ok) meshOff("Photo 3D unavailable: this device's graphics are too limited");
       })
-      .catch((e) => { off(e); if (!dead) { setCapable(false); meshOff(`Photo mesh off: ${msg(e)}`); } });
+      .catch((e) => { off(e); if (!dead) { setCapable(false); meshOff(`Photo 3D off: ${msg(e)}`); } });
     return () => { dead = true; };
   }, [scene, wanted, capable]);
 
@@ -100,7 +100,7 @@ export function usePhoto(origin: unknown, scene: SpatialScene | null, active: bo
   useEffect(() => {
     if (!live || !scene || !o || !status?.root) return;
     let dead = false;
-    const fail = (e: unknown) => { if (dead) return; off(e); setFailed(true); meshOff(`Photo mesh off: ${msg(e)}`); };
+    const fail = (e: unknown) => { if (dead) return; off(e); setFailed(true); meshOff(`Photo 3D off: ${msg(e)}`); };
     import("./tiles").then(({ PhotoLayer }) => {
       if (dead) return;
       try {
@@ -124,7 +124,7 @@ export function usePhoto(origin: unknown, scene: SpatialScene | null, active: bo
   // Watchdog: whatever stalls (chunk, tiles, fit), no mesh within 6 s of picking it and the LoD2 model stays.
   useEffect(() => {
     if (!live || shown) return;
-    const t = setTimeout(() => { off("no mesh within 6 s"); setFailed(true); meshOff("Photo mesh off: the tiles took too long"); }, 6000);
+    const t = setTimeout(() => { off("no mesh within 6 s"); setFailed(true); meshOff("Photo 3D off: the tiles took too long"); }, 6000);
     return () => clearTimeout(t);
   }, [live, shown]);
 
@@ -140,7 +140,7 @@ export function usePhoto(origin: unknown, scene: SpatialScene | null, active: bo
   const sharpening = wanted && !failed && !sharp;
   const overlay = (
     <>
-      {live && shown && <p style={chip(cb)}>{["Google", ...text.split("; ").filter((x) => x && x !== "Google")].join(" · ")}</p>}
+      {live && shown && <p style={chip(cb)}>{["Google", ...text.split("; ").filter((x) => x && x !== "Google")].join(", ")}</p>}
       {sharpening && <p style={chip(cb + 20)} aria-live="polite">Sharpening the house</p>}
     </>
   );

@@ -155,6 +155,9 @@ export class SpatialScene {
   // Per-system layers (systems.ts); it reads this scene's anchors, kit and sun lazily, so it can be made here.
   private systems = new Systems(this as unknown as ConstructorParameters<typeof Systems>[0]);
   private ctxOff: (() => void)[] = [];   // the white-context and ground subscriptions of this glb
+  private groundOrigin: [number, number, number] | null = null; // wanted satellite ground, applied once the glb is in
+  private groundOff: (() => void) | null = null;
+  private groundKey = "";
 
   constructor(private host: HTMLElement, private overlay: HTMLElement, private svg: SVGSVGElement, private opts: SceneOpts) {
     this.renderer = takeRenderer();
@@ -435,6 +438,7 @@ export class SpatialScene {
       this.scene.add(gltf.scene);
       this.placeholder.visible = false;
       if (this.heat) this.setHeat(this.heat);
+      this.applyGround();
       onDone(null);
     }, undefined, (e) => onDone((e as Error)?.message || "The house model did not load."));
   }
@@ -553,10 +557,21 @@ export class SpatialScene {
     });
   }
 
-  // The Google satellite ground at the engine origin (UTM 32N E, N, Z), once the glb is in (satGround.ts).
+  // The Google satellite ground at the engine origin (UTM 32N E, N, Z) (satGround.ts). Callable at any time:
+  // before the glb is in it is remembered and starts the moment the glb lands; a changed origin replaces it.
   groundFor(origin: [number, number, number]) {
-    if (!this.glbRoot) return;
-    this.ctxOff.push(googleGround(this.glbRoot, this.renderer, origin));
+    this.groundOrigin = origin;
+    this.applyGround();
+  }
+
+  private applyGround() {
+    const o = this.groundOrigin;
+    if (!o || !this.glbRoot || !this.alive) return;
+    const key = o.join(",");
+    if (this.groundOff && this.groundKey === key) return;
+    this.groundOff?.();
+    this.groundKey = key;
+    this.groundOff = googleGround(this.glbRoot, this.renderer, o);
   }
 
   setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on || this.systems.sys === "wallbox"; }
@@ -730,10 +745,10 @@ export class SpatialScene {
         : kind === "sun"
           ? sunHtml(p)
           : (() => {
-            // Panels: one chip per face, "East face · 9 kWp · 20 modules"; an empty face shows its chip on tap.
+            // Panels: one chip per face, "East face, 9 kWp, 20 modules"; an empty face shows its chip on tap.
             const name = p.pitch < 3 ? "Flat roof" : `${facing(p.azimuth).replace(/^./, (x) => x.toUpperCase())} face`;
-            if (k > 0) return `${name} · ${kwpPerModule ? `<b>${kwpS(k * kwpPerModule)} kWp</b> · ` : ""}${k}${of} modules`;
-            return skipOf(p) ? `${name} · no modules, ${skipOf(p)}` : `${name} · no modules`;
+            if (k > 0) return `${name}, ${kwpPerModule ? `<b>${kwpS(k * kwpPerModule)} kWp</b>, ` : ""}${k}${of} modules`;
+            return skipOf(p) ? `${name}, no modules, ${skipOf(p)}` : `${name}, no modules`;
           })();
       return { key: `${kind}-${p.id}`, at, html, cls: kind === "panels" ? `chip ${k > 0 ? "c-pv" : ""}` : undefined, prio: k * 1000 + p.area_m2, ...(k > 0 ? {} : { tap: p.id }) };
     });
@@ -983,6 +998,7 @@ export class SpatialScene {
     this.planG?.remove();
     this.shade.dispose();
     this.xray.dispose();
+    this.groundOff?.(); this.groundOff = null;
     this.ctxOff.forEach((f) => f());
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;

@@ -24,7 +24,10 @@ def hp_capex_note(inp) -> str:
     if inp.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable"):
         s += f", less EUR {BOILER_AVOIDED_EUR:,} for the boiler replacement it avoids"
     return s + f": EUR {hp_net_capex(inp):,.0f} counted."
-INVERTER_SIZES = np.array([3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30], float)
+# 4 to 20 kW are the sizes in the installers' parts; 0.6 to 3 kW are standard market sizes (micro and small string
+# inverters) so a small array keeps DC/AC inside Reonic's 70 to 130% band; the installers' own parts have none below 4 kW
+INVERTER_SIZES = np.array([0.6, 0.8, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30], float)
+DC_AC_BAND = (0.7, 1.3)
 
 TOL_LABEL = {"pv": "±1 kWp or ±15%, whichever is larger", "battery": "±2 kWh", "heatpump": "decision exact",
              "wallbox": "decision exact"}
@@ -92,7 +95,9 @@ def heat_load_note(inp):
 def inverter_kw(pv):
     if not pv:
         return None
-    return float(INVERTER_SIZES[np.argmin(np.abs(INVERTER_SIZES - pv / 1.15))])
+    ok = INVERTER_SIZES[(pv / INVERTER_SIZES >= DC_AC_BAND[0]) & (pv / INVERTER_SIZES <= DC_AC_BAND[1])]
+    pool = ok if len(ok) else INVERTER_SIZES
+    return float(pool[np.argmin(np.abs(pool - pv / 1.15))])
 
 
 def pv_cost_per_kwp(kwp):
