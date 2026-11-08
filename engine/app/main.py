@@ -586,8 +586,18 @@ def roof_photo(address: str = ""):
 
 
 @app.get("/api/roof/model")
-def roof_model(address: str = "", build_year: Optional[int] = None, kwp: Optional[float] = None):
-    """v2.1: the planes of the actual house (LoD2, per-plane sun yield, panel layout) and a URL to its 3D model."""
+def roof_model(address: str = "", build_year: Optional[int] = None, kwp: Optional[float] = None, lead_id: str = ""):
+    """v2.1: the planes of the actual house (LoD2, per-plane sun yield, panel layout) and a URL to its 3D model.
+    v2.14: lead_id lays out the lead's own design (its kWp, address and build year) when kwp is not given."""
+    if lead_id:
+        lead = _find_lead(lead_id)
+        if not lead:
+            return err(404, f"No lead with id {lead_id}")
+        inp = lead.get("inputs") or {}
+        address = address or inp.get("address") or ""
+        build_year = build_year or inp.get("house_built_year")
+        if kwp is None:
+            kwp = ((lead.get("draft") or {}).get("design") or {}).get("pv_kwp")
     if not address.strip():
         return err(422, "address is missing.")
     try:
@@ -609,6 +619,11 @@ def roof_model(address: str = "", build_year: Optional[int] = None, kwp: Optiona
     if isinstance(planes, dict) and planes.get("envelope"):
         from . import envelope_view
         envelope_view.enrich(planes["envelope"])
+    if kwp:
+        from .layers import _slot_grid
+        _slot_grid(planes)  # placed marks exactly the modules this kWp lays out
+    if isinstance(planes, dict):
+        planes["layout_kwp"] = kwp  # null: the model's own default fill, not a design
     return {**(planes if isinstance(planes, dict) else {"planes": planes}), "glb_url": roofs.model_url(address),
             "textured": info.get("textured"), "licence": info.get("licence"), "source": info.get("source")}
 
