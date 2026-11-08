@@ -64,8 +64,10 @@ export default function GapChips({ lead, address, onChanged }: { lead?: LeadLike
     <div className="gp" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => {
       if (e.key !== "Escape" || !open) return;
       e.stopPropagation();
-      const f = open; setOpen(null);
-      requestAnimationFrame(() => (e.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(`.gp-chip[data-f="${f}"]`)?.focus());
+      const f = open, box = e.currentTarget as HTMLElement | null;
+      setOpen(null);
+      // currentTarget is null by the next frame: hold the container now, and focus the chip after the field unmounts.
+      requestAnimationFrame(() => box?.querySelector<HTMLButtonElement>(`.gp-chip[data-f="${f}"]`)?.focus());
     }}>
       <div className="gp-row">
         {gaps.map((f) => (
