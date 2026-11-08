@@ -1,4 +1,4 @@
-// The rolling offer: four numbers, the kit, one line per installed component, the four offers, the sanity
+// The rolling offer: four numbers, the parts list (each line a chooser), the four offers, the sanity
 // ticks, what to confirm on site, Approve. Always visible: beside the house on desktop, under it on a phone.
 // It holds no design state of its own; every change goes through Stage (overrides, variants, Approve).
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -6,12 +6,11 @@ import type { Design, DesignResponse, Economics, HomeInputs, Lead, OverrideValue
 import { call } from "@/lib/client";
 import type { Variant as StageVariant } from "@/components/stage/Plan";
 import type { Check, RoofModel } from "@/components/spatial/types";
-import { facing } from "@/components/spatial/facing";
-import { eur, n0, n1, n2, pc, type Part } from "./format";
+import { eur, n0, n2, pc, type Part } from "./format";
 import Tiles, { type TileMode } from "./Tiles";
-import KitDiagram from "./KitDiagram";
+import KitSheet from "./KitSheet";
 import VariantTabs, { rowsOf, type Row } from "./VariantTabs";
-import InlineOverride, { type LineField } from "./InlineOverride";
+import InlineOverride from "./InlineOverride";
 import Approve from "./Approve";
 import { scrub } from "./facts";
 import s from "./offer.module.css";
@@ -88,15 +87,9 @@ export default function OfferPanel(p: OfferProps) {
     if (parts.length && !reduce) setHl((x) => ({ parts, n: x.n + 1 }));
   }, [d.pv_kwp, d.inverter_kw, d.battery_kwh, d.wallbox_kw, d.heatpump_kw]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Modules and faces from the layout the house shows, when it matches the size on screen.
+  // Modules from the layout the house shows, when it matches the size on screen.
   const target = model?.layout && Math.abs(model.layout.kwp - (d.pv_kwp ?? 0)) < 0.2 ? model : null;
   const modules = target?.layout?.panels ?? null;
-  const faces = useMemo(() => {
-    const ORDER = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west", "flat"];
-    const w = [...new Set((target?.planes ?? []).filter((q) => q.chosen_panels?.length).map((q) => facing(q.azimuth)))].sort((x, y) => ORDER.indexOf(x) - ORDER.indexOf(y));
-    if (!w.length) return null;
-    return w.length === 1 ? `${w[0]} face` : `${w.slice(0, -1).join(", ")} and ${w.at(-1)} faces`;
-  }, [target]);
 
   // Package sizes the installer sells for each component: the engine's alternatives and the offers' sizes.
   const sizes = useMemo(() => {
@@ -117,17 +110,6 @@ export default function OfferPanel(p: OfferProps) {
     p.setOverride(f, v);
   };
   const handSet = (f: keyof Design) => (hand.has(f) ? overrides[f] : undefined);
-
-  const lines: { f: LineField; text: string }[] = [];
-  if (d.pv_kwp) lines.push({ f: "pv_kwp", text: `${modules ? `${modules} modules, ` : ""}${n2(d.pv_kwp)} kWp${faces ? `, ${faces}` : ""}` });
-  else if (handSet("pv_kwp") === null) lines.push({ f: "pv_kwp", text: "No solar" });
-  if (d.inverter_kw) lines.push({ f: "inverter_kw", text: `${n1(d.inverter_kw)} kW inverter` });
-  if (d.battery_kwh) lines.push({ f: "battery_kwh", text: `${n1(d.battery_kwh)} kWh battery` });
-  else if (handSet("battery_kwh") === null) lines.push({ f: "battery_kwh", text: "No battery" });
-  if (d.wallbox_kw) lines.push({ f: "wallbox_kw", text: `${n1(d.wallbox_kw)} kW wallbox` });
-  else if (handSet("wallbox_kw") === null) lines.push({ f: "wallbox_kw", text: "No wallbox" });
-  if (d.heatpump_kw) lines.push({ f: "heatpump_kw", text: `${n1(d.heatpump_kw)} kW heat pump` });
-  else if (handSet("heatpump_kw") === null) lines.push({ f: "heatpump_kw", text: "No heat pump" });
 
   // One source for the four offers: the engine's recommendation for the facts on screen, read without any fixed
   // sizes (a refine reports its offers relative to the sizes it was given, so its planners' pick is the edit).
@@ -169,16 +151,11 @@ export default function OfferPanel(p: OfferProps) {
   return (
     <aside ref={box} className={`${s.panel} ${p.docked ? s.docked : s.under}`} aria-label="Offer" data-cover={p.docked ? "" : undefined}>
       <Tiles items={tiles} mode={reduce ? "fade" : mode} pending={pending} />
-      <KitDiagram kit={{ ...d, modules }} changed={hl.parts} flash={hl.n} />
-      <ul className={s.unpriced}>
-        <li>Backup power: optional</li>
-      </ul>
-      <div className={s.lines}>
-        {lines.map((l) => (
-          <InlineOverride key={l.f} field={l.f} text={l.text} unit={UNIT[l.f]} sizes={sizes[l.f] ?? []} current={d[l.f]} set={handSet(l.f)} fixed={overrides[l.f] !== undefined}
-            canNone={l.f !== "pv_kwp" && l.f !== "inverter_kw"} glyph={PART[l.f]} onChoose={choose} />
-        ))}
-      </div>
+      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} changed={hl.parts} flash={hl.n}
+        edit={(f, label) => (
+          <InlineOverride field={f} text={label} unit={UNIT[f]} sizes={sizes[f] ?? []} current={d[f]} set={handSet(f)} fixed={overrides[f] !== undefined}
+            canNone={f !== "pv_kwp" && f !== "inverter_kw"} onChoose={choose} />
+        )} />
       <VariantTabs rows={rows} pending={pending || offersPending} onPick={(r) => { if (!r.pick) return; setHand(new Set()); p.onVariant(r.pick); }} />
       {checks && checks.length > 0 && (
         <details className={`${s.ticks} ${s.checks}`} data-pending={pending || p.checksFresh === false || undefined}>
