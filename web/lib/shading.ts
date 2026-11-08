@@ -8,8 +8,9 @@ export interface Shading {
   status: "ready"; address: string; modules: ShadeModule[]; planes: ShadePlane[];
   total: { shade_share: number; loss_kwh_year: number; modules?: number }; source: string;
 }
-// null: across the year; else the 15th of month m (1 to 12) at h:30.
-export type ShadeAt = { m: number; h: number } | null;
+// null: across the year; else the 15th of month m (1 to 12) at h:30. moment: the planner moved the hour slider, so the
+// module figures show that moment's shade instead of the month's loss.
+export type ShadeAt = { m: number; h: number; moment?: boolean } | null;
 
 type State = { data: Map<string, Shading | null>; on: boolean; at: ShadeAt };
 let state: State = { data: new Map(), on: false, at: null };
@@ -67,7 +68,18 @@ export function shadeRgb(share: number): [number, number, number] {
 export const shadeCss = (share: number) => `rgb(${shadeRgb(share).join(",")})`;
 export const SHADE_GRADIENT = "linear-gradient(90deg, rgb(218,30,40), rgb(245,179,66) 50%, rgb(36,161,72))";
 
-// The share a module shows at this moment (null: no direct sun on it then).
+// A module's share of full sun over the selected period: the month when one is picked, else the year. The module's
+// figure is its loss over that period, 1 minus this.
+export const periodShare = (m: ShadeModule, at: ShadeAt): number | null =>
+  (at ? m.monthly_share?.[at.m - 1] : m.annual_share) ?? null;
+// The array's loss over the period: the year from the engine's total; a month as the plain average of the modules'
+// monthly losses (within a few tenths of the yield-weighted figure).
+export function periodLoss(d: Shading, at: ShadeAt): number {
+  if (!at) return d.total.shade_share;
+  const xs = d.modules.map((m) => m.monthly_share?.[at.m - 1]).filter((v): v is number => v != null);
+  return xs.length ? xs.reduce((a, v) => a + (1 - v), 0) / xs.length : d.total.shade_share;
+}
+// The share a module has at this moment (null: no direct sun on it then): its tint, never its figure.
 export const shareAt = (m: ShadeModule, at: ShadeAt): number | null => (at ? m.hourly[at.m - 1]?.[at.h] ?? null : m.annual_share);
 
 // Sunrise to sunset hours of a month, from the hours any module has the sun on it.

@@ -25,7 +25,9 @@ function useReduce() {
   return r;
 }
 
-export default function ProposedCard({ kwp, kwh, price = 0, pending, children, id, none, title = "Proposed Design", figs: figsIn, lift = 0, undo }: Props) {
+export default function ProposedCard({ kwp, kwh, price = 0, pending, children, id, none: noneIn, title = "Proposed Design", figs: figsIn, lift = 0, undo }: Props) {
+  // A drafted design always shows; the "no design" line is only for a lead with nothing drafted.
+  const none = kwp || kwh ? null : noneIn;
   const side = "bottom" as const;
   const reduce = useReduce();
   const [open, setOpen] = useState(false);

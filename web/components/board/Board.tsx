@@ -9,7 +9,6 @@ import { HERO_LEAD } from "@/lib/demo";
 import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Live, Seed } from "@/components/stage/Stage";
 import { LEAD_LIVE, whatsappOrigin } from "@/lib/whatsapp";
-import Agent from "@/components/agent/Agent";   // wraps the composer field (ComposerField) with the agent card
 import AddSheet from "./AddSheet";
 import HousePhoto from "./HousePhoto";
 import ModelThumb from "./ModelThumb";
@@ -17,6 +16,8 @@ import GapChips from "./GapChips";
 import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
 import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
 import { pastLine } from "@/lib/past";
+import Blocking from "@/components/stage/Blocking";
+import { ClientChevron } from "@/components/stage/clientCard";
 import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
 
 // The facts count is the verdict chip's tooltip, never part of the line.
@@ -103,6 +104,12 @@ export default function Board({ openId: initial }: { openId?: string }) {
   const [kept, setKept] = useState<Record<string, Kept>>({});
 
   useEffect(() => { setApproved(readApproved()); }, []);
+  // A stale "On a call" must flip when the engine closes the call: refetch the list when the tab regains focus.
+  useEffect(() => {
+    const on = () => { if (document.visibilityState === "visible") setTick((t) => t + 1); };
+    addEventListener("focus", on); document.addEventListener("visibilitychange", on);
+    return () => { removeEventListener("focus", on); document.removeEventListener("visibilitychange", on); };
+  }, []);
   // The composer lane announces a lead it just created: refetch the list so it shows at the top.
   useEffect(() => {
     const on = () => setTick((t) => t + 1);
@@ -119,7 +126,8 @@ export default function Board({ openId: initial }: { openId?: string }) {
       setErr(null); setRows(r.data);
       for (const row of r.data) {
         const at = (row as LeadRow & { updated_at?: string }).updated_at ?? row.created_at ?? "";
-        if (fetching.current.has(row.lead_id) || designsRef.current[row.lead_id]?.at === at) continue;
+        const seenSt = designsRef.current[row.lead_id]?.lead?.status;
+        if (fetching.current.has(row.lead_id) || (designsRef.current[row.lead_id]?.at === at && (!seenSt || seenSt === row.status))) continue;
         fetching.current.add(row.lead_id);
         call<LeadT>(`/api/leads/${row.lead_id}`).then(async (g) => {
           if (!g.ok) { fetching.current.delete(row.lead_id); return; }
@@ -230,6 +238,14 @@ export default function Board({ openId: initial }: { openId?: string }) {
     addEventListener(LEAD_LIVE, on); return () => removeEventListener(LEAD_LIVE, on);
   }, [openId]);
 
+  // Focus on the lead page re-reads the lead (status only; the planner view is not remounted).
+  useEffect(() => {
+    if (!openId) return;
+    const on = () => { if (document.visibilityState === "visible") call<LeadT>(`/api/leads/${openId}`).then((r) => { if (r.ok) { setLiveLead((p) => p && (p.version ?? -1) > (r.data.version ?? -1) ? p : r.data); setRows((rs) => rs && rs.map((x) => x.lead_id === r.data.lead_id ? { ...x, status: r.data.status, status_label: r.data.status_label ?? x.status_label } : x)); } }); };
+    addEventListener("focus", on); document.addEventListener("visibilitychange", on);
+    return () => { removeEventListener("focus", on); document.removeEventListener("visibilitychange", on); };
+  }, [openId]);
+
   // While the call runs, the open card keeps converging: poll the lead every 2.5 s until it is done.
   const calling = liveLead?.lead_id === openId && liveLead?.status === "in_call";
   useEffect(() => {
@@ -316,6 +332,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
 
   if (openId) return (
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
+      {seed && <Blocking leadId={openId} />}
       <div className={calling ? "b-open-h live" : "b-open-h"}>
         {calling && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
         <div className="b-open-lines">
@@ -330,11 +347,13 @@ export default function Board({ openId: initial }: { openId?: string }) {
             })()}
             <HeaderUndo id={openId} />
           </div>
-          <p className="b-l2">{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
+          <p className="b-l2" title={openCard?.place ?? ll?.address_or_postcode ?? undefined}>{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
           <p className={`${qs.head} b-l3`}><VerdictChip verdict={openCard?.q?.verdict ?? null} tip={openCard?.q ? `${reasonOf(openCard.q)} ${factsTip(openCard.q)}`.trim() : undefined} /></p>
-          {shared && <p className="b-shared" title={shared.reason}>Shared roof, apartment building: single-family design does not apply</p>}
+          {shared && <p className="b-shared" title={shared.reason}>Large building, check the address</p>}
+          {ll && ll.draft?.design && !shared && (ll.draft.roof as { capacity_source?: string } | null | undefined)?.capacity_source === "typical house" && <p className="b-shared">Roof from typical house</p>}
         </div>
         <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
+        {seed && <ClientChevron />}
       </div>
       {seedErr && <div className="error" role="alert"><span><span className="src">Engine said</span>{seedErr}</span><button className="btn ghost" onClick={() => { const id = openId; setOpenId(null); setTimeout(() => setOpenId(id), 0); }}>Retry</button></div>}
       {!seed && !seedErr && <OpenSkeleton />}
@@ -408,7 +427,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
       {adding && <AddSheet onClose={() => setAdding(false)} sample={HERO_LEAD} voice={VOICE}
         onCreated={(id) => { setAdding(false); setTick((t) => t + 1); open(id); }} />}
       {/* composer mount */}
-      {/* agent mount */}<Agent />
+      {/* the copilot shell (app layout) carries the composer and the agent card */}
     </div>
   );
 }

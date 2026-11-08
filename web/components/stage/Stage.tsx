@@ -192,6 +192,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null, approved: LeadT["approved"] = null, kit: Overrides | null = null) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
+    frozen.current = false;
     seedDraft.current = draft;   // the lead's stored draft answers the first design read (no call on open)
     const r = { data };
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(draft); setPrev(null); last.current = draft;
@@ -201,7 +202,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (approved?.design && draft) {
       const d = approved.design;
       setOverrides(approved.overrides && Object.keys(approved.overrides).length ? approved.overrides : { pv_kwp: d.pv_kwp, battery_kwh: d.battery_kwh, wallbox_kw: d.wallbox_kw, heatpump_kw: d.heatpump_kw });
-      const shown = { ...draft, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
+      // The frozen proposal, priced from its own figures (no live rates): the homeowner's page shows the same.
+      const shown = { ...draft, rates: undefined, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
+      frozen.current = true;
       setRes(shown); last.current = shown;
     } else if (kit && Object.keys(kit).length) setOverrides(kit);   // the planner's kit edits, as the lead stores them
     persisted.current = !approved?.design && kit ? kit : {};
@@ -239,6 +242,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   // version without changing any variant). A variant tab whose design is here switches at once, with no pending state.
   const designs = useRef(new Map<string, DesignResponse | RefineResponse>());
   const seedDraft = useRef<DesignResponse | null>(null);
+  const frozen = useRef(false);   // a Complete lead opened as approved: no re-run until the planner changes something
   const keyOf = (i: HomeInputs, o: Overrides) => JSON.stringify([i, Object.fromEntries(Object.entries(o).sort(([x], [y]) => x.localeCompare(y)))]);
   const keep = (k: string, r: DesignResponse | RefineResponse) => { const m = designs.current; m.delete(k); m.set(k, r); if (m.size > 32) m.delete(m.keys().next().value!); };
 
@@ -248,11 +252,18 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const ctl = new AbortController();
     const asked = inputs, why = cause.current, fixed = Object.keys(overrides).length > 0;
     const k = keyOf(inputs, overrides);
+    // A Complete lead shows the proposal as it was approved and sent; the engine is asked again only after an edit.
+    if (frozen.current && !cause.current) return;
+    frozen.current = false;
     const hit = designs.current.get(k);
     if (hit) { land({ ok: true, data: hit }, asked, why, fixed, null); return; }
-    if (cause.current) setPending((p) => p ?? Date.now());
+    // A lead that opens on stored kit edits: its first figures come from the refine, so they shimmer until it lands
+    // (a lead without overrides shows its design at once, those figures are final).
+    if (cause.current || fixed) setPending((p) => p ?? Date.now());
     // A stored draft from before the engine named products (no skus) is read again once, so the rows can name them.
-    if (seedDraft.current) { if ("skus" in seedDraft.current) seedDesign(inputs, seedDraft.current); seedDraft.current = null; }   // the plain draft for these facts, also when opening on kit edits
+    // Only a full draft answers the design read: a slim one (the board list sends drafts without derivations) stays on
+    // screen until the one design call brings the rule results the popovers show.
+    if (seedDraft.current) { const sd = seedDraft.current as DesignResponse; if ("skus" in sd && sd.components?.pv?.derivation) seedDesign(inputs, sd); seedDraft.current = null; }   // the plain draft for these facts, also when opening on kit edits
     const t = setTimeout(async () => {
       setBusy(true);
       try {
@@ -323,8 +334,17 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
             setMoved({ cause: cause.current, lines });
           }
           cause.current = null; liveWhy.current = null;
-          setPrev(before); last.current = r.data; setRes(r.data); setResIn(asked); setResCause(why); setErr(null); setPending(null);
-          if (!fixed) setDrafted(r.data);
+          // A refine answers without derivations; the rule's own result depends on the facts, not on kit edits, so the
+          // last design that carried them lends them (the popovers lead with the rule result, then the catalogue snap).
+          const src = [before, drafted].find((x) => x?.components?.pv?.derivation);
+          let data = r.data;
+          if (src && data.components && !data.components.pv?.derivation) {
+            const comps = { ...data.components } as DesignResponse["components"];
+            (Object.keys(comps) as (keyof typeof comps)[]).forEach((k) => { if (comps[k] && !comps[k].derivation && src.components[k]?.derivation) comps[k] = { ...comps[k], derivation: src.components[k].derivation }; });
+            data = { ...data, components: comps };
+          }
+          setPrev(before); last.current = data; setRes(data); setResIn(asked); setResCause(why); setErr(null); setPending(null);
+          if (!fixed) setDrafted(data);
         } else if (r.status === 409 && lid && fixed) stale(lid); else { setErr(r.error); setPending(null); }
   }
 

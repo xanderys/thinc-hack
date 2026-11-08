@@ -1,31 +1,55 @@
-.dock { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 50%; min-width: 520px; z-index: 40; padding: 8px 0 calc(12px + env(safe-area-inset-bottom)); background: var(--paper); }
-@media (max-width: 900px) { .dock { width: 100%; min-width: 0; padding-inline: 12px; box-sizing: border-box; } }
-.line { min-height: 22px; padding: 0 6px 6px; font-size: 14px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* The dock floats over the board as one piece of frosted glass, with margin on every side and no box behind it. */
+.dock { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%) translate(var(--cs-tx, 0px), var(--cs-ty, 0px)) scale(var(--cs-tsx, 1), var(--cs-tsy, 1)); transform-origin: 100% 100%; transition: transform 767ms var(--spring-smooth-500), opacity 250ms var(--spring-snappy-350); width: min(720px, calc(100vw - 32px)); z-index: 40; padding: 0 0 calc(16px + var(--line-h, 0px) + env(safe-area-inset-bottom)); background: transparent; pointer-events: none; }
+.dock > * { pointer-events: auto; }
+@media (max-width: 900px) { .dock { width: calc(100vw - 16px); padding-bottom: calc(8px + var(--line-h, 0px) + env(safe-area-inset-bottom)); } }
+.line { min-height: 0; padding: 0 18px 8px; font-size: 14px; line-height: 20px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.line:empty { display: none; }
 .line > span { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .skel { width: 220px; height: 14px; max-width: 70%; }
-.box { display: flex; align-items: flex-end; gap: 2px; padding: 6px; border: 1px solid var(--rule-2); border-radius: 26px; background: var(--sheet); }
-.box:focus-within { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.box {
+  display: flex; align-items: flex-end; gap: 2px; padding: 7px; border-radius: 26px;
+  background: rgba(253, 253, 251, 0.74); border: 1px solid rgba(27, 29, 32, 0.09);
+  -webkit-backdrop-filter: blur(44px) saturate(1.8); backdrop-filter: blur(44px) saturate(1.8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 32px -8px rgba(27, 29, 32, 0.18), 0 1px 3px rgba(27, 29, 32, 0.06);
+  transition: border-color 200ms linear;
+}
+.box:focus-within { border-color: rgba(55, 75, 230, 0.45); }
+.busy .field { opacity: 0.5; }
+.busy { animation: breathe 1.6s ease-in-out infinite; }
+@keyframes breathe { 50% { border-color: rgba(55, 75, 230, 0.4); } }
 .box .field:focus, .box .field:focus-visible { outline: none; }
-.busy { background-color: #eceef4; background-image: linear-gradient(90deg, #eceef4 0%, #f6f7fa 50%, #eceef4 100%); background-size: 200% 100%; animation: shim 1.2s linear infinite; }
 .rec { border-color: var(--accent); }
-@keyframes shim { from { background-position: 100% 0; } to { background-position: -100% 0; } }
-.field { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; line-height: 24px; padding: 8px 6px; max-height: 164px; color: var(--ink); }
-.glyph, .go { flex: 0 0 40px; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--ink-2); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
-.glyph:hover:not(:disabled) { color: var(--ink); }
+.field { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; font: inherit; font-family: var(--font-sans), sans-serif; font-size: 15px; line-height: 22px; letter-spacing: -0.005em; padding: 7px 6px; max-height: 164px; color: var(--ink); }
+.field::placeholder { color: var(--ink-4); opacity: 1; }
+.glyph, .go { flex: 0 0 36px; width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--ink-3); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; transition: background-color 150ms linear, color 150ms linear; }
+.glyph:hover:not(:disabled) { color: var(--ink); background: rgba(27, 29, 32, 0.05); }
 .on { background: var(--accent); color: #fff; animation: pulse 1.2s ease-in-out infinite; }
 .on svg { fill: currentColor; }
-.secs { align-self: center; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--accent); padding-right: 4px; }
+.secs { align-self: center; font-family: var(--font-mono), monospace; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--accent); padding-right: 4px; }
 @keyframes pulse { 50% { opacity: 0.65; } }
-.go { background: var(--accent); color: #fff; }
-.go:disabled { background: var(--sheet-2); color: var(--ink-4); cursor: default; }
-.glyph:disabled { opacity: 0.5; cursor: default; }
+.go { margin-left: 2px; background: var(--accent); color: #fff; }
+.go:active:not(:disabled) { transform: scale(0.94); }
+.go:disabled { background: rgba(27, 29, 32, 0.06); color: var(--ink-4); cursor: default; }
+.glyph:disabled { opacity: 0.45; cursor: default; }
 .open { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .err { color: var(--bad); }
 .src { font-weight: 600; margin-right: 4px; }
-@media (prefers-reduced-motion: reduce) { .busy, .on { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .busy, .on { animation: none; } .go:active:not(:disabled) { transform: none; } }
 
 .newrow { list-style: none; margin: 0 0 16px; padding: 0; max-width: 440px; }
 .newcard { display: block; width: 100%; text-align: left; border: 1px solid var(--rule-2); border-radius: var(--radius); background: var(--sheet); padding: 16px; font: inherit; cursor: pointer; }
 .newcard h3 { margin: 0; font-size: 20px; }
 .newcard p { margin: 4px 0 12px; color: var(--ink-2); font-size: 14px; }
 .newcard .b-skel + .b-skel { margin-top: 8px; }
+
+@media (prefers-reduced-motion: reduce) { .dock { transition: opacity 200ms linear; transform: translateX(-50%) !important; } }
+.field:focus, .field:focus-visible { outline: none !important; box-shadow: none !important; }
+
+/* No browser focus ring in the dock: focus shows as a quiet rim tint on the glass or the control. */
+.dock :focus, .dock :focus-visible, .box:focus-within { outline: none !important; }
+.glyph:focus-visible, .go:focus-visible { box-shadow: 0 0 0 3px rgba(55, 75, 230, 0.18); }
+@media (max-width: 600px) {
+  .glyph, .go { flex-basis: 32px; width: 32px; height: 32px; }
+  .box { padding: 6px; gap: 0; }
+  .field { padding: 5px 4px; }
+}
