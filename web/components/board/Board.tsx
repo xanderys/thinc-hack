@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import dynamic from "next/dynamic";
 import type { Design, DesignResponse, Health, HomeInputs, Lead as LeadT, LeadRow, ReadResponse, RoofResult } from "@/lib/api";
+import { designOf, refineOf } from "@/lib/engineCache";
 import { call } from "@/lib/client";
 import { HERO_LEAD } from "@/lib/demo";
 import House from "@/components/stage/House";
@@ -123,14 +124,16 @@ export default function Board({ openId: initial }: { openId?: string }) {
           const kit = g.data.overrides && Object.keys(g.data.overrides).length > 0 && !g.data.approved?.design ? g.data.overrides : null;
           if (kit) {
             // No lead_id in the body, so the call only reads: ask again when the engine is busy with the other cards.
-            let f = await call<DesignResponse>("/api/refine", { inputs: g.data.facts, overrides: kit });
-            for (let n = 0; !f.ok && n < 3; n++) { await new Promise((r) => setTimeout(r, 2000 * (n + 1))); f = await call<DesignResponse>("/api/refine", { inputs: g.data.facts, overrides: kit }); }
+            let f = await refineOf(g.data.facts, kit);
+            for (let n = 0; !f.ok && n < 3; n++) { await new Promise((r) => setTimeout(r, 2000 * (n + 1))); f = await refineOf(g.data.facts, kit); }
             if (f.ok) { res = f.data; d = f.data.design; setDesigns((x) => { const n = { ...x, [row.lead_id]: { at: "", d, lead: g.data, res, edited: true } }; designsRef.current = n; return n; }); }
           }
           const h = await health();
           const dv = g.data.draft as DesignResponse & { rules_version?: string | null };
-          if (h && (dv.model_version !== h.model_version || (dv.rules_version != null && dv.rules_version !== h.rules_version))) {
-            const f = await call<DesignResponse>("/api/design", { inputs: g.data.facts });
+          // The engine stamps lead drafts with its rules version in model_version; either string means the draft is current.
+          const current = !!h && (dv.model_version === h.model_version || dv.model_version === h.rules_version) && (dv.rules_version == null || dv.rules_version === h.rules_version);
+          if (h && !current) {
+            const f = await designOf(g.data.facts);
             if (f.ok && !g.data.approved?.design && !kit) { d = f.data.design; res = f.data; }
           }
           fetching.current.delete(row.lead_id);

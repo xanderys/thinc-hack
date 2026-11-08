@@ -15,6 +15,7 @@ import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, Desig
 import { call, send } from "@/lib/client";
 import { serialWrite } from "@/lib/leadQueue";
 import { pushEdit, registerUndo, undoLast, useCanUndo } from "@/lib/edits";
+import { designOf, refineOf, seedDesign } from "@/lib/engineCache";
 import { breakEvenNote } from "@/lib/notes";
 import { approveLead, matches, offerOf } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
@@ -191,6 +192,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null, approved: LeadT["approved"] = null, kit: Overrides | null = null) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
+    seedDraft.current = draft;   // the lead's stored draft answers the first design read (no call on open)
     const r = { data };
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(draft); setPrev(null); last.current = draft;
     setHistory([]); setMoved(null); setApprovedAt(null);
@@ -236,6 +238,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   // Every design the card has seen, keyed by the facts and the fixed sizes (not the lead version: a kit write bumps the
   // version without changing any variant). A variant tab whose design is here switches at once, with no pending state.
   const designs = useRef(new Map<string, DesignResponse | RefineResponse>());
+  const seedDraft = useRef<DesignResponse | null>(null);
   const keyOf = (i: HomeInputs, o: Overrides) => JSON.stringify([i, Object.fromEntries(Object.entries(o).sort(([x], [y]) => x.localeCompare(y)))]);
   const keep = (k: string, r: DesignResponse | RefineResponse) => { const m = designs.current; m.delete(k); m.set(k, r); if (m.size > 32) m.delete(m.keys().next().value!); };
 
@@ -248,12 +251,15 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const hit = designs.current.get(k);
     if (hit) { land({ ok: true, data: hit }, asked, why, fixed, null); return; }
     if (cause.current) setPending((p) => p ?? Date.now());
+    if (seedDraft.current) { seedDesign(inputs, seedDraft.current); seedDraft.current = null; }   // the plain draft for these facts, also when opening on kit edits
     const t = setTimeout(async () => {
       setBusy(true);
       try {
         const lid = leadRef.current;
         const refine = () => call<RefineResponse>("/api/refine", { inputs, overrides, ...(lid && baseVersion.current != null ? { lead_id: lid, base_version: baseVersion.current } : {}) }, ctl.signal);
-        const r = fixed ? await (lid ? serialWrite(lid, "refine", async () => { let x = await refine(); if (!x.ok && x.status === 409) { const g = await call<LeadT>(`/api/leads/${lid}`); if (g.ok && g.data.version != null) { baseVersion.current = g.data.version; x = await refine(); } } return x; }) : refine()) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
+        // Opening on stored kit edits reads them like the board does (no lead id, one shared call); a refine that carries
+        // the lead id and its version follows an actual edit only.
+        const r = fixed ? await (lid && why ? serialWrite(lid, "refine", async () => { let x = await refine(); if (!x.ok && x.status === 409) { const g = await call<LeadT>(`/api/leads/${lid}`); if (g.ok && g.data.version != null) { baseVersion.current = g.data.version; x = await refine(); } } return x; }) : refineOf(inputs, overrides, ctl.signal)) : await designOf(inputs, ctl.signal);
         if (r.ok) keep(k, r.data);
         land(r, asked, why, fixed, lid);
         setBusy(false);
@@ -262,8 +268,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     return () => { clearTimeout(t); ctl.abort(); };
   }, [ready, inputs, overrides, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Each offer of the agent's draft is fetched once in the background after the draft lands, so a tab switch reads
-  // from memory. Runs one request at a time and stops when the facts change.
+  // Each offer of the agent's draft is held in memory once the draft lands, so a tab switch never calls the engine.
   // A lead that opens on stored kit edits starts from a refine, so the plain draft is fetched here first.
   useEffect(() => {
     if (!ready) return;
@@ -274,20 +279,18 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         const k0 = keyOf(i, {});
         base = (designs.current.get(k0) as DesignResponse | undefined) ?? null;
         if (!base) {
-          try { const r = await call<DesignResponse>("/api/design", { inputs: i }, ctl.signal); if (!r.ok) return; keep(k0, r.data); base = r.data; } catch { return; }
+          try { const r = await designOf(i, ctl.signal); if (!r.ok) return; keep(k0, r.data); base = r.data; } catch { return; }
         }
         if (ctl.signal.aborted) return;
         setDrafted(base);
       }
+      // The engine sends every offer complete (design, economics, hash) inside the draft: each tab is built from it here,
+      // with no call. Its layout, when the engine sends one (variant.layout), rides along; until then the layers grid lays it out.
       for (const v of base.variants ?? []) {
-        if (ctl.signal.aborted) return;
         const o: Overrides = v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw };
         const k = keyOf(i, o);
         if (designs.current.has(k)) continue;
-        try {
-          const r = Object.keys(o).length ? await call<RefineResponse>("/api/refine", { inputs: i, overrides: o }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs: i }, ctl.signal);
-          if (r.ok) keep(k, r.data);
-        } catch { return; }
+        keep(k, v.key === "expert" ? base : { ...base, design: v.design, economics: v.economics, ...("layout" in v ? { layout: (v as { layout?: unknown }).layout } : {}) } as DesignResponse);
       }
     }, 300);   // after first paint
     return () => { clearTimeout(t); ctl.abort(); };
@@ -325,7 +328,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setPvOnly(null);
     if (!res || res.design.battery_kwh == null || res.variants?.length) return;
     const ctl = new AbortController();
-    call<RefineResponse>("/api/refine", { inputs, overrides: { ...overrides, battery_kwh: null } }, ctl.signal)
+    refineOf(inputs, { ...overrides, battery_kwh: null }, ctl.signal)
       .then((r) => { if (r.ok) setPvOnly(r.data); }).catch(() => {});
     return () => ctl.abort();
   }, [res]); // eslint-disable-line react-hooks/exhaustive-deps
