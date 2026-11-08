@@ -110,16 +110,25 @@ const ShotView: React.FC<{ shot: Shot }> = ({ shot }) => {
   if (shot.crops && shot.still) {
     const s = W / cw;
     const src = staticFile(`capture/${shot.still}`);
+    const src2 = shot.still2 ? staticFile(`capture/${shot.still2}`) : null;
+    // Second still fades in over about half a second; y2 keeps it in register with the first.
+    const swap = src2 ? ease(frame - sec(shot.swapAt ?? 0), fps, 16) : 0;
+    const len = shot.to - shot.from;
+    const zoom = interpolate(frame / FPS, [0, len], [1, shot.cropZoom ?? 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     return (
       <AbsoluteFill style={{ height: VIEW_H, overflow: "hidden", background: PAPER, ...enterStyle }}>
-        {shot.crops.map((c, i) => {
-          const k = ease(frame - sec(c.delay ?? 0), fps, 10);
-          return (
-            <div key={i} style={{ position: "absolute", left: 0, width: W, top: c.top, height: c.h * s, overflow: "hidden", opacity: k, transform: `translateY(${(1 - k) * 30}px)`, borderTop: `2px solid ${HAIR}`, borderBottom: `2px solid ${HAIR}` }}>
-              <Img src={src} style={{ position: "absolute", left: 0, top: -c.y * s, width: W, height: ch * s }} />
-            </div>
-          );
-        })}
+        <AbsoluteFill style={{ height: VIEW_H, transform: `scale(${zoom})`, transformOrigin: "50% 50%" }}>
+          {shot.crops.map((c, i) => {
+            const k = ease(frame - sec(c.delay ?? 0), fps, 10);
+            const img: React.CSSProperties = { position: "absolute", left: 0, top: -c.y * s, width: W, height: ch * s };
+            return (
+              <div key={i} style={{ position: "absolute", left: 0, width: W, top: c.top, height: c.h * s, overflow: "hidden", opacity: k, transform: `translateY(${(1 - k) * 30}px)`, borderTop: `2px solid ${HAIR}`, borderBottom: `2px solid ${HAIR}` }}>
+                <Img src={src} style={img} />
+                {src2 ? <Img src={src2} style={{ ...img, top: -(c.y2 ?? c.y) * s, opacity: swap }} /> : null}
+              </div>
+            );
+          })}
+        </AbsoluteFill>
       </AbsoluteFill>
     );
   }
