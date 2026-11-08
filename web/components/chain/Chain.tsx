@@ -127,6 +127,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     };
     fit();
     const ro = new ResizeObserver(fit); ro.observe(document.body);
+    // The header and the facts bar above settle after mount (fonts, facts, the compact Systems layout): re-measure then.
+    document.querySelectorAll(".b-open-h, .t-bar").forEach((x) => ro.observe(x));
     addEventListener("resize", fit);
     const mo = new MutationObserver(fit); mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });   // --pc-peek lands later
     return () => { ro.disconnect(); mo.disconnect(); removeEventListener("resize", fit); };
