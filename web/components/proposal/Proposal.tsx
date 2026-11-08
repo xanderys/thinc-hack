@@ -8,6 +8,12 @@ import { KEYS, n0, n2 } from "@/lib/stage";
 import { decide } from "@/lib/proposal";
 import Signature, { type SignatureHandle } from "./Signature";
 import KitSlot from "@/components/home/KitSlot";
+import HomeSystems from "@/components/home/HomeSystems";
+import SystemsChips from "@/components/systems/SystemsChips";
+import ProposedCard from "@/components/systems/ProposedCard";
+import Tiles from "@/components/offer/Tiles";
+import type { SystemName } from "@/components/systems/system";
+import type { Layers } from "@/components/spatial/types";
 import RoofNote from "@/components/home/RoofNote";
 import { Facts } from "@/components/offer/VariantTabs";
 import { variantFacts } from "@/components/offer/facts";
@@ -61,7 +67,8 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const address = lead.address_or_postcode ?? "";
   const street = hasStreet(address);
   const [spatial, setSpatial] = useState<boolean | null>(null);
-  const [layer, setLayer] = useState(3);
+  const [sys, setSys] = useState<SystemName>("panels");
+  const [layers, setLayers] = useState<Layers | null>(null);
 
   const yieldKwh = e.annual?.pv_yield_kwh;
   const be = e.break_even_year !== undefined ? e.break_even_year : e.payback_years == null ? null : Math.ceil(e.payback_years);
@@ -69,69 +76,61 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const alts = rowsOf(variants, key);
   const own = e.annual ? Math.max(0, e.annual.load_kwh - e.annual.grid_import_kwh) : null;
 
+  const mark = lead.approved ? `Approved: ${key === "edit" ? "Planner's adjusted design" : ROWS.find((r) => r.key === key)?.name ?? "Planners' pick"}` : null;
+  const figs = [
+    { k: "kwp" as const, v: design.pv_kwp ? `${n2(design.pv_kwp)} kWp` : "No solar" },
+    { k: "kwh" as const, v: design.battery_kwh ? `${n2(design.battery_kwh)} kWh` : "No battery" },
+    { k: "price" as const, v: eur(e.capex_eur) },
+  ];
+  const tiles = [
+    ...figs.map((f, i) => ({ k: ["Solar", "Battery", "Investment"][i], v: f.v })),
+    ...(yieldKwh != null ? [{ k: "Yield", v: `${n0(yieldKwh)} kWh` }] : []),
+    { k: "Autarky", v: pc(e.autarky_share) },
+    { k: "Break-even", v: be == null ? "20+ years" : `${n0(be)} years` },
+  ];
+  const decided = lead.status === "signed" ? "Signed" : lead.status === "declined" ? "Declined" : lead.status === "question" ? "Question sent" : "Sign";
+
   return (
-    <article className="pp" aria-label="Your proposal">
-      <header className="pp-cover">
-        <svg className="pp-band" viewBox="0 0 390 260" preserveAspectRatio="none" aria-hidden>
-          <polygon points="165,100 390,26 390,80 205,134" />
-          <polygon points="0,78 112,50 112,88 0,116" />
-        </svg>
+    <article className="pp pp-dock" aria-label="Your proposal">
+      <header className="pp-top">
         <p className="pp-brand">{brand}</p>
-        {lead.approved && <p className="pp-mark">Approved: {key === "edit" ? "Planner's adjusted design" : ROWS.find((r) => r.key === key)?.name ?? "Planners' pick"}</p>}
-        <div className="pp-title">
-          <h1>Your proposal</h1>
-          <p>{[name, address].filter(Boolean).join(", ")}</p>
-        </div>
+        {mark && <p className="pp-mark">{mark}</p>}
       </header>
-
-      {/* One fixed box for the 3D house, its fallback drawing and the skeleton, so the page below never moves. */}
-      <section className="pp-house" aria-label="Your home">
-        <div className="pp-housebox">
-          {street && spatial !== false && (
-            <div className="pp-spatial">
-              <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={design} address={address} response={lead.draft} layer={layer} onLayerChange={setLayer} onAvailable={setSpatial} homeowner />
-            </div>
+      <SystemsChips active={sys} onPick={setSys} />
+      <section className="pp-stage" aria-label="Your home">
+        {street && spatial !== false ? (
+          <div className="pp-spatial">
+            <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={design} address={address} response={lead.draft} bare homeowner endpoints={{ layers: `/start/proposal/${encodeURIComponent(lead.lead_id)}/layers`, layersGet: true }} system={sys} onLayers={setLayers} onAvailable={setSpatial}>
+              <HomeSystems sys={sys} design={design} economics={e} layers={layers} demandKwh={lead.facts.annual_demand_kwh} pending={!layers} note={<RoofNote draft={lead.draft} />} />
+            </SpatialDemo>
+          </div>
+        ) : <div className="pp-drawing"><House design={design} /></div>}
+      </section>
+      <ProposedCard title="Proposed Design" figs={figs} pending={false} lift={76}>
+        <div className="pp-open">
+          <Tiles items={tiles} mode="fade" />
+          {alts.length > 0 && (
+            <section className="pp-card" aria-labelledby="pp-alts">
+              <h2 id="pp-alts">Alternatives for your installer to discuss</h2>
+              <ul className="pp-vars">
+                {alts.map(({ key: k, name: label, v }) => (
+                  <li key={k}>
+                    <span className="pp-vname">{label}</span>
+                    <Facts className="pp-facts" items={variantFacts(v.economics, v.design, design)} />
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
-          {(!street || spatial === false) && <div className="pp-drawing"><House design={design} /></div>}
+          <section className="pp-card" aria-label="Your system">
+            <h2>Your system</h2>
+            <KitSlot design={design} total={e.capex_eur} assumptions={e.assumptions} />
+          </section>
         </div>
-        <RoofNote draft={lead.draft} className="pp-roofnote" />
-      </section>
-
-      <section className="pp-kpis" aria-label="Key figures">
-        {yieldKwh != null && <Kpi label="Yield a year" value={`${n0(yieldKwh)} kWh`} />}
-        <div className="pp-kpi">
-          <span>Supplied by your system</span><b>{pc(e.autarky_share)}</b>
-          {e.annual && own != null && (
-            <details className="pp-more-d">
-              <summary>Details</summary>
-              <p>{n0(own)} of the {n0(e.annual.load_kwh)} kWh your home uses a year comes from your panels and battery; {n0(e.annual.grid_import_kwh)} kWh still comes from the grid.</p>
-            </details>
-          )}
-        </div>
-        <Kpi label="Investment estimate" value={eur(e.capex_eur)} note="An estimate until the site visit." />
-        <Kpi label="Break-even" value={be == null ? "over 20 years" : `${n0(be)} years`} />
-      </section>
-
-      {alts.length > 0 && (
-        <section className="pp-card" aria-labelledby="pp-alts">
-          <h2 id="pp-alts">Alternatives for your installer to discuss</h2>
-          <ul className="pp-vars">
-            {alts.map(({ key: k, name: label, v }) => (
-              <li key={k}>
-                <span className="pp-vname">{label}</span>
-                <Facts className="pp-facts" items={variantFacts(v.economics, v.design, design)} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section className="pp-card" aria-label="Your system">
-        <h2>Your system</h2>
-        <KitSlot design={design} total={e.capex_eur} assumptions={e.assumptions} />
-      </section>
-
-      <Decision lead={lead} brand={brand} startedAt={startedAt} onDecided={onDecided} />
+      </ProposedCard>
+      <ProposedCard title={decided} figs={name ? [{ k: "kwp", v: name }] : []} pending={false}>
+        <Decision lead={lead} brand={brand} startedAt={startedAt} onDecided={onDecided} />
+      </ProposedCard>
     </article>
   );
 }
@@ -238,43 +237,13 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
 
 // The proposal before its lead loads: the same boxes as the page above, with placeholder text hidden under a shimmer.
 export function ProposalSkeleton() {
-  const v = ROWS.map((r) => r.name);
   return (
-    <article className="pp pp-sk" aria-busy="true" aria-label="Your proposal">
-      <header className="pp-cover">
-        <svg className="pp-band" viewBox="0 0 390 260" preserveAspectRatio="none" aria-hidden>
-          <polygon points="165,100 390,26 390,80 205,134" />
-          <polygon points="0,78 112,50 112,88 0,116" />
-        </svg>
-        <p className="pp-brand"><Bar w="13ch" /></p>
-        <div className="pp-title">
-          <h1>Your proposal</h1>
-          <p><Bar w="26ch" /></p>
-        </div>
-      </header>
-      <section className="pp-house" aria-hidden><div className="pp-housebox pp-skb" /></section>
-      <section className="pp-kpis" aria-hidden>
-        {[["Yield a year", "10ch"], ["Supplied by your system", "4ch"], ["Investment estimate", "7ch"], ["Break-even", "8ch"]].map(([l, w], i) => (
-          <div key={l} className="pp-kpi"><span>{l}</span><b><Bar w={w} /></b>{i === 2 && <small><Bar w="30ch" /></small>}</div>
-        ))}
-      </section>
-      <section className="pp-card" aria-hidden>
-        <h2>Alternatives for your installer to discuss</h2>
-        <ul className="pp-vars">
-          {v.slice(1).map((x) => (
-            <li key={x}>
-              <span className="pp-vname"><span className="pp-skt">{x}</span></span>
-              <span className="pp-chips"><span className="pp-pill pp-skt" style={{ width: "9ch" }}>{"\u00a0"}</span><span className="pp-pill pp-skt" style={{ width: "6ch" }}>{"\u00a0"}</span></span>
-              <span className="pp-vnum"><Bar w="7ch" /><small><Bar w="8ch" /></small></span>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section className="pp-card" aria-hidden>
-        <h2>Your system</h2>
-        <KitSlot design={null} />
-      </section>
-      <section className="pp-card pp-sign pp-signsk" aria-hidden><h2>Sign</h2></section>
+    <article className="pp pp-dock pp-sk" aria-busy="true" aria-label="Your proposal">
+      <header className="pp-top"><p className="pp-brand"><Bar w="13ch" /></p></header>
+      <div className="sys-head"><div className="sys-chips">{[0, 1, 2, 3].map((i) => <span key={i} className="pp-skt" style={{ width: 84, height: 34, borderRadius: 999 }}>{"\u00a0"}</span>)}</div></div>
+      <section className="pp-stage" aria-hidden><div className="pp-skb" style={{ height: "100%", borderRadius: 20 }} /></section>
+      <div className="pp-pass-sk" aria-hidden><Bar w="9ch" /><Bar w="22ch" /></div>
+      <div className="pp-pass-sk pp-pass-sk2" aria-hidden><Bar w="5ch" /></div>
     </article>
   );
 }

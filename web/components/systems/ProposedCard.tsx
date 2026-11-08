@@ -9,8 +9,9 @@ import "./systems.css";
 
 type Fig = { k: "kwp" | "kwh" | "price"; v: string };
 type Props = {
-  kwp: number | null | undefined; kwh: number | null | undefined; price: number;
+  kwp?: number | null; kwh?: number | null; price?: number;
   pending: boolean; side?: "bottom"; children: ReactNode; id?: string | null;
+  title?: string; figs?: Fig[]; lift?: number;   // the homeowner page reuses the pass for its sign card, stacked above the safe area by lift px
   none?: string | null;   // no design applies to this building: no figures, this line, and Approve disabled
 };
 
@@ -23,11 +24,11 @@ function useReduce() {
   return r;
 }
 
-export default function ProposedCard({ kwp, kwh, price, pending, children, id, none }: Props) {
+export default function ProposedCard({ kwp, kwh, price = 0, pending, children, id, none, title = "Proposed Design", figs: figsIn, lift = 0 }: Props) {
   const side = "bottom" as const;
   const reduce = useReduce();
   const [open, setOpen] = useState(false);
-  const figs: Fig[] = [
+  const figs: Fig[] = figsIn ?? [
     { k: "kwp", v: kwp ? `${n(kwp, 2)} kWp` : "No solar" },
     { k: "kwh", v: kwh ? `${n(kwh, 1)} kWh` : "No battery" },
     { k: "price", v: `€${Math.round(price).toLocaleString("en-GB")}` },
@@ -151,15 +152,15 @@ export default function ProposedCard({ kwp, kwh, price, pending, children, id, n
     : <span key={f.k} className="pc-fig"><Num v={f.v} lit /></span>;   // springs to the new figure and lights briefly
 
   return (
-    <div ref={root} className={`pc pc-${side}${open ? " pc-open" : ""}${reduce ? " pc-reduce" : ""}`}>
+    <div ref={root} className={`pc pc-${side}${open ? " pc-open" : ""}${reduce ? " pc-reduce" : ""}`} style={lift ? ({ ["--pc-lift" as string]: `${lift}px` }) : undefined}>
       {<div ref={scrim} className="pc-scrim" onClick={() => to(false)} aria-hidden="true" />}
       {/* The tucked pass's footprint on the model, fixed whether the pass is open or not: the house frames above it. */}
       <div className="pc-cover" data-cover aria-hidden="true" />
-      <div className="pc-clip"><div ref={mover} className="pc-card" role="region" aria-label="Proposed Design">
+      <div className="pc-clip"><div ref={mover} className="pc-card" role="region" aria-label={title}>
         <button type="button" className="pc-pass" aria-expanded={open} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
           onClick={() => { if (moved.current) { moved.current = false; return; } to(!open); }}>
           <span className="pc-grip" aria-hidden="true" />
-          <span className="pc-h">Proposed Design</span>
+          <span className="pc-h">{title}</span>
           {none ? <span className="pc-none">{none}</span> : <span className="pc-figs" aria-live="polite" aria-busy={pending}>{figs.map(figure)}</span>}
           <svg className="pc-chev" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M5 12.5l5-5 5 5" />
