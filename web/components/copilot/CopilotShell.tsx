@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ComposerField from "@/components/composer/ComposerField";
 import Thread from "@/components/agent/Thread";
 import * as agentStore from "@/components/agent/store";
+import { suggest, type SuggestLead } from "@/components/agent/suggest";
 import { Ctx, type CopilotContext } from "./context";
 import s from "./copilot.module.css";
 
@@ -18,6 +19,7 @@ export default function CopilotShell() {
   const [path, setPath] = useState("/");
   const [name, setName] = useState<string | undefined>();
   const [open, setOpen] = useState(false);
+  const [leadSug, setLeadSug] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const cardEl = useRef<HTMLElement>(null);
   const noop = () => {};
@@ -51,14 +53,21 @@ export default function CopilotShell() {
   }, []);
 
   useEffect(() => {
-    setName(undefined);
+    setName(undefined); setLeadSug(false);
     if (!lead) return;
     let stop = false;
-    fetch(`/api/leads/${encodeURIComponent(lead)}`).then((r) => r.json()).then((j) => { if (!stop && j?.customer_name) setName(j.customer_name); }).catch(() => {});
+    // The circle's dot: the same suggest() the card's chips use, so it shows whenever a chip waits, even with the card closed.
+    fetch(`/api/leads/${encodeURIComponent(lead)}`).then((r) => r.json()).then((j) => { if (stop || !j?.customer_name) return; setName(j.customer_name); setLeadSug(suggest({ leadId: lead, name: j.customer_name }, j as SuggestLead).length > 0); }).catch(() => {});
     return () => { stop = true; };
   }, [lead]);
 
-  useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); }; addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, [open]);
+  // Escape closes the open card first: a window capture listener added when the shell mounts (in the layout, so before
+  // any page's own capture listeners), which stops there so the pass or a chooser underneath does not also react.
+  const openNow = useRef(open); openNow.current = open;
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key !== "Escape" || !openNow.current) return; e.stopImmediatePropagation(); e.preventDefault(); setOpen(false); };
+    addEventListener("keydown", k, true); return () => removeEventListener("keydown", k, true);
+  }, []);
 
   // Where the card morphs from: the board's field or the lead page's circle, as a transform of the card's own box (FLIP).
   useEffect(() => {
@@ -131,7 +140,7 @@ export default function CopilotShell() {
         </section>
       </div>
       <button type="button" className={s.circle} data-copilot-circle aria-label="Open the copilot" title={sug.line || undefined} data-on={asCircle && !open ? "1" : undefined} data-off={off} tabIndex={asCircle && !open ? 0 : -1} onClick={() => setOpen(true)}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}<img src="/copilot/friday.png" alt="Copilot" width={56} height={56} draggable={false} />{sug.dot && <span className={s.dot} aria-hidden />}
+        {/* eslint-disable-next-line @next/next/no-img-element */}<img src="/copilot/friday.png" alt="Copilot" width={56} height={56} draggable={false} />{(sug.dot || leadSug) && <span className={s.dot} aria-hidden />}
       </button>
     </Ctx.Provider>
   );
