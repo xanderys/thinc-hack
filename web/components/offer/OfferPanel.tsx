@@ -60,7 +60,8 @@ export default function OfferPanel(p: OfferProps) {
   const target = model?.layout && Math.abs(model.layout.kwp - (d.pv_kwp ?? 0)) < 0.2 ? model : null;
   const modules = target?.layout?.panels ?? null;
   const faces = useMemo(() => {
-    const w = [...new Set((target?.planes ?? []).filter((q) => q.chosen_panels?.length).map((q) => facing(q.azimuth)))];
+    const ORDER = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west", "flat"];
+    const w = [...new Set((target?.planes ?? []).filter((q) => q.chosen_panels?.length).map((q) => facing(q.azimuth)))].sort((x, y) => ORDER.indexOf(x) - ORDER.indexOf(y));
     if (!w.length) return null;
     return w.length === 1 ? `${w[0]} face` : `${w.slice(0, -1).join(", ")} and ${w.at(-1)} faces`;
   }, [target]);
