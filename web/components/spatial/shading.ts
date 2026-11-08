@@ -3,16 +3,16 @@
 // The scene tags each module group with { plane, idx, cs, n } in setPanels and calls frame() once per render.
 import * as THREE from "three";
 import type { RoofPlane, V3 } from "./types";
-import { shadeRgb, shareAt, type ShadeAt, type Shading } from "@/lib/shading";
+import { periodShare, shadeRgb, shareAt, type ShadeAt, type Shading } from "@/lib/shading";
 
 const toV = ([x, y, z]: V3) => new THREE.Vector3(x, z, -y);
 const NARROW = 520;   // px: phone width, smaller figures
 // Every module gets its %, the biggest losses first; a figure that would touch one already shown waits for a closer view.
 // Inline, so they win over the scene's boxed label style: plain figures on the drawing, like the plan's lengths.
-const PCT_CSS = "position:absolute;left:0;top:0;padding:0;border:0;background:none;box-shadow:none;font:600 var(--sp-pct-size,10px)/1 var(--font-sans),sans-serif;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.55);white-space:nowrap;";
+const PCT_CSS = "position:absolute;left:0;top:0;padding:0 2px;border:0;border-radius:3px;background:none;box-shadow:none;font:600 var(--sp-pct-size,10px)/1 var(--font-sans),sans-serif;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.55);white-space:nowrap;";
 const EDGE_CSS = "position:absolute;left:0;top:0;padding:0 3px;border:0;border-radius:3px;background:rgba(255,255,255,.82);box-shadow:none;font:500 9.5px/1.3 var(--font-sans),sans-serif;font-variant-numeric:tabular-nums;color:#0A0C14;white-space:nowrap;";
 
-type Mod = { key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; centre: THREE.Vector3; a: THREE.Vector3; b: THREE.Vector3; el: HTMLDivElement; has?: boolean };
+type Mod = { key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; centre: THREE.Vector3; a: THREE.Vector3; b: THREE.Vector3; el: HTMLDivElement; has?: boolean; lit?: boolean }; // has: a figure for the period; lit: sun on it at the slider's hour
 type Edge = { a: THREE.Vector3; b: THREE.Vector3; c: THREE.Vector3; el: HTMLDivElement; len: number; w?: number; h?: number };
 type Rect = { x0: number; x1: number; y0: number; y1: number };
 
@@ -80,13 +80,19 @@ export class ShadeLayer {
     const by = new Map((this.data?.modules ?? []).map((m) => [`${m.plane_id}:${m.index}`, m]));
     this.mods.forEach((m) => {
       if (!this.on && this.data) return;   // turning off: keep the last colours while the tint fades out in frame()
-      const s = by.get(m.key), v = s && this.on ? shareAt(s, this.at) : null;
-      m.has = v != null;
+      // The figure is the module's loss over the selected period (month or year), tinted on the same ramp; the module's
+      // own tint is the moment on the hour slider (sun or shade), or the year's share with no month picked.
+      const s = by.get(m.key), p = s && this.on ? periodShare(s, this.at) : null, v = s && this.on ? shareAt(s, this.at) : null;
+      m.has = p != null; m.lit = v != null;
       m.mesh.visible = v != null && this.k > 0.002;
       if (v != null) {
         const [r, g, b] = shadeRgb(v);
         m.mat.color.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
-        m.el.textContent = `${Math.round((1 - v) * 100)} %`;   // the module's shading loss at that moment
+      }
+      if (p != null) {
+        m.el.textContent = `${Math.round((1 - p) * 100)} %`;
+        const [r, g, b] = shadeRgb(p);
+        m.el.style.background = `rgba(${r},${g},${b},0.92)`;
       }
     });
   }
@@ -127,7 +133,7 @@ export class ShadeLayer {
       else { const w = (2 * Math.PI) / 0.35; this.kv += (-2 * w * this.kv - w * w * (this.k - goal)) * dt; this.k += this.kv * dt; }
       if (Math.abs(this.k - goal) < 0.002 && Math.abs(this.kv) < 0.01) { this.k = goal; this.kv = 0; }
       this.k = Math.min(1, Math.max(0, this.k));
-      this.mods.forEach((m) => { m.mat.opacity = 0.9 * this.k; m.mesh.visible = !!m.has && this.k > 0.002; });
+      this.mods.forEach((m) => { m.mat.opacity = 0.9 * this.k; m.mesh.visible = !!m.lit && this.k > 0.002; });
     }
     const narrow = width < NARROW;
     const size = narrow ? "8.5px" : "10px";
@@ -135,7 +141,7 @@ export class ShadeLayer {
     const taken: Rect[] = [];
     const loss = (m: Mod) => (m.el.textContent ? parseInt(m.el.textContent, 10) || 0 : 0);
     [...this.mods].sort((a, b) => loss(b) - loss(a)).forEach((m) => {
-      const show = this.on && m.mesh.visible;
+      const show = this.on && !!m.has && this.k > 0.002;
       if (!show) { if (m.el.style.visibility !== "hidden") m.el.style.visibility = "hidden"; return; }
       m.mesh.updateWorldMatrix(true, false);
       const p = project(m.centre.clone().applyMatrix4(m.mesh.matrixWorld));
