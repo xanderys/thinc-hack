@@ -188,6 +188,8 @@ export default function Board({ openId: initial }: { openId?: string }) {
     for (const r of rows ?? []) {
       const g = designs[r.lead_id];
       if (!g?.lead) continue;
+      // A declined lead needs no roof to be judged: its verdict is Decline at once, never held behind a roof lookup.
+      if (r.status === "declined" || (r.decision ?? g.lead.decision)?.action === "decline") { out[r.lead_id] = qualify({ ...g.lead, status: r.status, decision: r.decision ?? g.lead.decision }, g.res, null); continue; }
       const pc = isPc(r.address_or_postcode);
       let roof = pc ? null : roofs[r.address_or_postcode!];
       firstSeen.current[r.lead_id] ??= now;
@@ -248,12 +250,14 @@ export default function Board({ openId: initial }: { openId?: string }) {
 
   // While the call runs, the open card keeps converging: poll the lead every 2.5 s until it is done.
   // A draft is polled too, so a call that starts after the page opened is followed from its first fact.
-  const calling = liveLead?.lead_id === openId && (liveLead?.status === "in_call" || liveLead?.status === "draft");
+  // "On a call" is the engine status in_call and nothing else; a draft lead is only followed (polled) for WhatsApp and call updates.
+  const calling = liveLead?.lead_id === openId && liveLead?.status === "in_call";
+  const following = calling || (liveLead?.lead_id === openId && liveLead?.status === "draft");
   useEffect(() => {
-    if (!openId || !calling) return;
+    if (!openId || !following) return;
     const t = setInterval(() => call<LeadT>(`/api/leads/${openId}`).then((r) => { if (r.ok) setLiveLead(r.data); }), 2000);
     return () => clearInterval(t);
-  }, [openId, calling]);
+  }, [openId, following]);
   const liveFeed: Live | null = useMemo(() => !liveLead || liveLead.lead_id !== openId || !liveLead.history.length && liveLead.status !== "in_call" ? null : {
     version: liveLead.version ?? null, step: liveLead.history.length, facts: liveLead.facts, changed: liveLead.history.at(-1)?.changed ?? [],
     asking: liveLead.status === "in_call" ? liveLead.next_question?.question ?? null : null,
