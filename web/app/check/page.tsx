@@ -250,19 +250,19 @@ function Replay({ ev }: { ev: EvalX | null }) {
   return (
     <section className={s.sec}>
       <h2>{rows ? `Held-out replay: ${ok} of ${rows.length} drafts match the senior planner` : "Held-out replay"}</h2>
-      <p className={s.lede}>Twenty held-out signed projects run through the engine. Rows marked review say where the draft differs.</p>
+      <p className={s.lede}>Twenty held-out signed projects run through the engine. Rows marked Review say where the draft differs.</p>
       {err && <Err src="Engine" msg={err} retry={() => setTick((t) => t + 1)} />}
       {!rows && !err && <p className={s.wait}>Replaying</p>}
       {rows && (
         <div className={s.panel}>
           <div className={`${s.ir} ${s.th}`}><span>Home</span><span>Draft</span><span style={{ textAlign: "right" }}>Against the expert</span></div>
           {vis.map((r) => {
-            const i = r.inputs, sub = [i.heating_type !== "Unknown" ? HEATING_WORD[i.heating_type] : "Heating not recorded", i.has_ev ? "EV" : null].filter(Boolean).join(", ");
+            const i = r.inputs, sub = [i.heating_type !== "Unknown" ? HEATING_WORD[i.heating_type] : "Heating not recorded", i.has_ev ? "Electric car" : null].filter(Boolean).join(", ");
             return (
               <div className={`${s.ir} s-in`} key={r.project_id} title={r.note || undefined}>
-                <span>{INSTALLER_NAME[r.installer_id]}, {n0(i.annual_demand_kwh)} kWh<small>{sub}</small></span>
+                <span>{INSTALLER_NAME[r.installer_id]}, {n0(i.annual_demand_kwh)} kWh a year<small>{sub}</small></span>
                 <span className={s.d}>{designLine(r.draft)}</span>
-                <span className={r.within.all ? s.ok : s.rev}>{r.within.all ? "matches" : "review"}</span>
+                <span className={r.within.all ? s.ok : s.rev}>{r.within.all ? "Matches" : "Review"}</span>
                 {!r.within.all && <span className={s.why}>{miss(r)}</span>}
               </div>
             );
