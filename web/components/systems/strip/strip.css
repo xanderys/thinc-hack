@@ -1,0 +1,59 @@
+/* The day strip inside a system card: the panels scrubber's look (accent range, 10.5 px tabular caption, month-button toggle). */
+.ds { display: grid; gap: 4px; min-width: 0; }
+.ds-top { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.ds-season { display: flex; gap: 1px; }
+.ds-season button { all: unset; box-sizing: border-box; cursor: pointer; height: 26px; padding: 0 8px; display: grid; place-items: center; font-size: 11px; font-weight: 600; border-radius: 5px; color: var(--ink-2); }
+.ds-season button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.ds-season button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ds-key { display: flex; gap: 2px 10px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; font-size: 10.5px; color: var(--ink-3); }
+.ds-key li { display: inline-flex; align-items: center; gap: 4px; }
+.ds-sw { width: 10px; height: 6px; border-radius: 2px; display: inline-block; }
+.ds-sw.ds-solar { background: rgba(7, 27, 113, 0.18); box-shadow: inset 0 0 0 1px rgba(7, 27, 113, 0.35); }
+.ds-sw.ds-load { height: 2px; background: var(--navy); }
+.ds-sw.ds-line { height: 0; border-top: 2px dashed var(--navy); border-radius: 0; }
+.ds-sw.ds-accent { background: var(--accent); }
+/* Same horizontal travel as the native thumb (about 16 px wide), so the hour line sits under the handle. */
+.ds-plot { display: grid; gap: 3px; padding: 0 8px; }
+.ds-chart { position: relative; }
+.ds-svg { display: block; width: 100%; height: 54px; overflow: visible; }
+.ds-band { display: block; width: 100%; height: 12px; }
+.ds-a { stroke: none; }
+.ds-l { fill: none; stroke-width: 1.25; stroke-linejoin: round; }
+.ds-a.ds-solar { fill: rgba(7, 27, 113, 0.12); } .ds-l.ds-solar { stroke: rgba(7, 27, 113, 0.38); }
+.ds-a.ds-load { fill: rgba(7, 27, 113, 0.05); } .ds-l.ds-load, .ds-line { stroke: var(--navy); }
+.ds-a.ds-accent { fill: var(--accent); opacity: 0.55; } .ds-l.ds-accent { stroke: var(--accent); }
+.ds-a.ds-full { opacity: 0.85; }
+.ds-a.ds-soft { fill: var(--accent); opacity: 0.2; } .ds-l.ds-soft { stroke: var(--accent); stroke-dasharray: 2 2; opacity: 0.7; }
+.ds-sw.ds-soft { background: rgba(55, 75, 230, 0.25); box-shadow: inset 0 0 0 1px rgba(55, 75, 230, 0.6); }
+.ds-temp { stroke: var(--navy); stroke-dasharray: 3 2; stroke-width: 1.25; }
+.ds-track { fill: rgba(7, 27, 113, 0.07); }
+.ds-cur { stroke: var(--ink); stroke-width: 1; opacity: 0.55; }
+.ds-r { position: absolute; top: -1px; bottom: -1px; right: 0; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; font-size: 10px; line-height: 1; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.ds-r span { background: rgba(250, 248, 243, 0.8); padding: 0 2px; border-radius: 3px; }
+.ds-axis { position: relative; height: 12px; font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ds-axis span { position: absolute; top: 0; transform: translateX(-50%); }
+.ds-sun { position: absolute; top: -3px; width: 1px; height: 6px; background: var(--ink-2); transform: translateX(-0.5px); }
+.ds-sun::after { content: ""; position: absolute; top: -3px; left: -2px; width: 5px; height: 5px; border-radius: 50%; background: var(--ink-2); }
+.ds-range { width: 100%; margin: 0; accent-color: var(--accent); touch-action: none; }
+.ds-when { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ds-when b { font-weight: 600; color: var(--ink-2); }
+.ds-skel { height: 84px; border-radius: 6px; }
+
+/* Headline figures: bold value, light unit; they spring to a new size's figure (Num). */
+.dv { display: grid; gap: 8px; }
+.dv-figs { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0; }
+.dv-figs p { margin: 0; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; }
+.dv-figs b { font-size: 17px; font-weight: 650; color: var(--ink); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.dv-figs .dv-skel { display: inline-block; width: 44px; height: 18px; vertical-align: -3px; }
+.dv-err { margin: 0; font-size: 12px; color: var(--ink-2); }
+.dv-err button { all: unset; cursor: pointer; color: var(--accent); font-weight: 600; margin-left: 6px; }
+@media (max-width: 760px) {
+  .dv { gap: 4px; } .ds { gap: 2px; } .ds-plot { gap: 2px; }
+  .dv-figs b { font-size: 15px; } .dv-figs p { font-size: 12px; }
+  .ds-season button { height: 24px; padding: 0 7px; }
+  .ds-svg { height: 30px; } .ds-band { height: 8px; } .ds-skel { height: 52px; }
+  .ds-axis { height: 5px; } .ds-axis span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .ds-skel, .dv-skel { animation: none; } }
+.dv-figs .dv-was { font-size: inherit; font-weight: 600; color: var(--ink-2); }
+.dv-note { margin: -4px 0 0; font-size: 12px; color: var(--ink-3); } .dv-note b { font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }

@@ -4,7 +4,8 @@
 .line > span { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .skel { width: 220px; height: 14px; max-width: 70%; }
 .box { display: flex; align-items: flex-end; gap: 2px; padding: 6px; border: 1px solid var(--rule-2); border-radius: 26px; background: var(--sheet); }
-.box:focus-within { border-color: var(--accent); }
+.box:focus-within { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.box .field:focus, .box .field:focus-visible { outline: none; }
 .busy { background-color: #eceef4; background-image: linear-gradient(90deg, #eceef4 0%, #f6f7fa 50%, #eceef4 100%); background-size: 200% 100%; animation: shim 1.2s linear infinite; }
 .rec { border-color: var(--accent); }
 @keyframes shim { from { background-position: 100% 0; } to { background-position: -100% 0; } }
