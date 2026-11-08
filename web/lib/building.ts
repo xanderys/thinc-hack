@@ -6,6 +6,7 @@
 // gave (or 40 m2 a person, else 140 m2) by more than 2.5 times, and the Zensus dwellings class last: measured
 // geometry outranks a census cell (a 1,742 m2 footprint once passed as single-family on "1 dwelling").
 // Multi-unit only adds the shared-roof notice and the single-family tags; the house view and the design stay.
+// Only the engine's large_building flag or Zensus 3 or more dwellings mark a building multi-unit; a missing class is unknown, never multi-unit.
 // Used by the planner card and by the qualify step (web/lib/qualify.ts) to ask "is this a house or a flat?".
 import type { HomeInputs } from "./api";
 
@@ -36,9 +37,6 @@ export function isMultiUnit(model: BuildingShape | null | undefined, inputs: Par
   const dwc = model?.dwellings_class?.match(/\d+/);   // Zensus 2022 class, e.g. "3 to 6 dwellings"
   const dw = model?.dwellings_per_building ?? model?.zensus_dwellings ?? model?.dwellings ?? (dwc ? Number(dwc[0]) : null);
   if (g?.large_building) return out(true, fp != null && fp >= 300 ? `Footprint ${n0(fp)} m², a large building` : h != null ? `Building ${n0(h)} m tall, a large building` : "A large building in the 3D model");
-  if (fp != null && fp > 300) return out(true, `Footprint ${n0(fp)} m², over 300 m²`);
-  if (h != null && h >= 14) return out(true, `Building ${n0(h)} m tall, about ${storeys} storeys`);
-  if (area != null && area > 2.5 * stated) return out(true, `Building about ${n0(area)} m² over ${storeys} storeys, ${(area / stated).toFixed(1)} times the ${n0(stated)} m² home`);
   if (dw != null && dw >= 3) return out(true, `Zensus counts ${n0(dw)} dwellings in this building`);
   if (dw != null && dw <= 2 && fp != null) return out(false, `Zensus counts ${n0(dw)} dwelling${dw === 1 ? "" : "s"}; building about ${n0(area ?? fp)} m²`);
   if (dw != null && dw <= 2) return out(false, `Zensus counts ${n0(dw)} dwelling${dw === 1 ? "" : "s"} in this building`);
