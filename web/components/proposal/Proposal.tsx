@@ -36,6 +36,23 @@ export function offered(lead: Lead): { key: Variant["key"]; design: Design; econ
 
 const writes = new Map<string, WriteResponse | "failed">();
 
+// Planner checks (battery cycles, DC/AC ratio, payback sanity band, roof area) stay out of the homeowner's lines.
+const TECH = /full cycles|DC\/AC|sanity band|usable roof|clipped/i;
+const CYCLES = String.raw`\s*(?:running|doing|with|at|for)?\s*(?:about\s+)?[\d,]+ full cycles a year`;
+const homely = (line: string) => line.replace(new RegExp(`,${CYCLES},`, "gi"), "").replace(new RegExp(`,?${CYCLES}`, "gi"), "").replace(/\s+\./g, ".");
+
+// The planner's four offers, in the planner's order and names (web/components/offer/VariantTabs.tsx). Best value is not offered here.
+const ROWS: { key: Variant["key"]; name: string }[] = [
+  { key: "expert", name: "Planners' pick" }, { key: "independence", name: "Most independence" },
+  { key: "payback", name: "Best payback" }, { key: "upfront", name: "Lowest upfront cost" },
+];
+function rowsOf(variants: Variant[], key: Variant["key"]) {
+  const rows = ROWS.flatMap((r) => { const v = variants.find((x) => x.key === r.key); return v ? [{ ...r, v }] : []; });
+  const picked = variants.find((x) => x.key === key);
+  if (picked && !rows.some((r) => r.key === key)) rows.push({ key, name: picked.label, v: picked });
+  return rows;
+}
+
 type Props = {
   lead: Lead; brand: string;
   startedAt?: number | null;              // the homeowner's own Submit time; else the lead's created_at
@@ -57,6 +74,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
     if (writes.has(hash)) { setWrite(writes.get(hash)!); return; }
     const ctl = new AbortController();
     const facts = buildFacts(lead.facts, { ...lead.draft, design, economics: e })
+      .filter((f) => !TECH.test(f))
       .map((f) => Object.values(INSTALLER_NAME).reduce((s, n) => s.split(n).join(brand), f));
     fetch("/api/write", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ facts, mode: "homeowner", lead_id: lead.lead_id }), signal: ctl.signal })
       .then(async (r) => (r.ok ? ((await r.json()) as WriteResponse) : "failed" as const))
@@ -65,7 +83,6 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
     return () => ctl.abort();
   }, [hash]); // eslint-disable-line react-hooks/exhaustive-deps
   const lines = write && write !== "failed" ? write.lines : null;
-  const fallback = write === "failed" || (lines && KEYS.every((k) => !lines[k]));
 
   const yieldKwh = e.annual?.pv_yield_kwh;
   const be = e.break_even_year !== undefined ? e.break_even_year : e.payback_years == null ? null : Math.ceil(e.payback_years);
@@ -108,11 +125,11 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
         <section className="pp-card" aria-label="Variants">
           <h2>Variants</h2>
           <ul className="pp-vars">
-            {variants.map((v) => (
-              <li key={v.key} className={v.key === key ? "on" : undefined} aria-current={v.key === key ? "true" : undefined}>
-                <span className="pp-vname">{v.label}{v.key === key && <span className="pp-pill blue">Proposed</span>}</span>
+            {rowsOf(variants, key).map(({ key: k, name: label, v }) => (
+              <li key={k} className={k === key ? "on" : undefined} aria-current={k === key ? "true" : undefined}>
+                <span className="pp-vname">{label}{k === key && <span className="pp-pill blue">Proposed</span>}</span>
                 <Chips d={v.design} />
-                <span className="pp-vnum">{eur(v.economics.capex_eur)} estimate<small>{pc(v.economics.autarky_share)} autarky</small></span>
+                <span className="pp-vnum">{eur(v.economics.capex_eur)}<small>estimate</small></span>
               </li>
             ))}
           </ul>
@@ -129,13 +146,12 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
               <li key={k} className={v == null ? "off" : undefined}>
                 <span className={`pp-dot ${k}`} aria-hidden />
                 <span className="pp-pname"><b>{NAME[k]}</b><span className="pp-size">{v == null ? "Not included" : `${n2(v)} ${UNIT[k]}`}</span></span>
-                {lines?.[k] && <p>{lines[k]}</p>}
+                {lines?.[k] && <p>{homely(lines[k]!)}</p>}
                 {!write && <span className="pp-wait" aria-hidden />}
               </li>
             );
           })}
         </ul>
-        {fallback && <ul className="pp-why">{lead.draft.explanation.map((x) => <li key={x}>{x}</li>)}</ul>}
       </section>
 
       <Decision lead={lead} brand={brand} startedAt={startedAt} onDecided={onDecided} />
@@ -256,7 +272,7 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
 
 // The proposal before its lead loads: the same boxes as the page above, with placeholder text hidden under a shimmer.
 export function ProposalSkeleton() {
-  const v = ["PV + storage (as planners here design it)", "Best value", "Best payback", "Most independence", "Lowest upfront cost"];
+  const v = ROWS.map((r) => r.name);
   return (
     <article className="pp pp-sk" aria-busy="true" aria-label="Your proposal">
       <header className="pp-cover">
@@ -283,7 +299,7 @@ export function ProposalSkeleton() {
             <li key={x}>
               <span className="pp-vname"><span className="pp-skt">{x}</span>{i === 0 && <span className="pp-pill pp-skt">Proposed</span>}</span>
               <span className="pp-chips"><span className="pp-pill pp-skt">10.24 kWp</span><span className="pp-pill pp-skt">10 kWh</span></span>
-              <span className="pp-vnum"><span className="pp-skt">€20,000 estimate</span><small className="pp-skt">70 % autarky</small></span>
+              <span className="pp-vnum"><span className="pp-skt">€20,000</span><small className="pp-skt">estimate</small></span>
             </li>
           ))}
         </ul>
