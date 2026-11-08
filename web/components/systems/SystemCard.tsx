@@ -8,10 +8,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SystemName } from "./system";
 import "./systems.css";
 
-type Props = { sys: SystemName; head: string; children: ReactNode; info?: ReactNode; pending?: boolean; extra?: ReactNode };
+type Props = { sys: SystemName; head: string; children: ReactNode; info?: ReactNode; pending?: boolean; extra?: ReactNode; extraLabel?: string; onMore?: (open: boolean) => void };
 
-export default function SystemCard({ sys, head, children, info, pending, extra }: Props) {
+export default function SystemCard({ sys, head, children, info, pending, extra, extraLabel, onMore }: Props) {
   const [open, setOpen] = useState(false);
+  const [more, setMore] = useState(false);   // the extra (Panels: the shading scrubber) folds behind its own chip
+  useEffect(() => { setMore(false); }, [sys]);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { setOpen(false); }, [sys]);
   // Esc or a press anywhere outside closes the popover; the pass and the lead keep their own Esc.
@@ -37,7 +39,12 @@ export default function SystemCard({ sys, head, children, info, pending, extra }
             )}
           </div>
           <div className="sc-body">{children}</div>
-          {extra && <div className="sc-extra">{extra}</div>}
+          {extra && (extraLabel
+            ? <div className="sc-extra">
+                <button type="button" className="sc-more" aria-expanded={more} onClick={() => { const v = !more; setMore(v); onMore?.(v); }}>{extraLabel}</button>
+                {more && extra}
+              </div>
+            : <div className="sc-extra">{extra}</div>)}
         </div>
         {info && open && <div id={id} className="sc-pop" role="dialog" aria-label="How this was worked out" data-esc-first>{info}</div>}
       </section>

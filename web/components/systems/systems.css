@@ -228,3 +228,42 @@
   /* Edge to edge: the model leaves the page's side margins and square-cuts its corners. */
   .b-open:has(.sys-on) .sys-on [class*="chain_hero__"] { width: 100vw; margin-left: calc(50% - 50vw); border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; }
 }
+
+/* ---------- iPhone pass (8 Nov 2026): one toolbar row, a short card above it, no run-out under the canvas ---------- */
+/* Face north rides in the toolbar row as one more 34 px button. */
+.tb-north { display: contents; }
+[class*="chain_toolbar__"] .tb-north [class*="spatial_compass__"] { width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; }
+/* The scrubber's own chip folds into the card's: the card chip opens it, the tint follows. */
+.sc-more {
+  all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 11px;
+  border-radius: 999px; border: 1px solid var(--rule-2, var(--rule)); background: #fff; font-size: 12.5px; font-weight: 600; color: var(--ink-2);
+}
+.sc-more::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-2px); transition: transform 300ms var(--spring-smooth); }
+.sc-more[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sc-more[aria-expanded="true"]::after { transform: rotate(-135deg) translateY(-1px); }
+.sc-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sc-extra .sc-more + * { margin-top: 6px; }
+.sc-extra [class*="ShadingScrubber_stripHead__"] [class*="ShadingScrubber_chip__"] { display: none; }
+@media (prefers-reduced-motion: reduce) { .sc-more::after { transition: none; } }
+
+@media (max-width: 760px) {
+  /* Nothing below the model: the page ends where the canvas meets the pass. */
+  .sys-on { padding-bottom: 0; margin-bottom: 0; }
+  /* One centred row that fits 390: 36 px targets, nothing clipped, never wrapping. */
+  .sys-on [class*="chain_hero__"] [class*="chain_toolbar__"] {
+    left: 50%; right: auto; transform: translateX(-50%); bottom: 8px; max-width: calc(100% - 12px); flex-wrap: nowrap; white-space: nowrap; gap: 1px; padding: 3px;
+  }
+  .sys-on [class*="chain_toolbar__"] [class*="chain_tb__"], [class*="chain_toolbar__"] .tb-north [class*="spatial_compass__"] { width: 36px; height: 36px; flex: none; }
+  .sys-on [class*="chain_toolbar__"] [class*="chain_seg__"] { margin: 0 2px; flex: none; }
+  .sys-on [class*="chain_toolbar__"] [class*="chain_seg__"] button { padding: 8px 8px; font-size: 12.5px; }
+  /* The card: bottom of the canvas, right above the toolbar, at most about 35 % of the canvas; scrolls inside if longer. */
+  /* The cap and the scroll sit on the inner block, so the i popover above the card is never clipped. */
+  .sc-card { bottom: 58px; }
+  .sc-anim { max-height: calc(var(--sys-hero-h, 560px) * 0.35 - 20px); overflow-y: auto; overscroll-behavior: contain; }
+  .sc-pop { max-height: calc(var(--sys-hero-h, 400px) - 100% - 58px - 20px); }
+}
+@media (max-width: 760px) {
+  /* No run-out under the model: Stage's and the page's bottom padding go while the Systems layout is on. */
+  .st-open:has(.sys-on) { padding-bottom: 0 !important; }
+  main:has(.sys-on) { padding-bottom: 0 !important; }
+}

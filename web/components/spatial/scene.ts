@@ -192,6 +192,8 @@ export class SpatialScene {
     this.controls.minPolarAngle = Math.PI * 0.08;
     this.controls.autoRotate = false;
     // A drag takes the camera back from the reasoning chain at once.
+    this.controls.addEventListener("start", () => { this.dragging = true; });
+    this.controls.addEventListener("end", () => { this.dragging = false; });
     this.controls.addEventListener("start", () => { this.coast = null; this.fly = null; this.pose = null; this.spin = null; this.vPos.set(0, 0, 0); this.vTgt.set(0, 0, 0); this.controls.minPolarAngle = Math.PI * 0.08; });
 
     this.ortho.up.set(0, 0, -1);
@@ -217,7 +219,7 @@ export class SpatialScene {
     this.loop();
   }
 
-  private resize() {
+  private resize(glide = false) {
     const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
     this.renderer.setSize(w, h, false);
     this.renderer.domElement.style.width = "100%";
@@ -225,9 +227,10 @@ export class SpatialScene {
     this.persp.aspect = w / h;
     // The house centres in the canvas area the overlays leave free: shift both cameras' principal point there.
     const f = this.free();
-    this.persp.setViewOffset(w, h, w / 2 - f.cx, h / 2 - f.cy, w, h);
-    this.ortho.setViewOffset(w, h, w / 2 - f.cx, h / 2 - f.cy, w, h);
-    this.persp.updateProjectionMatrix();
+    // A card arriving or leaving glides the framing (spring below); a resize of the canvas itself cuts.
+    this.offGoal = { x: w / 2 - f.cx, y: h / 2 - f.cy };
+    if (!glide || this.opts.reduce || !this.offInit) { this.off = { ...this.offGoal }; this.offV = { x: 0, y: 0 }; this.offInit = true; }
+    this.applyOffset();
     this.setOrtho(w / h);
     this.svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
     this.fit(false);
@@ -236,13 +239,44 @@ export class SpatialScene {
   // Overlays on the model (the number card, the shading strip) in canvas pixels from each edge. The fit uses the
   // rest: the house and its poses frame inside it with a margin, re-fitted whenever the stack changes.
   private insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  // A calculation card (or any cover) changing: the house re-frames into the space left, on the camera spring
+  // (0.6 s, bounce 0) and a matching spring on the screen offset; a drag in progress keeps its own motion; Reduce Motion cuts.
   setInsets(i: { top: number; right: number; bottom: number; left: number }) {
     const r = (x: number) => Math.max(0, Math.round(x));
     const n = { top: r(i.top), right: r(i.right), bottom: r(i.bottom), left: r(i.left) };
     const o = this.insets;
     if (n.top === o.top && n.right === o.right && n.bottom === o.bottom && n.left === o.left) return;
     this.insets = n;
-    this.resize();
+    const glide = !this.opts.reduce && this.fitted && !this.dragging && this.mode === "3d";
+    const p0 = this.persp.position.clone(), t0 = this.controls.target.clone();
+    this.resize(glide);
+    if (glide && !this.fly) {
+      const pos = this.persp.position.clone(), tgt = this.controls.target.clone();
+      if (pos.distanceTo(p0) > 1e-3 || tgt.distanceTo(t0) > 1e-3) {
+        this.persp.position.copy(p0); this.controls.target.copy(t0); this.controls.update();
+        this.cancelMomentum();
+        this.fly = { pos, tgt, top: false };
+      }
+    }
+  }
+  private off = { x: 0, y: 0 }; private offV = { x: 0, y: 0 }; private offGoal = { x: 0, y: 0 }; private offInit = false;
+  private dragging = false;
+  private applyOffset() {
+    const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
+    this.persp.setViewOffset(w, h, this.off.x, this.off.y, w, h);
+    this.ortho.setViewOffset(w, h, this.off.x, this.off.y, w, h);
+    this.persp.updateProjectionMatrix(); this.ortho.updateProjectionMatrix();
+  }
+  private stepOffset(dt: number) {
+    const k = Math.exp(-OMEGA * dt);
+    let moving = false;
+    (["x", "y"] as const).forEach((a) => {
+      const e0 = this.off[a] - this.offGoal[a], c = this.offV[a] + OMEGA * e0, et = e0 + c * dt;
+      this.offV[a] = (c - OMEGA * et) * k; this.off[a] = this.offGoal[a] + et * k;
+      if (Math.abs(this.off[a] - this.offGoal[a]) < 0.3 && Math.abs(this.offV[a]) < 1) { this.off[a] = this.offGoal[a]; this.offV[a] = 0; } else moving = true;
+    });
+    this.applyOffset();
+    return moving;
   }
   // The free area: never under 45% of the canvas either way, so a tall stack cannot squeeze the house to nothing.
   private free() {
@@ -992,6 +1026,7 @@ export class SpatialScene {
     if (this.spin) this.stepSpin(dt);
     if (this.coast && !document.hidden) this.stepCoast(dt);
     if (this.zoom2 != null) this.stepZoom2(dt);
+    if (this.off.x !== this.offGoal.x || this.off.y !== this.offGoal.y) this.stepOffset(dt);
     this.reportZoom();
     if (this.fly) {
       const a = springStep(this.persp.position, this.vPos, this.fly.pos, dt);

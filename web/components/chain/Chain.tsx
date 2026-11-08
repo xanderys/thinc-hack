@@ -129,9 +129,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     const ro = new ResizeObserver(fit); ro.observe(document.body);
     // The header and the facts bar above settle after mount (fonts, facts, the compact Systems layout): re-measure then.
     document.querySelectorAll(".b-open-h, .t-bar").forEach((x) => ro.observe(x));
-    addEventListener("resize", fit);
+    addEventListener("resize", fit); addEventListener("orientationchange", fit); window.visualViewport?.addEventListener("resize", fit);
     const mo = new MutationObserver(fit); mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });   // --pc-peek lands later
-    return () => { ro.disconnect(); mo.disconnect(); removeEventListener("resize", fit); };
+    return () => { ro.disconnect(); mo.disconnect(); removeEventListener("resize", fit); removeEventListener("orientationchange", fit); window.visualViewport?.removeEventListener("resize", fit); };
   }, []);
   const address = inputs.address ?? inputs.roof?.matched_address;
   const installer = INSTALLER_NAME[inputs.installer_id as keyof typeof INSTALLER_NAME] ?? "this installer";
@@ -278,7 +278,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     }));
   };
 
-  const tools = ({ view: v, setView, recentre, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
+  const tools = ({ view: v, setView, recentre, photo, zoom, north }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void }; zoom?: { can: { in: boolean; out: boolean }; by: (d: 1 | -1) => void }; north?: ReactNode }) => (
     <div className={s.toolbar} role="toolbar" aria-label="Model" data-cover>
       <LayersMenu className={s.tb} up heatmap={{ on: heatmap, set: setHeatmap }} />
       {/* Reset view: back to the selected chip's pose (or the opening view) on the camera spring. View only: design Undo lives beside Approve. */}
@@ -286,6 +286,11 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       <button type="button" className={s.tb} aria-pressed={expanded} title="Reasoning" aria-label="Reasoning" onClick={() => { setAuto(false); setExpanded((x) => !x); }}>
         <Ico>{expanded ? <><path d="M1.5 10S5 4 10 4s8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z" /><circle cx="10" cy="10" r="2.5" /></> : <><path d="M1.5 10S5 4 10 4s8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z" /><circle cx="10" cy="10" r="2.5" /><path d="M3 17L17 3" /></>}</Ico>
       </button>
+      {zoom && <>
+        <button type="button" className={s.tb} onClick={() => zoom.by(-1)} disabled={!zoom.can.out} title="Zoom out" aria-label="Zoom out"><Ico><path d="M4 10h12" /></Ico></button>
+        <button type="button" className={s.tb} onClick={() => zoom.by(1)} disabled={!zoom.can.in} title="Zoom in" aria-label="Zoom in"><Ico><path d="M10 4v12M4 10h12" /></Ico></button>
+      </>}
+      {north && <span className="tb-north">{north}</span>}
       <div className={s.seg} role="group" aria-label="View">
         <button type="button" aria-pressed={v === "2d"} onClick={() => setView("2d")}>2D</button>
         <button type="button" aria-pressed={v === "3d" && !photo?.on} onClick={() => setView("3d")}>3D</button>
@@ -460,7 +465,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const cardNow = sysNow ? sysBody[sysNow] : null;
   const sysCard = sysNow && cardNow && (
     <SystemCard sys={sysNow} head={cardNow.head} info={cardNow.info} pending={!!pending || !fresh}
-      extra={sysNow === "panels" && address && spatial !== false ? <ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /> : undefined}>
+      extraLabel="Shading" onMore={(o) => { if (!o) setShadeOn(false); }} extra={sysNow === "panels" && address && spatial !== false ? <ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /> : undefined}>
       {cardNow.body}
     </SystemCard>
   );
