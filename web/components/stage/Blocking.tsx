@@ -6,7 +6,8 @@ import { useDry } from "@/lib/dry";
 import { berlinTime } from "@/lib/time";
 
 const POLL_MS = 5000;
-const eur = (n?: number | null) => n == null ? "" : n >= 1000 ? `about €${Math.round(n / 1000)}k` : `about €${Math.round(n / 10) * 10}`;
+// The sign is words, never a bare minus.
+const eur = (n?: number | null) => { if (n == null) return ""; const a = Math.abs(n); return `about €${a >= 1000 ? `${Math.round(a / 1000)}k` : Math.round(a / 10) * 10} ${n < 0 ? "less" : "more"}`; };
 
 /** The card's top row: the facts that move the design most, what each moves, and one batched ask on WhatsApp. Nothing without blockers. */
 export default function Blocking({ leadId }: { leadId: string }) {
@@ -18,7 +19,10 @@ export default function Blocking({ leadId }: { leadId: string }) {
   const load = useCallback(async () => {
     const r = await call<Lead>(`/api/leads/${encodeURIComponent(leadId)}`);
     if (r.ok && r.data.lead_id === leadId) {
-      for (const b of r.data.blockers ?? []) if (b.answered_at && answeredAt.current[b.field] == null) answeredAt.current[b.field] = r.data.version ?? 0;
+      for (const b of r.data.blockers ?? []) if (b.answered_at && answeredAt.current[b.field] == null) {
+        answeredAt.current[b.field] = r.data.version ?? 0;
+        setTimeout(() => void load(), 2000);   // the engine recomputes blockers in the background: read once more after an answer lands
+      }
       setLead(r.data);
     }
   }, [leadId]);
