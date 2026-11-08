@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ComposerField from "@/components/composer/ComposerField";
 import Thread from "@/components/agent/Thread";
+import * as agentStore from "@/components/agent/store";
 import { Ctx, type CopilotContext } from "./context";
 import s from "./copilot.module.css";
 
@@ -20,6 +21,16 @@ export default function CopilotShell() {
   const wrap = useRef<HTMLDivElement>(null);
   const cardEl = useRef<HTMLElement>(null);
   const noop = () => {};
+  // The agent lane's pendingSuggestion and lastFirstLine; guarded until they land.
+  const [sug, setSug] = useState<{ dot: boolean; line: string }>({ dot: false, line: "" });
+  useEffect(() => {
+    const read = () => {
+      const m = agentStore as unknown as { pendingSuggestion?: unknown; lastFirstLine?: unknown };
+      const dot = m.pendingSuggestion === true, line = typeof m.lastFirstLine === "string" ? m.lastFirstLine.trim() : "";
+      setSug((p) => (p.dot === dot && p.line === line ? p : { dot, line }));
+    };
+    read(); const iv = setInterval(read, 500); return () => clearInterval(iv);
+  }, []);
   const lead = leadOf(path) ? decodeURIComponent(leadOf(path)!) : undefined;
   const asCircle = !!lead;
 
@@ -97,9 +108,10 @@ export default function CopilotShell() {
   const goLead = (id: string) => { setOpen(false); history.pushState({ h: id }, "", `/h/${id}`); dispatchEvent(new PopStateEvent("popstate")); };
   return (
     <Ctx.Provider value={ctx}>
-      <div ref={wrap} className={s.shell} data-lead={asCircle ? "1" : undefined} data-open={open ? "1" : undefined} data-off={off}>
+      <div ref={wrap} className={s.shell} data-lead={asCircle ? "1" : undefined} data-open={open ? "1" : undefined} data-off={off} data-line={sug.line ? "1" : undefined}>
         <div className={s.dockWrap}>
           <div aria-hidden style={{ height: "var(--composer-h, 96px)" }} />
+          {sug.line && <div className={s.lastLine} title={sug.line}>{sug.line}</div>}
           <ComposerField value="" onChange={noop} onSend={noop} onAttach={() => setOpen(true)} onMicStart={noop} onMicStop={noop} onActivate={() => setOpen(true)} />
         </div>
         <div className={s.scrim} onClick={close} aria-hidden />
@@ -111,8 +123,8 @@ export default function CopilotShell() {
           </div>
         </section>
       </div>
-      <button type="button" className={s.circle} aria-label="Open the copilot" data-on={asCircle && !open ? "1" : undefined} data-off={off} tabIndex={asCircle && !open ? 0 : -1} onClick={() => setOpen(true)}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}<img src="/copilot/friday.png" alt="Copilot" width={56} height={56} draggable={false} />
+      <button type="button" className={s.circle} aria-label="Open the copilot" title={sug.line || undefined} data-on={asCircle && !open ? "1" : undefined} data-off={off} tabIndex={asCircle && !open ? 0 : -1} onClick={() => setOpen(true)}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}<img src="/copilot/friday.png" alt="Copilot" width={56} height={56} draggable={false} />{sug.dot && <span className={s.dot} aria-hidden />}
       </button>
     </Ctx.Provider>
   );
