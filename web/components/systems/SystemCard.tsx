@@ -13,6 +13,9 @@ type Props = { sys: SystemName; head: ReactNode; label: string; children: ReactN
 export default function SystemCard({ sys, head, label, children, info, pending, extra, extraLabel, onMore }: Props) {
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);   // the extra (Panels: the shading scrubber) folds behind its own chip
+  // The card folds to its one-line title (tap the title, or Escape inside the card); the house re-frames into the room
+  // it gives back, because the card is a cover the canvas measures.
+  const [folded, setFolded] = useState(false);
   useEffect(() => { setMore(false); }, [sys]);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { setOpen(false); }, [sys]);
@@ -28,18 +31,19 @@ export default function SystemCard({ sys, head, label, children, info, pending, 
   return (
     <div ref={root} className="sc" data-sys={sys}>
       {/* The section stays mounted so the canvas keeps measuring it (data-cover); the inner key replays the spring. */}
-      <section className="sc-card" data-cover aria-label={label} data-pending={pending || undefined}>
+      <section className="sc-card" data-cover aria-label={label} data-pending={pending || undefined} data-folded={folded || undefined}
+        onKeyDown={(e) => { if (e.key === "Escape" && !open && !folded) { e.stopPropagation(); e.preventDefault(); setFolded(true); } }}>
         <div key={sys} className="sc-anim">
           <div className="sc-top">
-            <h3 className="sc-h">{head}</h3>
+            <h3 className="sc-h"><button type="button" className="sc-fold" aria-expanded={!folded} onClick={() => { setFolded((x) => !x); setOpen(false); }} title={folded ? "Show the calculation" : "Fold the card"}>{head}</button></h3>
             {info && (
               <button type="button" className="sc-i" aria-expanded={open} aria-controls={id} aria-label="How this was worked out" onClick={() => setOpen((x) => !x)}>
                 <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.3" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M10 9v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="10" cy="6.2" r="1.1" fill="currentColor" /></svg>
               </button>
             )}
           </div>
-          {children ? <div className="sc-body">{children}</div> : null}
-          {extra && (extraLabel
+          {children && !folded ? <div className="sc-body">{children}</div> : null}
+          {extra && !folded && (extraLabel
             ? <div className="sc-extra">
                 <button type="button" className="sc-more" aria-expanded={more} onClick={() => { const v = !more; setMore(v); onMore?.(v); }}>{extraLabel}</button>
                 {more && extra}

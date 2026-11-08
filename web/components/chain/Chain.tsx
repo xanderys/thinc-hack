@@ -122,6 +122,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     if (!el) return;
     const fit = () => {
       const top = el.getBoundingClientRect().top + window.scrollY; el.style.setProperty("--chain-top", `${Math.round(top + 12)}px`);
+      el.style.setProperty("--sys-root-h", `${(window.innerHeight - top).toFixed(2)}px`);   // desktop Systems: to the viewport bottom, measured
       // Systems on a phone: the model runs from its own top to the tucked pass, measured, never under it.
       const h = heroRef.current;
       if (h) {
@@ -133,9 +134,13 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     const ro = new ResizeObserver(fit); ro.observe(document.body);
     // The header and the facts bar above settle after mount (fonts, facts, the compact Systems layout): re-measure then.
     document.querySelectorAll(".b-open-h, .t-bar").forEach((x) => ro.observe(x));
+    document.fonts?.ready.then(fit).catch(() => {});   // web fonts change the header's height once they land
+    // The header and facts above re-mount and settle late; a cheap check twice a second re-measures when the root moves.
+    let lastTop = -1;
+    const poll = window.setInterval(() => { const tp = Math.round(el.getBoundingClientRect().top + window.scrollY); if (tp !== lastTop) { lastTop = tp; fit(); } }, 500);
     addEventListener("resize", fit); addEventListener("orientationchange", fit); window.visualViewport?.addEventListener("resize", fit);
     const mo = new MutationObserver(fit); mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });   // --pc-peek lands later
-    return () => { ro.disconnect(); mo.disconnect(); removeEventListener("resize", fit); removeEventListener("orientationchange", fit); window.visualViewport?.removeEventListener("resize", fit); };
+    return () => { clearInterval(poll); ro.disconnect(); mo.disconnect(); removeEventListener("resize", fit); removeEventListener("orientationchange", fit); window.visualViewport?.removeEventListener("resize", fit); };
   }, []);
   const address = inputs.address ?? inputs.roof?.matched_address;
   const installer = INSTALLER_NAME[inputs.installer_id as keyof typeof INSTALLER_NAME] ?? "this installer";

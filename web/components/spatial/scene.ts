@@ -337,18 +337,21 @@ export class SpatialScene {
     const half = this.span / 2, need = Math.max((half * f.kH) / t, (half * f.kW) / (t * a));
     // The mesh cap keeps the photo crisp; a tall free area, or one narrowed by overlays, still gets the room it needs.
     const d = Math.min(need * 1.6, this.fitCap * Math.max(1, 1.3 / (f.fw / f.fh)) * Math.max(f.kW, f.kH));
-    if (reset || !this.fitted) {
-      const dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
-      this.persp.position.copy(this.centre).addScaledVector(dir, d);
-      this.fitted = true;
-    } else {
-      const cur = this.persp.position.clone().sub(this.controls.target).normalize();
-      this.persp.position.copy(this.centre).addScaledVector(cur, d);
-    }
     this.fitD = d;
-    if (!this.fly) this.controls.target.copy(this.centre);
-    this.controls.minDistance = d * 0.55;
-    this.controls.maxDistance = d * 1.8;
+    // The opening view and every pose: the house box framed into the free rect (framed()); the zoom limits span both.
+    const open = this.framed(new THREE.Vector3(0.42, 0.62, 0.66)), df = open.pos.distanceTo(open.tgt);
+    this.controls.minDistance = Math.min(d, df) * 0.55;
+    this.controls.maxDistance = Math.max(d, df) * 1.8;
+    if (reset || !this.fitted) {
+      this.persp.position.copy(open.pos);
+      if (!this.fly) this.controls.target.copy(open.tgt);
+      this.fitted = true;
+    } else if (!this.pose) {
+      // Orbited by hand: keep the direction, re-frame the distance and the target.
+      const cur = this.persp.position.clone().sub(this.controls.target);
+      const g = this.framed(cur);
+      if (!this.fly) { this.controls.target.copy(g.tgt); this.persp.position.copy(g.pos); }
+    }
     // A stage pose survives a resize or a new design: re-aim at it (no animation unless already flying).
     if (this.pose && this.fitted) {
       const g = this.goalOf(this.pose);
@@ -357,9 +360,44 @@ export class SpatialScene {
     }
     this.controls.update();
   }
+  // A pose keeps its angle (azimuth, elevation); its target and distance come from the fit: the house's box centred in
+  // the free rect (canvas minus the card, the tucked pass and the toolbar), all eight corners inside it with a margin.
   private goalOf(p: Pose) {
-    const tgt = this.focusPts[p.focus].clone();
-    return { tgt, pos: tgt.clone().addScaledVector(poseOffset(p), this.fitD * p.dist) };
+    return this.framed(poseOffset(p));
+  }
+  private framed(dir: THREE.Vector3) {
+    const tgt = this.box.isEmpty() ? this.centre.clone() : this.box.getCenter(new THREE.Vector3());
+    return { tgt, pos: tgt.clone().addScaledVector(dir.clone().normalize(), this.fitFor(dir, tgt)) };
+  }
+  // The shortest distance along dir at which the house box projects inside the free rect, less a 10 % margin.
+  private scratch = new THREE.PerspectiveCamera();
+  private fitFor(dir: THREE.Vector3, tgt: THREE.Vector3) {
+    if (this.box.isEmpty()) return this.fitD;
+    const W = this.host.clientWidth || 1, H = this.host.clientHeight || 1, f = this.free();
+    const cam = this.scratch;
+    // The goal screen offset, not the one gliding now: the fit is for where the framing is going.
+    cam.copy(this.persp); cam.setViewOffset(W, H, this.offGoal.x, this.offGoal.y, W, H); cam.updateProjectionMatrix();
+    // The free rect in NDC; the principal point already sits at its centre through the view offset.
+    const x0 = ((f.cx - f.fw / 2) / W) * 2 - 1, x1 = ((f.cx + f.fw / 2) / W) * 2 - 1;
+    const y1 = 1 - ((f.cy - f.fh / 2) / H) * 2, y0 = 1 - ((f.cy + f.fh / 2) / H) * 2;
+    const mx = (x1 - x0) * 0.1, my = (y1 - y0) * 0.1;
+    const b = this.box, corners = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => new THREE.Vector3(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z));
+    const u = dir.clone().normalize(), v = new THREE.Vector3();
+    const fits = (d: number) => {
+      cam.position.copy(tgt).addScaledVector(u, d); cam.lookAt(tgt); cam.updateMatrixWorld();
+      // In front of the camera is enough: the far plane is a render limit, not a framing one.
+      return corners.every((c) => { if (v.copy(c).applyMatrix4(cam.matrixWorldInverse).z >= 0) return false; v.copy(c).project(cam); return v.x >= x0 + mx && v.x <= x1 - mx && v.y >= y0 + my && v.y <= y1 - my; });
+    };
+    let lo = this.fitD * 0.15, hi = this.fitD * 6;
+    if (!fits(hi)) return this.fitD;   // nothing frames it (a degenerate free rect): the standard fit, never the bound
+    for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; if (fits(m)) hi = m; else lo = m; }
+    return hi;
+  }
+  // Dev and checks only: the house centre on screen and the free rect, in canvas pixels.
+  frameReport() {
+    const W = this.host.clientWidth || 1, H = this.host.clientHeight || 1, f = this.free();
+    const c = (this.box.isEmpty() ? this.centre : this.box.getCenter(new THREE.Vector3())).clone().project(this.camera);
+    return { house: [Math.round(((c.x + 1) / 2) * W), Math.round(((1 - c.y) / 2) * H)], free: [Math.round(f.cx), Math.round(f.cy)], fw: Math.round(f.fw), fh: Math.round(f.fh), dist: +this.persp.position.distanceTo(this.controls.target).toFixed(1), fitD: +this.fitD.toFixed(1) };
   }
   private fitted = false;
   // The photo mesh is only crisp up close: it caps the fitted distance (stage poses scale with it); null lifts it.
@@ -1002,7 +1040,8 @@ export class SpatialScene {
     const own: Record<string, number> = {};
     this.panels.children.forEach((g) => { const id = g.userData?.plane; if (id) own[id] = (own[id] ?? 0) + 1; });
     const cnt = (id: string) => counts?.[id] ?? own[id] ?? 0;
-    return this.targets.map(({ p, c, n }) => {
+    // Panels: a face without modules gets no label element at all.
+    return this.targets.filter(({ p }) => kind !== "panels" || cnt(p.id) > 0).map(({ p, c, n }) => {
       const at = c.clone().addScaledVector(n, 0.4), k = cnt(p.id);
       const face = p.pitch < 3 ? "flat roof" : `${facing(p.azimuth)} face, ${Math.round(p.pitch)}° pitch`;
       const html = kind === "roof"
@@ -1126,8 +1165,7 @@ export class SpatialScene {
     this.cancelMomentum();
     if (this.mode === "2d") { this.setOrtho(this.persp.aspect); return; }
     if (this.home) { this.flyTo(this.home); return; }
-    const d = this.fitD, dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
-    const pos = this.centre.clone().addScaledVector(dir, d), tgt = this.centre.clone();
+    const { pos, tgt } = this.framed(new THREE.Vector3(0.42, 0.62, 0.66));
     if (this.opts.reduce) { this.persp.position.copy(pos); this.controls.target.copy(tgt); this.controls.update(); return; }
     this.fly = { pos, tgt, top: false };
   }

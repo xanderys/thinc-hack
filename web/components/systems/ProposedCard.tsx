@@ -153,6 +153,8 @@ export default function ProposedCard({ kwp, kwh, price, pending, children, id, n
   return (
     <div ref={root} className={`pc pc-${side}${open ? " pc-open" : ""}${reduce ? " pc-reduce" : ""}`}>
       {<div ref={scrim} className="pc-scrim" onClick={() => to(false)} aria-hidden="true" />}
+      {/* The tucked pass's footprint on the model, fixed whether the pass is open or not: the house frames above it. */}
+      <div className="pc-cover" data-cover aria-hidden="true" />
       <div className="pc-clip"><div ref={mover} className="pc-card" role="region" aria-label="Proposed Design">
         <button type="button" className="pc-pass" aria-expanded={open} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
           onClick={() => { if (moved.current) { moved.current = false; return; } to(!open); }}>
