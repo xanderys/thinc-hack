@@ -24,6 +24,7 @@ import SystemsChips from "@/components/systems/SystemsChips";
 import ProposedCard from "@/components/systems/ProposedCard";
 import { investmentOf } from "@/components/offer/facts";
 import SystemCard from "@/components/systems/SystemCard";
+import { BatteryDay, WallboxDay, HeatpumpDay } from "@/components/systems/strip/ComponentDay";
 import { elementsOf } from "@/lib/envelope";
 import { scrub } from "@/components/offer/facts";
 import { Chainline, Fig, Head, PairBars, SplitBar } from "@/components/systems/Figures";
@@ -461,6 +462,11 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     return <p>Rule result {n2(dv.axiom_result)} {unit}, snapped to {to ? (k === "pv" ? `${to} = ${n2(dv.final)} ${unit}` : to) : `${n2(dv.final)} ${unit}`}.</p>;
   };
   // No sentences on the cards: figures only; every derivation sentence moved behind the i.
+  // Battery, wallbox and heat pump bodies: the engine's typical day for these sizes (components/systems/strip), keyed
+  // by the facts so an edited household asks again. Pending sizes from the ladder show at once through d.
+  const daySizes = { battery_kwh: d.battery_kwh ?? null, wallbox_kw: d.wallbox_kw ?? null, heatpump_kw: d.heatpump_kw ?? null };
+  const dayVer = JSON.stringify(inputs);
+  const dayOn = SYS && !multi;
   const sysBody: Record<SystemName, { head: ReactNode; label: string; body: ReactNode; info: ReactNode }> = {
     panels: (() => {
       const nMod = fresh && placed ? placed : null;
@@ -489,7 +495,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       return {
         head: adding?.part === "battery" ? <Head main="Battery" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : kwh ? <Head main={`Battery ${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
         label: kwh ? `${n1(kwh)} kWh battery` : "No battery",
-        body: !kwh && adding?.part !== "battery" ? <>{why0("battery")}{day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null}</> : day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null,
+        body: kwh && leadId && dayOn ? <BatteryDay leadId={leadId} sizes={daySizes} version={dayVer} /> : !kwh && adding?.part !== "battery" ? <>{why0("battery")}{day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null}</> : day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null,
         info: <>
           {day && roof != null && <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p>}
           {kwh && ratio != null ? <p>{n1(kwh)} kWh is {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0 kWh per kWp for {n2(d.pv_kwp ?? 0)} kWp.</p> : !kwh ? <p>No battery in this design.</p> : null}
@@ -508,7 +514,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       return {
         head: adding?.part === "wallbox" ? <Head main="Wallbox" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : wb ? <Head main={`Wallbox ${n1(wb)} kW`} /> : <Head main="No wallbox" />,
         label: wb ? `${n1(wb)} kW wallbox` : "No wallbox",
-        body: !wb && adding?.part !== "wallbox" ? why0("wallbox") : wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
+        body: wb && leadId && dayOn ? <WallboxDay leadId={leadId} sizes={daySizes} version={dayVer} /> : !wb && adding?.part !== "wallbox" ? why0("wallbox") : wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
         info: <>
           {wb && km && kwh ? <p>{n0(km)} km a year takes about {n0(kwh)} kWh{homeShare ?? (homeKwh && kwh ? homeKwh / kwh : null) ? `; ${pc((homeShare ?? homeKwh! / kwh)!)} of it is charged at home, ${n0(homeKwh ?? homeShare! * kwh)} kWh` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p> : <p>{line2[3]}</p>}
           {snapLine("wallbox", "kW")}{ch && (wb || layers?.ev) && <BarView bar={ch} />}{whyBlock(3)}
@@ -528,7 +534,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       return {
         head: multi ? <Head main="No heat load" sub="for flats" /> : adding?.part === "heatpump" ? <Head main="Heat pump" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : hp ? <Head main={`Heat pump ${n1(hp)} kW`} /> : <Head main="No heat pump" />,
         label: multi ? "Heat load not estimated for flats" : hp ? `${n1(hp)} kW heat pump` : "No heat pump",
-        body: multi ? null : <>
+        body: multi ? null : hp && leadId && dayOn ? <HeatpumpDay leadId={leadId} sizes={daySizes} version={dayVer} fuel={inputs.heating_type} /> : <>
           {!hp && adding?.part !== "heatpump" && why0("heatpump")}
           {shares.length > 0 && <SplitBar label="Heat loss" unit="" total={100} parts={shares.map((x) => ({ k: x.name, v: Math.round(x.share * 100), c: x.colour }))} />}
           {/* Sizing: the bill decides, the envelope is an upper bound (engine: components.heatpump.heat_load_upper_bound_kw). */}
