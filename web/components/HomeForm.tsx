@@ -8,7 +8,7 @@ export const LOAD_PROFILES: Record<LoadProfile, string> = {
 export const HEATING: Record<HeatingType, string> = {
   Gas: "Gas", Oil: "Oil", Heatpump: "Heat pump", OtherNonRenewable: "Other, fossil", OtherRenewable: "Other, renewable", Unknown: "Unknown",
 };
-export const INSTALLERS: Record<InstallerId, string> = { "2a8ba8e2": "Isarwerk Solar", "23c108b7": "Würmtal Energie" };
+export const INSTALLERS: Record<InstallerId, string> = { "2a8ba8e2": "Isarwerk Solar", "23c108b7": "Isarwerk Solar" };
 
 type Props = { value: HomeInputs; onChange: (v: HomeInputs) => void };
 
@@ -42,7 +42,7 @@ export default function HomeForm({ value: v, onChange }: Props) {
         <div className="field">
           <label htmlFor="installer">Installer style</label>
           <select id="installer" value={v.installer_id} onChange={(e) => set("installer_id", e.target.value as InstallerId)}>
-            {Object.entries(INSTALLERS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            {Object.entries(INSTALLERS).filter(([k]) => k === "2a8ba8e2").map(([k, l]) => <option key={k} value={k}>{l}</option>)}   {/* one demo installer */}
           </select>
         </div>
         <Num label="Annual demand" unit="kWh" slider min={1000} max={15000} step={100} value={v.annual_demand_kwh}
