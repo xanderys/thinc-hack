@@ -1,8 +1,8 @@
 "use client";
-// The layers menu on the model toolbar: sun heatmap (on the hero card), White context, the ground picture, and
+// The layers menu on the model toolbar: sun heatmap (on the hero card), White context, Solid walls, the ground picture, and
 // how old the pictures on screen are. Options live in whiteMode.ts so the scene and photo layer follow them.
 import { useEffect, useRef, useState } from "react";
-import { imageryLines, licenceLine, setGround, setWhite, useViewOpts } from "./whiteMode";
+import { imageryLines, licenceLine, setGround, setSolid, setWhite, useViewOpts } from "./whiteMode";
 import { setMeshWanted, useMeshPref } from "./meshPref";
 import m from "./LayersMenu.module.css";
 
@@ -31,6 +31,7 @@ export default function LayersMenu({ className, up, heatmap }: Props) {
         <div className={`${m.menu} ${up ? m.up : ""}`} role="menu" aria-label="Layers" data-esc-first="">
           {heatmap && <label className={m.row}><input type="checkbox" checked={heatmap.on} onChange={(e) => heatmap.set(e.target.checked)} />Sun heatmap</label>}
           <label className={m.row}><input type="checkbox" checked={o.white} onChange={(e) => setWhite(e.target.checked)} />Surrounding buildings</label>
+          <label className={m.row}><input type="checkbox" checked={o.solid} onChange={(e) => setSolid(e.target.checked)} />Solid walls</label>
           <label className={m.row}><input type="checkbox" checked={mesh.want} onChange={(e) => setMeshWanted(e.target.checked)} />Photo 3D</label>
           {mesh.note && <p className={m.age}>{mesh.note}</p>}
           {o.google && (

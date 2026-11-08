@@ -5,7 +5,8 @@
 import * as THREE from "three";
 
 export const KIT = {
-  paper: "#FAF8F3", // battery and inverter housings (the scene's battery colour)
+  paper: "#FAF8F3", // battery housing (the scene's battery colour)
+  slate: "#596070", // inverter housing
   unit: "#E9E6DF",  // heat pump and cabinet housings, a shade darker so they read against the wall
   dark: "#151826",  // module fill and displays, the roof panels' colour
   frame: "#F4F1EA", // module frame, the roof panels' frame line
@@ -59,12 +60,13 @@ export function battery(modules = 0): THREE.Mesh | THREE.Group {
 export const WALLBOX = { w: 0.45, h: 0.6, d: 0.2 };
 export const wallbox = () => box(WALLBOX.w, WALLBOX.h, WALLBOX.d, lam(KIT.ev));
 
-// The inverter: a wall-mounted housing with a dark display near the top.
+// The inverter: a wall-mounted slate housing with a light display near the top, so it reads apart from the
+// paper battery beside it (and through the glass walls).
 export const INVERTER = { w: 0.5, h: 0.65, d: 0.2 };
 export function inverter(): THREE.Group {
   const g = new THREE.Group();
-  g.add(box(INVERTER.w, INVERTER.h, INVERTER.d, lam(KIT.paper)));
-  g.add(box(0.26, 0.09, 0.01, new THREE.MeshBasicMaterial({ color: KIT.dark }), 0, INVERTER.h - 0.16, INVERTER.d / 2 + 0.005));
+  g.add(box(INVERTER.w, INVERTER.h, INVERTER.d, lam(KIT.slate)));
+  g.add(box(0.26, 0.09, 0.01, new THREE.MeshBasicMaterial({ color: KIT.frame }), 0, INVERTER.h - 0.16, INVERTER.d / 2 + 0.005));
   return g;
 }
 
