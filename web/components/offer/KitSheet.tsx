@@ -1,6 +1,6 @@
 // Usage: <KitSheet kit={design} total={economics.capex_eur} /> on any surface (planner Offer panel, homeowner pages).
 //   kit: the design's sizes (pv_kwp, inverter_kw, battery_kwh, wallbox_kw, heatpump_kw), plus modules when the roof layout knows the count.
-//   total: capex in euros, shown once as an estimate; omit it (or null) and the total line is left out.
+//   total: capex in euros, shown once as an estimate; omit it (or null) and the total line is left out. note: one small line under it.
 //   edit (planner only): (field, label) => node, wraps a row's label in a control such as InlineOverride; omit for read-only.
 //   changed + flash (optional): parts that just changed ring once; bump flash to ring again.
 //   A size of null or 0 means the component is not in the design and gets no row.
@@ -19,8 +19,8 @@ const MODULE_KWP = 0.45;   // the engine's standard module when the layout gives
 
 type Row = { key: string; field?: KitField; part?: Part; qty: number; label: string; icon: ReactNode };
 
-export default function KitSheet({ kit, total, edit, changed, flash = 0, className }: {
-  kit: KitSheetKit; total?: number | null; edit?: (f: KitField, label: string) => ReactNode;
+export default function KitSheet({ kit, total, note, edit, changed, flash = 0, className }: {
+  kit: KitSheetKit; total?: number | null; note?: string; edit?: (f: KitField, label: string) => ReactNode;
   changed?: Part[]; flash?: number; className?: string;
 }) {
   const rows: Row[] = [];
@@ -51,6 +51,7 @@ export default function KitSheet({ kit, total, edit, changed, flash = 0, classNa
       {total != null && rows.length > 0 && (
         <p className={s.total}><span>Total</span><b>{eur(total)}</b><em>estimate</em></p>
       )}
+      {note && total != null && rows.length > 0 && <p className={s.note}>{note}</p>}
     </div>
   );
 }

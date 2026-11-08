@@ -151,7 +151,7 @@ export default function OfferPanel(p: OfferProps) {
   return (
     <aside ref={box} className={`${s.panel} ${p.docked ? s.docked : s.under}`} aria-label="Offer" data-cover={p.docked ? "" : undefined}>
       <Tiles items={tiles} mode={reduce ? "fade" : mode} pending={pending} />
-      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} changed={hl.parts} flash={hl.n}
+      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} note="Estimates until the site visit" changed={hl.parts} flash={hl.n}
         edit={(f, label) => (
           <InlineOverride field={f} text={label} unit={UNIT[f]} sizes={sizes[f] ?? []} current={d[f]} set={handSet(f)} fixed={overrides[f] !== undefined}
             canNone={f !== "pv_kwp" && f !== "inverter_kw"} onChoose={choose} />
