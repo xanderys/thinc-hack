@@ -1,14 +1,14 @@
 "use client";
 // View options for the 3D context, shared by the layers menu, the scene and the photo layer: the "White context"
-// look (off by default: the real-world look), which picture lies on the ground, and how old the pictures are.
+// look (off by default: the real-world look), solid or frosted house walls (frosted by default), which picture lies on the ground, and how old the pictures are.
 // A tiny store with no three.js in it, so the menu can live in the first paint.
 import { useSyncExternalStore } from "react";
 
 export type Ground = "google" | "bavaria";
 export type Imagery = { dop20_flown?: string | null; lod2_stand?: string | null; source_note?: string | null };
-type State = { white: boolean; ground: Ground; google: boolean; mesh: boolean; imagery: Imagery | null; credit: string };
+type State = { white: boolean; solid: boolean; ground: Ground; google: boolean; mesh: boolean; imagery: Imagery | null; credit: string };
 
-let st: State = { white: false, ground: "google", google: false, mesh: false, imagery: null, credit: "" };
+let st: State = { white: false, solid: false, ground: "google", google: false, mesh: false, imagery: null, credit: "" };
 const subs = new Set<() => void>();
 const set = (p: Partial<State>) => {
   const next = { ...st, ...p };
@@ -19,6 +19,8 @@ const set = (p: Partial<State>) => {
 export const whiteOn = () => st.white;
 export const viewOpts = () => st;
 export const setWhite = (white: boolean) => set({ white });
+// Solid walls: the house's opaque walls instead of the default frosted glass shell (xray.ts).
+export const setSolid = (solid: boolean) => set({ solid });
 export const setGround = (ground: Ground) => set({ ground });
 // The Google satellite ground is ready (or gone), with its attribution line.
 export const setGoogleGround = (google: boolean, credit = "") => set({ google, credit });
