@@ -12,7 +12,7 @@ import TopBar, { Decide } from "@/components/stage/TopBar";
 import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
 import { call, send } from "@/lib/client";
-import { approveLead, matches, offerKey, proposalOf } from "@/lib/proposal";
+import { approveLead, matches, offerOf } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
 import { buildFacts, DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
 import { COMPONENT_DESIGN_FIELD } from "@/lib/api";
@@ -340,9 +340,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setChanged(h.changed); setOverrides(h.overrides); setChips(h.chips); setOvChips(h.ovChips);
   }
 
-  // Approve releases exactly the offer on screen. The engine stores a variant key and later rebuilds the homeowner's
-  // proposal from the lead's own draft, so the key is chosen from the lead as stored (never from this card's variant
-  // list), checked against the design and price on screen before and after the write. A mismatch never marks Approved.
+  // Approve releases exactly the design on screen (engine v2.11). A marked offer goes as its key with the lead's own
+  // design_hash for it; anything else goes as "edit" with the design and the overrides, which the engine re-runs and
+  // stores. The lead is read again afterwards and Approved shows only when the stored approval equals the screen.
   const MISMATCH = "Approval did not match the design on screen, try again";
   async function onApprove(want?: unknown): Promise<string | null> {
     if (!res) return null;
@@ -354,15 +354,16 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const screen = { design: res.design, capex: res.economics.capex_eur };
     const before = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
     if (!before.ok) return before.error;
-    const key = offerKey(before.data, screen, typeof want === "string" ? want : null);
-    if (!key) return `${MISMATCH}: this design is not one of the four offers on the lead. Pick an offer, or say the change in a sentence.`;
-    const r = await approveLead(id, key, before.data.version ?? baseVersion.current);
+    const offer = offerOf(before.data, screen, typeof want === "string" ? want : null);
+    const body = offer ? { variant: offer.key, design_hash: offer.hash } : { variant: "edit" as const, design: res.design, overrides };
+    const r = await approveLead(id, body, before.data.version ?? baseVersion.current);
     if (!r.ok) { if (r.status === 409) stale(id); return r.status === 409 ? `${MISMATCH} (${r.error})` : r.error; }
     const v = (r.data as { version?: number }).version; if (v != null) baseVersion.current = v;
     const after = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
     if (!after.ok) return after.error;
     if (after.data.version != null) baseVersion.current = after.data.version;
-    if (after.data.status !== "approved" || after.data.approved_variant !== key || !matches(proposalOf(after.data), screen)) return MISMATCH;
+    const got = after.data.approved;
+    if (after.data.status !== "approved" || !got || !matches({ design: got.design, capex: got.investment_eur }, screen)) return MISMATCH;
     setErr(null); done(); return null;
   }
 

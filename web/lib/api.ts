@@ -89,6 +89,7 @@ export type ComponentKey = "pv" | "battery" | "heatpump" | "wallbox";
 export interface Variant {   // v1.7
   key: "expert" | "value" | "independence" | "payback" | "upfront";
   label: string; design: Design; economics: Economics; note: string;
+  design_hash?: string;   // v2.11
 }
 
 export interface DesignResponse {
@@ -192,7 +193,8 @@ export interface Lead {
   history: { step: number; field: string; answer: unknown; changed: LeadChange[]; at: string }[];
   next_question: NextQuestion | null; questions_asked: number; created_at: string; updated_at: string;
   version?: number;   // optimistic concurrency: writes carry it back as base_version
-  proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | null; decision?: LeadDecision | null;   // v2.5
+  proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | "edit" | null; decision?: LeadDecision | null;   // v2.5
+  approved?: { variant: Variant["key"] | "edit"; design: Design; economics?: Economics; investment_eur: number; design_hash: string; overrides?: Overrides } | null;   // v2.11
 }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).
 export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "signed" | "declined" | "question";
