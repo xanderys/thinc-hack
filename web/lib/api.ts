@@ -206,7 +206,7 @@ export interface Lead {
 }
 // v2.14 WhatsApp copilot: one conversation per lead, both directions logged.
 export interface WhatsAppMessage { dir: "out" | "in"; kind?: "text" | "voice" | "dry" | string; text: string; at: string; facts?: Record<string, unknown>; stated?: string[]; unclear?: string[]; transcript?: string | null }
-export interface LeadWhatsApp { state: "open" | "closed" | "none"; round?: number; open_facts?: { field: string; label?: string; unit?: string }[]; last_error?: string | null; messages: WhatsAppMessage[] }
+export interface LeadWhatsApp { state: "open" | "closed" | "none" | "dry" | "superseded" | "expired"; round?: number; open_facts?: { field: string; label?: string; unit?: string }[]; last_error?: string | null; messages: WhatsAppMessage[] }
 export interface WhatsAppAsk { conversation_id: string; sent: unknown; open_facts: { field: string; label?: string; unit?: string }[]; asking?: unknown; version?: number; whatsapp?: LeadWhatsApp }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).
 export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "sent" | "signed" | "declined" | "question";   // sent: the Complete sheet sent the link
