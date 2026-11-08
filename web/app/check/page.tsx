@@ -273,6 +273,33 @@ function Replay({ ev }: { ev: EvalX | null }) {
   );
 }
 
+function ByComponent({ ev }: { ev: EvalX }) {
+  const ft = ev.final_test;
+  const half = ft?.rows.filter((r) => r.population === "test half" && r.ground_truth === "lowest option" && r.band === "ours") ?? [];
+  const prod = ft?.production.replace(/-readout$/, "");
+  const us = half.find((r) => r.engine === prod), tb = half.find((r) => r.engine === "textbook");
+  if (!us) return null;
+  const val = (r: typeof us | undefined, k: ComponentKey) => r ? pct1((r as unknown as Record<string, number>)[k === "heatpump" ? "heatpump" : k === "pv" ? "pv" : k]) : "";
+  return (
+    <section className={s.sec}>
+      <h2>Per part, sealed test half</h2>
+      <p className={s.lede}>Share of the {n0(us.n)} sealed held-out homes within tolerance, per part.</p>
+      <div className={`${s.panel} ${s.scroll}`}>
+        <table className={s.t}>
+          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r}>Textbook</th><th>Tolerance</th></tr></thead>
+          <tbody>
+            <tr className={s.prod}><td>Whole design</td><td className={`${s.r} ${s.n}`}>{pct1(us.all_four)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{tb ? pct1(tb.all_four) : ""}</td><td className={s.dim}>all four at once</td></tr>
+            {KEYS.map((k) => (
+              <tr key={k}><td>{NAME[k]}</td><td className={`${s.r} ${s.n}`}>{val(us, k)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{val(tb, k)}</td><td className={s.dim}>{ev.components[k]?.tolerance}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Src><Api path="/api/eval" /> (<code>final_test</code>), <Doc path="engine/lab/reports/final_test_v2.md" /></Src>
+    </section>
+  );
+}
+
 function Recommenders({ ev }: { ev: EvalX }) {
   const ft = ev.final_test;
   const rows = ft?.rows.filter((r) => r.population === "test half" && r.ground_truth === "lowest option" && r.band === "ours") ?? [];
@@ -398,6 +425,7 @@ export default function Check() {
       <Reality ev={ev} id={real} onOther={() => setReal((x) => x === REALITY_PROJECT ? REALITY_MISS : REALITY_PROJECT)} />
       <Replay ev={ev} />
       {ev && <>
+        <ByComponent ev={ev} />
         <Recommenders ev={ev} />
         <Deviations ev={ev} />
       </>}
