@@ -441,6 +441,8 @@ export class SpatialScene {
   // Moves the camera to a stage's pose on one smooth spring (0.6 s, bounce 0) from wherever it is now, keeping
   // its velocity if a new stage arrives mid-flight. A top-down pose ends in the 2D plan. Reduce Motion: a cut.
   flyTo(p: Pose) {
+    // A chip can switch while the view is being rebuilt: with no live canvas there is nothing to move (never throw).
+    if (!this.alive || !this.renderer?.domElement || !this.controls) return;
     // A unit's close view is not home: Re-centre goes back to the normal fit.
     this.pose = p; if (!p.unit) this.home = p; this.spin = null; this.cancelMomentum();
     const { pos, tgt } = this.goalOf(p);
@@ -867,6 +869,7 @@ export class SpatialScene {
 
   // One call for the Systems chips: the system's layer on the model and its camera pose; null hands back to layers.
   setSystem(s: System | null) {
+    if (!this.alive) return;
     this.systems.set(s);
     if (!s) this.show(this.lastShow);
     this.applyUnits();
@@ -1249,13 +1252,14 @@ export class SpatialScene {
     if (!e.isPrimary || !f) return;
     this.flick = null;
     if (!f.ok || this.mode !== "3d") return;
+    if (!this.alive || !this.renderer?.domElement) return;
     const w = releaseRate(f.s, e.timeStamp, this.renderer.domElement.clientHeight || 1);
     this.coast = startCoast(w, !!this.opts.reduce);
   };
   // Drives the turn through OrbitControls' own pending rotation, so its damping tail is replaced, not added to.
   private stepCoast(dt: number) {
-    const c = this.coast!;
-    if (this.mode !== "3d") { this.coast = null; return; }
+    const c = this.coast;
+    if (!c || !this.controls || this.mode !== "3d") { this.coast = null; return; }
     const alive = stepCoast(c, dt);
     const d = (this.controls as unknown as { _sphericalDelta: THREE.Spherical })._sphericalDelta;
     d.theta = (c.w * dt) / (this.controls.enableDamping ? this.controls.dampingFactor : 1);
