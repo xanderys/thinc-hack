@@ -10,9 +10,9 @@ import Chain from "@/components/chain/Chain";
 import Refine, { type Moved } from "@/components/stage/Refine";
 import TopBar, { Decide } from "@/components/stage/TopBar";
 import OpenSkeleton from "@/components/stage/Skeleton";
-import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
+import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
 import { call, send } from "@/lib/client";
-import { approveLead } from "@/lib/proposal";
+import { approveLead, matches, offerKey, proposalOf } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
 import { buildFacts, DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
 import { COMPONENT_DESIGN_FIELD } from "@/lib/api";
@@ -340,16 +340,30 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setChanged(h.changed); setOverrides(h.overrides); setChips(h.chips); setOvChips(h.ovChips);
   }
 
-  function onApprove() {
-    if (!res) return;
+  // Approve releases exactly the offer on screen. The engine stores a variant key and later rebuilds the homeowner's
+  // proposal from the lead's own draft, so the key is chosen from the lead as stored (never from this card's variant
+  // list), checked against the design and price on screen before and after the write. A mismatch never marks Approved.
+  const MISMATCH = "Approval did not match the design on screen, try again";
+  async function onApprove(want?: unknown): Promise<string | null> {
+    if (!res) return null;
     const at = new Date();
     try { sessionStorage.setItem("marquee.approved", JSON.stringify({ inputs: pref === "expert" ? inputs : { ...inputs, preference: pref }, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
     const done = () => { setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })); if (leadRef.current) onApproved?.(leadRef.current); };
     const id = leadRef.current;
-    if (!id) { done(); return; }
-    // v2.5: release the proposal to the homeowner; the variant on screen is the one they sign.
-    const key = (res.variants ?? drafted?.variants ?? []).find((v) => same(v.design, res.design))?.key;
-    approveLead(id, key, baseVersion.current).then((r) => { if (r.status === 409) stale(id); else if (r.ok) { const v = (r.data as { version?: number }).version; if (v != null) baseVersion.current = v; setErr(null); done(); } else setErr(r.error); });
+    if (!id) { done(); return null; }
+    const screen = { design: res.design, capex: res.economics.capex_eur };
+    const before = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
+    if (!before.ok) return before.error;
+    const key = offerKey(before.data, screen, typeof want === "string" ? want : null);
+    if (!key) return `${MISMATCH}: this design is not one of the four offers on the lead. Pick an offer, or say the change in a sentence.`;
+    const r = await approveLead(id, key, before.data.version ?? baseVersion.current);
+    if (!r.ok) { if (r.status === 409) stale(id); return r.status === 409 ? `${MISMATCH} (${r.error})` : r.error; }
+    const v = (r.data as { version?: number }).version; if (v != null) baseVersion.current = v;
+    const after = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
+    if (!after.ok) return after.error;
+    if (after.data.version != null) baseVersion.current = after.data.version;
+    if (after.data.status !== "approved" || after.data.approved_variant !== key || !matches(proposalOf(after.data), screen)) return MISMATCH;
+    setErr(null); done(); return null;
   }
 
   const onVariant = useCallback((v: Variant) => {

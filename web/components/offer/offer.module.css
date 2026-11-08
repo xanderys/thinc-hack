@@ -92,6 +92,7 @@
 .approveBtn { width: 100%; min-height: 44px; justify-content: center; }
 .done { display: block; text-align: center; min-height: 44px; line-height: 44px; border-radius: 10px; font-weight: 600; color: #1b7a39; background: #e3f4e8; }
 .done[data-k="signed"] { color: #fff; background: var(--navy); }
+.failS { font-size: 12.5px; line-height: 1.4; color: #b42d17; }
 .warnS { font-size: 12px; color: #7a4f00; }
 
 @media (prefers-reduced-motion: reduce) {

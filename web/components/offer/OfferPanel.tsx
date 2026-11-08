@@ -21,7 +21,7 @@ export type OfferProps = {
   variants: StageVariant[]; onVariant: (v: StageVariant) => void;
   checks?: Check[] | null; checksFresh?: boolean; model?: RoofModel | null;
   overrides: Overrides; setOverride: (f: keyof Design, v: OverrideValue | undefined) => void;
-  approvedAt: string | null; onApprove: () => void; leadId?: string | null;
+  approvedAt: string | null; onApprove: (want?: unknown) => Promise<string | null> | void; leadId?: string | null;
   inputs?: HomeInputs;   // the facts the design on screen was drawn from; a fact change re-reads the offers
   docked?: boolean;   // inside the canvas on desktop: marks itself as cover so the house fits beside it
 };
@@ -167,7 +167,7 @@ export default function OfferPanel(p: OfferProps) {
         </div>
       )}
       <p className={s.confirm}>Confirm on site: roof condition and shade (estimate from the surface model), meter and grid connection, battery location</p>
-      <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} />
+      <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} />
     </aside>
   );
 }
