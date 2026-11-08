@@ -56,6 +56,6 @@ def apply(lead: dict, draft: dict, roof: dict) -> dict:
         des["wallbox_kw"] = None
     d["design"] = des
     d["verdict"] = {"label": "Shared building", "next_action": "Ask about parking and the owners' association"}
-    d["economics"] = None  # the flat-level kit has no economics; a balcony system's are not modelled here
+    # draft.economics stays the flat-level economics as drafted (the page reads it); the roof and balcony blocks carry the rest
     d["variants"] = []
     return d
