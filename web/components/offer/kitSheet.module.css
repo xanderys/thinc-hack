@@ -14,5 +14,6 @@
 .total { margin: 0; display: flex; align-items: baseline; gap: 6px; padding: 10px 0 2px; font-size: 13.5px; }
 .total span { flex: 1; color: var(--ink-2); }
 .total b { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+.note { margin: 0; text-align: right; font-size: 11.5px; color: var(--ink-3); }
 .total em { font-style: normal; font-size: 11.5px; color: var(--ink-3); }
 @media (prefers-reduced-motion: reduce) { .ring { animation: none; opacity: 0; } }
