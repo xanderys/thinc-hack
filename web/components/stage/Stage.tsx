@@ -355,7 +355,19 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       const v = k in was ? was[k] : base[k];
       if (v !== undefined && v !== null) back[k] = v;
     }
-    if (leadRef.current && Object.keys(back).length) void writeLead("undo", back as Partial<HomeInputs>).then((x) => { if (!x.ok && x.error) setSayErr(`Undone here; the lead did not update: ${x.error}`); });
+    const id = leadRef.current;
+    if (id && Object.keys(back).length) void writeLead("undo", back as Partial<HomeInputs>).then(async (x) => {
+      if (!x.ok) { if (x.error) setSayErr(`Undone here; the lead did not update: ${x.error}`); return; }
+      // The facts on screen come from the engine, not from the local snapshot: read the lead again and redraw from it.
+      const r = await call<LeadT>(`/api/leads/${id}`);
+      if (!r.ok) { setSayErr(`Undone, but the lead could not be read back: ${r.error}`); return; }
+      if (leadRef.current !== id) return;
+      if (r.data.version != null) baseVersion.current = r.data.version;
+      const facts = r.data.facts as unknown as Record<string, unknown>;
+      cause.current = "Undone:";
+      setRead((cur) => cur && { ...cur, inputs: { ...cur.inputs, ...Object.fromEntries(Object.entries(facts).filter(([k, v]) => v !== null && v !== undefined && k !== "installer_id")) } as HomeInputs });
+      setChanged({});
+    });
   }
 
   // Approve releases exactly the design on screen (engine v2.11). A marked offer goes as its key with the lead's own
