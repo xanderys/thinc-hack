@@ -18,25 +18,28 @@ type Props = {
   canUndo: boolean; onUndo: () => void; approvedAt: string | null; onApprove: () => void;
 };
 
-type Kind = { f: keyof HomeInputs; label: string; show: (i: HomeInputs) => string; edit: "num" | "bool" | "heat"; unit?: string };
+type Kind = { f: keyof HomeInputs; label: string; show: (i: HomeInputs, roof?: RoofResult | null) => string; edit: "num" | "bool" | "heat"; unit?: string };
 const FACTS: Kind[] = [
   { f: "annual_demand_kwh", label: "Annual use", show: (i) => `${n0(i.annual_demand_kwh)} kWh`, edit: "num", unit: "kWh" },
   { f: "heating_type", label: "Heating", show: (i) => HEATING_WORD[i.heating_type], edit: "heat" },
   { f: "electricity_price_ct_kwh", label: "Price", show: (i) => i.electricity_price_ct_kwh != null ? `${i.electricity_price_ct_kwh} ct/kWh` : "37 ct/kWh, assumed", edit: "num", unit: "ct/kWh" },
   { f: "has_ev", label: "Electric car", show: (i) => i.has_ev ? `Yes${i.ev_annual_km ? `, ${n0(i.ev_annual_km)} km` : ""}` : "No", edit: "bool" },
   { f: "num_inhabitants", label: "Household", show: (i) => i.num_inhabitants ? `${i.num_inhabitants} people` : "Not known", edit: "num", unit: "people" },
-  { f: "house_size_sqm", label: "Floor area", show: (i) => i.house_size_sqm ? `${n0(i.house_size_sqm)} m²` : "Not known", edit: "num", unit: "m²" },
+  { f: "house_size_sqm", label: "Floor area", show: (i, roof) => !i.house_size_sqm ? "Not known" : `${n0(i.house_size_sqm)} m²${estimated(i.house_size_sqm, roof?.floor_area_m2) ? ", estimated from the building" : ""}`, edit: "num", unit: "m²" },
   { f: "house_built_year", label: "Built", show: (i) => i.house_built_year ? String(i.house_built_year) : "Not known", edit: "num" },
 ];
 
+// A lead made from an address alone carries the roof model's floor-area estimate as its fact; the chip says so.
+const estimated = (v: number, est?: number | null) => est != null && Math.abs(v - est) < 0.5;
+
 // One fact as a chip; tap to change it. A change reruns the design and says what moved.
-function Chip({ k, i, onFact }: { k: Kind; i: HomeInputs; onFact: Props["onFact"] }) {
+function Chip({ k, i, roof, onFact }: { k: Kind; i: HomeInputs; roof?: RoofResult | null; onFact: Props["onFact"] }) {
   const [v, setV] = useState("");
   const [open, setOpen] = useState(false);
   const set = (x: unknown) => { onFact(k.f, x, k.label); setOpen(false); };
   return (
     <details className="t-chip" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-      <summary><span className="k">{k.label}</span> {k.show(i)}</summary>
+      <summary><span className="k">{k.label}</span> {k.show(i, roof)}</summary>
       <div className="t-edit">
         {k.edit === "bool" && <span className="seg">{[true, false].map((b) => <button key={String(b)} type="button" aria-pressed={i[k.f] === b} onClick={() => set(b)}>{b ? "Yes" : "No"}</button>)}</span>}
         {k.edit === "heat" && <span className="seg">{(["Gas", "Oil", "Heatpump", "OtherRenewable"] as HeatingType[]).map((h) => <button key={h} type="button" aria-pressed={i.heating_type === h} onClick={() => set(h)}>{HEATING_WORD[h]}</button>)}</span>}
@@ -74,7 +77,7 @@ export default function TopBar(p: Props) {
       {p.asking && <p className="s-quiet s-wait">Finding the one question that matters</p>}
       {p.askError && <p className="s-quiet" role="status"><span className="src">Engine said </span>{p.askError}</p>}
       <div className="t-chips">
-        {FACTS.filter((k) => !(p.question?.field === k.f && p.answer === undefined)).map((k) => <Chip key={k.f} k={k} i={i} onFact={p.onFact} />)}
+        {FACTS.filter((k) => !(p.question?.field === k.f && p.answer === undefined)).map((k) => <Chip key={k.f} k={k} i={i} roof={p.roof} onFact={p.onFact} />)}
         <details className="t-chip">
           <summary><span className="k">Style</span> {INSTALLER_NAME[i.installer_id]}</summary>
           <div className="t-edit"><span className="seg">{(Object.keys(INSTALLER_NAME) as InstallerId[]).map((id) => <button key={id} type="button" aria-pressed={i.installer_id === id} onClick={() => p.setInstaller(id)}>{INSTALLER_NAME[id]}</button>)}</span></div>
