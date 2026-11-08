@@ -14,6 +14,7 @@ import InlineOverride from "./InlineOverride";
 import Approve from "./Approve";
 import { checkLine, findCheck } from "./facts";
 import Info, { InfoRows } from "./Info";
+import RateCard from "./RateCard";
 import s from "./offer.module.css";
 
 export type OfferProps = {
@@ -33,10 +34,11 @@ const UNIT: Record<keyof Design, string> = { pv_kwp: "kWp", inverter_kw: "kW", b
 const COMP: Partial<Record<keyof Design, "pv" | "battery" | "wallbox" | "heatpump">> = { pv_kwp: "pv", battery_kwh: "battery", wallbox_kw: "wallbox", heatpump_kw: "heatpump" };
 
 
+import { breakEvenNote } from "@/lib/notes";
 // Engine offers in Stage's variant shape, so a pick runs through Stage's onVariant like any other.
 function asStage(vs: EngineVariant[], d: Design): StageVariant[] {
   const same = (x: Design) => JSON.stringify(x) === JSON.stringify(d);
-  return vs.map((v) => ({ name: v.label.split(" (")[0], tag: "", design: v.design, e: v.economics, note: v.note, current: same(v.design),
+  return vs.map((v) => ({ name: v.label.split(" (")[0], tag: "", design: v.design, e: v.economics, note: breakEvenNote(v.note, v, vs), current: same(v.design),
     overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } }));
 }
 
@@ -152,7 +154,7 @@ export default function OfferPanel(p: OfferProps) {
   const tiles = [
     { k: "Solar", v: d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "No solar" },
     { k: "Battery", v: d.battery_kwh ? `${n2(d.battery_kwh)} kWh` : "No battery" },
-    { k: "Investment", v: eur(e.capex_eur) },
+    { k: "Investment", v: eur(e.capex_eur), info: <RateCard design={d} total={e.capex_eur} assumptions={e.assumptions} modules={modules} /> },
     { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
     { k: "Autarky", v: pc(e.autarky_share) },
     { k: "Break-even", v: breakEven == null ? "20+ years" : `${breakEven} years`, info: payInfo },
@@ -162,7 +164,7 @@ export default function OfferPanel(p: OfferProps) {
   return (
     <aside ref={box} className={`${s.panel} ${p.docked ? s.docked : s.under}`} aria-label="Offer" data-cover={p.docked ? "" : undefined}>
       <Tiles items={tiles} mode={reduce ? "fade" : mode} pending={pending} />
-      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} info={dcac ? { inverter_kw: <Info label="DC/AC ratio"><InfoRows rows={[dcac]} /></Info> } : undefined} note="Estimates until the site visit" changed={hl.parts} flash={hl.n}
+      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} assumptions={e.assumptions} info={dcac ? { inverter_kw: <Info label="DC/AC ratio"><InfoRows rows={[dcac]} /></Info> } : undefined} note="Estimates until the site visit" changed={hl.parts} flash={hl.n}
         edit={(f, label, content) => (
           <InlineOverride field={f} text={label} content={content} unit={UNIT[f]} sizes={sizes[f] ?? []} current={d[f]} set={handSet(f)} fixed={overrides[f] !== undefined}
             canNone={f !== "pv_kwp" && f !== "inverter_kw"} onChoose={choose} />

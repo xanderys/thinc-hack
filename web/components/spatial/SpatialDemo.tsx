@@ -152,7 +152,8 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   }, [wantScene, glbUrl, reduce, retryGlb]);
 
   // A new design re-reads the planes; the scene keeps its glb and camera.
-  useEffect(() => { if (model && scene.current && ready) { scene.current.setModel(model); setModelGen((x) => x + 1); } }, [model, ready]);
+  // A new house bumps modelGen (camera, system and pose effects re-run); a new design on the same house does not.
+  useEffect(() => { if (model && scene.current && ready) { if (scene.current.setModel(model)) setModelGen((x) => x + 1); } }, [model, ready]);
 
   const planes: RoofPlane[] = model?.planes ?? [];
   const panelList = useMemo(() => planes.filter((p) => p.is_target).flatMap((p) => p.chosen_panels.map((r: PanelRect) => ({ p, r }))), [planes]);
@@ -216,11 +217,11 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   });
 
   // Panels change with the design: re-place them (animated only when the panels layer is showing).
-  const panelKey = panelList.length + ":" + JSON.stringify(Object.values(counts));
+  const panelKey = panelList.map(({ p, r }) => `${p.id}|${JSON.stringify(r)}`).join(";");
   useEffect(() => {
     const sc = scene.current;
     if (!sc || !ready) return;
-    sc.setPanels(panelList, !reduce && L === 3);
+    sc.setPanels(panelList, !reduce && L === 3, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelKey, ready, modelGen]);
 
@@ -239,6 +240,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     sc.show({ outlines: L <= 3, panels: L >= 3 && L !== 7, kit: L >= 4 && L <= 6, sun: L === 4, battery: L === 5 && !!design.battery_kwh ? "lit" : "plain" });
     sc.setTint(L === 2 || (sunTint && L === 3) ? "yield" : "off");
     sc.setWallbox(!!design.wallbox_kw);
+    sc.setBattery(!!design.battery_kwh);
     sc.setUnits({ inverter: !!design.inverter_kw, heatpump: !!design.heatpump_kw, layer: L >= 4 && L <= 7 });
     if (L === 3 && prev !== 3 && prev < 3) sc.setPanels(panelList, !reduce);
     if (L === 4 && layers) sc.setDay(layers.day.hours, !reduce); else sc.setDay(null, false);
@@ -471,6 +473,8 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         )}
 
         {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { setView(v); if (v === "3d" && L === 8) setLayer(3); }, recentre: () => scene.current?.refit(),
+          // Photo: the third view, offered while the Google mesh can show here; picking it is the 3D view with the mesh.
+          photo: photo.possible || photo.want ? { on: photo.want && view === "3d" && L !== 8, set: (on: boolean) => { photo.setOn(on); if (on) { setView("3d"); if (L === 8) setLayer(3); } } } : undefined,
           // One toolbar: zoom and Face north ride in the caller's toolbar row (the needle keeps this view's ref).
           zoom: { can: zoomCan, by: (d) => scene.current?.zoomBy(d) },
           north: <button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button> })}

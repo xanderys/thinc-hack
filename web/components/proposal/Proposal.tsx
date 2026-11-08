@@ -11,14 +11,11 @@ import KitSlot from "@/components/home/KitSlot";
 import RoofNote from "@/components/home/RoofNote";
 import { Facts } from "@/components/offer/VariantTabs";
 import { variantFacts } from "@/components/offer/facts";
+import { pastLine } from "@/lib/past";
 import "./proposal.css";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
 
-// docs/data-insights.md, installer 23c108b7 medians (calendar time): enquiry to offer 8.2 days (n 260), offer to signature 28.7 days (n 320). The only place these figures live; they describe past projects, not a promise.
-export const TODAY_OFFER_DAYS = 8;
-export const TODAY_SIGN_DAYS = 29;
-export const PAST_LINE = `This installer's past projects: about ${TODAY_OFFER_DAYS} days to an offer, then about ${TODAY_SIGN_DAYS} days to a signature.`;
 
 const NAME: Record<ComponentKey, string> = { pv: "Solar panels", battery: "Battery", heatpump: "Heat pump", wallbox: "Wallbox" };
 const FIELD: Record<ComponentKey, keyof Design> = { pv: "pv_kwp", battery: "battery_kwh", heatpump: "heatpump_kw", wallbox: "wallbox_kw" };
@@ -131,7 +128,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
 
       <section className="pp-card" aria-label="Your system">
         <h2>Your system</h2>
-        <KitSlot design={design} total={e.capex_eur} />
+        <KitSlot design={design} total={e.capex_eur} assumptions={e.assumptions} />
       </section>
 
       <Decision lead={lead} brand={brand} startedAt={startedAt} onDecided={onDecided} />
@@ -192,7 +189,7 @@ function Decision({ lead, brand, startedAt, onDecided }: Omit<Props, "brand"> & 
         <dl className="pp-clock">
           <div><dt>Enquiry to signature</dt><dd>{span(shown.at - t0)}</dd></div>
         </dl>
-        <p className="pp-past">{PAST_LINE}</p>
+        {pastLine(lead.facts.installer_id) && <p className="pp-past">{pastLine(lead.facts.installer_id)}</p>}
       </section>
     );
   if (status === "declined" && shown?.action === "decline")

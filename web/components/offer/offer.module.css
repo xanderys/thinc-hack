@@ -146,3 +146,34 @@
 .tileInfo { position: absolute; top: 4px; right: 4px; }
 .tileInfo .info :global(.sc-i) { margin: 0; width: 24px; height: 24px; }
 .num { border-radius: 5px; padding: 0 2px; margin: 0 -2px; font-variant-numeric: tabular-nums; }
+
+/* Send the proposal: a bottom sheet on a phone, a centred sheet on desktop; spring in, crossfade under Reduce Motion. */
+.sheetWrap { position: fixed; inset: 0; z-index: 60; display: grid; align-items: end; justify-items: center; }
+.sheetScrim { position: absolute; inset: 0; background: rgba(27, 29, 32, 0.32); animation: figFade 300ms ease-out both; }
+.sheet {
+  position: relative; width: min(480px, 100%); max-height: 88vh; overflow-y: auto; display: grid; gap: 12px; padding: 18px 16px calc(16px + env(safe-area-inset-bottom));
+  background: #fff; border-radius: 16px 16px 0 0; border: 1px solid var(--rule); outline: none;
+  animation: sheetIn 767ms var(--spring-smooth-500) both;
+}
+@media (min-width: 761px) { .sheetWrap { align-items: center; } .sheet { border-radius: 16px; } }
+@keyframes sheetIn { from { transform: translateY(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sheet { animation: figFade 200ms ease-out both; } }
+.sheetH { margin: 0; font-size: 17px; font-weight: 600; color: var(--navy); letter-spacing: -0.01em; }
+.sheetTo { margin: 0; display: grid; gap: 2px; font-size: 13.5px; }
+.sheetTo a { color: var(--accent); font-size: 12.5px; overflow-wrap: anywhere; }
+.sheetCh { display: flex; flex-wrap: wrap; gap: 6px; }
+.sheetCh button { font: inherit; font-size: 13px; min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--rule-2); background: #fff; color: var(--ink); cursor: pointer; }
+.sheetCh button[aria-checked="true"] { border-color: var(--navy); background: var(--navy); color: #fff; }
+.sheetCh button:disabled { color: var(--ink-4); border-color: var(--rule); cursor: not-allowed; }
+.sheetMsg { margin: 0; white-space: pre-line; font-size: 13.5px; line-height: 1.45; color: var(--ink); background: var(--sheet-2); border-radius: 12px; padding: 10px 12px; }
+.sheetDone { margin: 0; font-size: 14px; font-weight: 600; color: #1b7a39; }
+.sheetGo { display: flex; justify-content: flex-end; gap: 8px; }
+.sheetGo .btn { min-height: 44px; }
+.rateH { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.rate { margin: 0; display: grid; gap: 6px; min-width: 240px; }
+.rate div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.rate dt { display: grid; color: var(--ink); }
+.rate dt span { font-size: 11.5px; color: var(--ink-3); }
+.rate dd { margin: 0; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rate dd em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--ink-3); }
+.rateT { border-top: 1px solid var(--rule); padding-top: 6px; }
