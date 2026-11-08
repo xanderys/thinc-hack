@@ -22,6 +22,7 @@ import {
   Cam,
   FPS,
   HOLO_END_PLANNED,
+  LABELS,
   LaunchProps,
   POPS,
   SHOTS,
@@ -35,6 +36,7 @@ import {
 
 const BLUE = "#0D1BFE";
 const GREY = "#4A4C55";
+const LABEL_GREY = "#8A8B92";
 const HAIR = "rgb(10 12 20 / .14)";
 
 // Springs with no bounce, about 300 ms.
@@ -92,7 +94,7 @@ const TapMark: React.FC<{ t: number; x: number; y: number; cam: Cam[]; cw: numbe
 const ShotView: React.FC<{ shot: Shot }> = ({ shot }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const p = shot.enter === "cut" ? 1 : ease(frame, fps, shot.enter === "settle" ? 18 : 10);
+  const p = shot.enter === "cut" ? 1 : ease(frame, fps, shot.enter === "settle" ? 18 : shot.enter === "crossfade" ? 30 : 10);
   const cw = shot.cssW ?? CSS_W;
   const ch = (cw * CSS_H) / CSS_W;
   const enterStyle: React.CSSProperties =
@@ -102,7 +104,7 @@ const ShotView: React.FC<{ shot: Shot }> = ({ shot }) => {
         ? { transform: `translateY(${(1 - p) * VIEW_H}px)` }
         : shot.enter === "settle"
           ? { opacity: p, transform: `scale(${0.96 + 0.04 * p})` }
-          : shot.enter === "fade"
+          : shot.enter === "fade" || shot.enter === "crossfade"
             ? { opacity: p }
             : {};
   if (shot.crops && shot.still) {
@@ -208,6 +210,28 @@ const Intro: React.FC<{ p: LaunchProps }> = ({ p }) => {
   );
 };
 
+// Beat label: fades out while a number pop is up, back in once it has gone.
+const BeatLabels: React.FC<{ shift: number }> = ({ shift }) => {
+  const frame = useCurrentFrame();
+  const t = frame / FPS - shift;
+  const label = LABELS.find((l) => t >= l.from && t < l.to);
+  if (!label) return null;
+  const ramp = 0.3;
+  const popVis = Math.max(0, ...POPS.map((p) => Math.min(
+    interpolate(t, [p.from - ramp, p.from], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
+    interpolate(t, [p.to, p.to + ramp], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
+  )));
+  const edge = Math.min(
+    interpolate(t, [label.from, label.from + ramp], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
+    interpolate(t, [label.to - ramp, label.to], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
+  );
+  return (
+    <div style={{ position: "absolute", left: 80, top: VIEW_H + 64, opacity: edge * (1 - popVis), fontFamily: MONO, fontWeight: 500, fontSize: 30, letterSpacing: 6, textTransform: "uppercase", color: LABEL_GREY }}>
+      {label.text}
+    </div>
+  );
+};
+
 const CloseCard: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -248,6 +272,8 @@ export const Launch: React.FC<LaunchProps> = (p) => {
           </Sequence>
         );
       })}
+
+      <BeatLabels shift={shift} />
 
       {POPS.map((pop, i) => (
         <Sequence key={`pop${i}`} from={at(pop.from)} durationInFrames={at(pop.to) - at(pop.from)} name={`pop ${pop.value}`}>

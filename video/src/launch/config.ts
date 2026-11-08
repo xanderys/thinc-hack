@@ -1,6 +1,5 @@
 // Launch film, 9:16. All times are seconds on the film's own clock.
 // Screen coordinates are CSS px of the 430x932 phone capture (stills are 3x).
-import taps from "../../capture/taps.json";
 
 export const FPS = 30;
 export const W = 1080;
@@ -65,7 +64,7 @@ export const TOTAL = 118;
 
 export type Cam = { t: number; x: number; y: number; z: number };
 export type Tap = { t: number; x: number; y: number };
-export type Enter = "settle" | "slide" | "rise" | "fade" | "cut";
+export type Enter = "settle" | "slide" | "rise" | "fade" | "crossfade" | "cut";
 
 export type Shot = {
   id: string;
@@ -83,22 +82,10 @@ export type Shot = {
   enter: Enter;
 };
 
-type TapRow = { file: string; label: string; t: number; x: number; y: number };
-const TAPS = (taps as { taps: TapRow[] }).taps;
-const tapAt = (file: string, label: string, fallback: TapRow) =>
-  TAPS.find((r) => r.file === file && r.label.startsWith(label)) ?? fallback;
 
-// Shade slider: the clip window follows the logged drag, so a recapture moves it.
-const dragStart = tapAt("beat04-hero.mp4", "Hour slider drag start", {
-  file: "", label: "", t: 43.4, x: 346, y: 809,
-});
-const dragEnd = tapAt("beat04-hero.mp4", "Hour slider drag end", {
-  file: "", label: "", t: 49.63, x: 380, y: 809,
-});
-const SLIDER_FROM = 30.2;
-const SLIDER_TO = 34.2;
-const sliderStart = dragStart.t - 0.5;
-const sliderRate = (dragEnd.t + 0.4 - sliderStart) / (SLIDER_TO - SLIDER_FROM);
+// Shade beat: two stills (slider on Year, then 17:30), crossfaded under one slow push.
+const SHADE_FROM = 30.2;
+const SHADE_SWAP = 33.6;
 
 export const SHOTS: Shot[] = [
   {
@@ -120,23 +107,27 @@ export const SHOTS: Shot[] = [
     ],
   },
   {
-    id: "hero-roof", from: 25.6, to: SLIDER_FROM, still: "beat04-still-hero-top.png", enter: "cut",
+    id: "hero-roof", from: 25.6, to: SHADE_FROM, still: "beat04-still-hero-top.png", enter: "cut",
     cam: [
       { t: 0, x: 215, y: 500, z: 1.1 },
       { t: 4.6, x: 200, y: 500, z: 1.35 },
     ],
   },
   {
-    id: "hero-shade", from: SLIDER_FROM, to: SLIDER_TO, enter: "fade",
-    clip: { file: "beat04-hero.mp4", start: sliderStart, rate: sliderRate },
-    cam: [{ t: 0, x: 215, y: dragStart.y - 130, z: 1.12 }],
-    taps: [{ t: 0.5 / sliderRate, x: dragStart.x, y: dragStart.y }],
+    id: "hero-shade", from: SHADE_FROM, to: SHADE_SWAP, still: "beat04-still-shading-13h.png", enter: "fade",
+    cam: [
+      { t: 0, x: 215, y: 560, z: 1.0 },
+      { t: 3.4, x: 215, y: 610, z: 1.08 },
+    ],
+    taps: [{ t: 2.4, x: 346, y: 672 }],
   },
   {
-    id: "hero-shade-17", from: SLIDER_TO, to: 38, still: "beat04-still-shading-17h.png", enter: "fade",
+    id: "hero-shade-17", from: SHADE_SWAP, to: 38, still: "beat04-still-shading-17h.png", enter: "crossfade",
     cam: [
-      { t: 0, x: 215, y: 600, z: 1.0 },
-      { t: 1.2, x: 215, y: 640, z: 1.1 },
+      // Holds through the crossfade so the two stills stay in register, then pushes on.
+      { t: 0, x: 215, y: 610, z: 1.08 },
+      { t: 0.8, x: 215, y: 610, z: 1.08 },
+      { t: 4.4, x: 215, y: 650, z: 1.18 },
     ],
   },
   {
@@ -301,6 +292,17 @@ export const POPS: Pop[] = [
   { from: 92.0, to: 94.3, value: "2 min 19 s", label: "enquiry to signature, this run" },
   { from: 98.4, to: 101.2, value: "633", label: "sealed held-out signed homes" },
   { from: 104.6, to: 107.4, value: "18.6 %", label: "Marquee draft, all four parts within. Textbook rule 6.8 %" },
+];
+
+// Plain beat labels in the paper zone, shown whenever no number pop is up.
+export const LABELS: { from: number; to: number; text: string }[] = [
+  { from: 10.5, to: 20, text: "Enquiry" },
+  { from: 20, to: 58, text: "Design" },
+  { from: 58, to: 69, text: "Offer" },
+  { from: 69, to: 84, text: "Refined" },
+  { from: 84, to: 91.5, text: "Approved" },
+  { from: 91.5, to: 97, text: "Signed" },
+  { from: 97, to: 113, text: "Checked" },
 ];
 
 export const CLOSE_FROM = 113;
