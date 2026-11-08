@@ -15,6 +15,7 @@ import ModelThumb from "./ModelThumb";
 import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
 import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
 import { pastLine } from "@/lib/past";
+import { berlinStamp } from "@/lib/time";
 import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
 
 // The facts count is the verdict chip's tooltip, never part of the line.
@@ -292,7 +293,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
               if (!openCard && !calling && !ll) return null;
               const base = openCard?.status ?? ll?.status ?? "draft";
               const st = calling ? "in_call" : DECIDED.has(base) || base === "approved" ? base : approved[openId] ? "approved" : base;
-              return <span className={`b-st b-chip ${st}`}>{(st === base && (openCard?.label ?? ll?.status_label)) || STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${hm(openCard.decision?.decided_at)}` : ""}</span>;
+              return <span className={`b-st b-chip ${st}`}>{(st === base && (openCard?.label ?? ll?.status_label)) || STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${berlinStamp(openCard.decision?.decided_at)}` : ""}</span>;
             })()}
           </div>
           <p className="b-l2">{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
@@ -342,8 +343,8 @@ export default function Board({ openId: initial }: { openId?: string }) {
                 {!c.design && !lv && <span className="b-house b-skel b-skel-house" aria-hidden />}
                 {c.design || lv ? <span className="b-line num">{c.line}</span> : <span className="b-skel b-skel-line" aria-hidden />}
                 {c.q ? <span className={`${qs.cardValue} num`}>{offerEur(c.q.expected_offer_eur)}</span> : !lv && <span className="b-skel b-skel-line short" aria-hidden />}
-                {c.q && c.q.verdict !== "visit" && <span className={qs.cardWhy}>{reasonOf(c.q)}</span>}
-                {dec && <span className={`b-dec ${c.status}`}>{STATUS[c.status]} {hm(dec.decided_at)}{c.status === "signed" && span(c.created, dec.decided_at) ? `, ${span(c.created, dec.decided_at)} from enquiry` : ""}</span>}
+                {c.q && c.q.verdict !== "visit" && !dec && <span className={qs.cardWhy}>{reasonOf(c.q)}</span>}
+                {dec && <span className={`b-dec ${c.status}`}>{STATUS[c.status]} {berlinStamp(dec.decided_at)}{c.status === "signed" && span(c.created, dec.decided_at) ? `, ${span(c.created, dec.decided_at)} from enquiry` : ""}</span>}
                 {dec && c.status === "signed" && pastLine(designs[c.id]?.lead?.facts.installer_id) && <span className="b-today">{pastLine(designs[c.id]?.lead?.facts.installer_id)}</span>}
                 {dec && dec.matches_current === false && <span className="b-warn">Signed a different version than the one on file</span>}
               </button>

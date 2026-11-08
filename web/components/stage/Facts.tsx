@@ -2,6 +2,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { HeatingType, HomeInputs, RoofResult } from "@/lib/api";
 import { n0 } from "@/lib/stage";
+import { maskPhone } from "@/lib/phone";
 import "./facts.css";
 
 type Field = keyof HomeInputs;
@@ -47,12 +48,6 @@ const builtEstimated = (i: HomeInputs, r?: RoofResult | null) => !!i.house_built
 
 // An E.164 number shown with its country code, then the rest in groups of four.
 const E164 = /^\+[1-9]\d{7,14}$/;
-const CC = ["65", "44", "49", "61", "1", "33", "31", "41", "43", "39", "34", "91", "86", "81"];
-export function showPhone(e: string) {
-  const d = e.replace(/^\+/, ""), cc = CC.find((c) => d.startsWith(c) && d.length - c.length >= 6) ?? d.slice(0, 2);
-  return `+${cc} ${d.slice(cc.length).replace(/(\d{4})(?=\d)/g, "$1 ")}`;
-}
-
 function PhoneField({ value, onSet }: { value: string | null | undefined; onSet: (v: string) => void }) {
   const [d, setD] = useState(value ?? "");
   const clean = d.replace(/[\s().-]/g, "");
@@ -148,7 +143,7 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phon
         })}
         {onPhone && (
           <button type="button" className="fc" data-state={phone ? "stated" : "missing"} aria-expanded={open === "phone"} aria-controls="fc-panel" onClick={() => setOpen((o) => o === "phone" ? null : "phone")}>
-            <Glyph g="phone" /><span className="k">Phone</span>{phone && <span className="v">{showPhone(phone)}</span>}
+            <Glyph g="phone" /><span className="k">Phone</span>{phone && <span className="v">{maskPhone(phone)}</span>}
           </button>
         )}
         {slot != null && <span className="fc-slot">{slot}</span>}
