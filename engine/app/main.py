@@ -1501,6 +1501,14 @@ def evaluation():
     engine()
     out = dict(STATE["eval"])
     out["synthetic"] = synthetic_report()  # v1.4: null until the suite has written a report
+    # the board's qualification backtest on the homes no fitted rule saw; a recorded result, not recomputed here
+    out["qualification_backtest"] = {
+        "priority": 101, "call_first": 23, "decline": 2, "n": 126,
+        "priority_share": round(101 / 126, 3), "call_first_share": round(23 / 126, 3), "decline_share": round(2 / 126, 3),
+        "population": "the 126 board homes in the planner rules' sealed half (planner_rules.split.test_ids()), none in the rules-4 fit",
+        "method": "web/lib/qualify.ts verdict rules applied to each home's engine design (payback and 4,500 kWh clauses; these homes carry no address)",
+        "source": "docs/audit/verification.md (audit-figures 51730d1): recomputed by the adversarial verifier; replaces 82 / 17 / 1, which included fit-half homes",
+        "recomputed_live": False}
     try:  # the lab's sealed test-half score, run once: these ARE the scoreboard's numbers (not recomputed)
         ft = json.loads((Path(__file__).parent / "final_test.json").read_text())
         out["final_test"] = ft

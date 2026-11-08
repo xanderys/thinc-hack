@@ -65,9 +65,33 @@ def _capacity(address: str, res: dict) -> dict:
             n = None
         if n is not None:
             _CAP[address] = n
+    res = {**res, **_floor_from_model(address)}
     if n:
         return {**res, "max_panels": n, "max_kwp": round(n * PANEL_KW, 2), "capacity_source": "layout"}
     return {**res, "capacity_source": "area estimate"}
+
+
+_FLOOR: dict = {}
+
+
+def _floor_from_model(address: str) -> dict:
+    """Floor area from the 3D model's eave height (full storeys below the eaves), the same heated area the envelope uses;
+    the LoD2 measured height runs to the ridge and overcounts a storey under a pitched roof."""
+    if address in _FLOOR:
+        return _FLOOR[address]
+    out = {}
+    try:
+        from . import shading
+        R, M, *_ = shading._mods()
+        g = json.loads((R.CACHE / "model" / f"{M.key(address)}.base.json").read_text()).get("envelope_geom") or {}
+        if g.get("eaves_m") and g.get("footprint_m2"):
+            st = max(1, min(3, round(g["eaves_m"] / 3.0)))
+            out = {"floor_area_m2": round(g["footprint_m2"] * st * 0.72, 1), "storeys": st,
+                   "floor_area_note": f"footprint {g['footprint_m2']:.0f} m2 x {st} storeys below the {g['eaves_m']:.1f} m eaves x 0.72"}
+            _FLOOR[address] = out
+    except Exception:
+        pass
+    return out
 
 
 PANEL_KW = 0.45
@@ -247,7 +271,11 @@ def _safe_model(address, build_year):
 def envelope_cached(address: str, build_year=None):
     """envelope block (per-face heat loss, design heat load) from an already built model; never builds one."""
     m = model_json_cached(address, build_year)
-    return (m or {}).get("envelope")
+    env = (m or {}).get("envelope")
+    if env:
+        from . import envelope_view
+        envelope_view.correct(env)
+    return env
 
 
 def spatial_inputs() -> list:
