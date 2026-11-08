@@ -14,7 +14,7 @@ export default function SystemsChips({ active, onPick, moved }: Props) {
         {SYSTEMS.map((x) => (
           <button key={x.key} type="button" role="tab" aria-selected={active === x.key} className={`sys-chip${moved?.has(x.key) ? " hot" : ""}`}
             style={{ ["--c" as string]: x.colour, ["--c-ink" as string]: x.ink }} onClick={() => onPick(x.key)}>
-            <i aria-hidden="true" />{x.label}
+            <i aria-hidden="true"><img src={x.icon} width={20} height={20} alt="" draggable={false} /></i>{x.label}
           </button>
         ))}
       </div>

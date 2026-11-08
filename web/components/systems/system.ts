@@ -3,11 +3,12 @@
 // and layer; the event below is the one call site the real layers pick up.
 export type SystemName = "panels" | "battery" | "wallbox" | "heatpump";
 
-export const SYSTEMS: { key: SystemName; label: string; colour: string; ink: string }[] = [
-  { key: "panels", label: "Panels", colour: "#ffc043", ink: "#071b71" },
-  { key: "battery", label: "Battery", colour: "#24a148", ink: "#fff" },
-  { key: "wallbox", label: "Wallbox", colour: "#1c71ef", ink: "#fff" },
-  { key: "heatpump", label: "Heat pump", colour: "#e3634f", ink: "#fff" },
+// icon: the kit sheet's rendered part, smallest band (web/public/kit, shared with KitSheet).
+export const SYSTEMS: { key: SystemName; label: string; colour: string; ink: string; icon: string }[] = [
+  { key: "panels", label: "Panels", colour: "#ffc043", ink: "#071b71", icon: "/kit/modules-1.png" },
+  { key: "battery", label: "Battery", colour: "#24a148", ink: "#fff", icon: "/kit/battery-1.png" },
+  { key: "wallbox", label: "Wallbox", colour: "#1c71ef", ink: "#fff", icon: "/kit/wallbox.png" },
+  { key: "heatpump", label: "Heat pump", colour: "#e3634f", ink: "#fff", icon: "/kit/heatpump.png" },
 ];
 
 // Chain stage (1 to 4) to its system, and back.
