@@ -18,7 +18,7 @@ import { onWhite, setMesh, whiteOn } from "./whiteMode";
 const MAX_EDGES = 128;
 const MAX_NBR = 96;                       // neighbours' footprint edges painted onto the white mesh
 const MARGIN = 1.0;                       // metres of photo kept around the footprint
-const WHITE = new THREE.Color("#fbfaf6"); // a touch warm, so it sits on the paper ground
+export const WHITE = new THREE.Color("#fbfaf6"); // a touch warm, so it sits on the paper ground
 const OUTLINE = "#cfcbc2";
 const SLAB = "#f1efe9";                   // neighbours: low white slabs, their footprints outlined on the ground
 const WALL = "#f6f4ef";
