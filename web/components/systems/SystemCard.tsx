@@ -4,7 +4,7 @@
 // beside it and never sits under it. The derivation (bars, equations, Why) waits behind the "i" in a popover that
 // hangs off the card and leaves the house where it is.
 // Motion: a chip change springs the new card in (0.5 s smooth spring, bounce 0, from 8 px); Reduce Motion: a crossfade.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import type { SystemName } from "./system";
 import "./systems.css";
 
@@ -39,8 +39,18 @@ export default function SystemCard({ sys, head, children, info, pending, extra }
           <div className="sc-body">{children}</div>
           {extra && <div className="sc-extra">{extra}</div>}
         </div>
-        {info && open && <div id={id} className="sc-pop" role="dialog" aria-label="How this was worked out" data-esc-first>{info}</div>}
+        {info && open && <div id={id} className="sc-pop" role="dialog" aria-label="How this was worked out" data-esc-first><InfoGuard>{info}</InfoGuard></div>}
       </section>
     </div>
   );
+}
+
+// A throw inside the working (a field the engine left out) shows its own words in the popover, never takes the card down.
+class InfoGuard extends Component<{ children: ReactNode }, { error: string | null }> {
+  state = { error: null as string | null };
+  static getDerivedStateFromError(e: unknown) { return { error: e instanceof Error ? e.message : String(e) }; }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return <p>The working could not be shown: {this.state.error} <button type="button" className="btn" onClick={() => this.setState({ error: null })}>Try again</button></p>;
+  }
 }
