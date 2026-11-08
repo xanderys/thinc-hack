@@ -100,7 +100,7 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
 }
 
 /** The facts row. An explicit edit calls onFact (the existing intake-step path); opening a chip never writes. slot: room for a button at the row's end. */
-export default function Facts({ inputs, roof, onFact, hidden, slot }: { inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
+export default function Facts({ inputs, roof, onFact, hidden, slot, origin }: { origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
   const [open, setOpen] = useState<Field | null>(null);
   const specs = SPECS.filter((s) => s.f !== hidden);
   const cur = specs.find((s) => s.f === open);
@@ -116,7 +116,7 @@ export default function Facts({ inputs, roof, onFact, hidden, slot }: { inputs: 
           const st = s.state(inputs, roof);
           return (
             <button key={s.f} type="button" className="fc" data-state={st} aria-expanded={open === s.f} aria-controls="fc-panel" onClick={() => setOpen((o) => o === s.f ? null : s.f)}>
-              <Glyph g={s.glyph} /><span className="k">{s.label}</span>{st !== "missing" && <span className="v">{s.value(inputs, roof)}</span>}
+              <Glyph g={s.glyph} /><span className="k">{s.label}</span>{st !== "missing" && <span className="v">{s.value(inputs, roof)}</span>}{origin?.[s.f] === "whatsapp" && st !== "missing" && <span className="via">via WhatsApp</span>}
             </button>
           );
         })}

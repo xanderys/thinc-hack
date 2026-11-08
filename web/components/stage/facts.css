@@ -5,6 +5,7 @@
 .fc svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-3); }
 .fc .k { color: var(--ink-3); white-space: nowrap; }
 .fc .v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc .via { font-size: 11px; color: var(--ink-3); border-left: 1px solid var(--rule-2); padding-left: 7px; white-space: nowrap; }
 .fc:hover { border-color: var(--rule-2); }
 .fc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fc[aria-expanded="true"] { border-color: var(--accent); background: var(--paper); }

@@ -40,7 +40,7 @@ export default function TopBar(p: Props) {
       )}
       {p.asking && <p className="s-quiet s-wait">Finding the one question that matters</p>}
       {p.askError && <p className="s-quiet" role="status"><span className="src">Engine said </span>{p.askError}</p>}
-      <Facts inputs={i} roof={p.roof} onFact={p.onFact} hidden={p.question && p.answer === undefined ? p.question.field : null} slot={p.factsSlot} />
+      <Facts origin={p.read.origin} inputs={i} roof={p.roof} onFact={p.onFact} hidden={p.question && p.answer === undefined ? p.question.field : null} slot={p.factsSlot} />
       {!p.noDecide && <Decide {...p} />}
       {(p.lead || p.read.found.length > 0) && (
         <details className="t-mail"><summary>{p.read.source === "call" ? "From the call" : "The enquiry"}</summary>
