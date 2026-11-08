@@ -413,11 +413,19 @@ export class SpatialScene {
     const b = this.unitBox(kind);
     if (!b || this.box.isEmpty()) return null;
     const c = b.getCenter(new THREE.Vector3());
-    // Heat pump 12 m out, battery 15 m, wallbox 8 m. The aim sets where the ground falls in the frame (the frame is
+    // Battery 15 m, wallbox 8 m. The aim sets where the ground falls in the frame (the frame is
     // 2 d tan(fov / 2) tall): a quarter of the way up on a desktop, 40 % up on a phone, so the unit and its pill always
     // clear the Proposed Design bar and the toolbar along the canvas foot, whatever the eave height.
+    // Heat pump: a three-quarter view from the south-west with the whole house fitted, so two walls and the roof read
+    // together as the thermal picture, the unit by the south wall in view.
+    if (kind === "heatpump") {
+      const hc = this.box.getCenter(new THREE.Vector3()), az = (215 * Math.PI) / 180, el = (20 * Math.PI) / 180;
+      const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+      void hc;
+      return this.framed(dir); // the whole house fitted into the free part of the canvas from that angle
+    }
     const small = kind === "wallbox", narrow = this.host.clientWidth < 600;
-    const d = small ? 8 : kind === "heatpump" ? 12 : 15;
+    const d = small ? 8 : 15;
     const n = small ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
     n.applyAxisAngle(new THREE.Vector3(0, 1, 0), (small ? 1 : -1) * (15 * Math.PI) / 180);
     const H = d * Math.tan((this.persp.fov * Math.PI) / 360), ground = narrow ? 0.4 : 0.25;
@@ -1425,15 +1433,24 @@ export class SpatialScene {
     if (done) this.spin = null;
   }
 
+  // pause(): no frames at all (the copilot card covers the canvas; a blur over live WebGL can bring Chrome down);
+  // resume() picks up where it was. Both idempotent; the scene's state is kept.
+  private paused = false;
+  pauseRender() { if (this.paused) return; this.paused = true; cancelAnimationFrame(this.raf); }
+  resumeRender() {
+    if (!this.paused || !this.alive) return;
+    this.paused = false; this.clock.getDelta();
+    this.raf = requestAnimationFrame(this.loop);
+  }
   private loop = () => {
-    if (!this.alive) return;
+    if (!this.alive || this.paused) return;
     this.raf = requestAnimationFrame(this.loop);
     this.tick();
   };
   // Safari stops animation frames while its window is hidden or covered; a timer keeps drawing the house there
   // (about four frames a second), so a model that lands meanwhile is on the canvas the moment the window shows.
   private lastTick = 0;
-  private wd = window.setInterval(() => { if (this.alive && performance.now() - this.lastTick > 250) this.tick(); }, 250);
+  private wd = window.setInterval(() => { if (this.alive && !this.paused && performance.now() - this.lastTick > 250) this.tick(); }, 250);
   private tick() {
     this.lastTick = performance.now();
     const dt = Math.min(0.05, this.clock.getDelta());
@@ -1641,9 +1658,9 @@ function giveRenderer(r: THREE.WebGLRenderer) {
 // The component-view strips (docs/briefs/component-views.md) drive the newest live scene: window.__marqueeScene has
 // setBatteryFill, setCarCharge and setXrayHour, and the window event "marquee:scene-day" { name, value } calls the same.
 // Off-screen scenes (thumbnails) come and go; the list keeps the hooks on the newest one still alive.
-type SceneHooks = { setBatteryFill: (v: number) => void; setCarCharge: (v: number) => void; setXrayHour: (h: number) => void; setFlow: (f: Flow | null) => void; setOutdoorTemp: (c: number) => void };
+type SceneHooks = { setBatteryFill: (v: number) => void; setCarCharge: (v: number) => void; setXrayHour: (h: number) => void; setFlow: (f: Flow | null) => void; setOutdoorTemp: (c: number) => void; pause: () => void; resume: () => void };
 const liveScenes: SpatialScene[] = [];
-const hooksOf = (sc: SpatialScene): SceneHooks => ({ setBatteryFill: (v) => sc.setBatteryFill(v), setCarCharge: (v) => sc.setCarCharge(v), setXrayHour: (h) => sc.setXrayHour(h), setFlow: (f) => sc.setFlow(f), setOutdoorTemp: (c) => sc.setOutdoorTemp(c) });
+const hooksOf = (sc: SpatialScene): SceneHooks => ({ setBatteryFill: (v) => sc.setBatteryFill(v), setCarCharge: (v) => sc.setCarCharge(v), setXrayHour: (h) => sc.setXrayHour(h), setFlow: (f) => sc.setFlow(f), setOutdoorTemp: (c) => sc.setOutdoorTemp(c), pause: () => sc.pauseRender(), resume: () => sc.resumeRender() });
 const onSceneDay = (e: Event) => {
   const d = (e as CustomEvent<{ name?: unknown; value?: unknown }>).detail, sc = liveScenes[liveScenes.length - 1];
   if (!sc || !d) return;
