@@ -59,7 +59,9 @@ def verdict(lead) -> tuple[str, str]:
         return "call_first", "No 3D roof at this address"
     if roof.get("max_kwp") is not None and roof["max_kwp"] < 3:
         return "decline", "Roof too small for a system"
-    if (roof.get("geometry") or {}).get("large_building") or (roof.get("footprint_m2") or 0) > 400:
+    import re as _re
+    m = _re.match(r"\s*(\d+)", str(roof.get("dwellings_class") or ""))
+    if (m and int(m.group(1)) >= 3) or (roof.get("footprint_m2") or 0) > 400:
         return "call_first", "Shared roof, a house or a flat?"
     if not d.get("pv_kwp"):
         return "decline", "No system fits this home"
@@ -119,8 +121,10 @@ def _pass(lead, dry, first_pass=True):
     f = lead.get("inputs") or {}
     roof = f.get("roof") or {}
     if first_pass and f.get("address"):
-        if roof.get("max_panels"):
+        if roof.get("max_panels") and roof.get("capacity_source") == "layout":
             yield _ev(lead, "measure", f"Measured the roof, {roof['max_panels']} modules fit", "ruler")
+        elif roof.get("usable_area_m2"):
+            yield _ev(lead, "measure", f"Measured the roof, about {roof['usable_area_m2']:.0f} m2 usable", "ruler")
         else:
             yield _ev(lead, "measure", "No 3D roof found at this address", "ruler", "needs_you")
     d = (lead.get("draft") or {}).get("design") or {}
@@ -139,7 +143,7 @@ def _pass(lead, dry, first_pass=True):
         except Exception as e:
             yield _ev(lead, "needs_you", f"Needs you: {_short(e)}", "hand", "needs_you", outcome="needs_you")
         return
-    if v == "decline" or not g:
+    if v == "decline" or not g or why in ("No street address yet", "No 3D roof at this address", "Shared roof, a house or a flat?"):
         yield _ev(lead, "needs_you", f"Needs you: {why[0].lower() + why[1:]}", "hand", "needs_you", outcome="needs_you")
         return
     if not first_pass:
@@ -189,6 +193,9 @@ def run(lead_ids=None, dry=False, wait_s=None):
                 waiting.append(lead)
             elif outcome == "needs_you":
                 needs += 1
+        if dry:  # nothing waits on a dry run: an asked lead still needs the homeowner's reply
+            needs += len(waiting)
+            waiting = []
         wait = WAIT_S if wait_s is None else max(0, int(wait_s))
         if waiting and not dry and wait:
             t0 = time.time()
@@ -209,8 +216,6 @@ def run(lead_ids=None, dry=False, wait_s=None):
                 sent += 1
             else:
                 needs += 1
-        if dry:  # nothing waits on a dry run: an asked lead still needs the homeowner
-            needs += len(waiting)
         line = f"{sent} proposal{'s' if sent != 1 else ''} sent, {needs} need{'s' if needs == 1 else ''} you"
         yield _ev(None, "summary", line, "check", summary={"sent": sent, "needs_you": needs, "asked": asked_n})
     except Exception as e:
@@ -259,6 +264,8 @@ def seed() -> list:
         lead["test"] = True
         leads.save(lead)
         out.append({"lead_id": lead["lead_id"], "customer_name": s["name"], "kind": s["kind"]})
+        if s.get("address"):  # build the 3D model now, so the run measures from the layout, not the area estimate
+            threading.Thread(target=_api["build_model"], args=(s["address"], lead["inputs"].get("house_built_year")), daemon=True).start()
     return out
 
 

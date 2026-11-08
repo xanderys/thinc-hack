@@ -118,7 +118,7 @@ def startup():
     wa.start()
     from .agent import autopilot
     autopilot.configure(refresh=_ap_refresh, sources=_sources, find=_find_lead, complete=_ap_complete, create=_ap_create,
-                        delete=lambda i: delete_lead(i, True, os.environ.get("INTAKE_SECRET")))
+                        delete=lambda i: delete_lead(i, True, os.environ.get("INTAKE_SECRET")), build_model=roofs._safe_model)
     autopilot.start()
     leads.expire_stale()
     model_mod.PRIORS.update({o["field"]: o["mean_swing"] for o in leads.priors()["order"]})
@@ -1175,6 +1175,8 @@ def _ap_refresh(lead: dict) -> dict:
         lead.update(inputs=full, draft=engine().predict(dict(full)), draft_stamp=engine_stamp(), updated_at=leads.now())
         leads.save(lead)
         return lead
+    if inp.get("address") and inp.get("roof") and inp["roof"].get("capacity_source") != "layout":
+        inp["roof"] = roofs._capacity(inp["address"], inp["roof"])  # the 3D model's layout count once it is built
     return refresh_lead(lead)
 
 
