@@ -528,14 +528,14 @@ export class SpatialScene {
     this.wallbox.visible = false;
     this.kit.add(this.wallbox);
     // Inverter: indoors on the south wall beside the battery, at head height. Heat pump: the outdoor unit on the
-    // ground by the west wall, its fan facing out. Each shows only when the design has one (setUnits).
+    // ground outside the south wall near its west corner, its fan facing out, where the Heat pump view looks.
+    // Each shows only when the design has one (setUnits).
     this.inverterUnit = inverter();
     this.inverterUnit.position.set(bx + BATTERY.w / 2 + 0.2 + INVERTER.w / 2, 1.0, bz);
     this.inverterUnit.visible = false;
     this.kit.add(this.inverterUnit);
     const hp = heatPump();
-    hp.position.set(box.min.x - 0.45, 0, box.max.z - 2.2);
-    hp.rotation.y = -Math.PI / 2;
+    hp.position.set(box.min.x + 1.0 + HEATPUMP.w / 2, 0, box.max.z + HEATPUMP.d / 2 + 0.25);
     this.hpGroup.add(hp);
     this.hpGroup.visible = false;
     this.hpUnit = hp;
@@ -907,7 +907,7 @@ export class SpatialScene {
   }
   // The roof box includes the eaves, so a unit placed from it misses the wall: once the building model is in,
   // move the battery and inverter onto the inner face of the south wall (the ray starts inside the house), the
-  // wallbox onto the outer face of the east wall by the drive, and the heat pump to a hand's width outside the west
+  // wallbox onto the outer face of the east wall by the drive, and the heat pump to a hand's width outside the south
   // wall. The glass shell stands in for the house's own walls. The Systems pipes and the car's cable start at the
   // wallbox and the battery, so they are rebuilt after.
   private snapUnits() {
@@ -939,9 +939,10 @@ export class SpatialScene {
     this.systems.rebuild();
     const hp = this.hpUnit;
     if (hp) {
-      ray.set(new THREE.Vector3(this.box.min.x - 10, 0.5, hp.position.z), new THREE.Vector3(1, 0, 0));
-      const hit = ray.intersectObject(w, false)[0];
-      if (hit && hit.point.x >= this.box.min.x - 0.5) hp.position.x = hit.point.x - HEATPUMP.d / 2 - 0.25;
+      // A hand's width out from the south wall's outer face.
+      ray.set(new THREE.Vector3(hp.position.x, 0.6, this.box.max.z + 10), new THREE.Vector3(0, 0, -1));
+      const hit = ray.intersectObjects(walls, false)[0];
+      if (hit && hit.point.z <= this.box.max.z + 0.5) hp.position.z = hit.point.z + HEATPUMP.d / 2 + 0.25;
     }
   }
 
@@ -1173,8 +1174,8 @@ export class SpatialScene {
     });
   }
 
-  // The roof or a wall stands between the camera and this point, more than 0.6 m in front of it (so the glass wall a
-  // part is mounted on, or stands behind, does not count). 3D only: the plan view looks straight down.
+  // The roof or a wall stands between the camera and this point, more than 1.5 m in front of it (so the glass wall a
+  // part is mounted on, or stands behind, does not count even on a steep ray; a ray through the house still does). 3D only: the plan view looks straight down.
   // The unit's box on screen (its eight corners projected), for placing its pill beside it.
   private screenRect(o: THREE.Object3D) {
     const b = new THREE.Box3().setFromObject(o), r = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
@@ -1191,7 +1192,7 @@ export class SpatialScene {
     if (this.camera !== this.persp || !occ.length) return false;
     const from = this.persp.position, d = from.distanceTo(pt);
     this.occRay.set(from, pt.clone().sub(from).normalize());
-    this.occRay.far = d - 0.6;
+    this.occRay.far = d - 1.5;
     return this.occRay.intersectObjects(occ, false).length > 0;
   }
 

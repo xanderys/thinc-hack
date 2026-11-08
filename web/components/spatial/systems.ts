@@ -69,6 +69,14 @@ function straight(a: V, b: V, y = 0.35): THREE.CurvePath<V> {
   return p;
 }
 
+// Battery, Wallbox and Heat pump frame the wall where their unit stands, low and near eye level, never the
+// top-down roof view: the battery and the heat pump by the south wall, the wallbox on the east wall by the drive.
+const UNIT_POSE: Record<"battery" | "wallbox" | "heatpump", Pose> = {
+  battery: { focus: "battery", az: 195, el: 26, dist: 0.75 },
+  wallbox: { focus: "wallbox", az: 105, el: 24, dist: 0.75 },
+  heatpump: { focus: "battery", az: 210, el: 26, dist: 0.85 },
+};
+
 export class Systems {
   sys: System | null = null;
   private g = new THREE.Group();
@@ -163,7 +171,7 @@ export class Systems {
     this.override();
     if (sys === "heatpump") H.setLabels(H.xray.set(this.env) as unknown[]);
     // Heat pump: the high angle from the south, so both roof faces and their modules read under the x-ray.
-    const pose = sys === "panels" ? POSES.solar : sys === "battery" ? POSES.storage : sys === "wallbox" ? POSES.extras : sys === "heatpump" ? POSES.heat : null;
+    const pose = sys === "panels" ? POSES.solar : sys ? UNIT_POSE[sys] : null;
     if (pose) H.flyTo(pose);
   }
 

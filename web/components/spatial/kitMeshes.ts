@@ -126,14 +126,14 @@ export function inverter(): THREE.Group {
 }
 
 // The heat pump outdoor unit: a housing on two feet, its fan grille on the left of the front face.
-export const HEATPUMP = { w: 1.0, h: 0.78, d: 0.4 };
+export const HEATPUMP = { w: 1.0, h: 1.2, d: 0.4 }; // a 1.0 x 1.2 x 0.4 m outdoor unit
 export function heatPump(): THREE.Group {
   const g = new THREE.Group(), body = lam(KIT.unit), seam = lam(KIT.seam), foot = 0.08;
   g.add(box(0.08, foot, HEATPUMP.d, seam, -0.36, foot / 2), box(0.08, foot, HEATPUMP.d, seam, 0.36, foot / 2));
   g.add(box(HEATPUMP.w, HEATPUMP.h - foot, HEATPUMP.d, body, 0, foot + (HEATPUMP.h - foot) / 2));
-  const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.02, 40), seam);
+  const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.02, 40), seam);
   fan.rotation.x = Math.PI / 2;
-  fan.position.set(-0.17, foot + (HEATPUMP.h - foot) / 2, HEATPUMP.d / 2 + 0.01);
+  fan.position.set(-0.12, foot + (HEATPUMP.h - foot) * 0.58, HEATPUMP.d / 2 + 0.01);
   const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 24), body);
   hub.rotation.x = Math.PI / 2;
   hub.position.copy(fan.position).setZ(HEATPUMP.d / 2 + 0.02);
