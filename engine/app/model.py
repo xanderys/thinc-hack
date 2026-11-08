@@ -317,6 +317,16 @@ class Engine:
             if rc.get("derivation"):
                 d["derivation"] = rc["derivation"]
             comps[c] = d
+        if design.get("pv_kwp") and inp.get("address") and "pv_kwp" not in ov:  # one pipeline: never more PV than the layout places
+            from . import layout as L
+            lo = L.layout(inp, design["pv_kwp"])
+            if lo and lo["modules"] < L.modules_for(design["pv_kwp"]):
+                want, got = design["pv_kwp"], round(lo["modules"] * L.MODULE_KWP, 2)
+                design["pv_kwp"] = got
+                design["inverter_kw"] = rules.inverter_kw(got)
+                comps["pv"].update(size=got, reason=f"{got:g} kWp: the roof layout places {lo['modules']} modules on this house's "
+                                                    f"planes (the rule asked {want:g} kWp, {L.modules_for(want)} modules). "
+                                                    + (comps["pv"].get("reason") or ""))
         if (design.get("battery_kwh") and (design.get("pv_kwp") or 0) < MIN_PV_FOR_BATTERY and "battery_kwh" not in ov):
             was = design["battery_kwh"]
             design["battery_kwh"] = None

@@ -103,6 +103,9 @@ def value_frontier(eng, inp: dict, design: dict) -> list:
         d = {"pv_kwp": pv, "inverter_kw": design.get("inverter_kw") if pv == design.get("pv_kwp") else rules.inverter_kw(pv),
              "battery_kwh": b or None, **keep}
         lo = layout(inp, pv)
+        chosen = pv == (design.get("pv_kwp") or 0) and (b or 0) == (design.get("battery_kwh") or 0)
+        if lo and lo["modules"] < modules_for(pv) and not chosen:
+            continue  # more PV than this roof's layout places: not a design for this house
         sim_in = {**base, "pv_planes": lo["pv_planes"]} if lo else base
         from . import cashflow
         e = cashflow.add(sim_in, d, hourly.simulate(sim_in, d).economics)

@@ -903,6 +903,8 @@ def refresh_lead(lead: dict) -> dict:
     """A draft made by an earlier engine is recomputed (same pipeline, with the roof) before it is shown, and saved."""
     if lead.get("draft_stamp") == engine_stamp() or STATE.get("engine") is None:
         return lead
+    if lead.get("decision") or lead.get("status") in ("approved", "signed", "declined", "question"):
+        return lead  # the homeowner saw or answered this proposal: its numbers and hash stay as released
     try:
         lead["draft"] = engine().predict(dict(lead["inputs"]))
         lead["draft_stamp"] = engine_stamp()
