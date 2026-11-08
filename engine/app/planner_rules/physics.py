@@ -33,8 +33,8 @@ PARAMS = {
     "price_rise": (S.PRICE_RISE * 100, "% a year", "nominal rise at the ECB's 2% inflation target, a flat real price", "https://www.ecb.europa.eu/mopo/strategy/html/index.en.html"),
     "feed_in": (f"{S.FEEDIN_LOW} / {S.FEEDIN_HIGH}", "ct/kWh", "EEG feed-in for systems from 1 Aug 2026, up to 10 kWp / 10 to 40 kWp, fixed 20 years (docs/domain.md)", None),
     "negative_hours": (S.NEG_PRICE_HOURS, "h", "no feed-in pay in negative-price hours (EEG 51, Solarspitzengesetz); 573 negative hours in 2025 (SMARD)", "https://www.smard.de/page/en/topic-article/5892/219038"),
-    "pv_cost": (f"{S.PV_FIXED_EUR:,.0f} + {S.PV_EUR_KWP:,.0f} per kWp", "EUR", "line through 1,350 EUR/kWp at 5 kWp and 1,000 at 20 kWp, midpoints of the 2026 size table (reduco); Fraunhofer ISE average 1,015 EUR/kWp at 10 kWp, March 2026", "https://reduco.ai/blog/solar/solaranlage-kosten-nach-groesse-kwp"),
-    "battery_cost": (S.BAT_EUR_KWH, "EUR/kWh", "second-hand: BSW Solar 2026 market average of 315 EUR per kWh installed (range 270 to 420) as quoted by reduco 2026; the BSW primary was not found; Verbraucherzentrale gives 300 to 700", "https://reduco.ai/blog/stromspeicher-kosten-vergleich-2026"),
+    "pv_cost": (f"{S.PV_FIXED_EUR:,.0f} + {S.PV_EUR_KWP:,.0f} per kWp", "€", "line through €1,350/kWp at 5 kWp and €1,000 at 20 kWp, midpoints of the 2026 size table (reduco); Fraunhofer ISE average €1,015/kWp at 10 kWp, March 2026", "https://reduco.ai/blog/solar/solaranlage-kosten-nach-groesse-kwp"),
+    "battery_cost": (S.BAT_EUR_KWH, "€/kWh", "second-hand: BSW Solar 2026 market average of €315 per kWh installed (range 270 to 420) as quoted by reduco 2026; the BSW primary was not found; Verbraucherzentrale gives 300 to 700", "https://reduco.ai/blog/stromspeicher-kosten-vergleich-2026"),
     "battery_life": (f"{S.BAT_LIFE_YEARS} years or {S.BAT_LIFE_CYCLES:,} cycles", "", "Verbraucherzentrale 10 to 15 years; LFP 6,000 full cycles to 80% capacity; replaced at today's price", "https://42watt.de/magazin/lebensdauer-stromspeicher"),
     "battery_physics": (f"{S.BAT_USABLE:.0%} usable, {S.BAT_RTE:.0%} round trip", "", "HTW Berlin Stromspeicher-Inspektion 2025 and Unabhaengigkeitsrechner FAQ", "https://solar.htw-berlin.de/studien/stromspeicher-inspektion-2025/"),
     "htw_cap": (HTW_KWH_PER_MWH, "kWh per MWh", "HTW Berlin rule: usable storage at most 1.5 kWh per 1,000 kWh of use; flagged, not a hard cap", "https://www.finanztip.de/daily/stromspeicher-zur-pv-anlage-so-gross-darf-er-hoechstens-sein/"),
@@ -44,8 +44,8 @@ PARAMS = {
     "knee": ("value per euro >= 1", "", "marginal analysis: add a step while its discounted 20-year value exceeds its cost, which is a marginal return above the discount rate (Brealey, Myers and Allen, Principles of Corporate Finance, NPV rule); the knee of the cost-to-value frontier (Satopaa et al., Kneedle, ICDCS 2011)", "https://doi.org/10.1109/ICDCSW.2011.20"),
     "independence_premium": (WTP_EUR_KWH * 100, "ct per kWh not bought from the grid", "per kWh of household and EV use the home supplies itself instead of buying it: median non-market value of avoided grid purchases among German home-storage households, revealed by adoption (Kaps and Netessine, Residential Battery Storage: Reshaping the Way We Do Electricity, Operations Research, doi 10.1287/opre.2024.1104, data from 3,200 Solarwatt households 2018 to 2020; mean 53 ct); counted in the 20-year value, not in the money NPV; x2 for independence, 0 for payback and upfront", "https://doi.org/10.1287/opre.2024.1104"),
     "dcac": (f"{DCAC_LO} to {DCAC_HI}", "", "DC/AC sizing range for German roofs (HTW Berlin; SMA Sunny Design guidance)", None),
-    "heat_pump_cost": (f"{S.HP_GROSS_EUR:,} less {S.HP_SUBSIDY:.0%} of up to {S.HP_ELIGIBLE_CAP:,}", "EUR", "air-water in an existing home 27,000 to 40,000 EUR (reduco 2026), midpoint; BEG base subsidy 30% (KfW 458)", "https://reduco.ai/blog/waermepumpe-kosten-foerderung"),
-    "boiler_avoided": (S.BOILER_AVOIDED_EUR, "EUR", "a new gas boiler the home would otherwise buy, 8,000 to 12,000 EUR (docs/domain.md 3)", None),
+    "heat_pump_cost": (f"{S.HP_GROSS_EUR:,} less {S.HP_SUBSIDY:.0%} of up to {S.HP_ELIGIBLE_CAP:,}", "€", "air-water in an existing home €27,000 to €40,000 (reduco 2026), midpoint; BEG base subsidy 30% (KfW 458)", "https://reduco.ai/blog/waermepumpe-kosten-foerderung"),
+    "boiler_avoided": (S.BOILER_AVOIDED_EUR, "€", "a new gas boiler the home would otherwise buy, €8,000 to €12,000 (docs/domain.md 3)", None),
     "heat_cost": (S.HEAT_EUR_PER_KWH * 100, "ct per kWh heat", "gas or oil heat incl. boiler losses, 2026 (docs/domain.md 3)", None),
     "cop": (S.JAZ, "", "Fraunhofer ISE field test, 77 existing homes: air-water seasonal COP 3.4 (final report Nov 2025)", "https://www.ise.fraunhofer.de/de/forschungsprojekte/wp-im-bestand.html"),
     "full_load_hours": (FULL_LOAD_H, "h", "VDI 4645 planning value for heating plus hot water; sized at the heat load, not the 1.5 times median that ISE measured in installed heat pumps", "https://www.cleanthinking.de/?p=1074907"),
@@ -389,12 +389,12 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
     else:
         eq = f"{pv:g} kWp = {pv / MODULE_KWP:.0f} modules ({plane_txt})"
         if r_in is not None:
-            eq += f"; step to {pv:g} kWp returns {r_in:.2f} EUR of 20-year value (money plus {WTP_EUR_KWH * 100:.0f} ct independence premium per kWh not bought) per EUR"
+            eq += f"; step to {pv:g} kWp returns €{r_in:.2f} of 20-year value (money plus {WTP_EUR_KWH * 100:.0f} ct independence premium per kWh not bought) per €"
         if r_out is not None:
             eq += f", next step to {hi:g} kWp {r_out:.2f}"
         elif pv >= top - 1e-6:
             eq += f"; the roof holds {top:g} kWp"
-        s_pv = f"{pv:g} kWp on the best planes: the last step returns {r_in:.2f} EUR of 20-year value per EUR" if r_in is not None else f"{pv:g} kWp on the best planes"
+        s_pv = f"{pv:g} kWp on the best planes: the last step returns €{r_in:.2f} of 20-year value per €" if r_in is not None else f"{pv:g} kWp on the best planes"
         s_pv += f", the next would return {r_out:.2f}." if r_out is not None else (", and the roof is full." if pv >= top - 1e-6 else ".")
         der_pv = {"axiom": RULES[0]["sentence"], "equation": eq,
                   "inputs": [{"name": "annual use", "value": round(e["annual"]["load_kwh"]), "unit": "kWh", "source": "inputs, BDEW H25, EV and heat pump profiles"},
@@ -421,18 +421,18 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
     elif not bat:
         first = _find(rows, pv, sorted(set(b_vals))[1]) if len(set(b_vals)) > 1 else None
         rr = _step_ratio(rows, here, first) if first and here else None
-        s_b = (f"No battery: the smallest package returns {rr:.2f} EUR per EUR over 20 years." if rr is not None else "No battery: there is no PV to charge it.")
+        s_b = (f"No battery: the smallest package returns €{rr:.2f} per € over 20 years." if rr is not None else "No battery: there is no PV to charge it.")
         der_b = None
     else:
         life = S.battery_life_years(bat, e["annual"]["battery_discharged_kwh"])
         eq = f"{bat:g} kWh, {bat * S.BAT_USABLE:.1f} usable, {e['annual']['battery_discharged_kwh']:,.0f} kWh a year from it"
         if rb_in is not None:
-            eq += f"; the step to {bat:g} kWh returns {rb_in:.2f} EUR per EUR"
+            eq += f"; the step to {bat:g} kWh returns €{rb_in:.2f} per €"
         if rb_out is not None:
             eq += f", next package {bhi:g} kWh {rb_out:.2f}"
         eq += f"; replaced after {life:.0f} years" if life and life < S.YEARS else ""
         warn = bat * S.BAT_USABLE > htw
-        s_b = f"{bat:g} kWh: the last package step returns {rb_in:.2f} EUR per EUR" if rb_in is not None else f"{bat:g} kWh"
+        s_b = f"{bat:g} kWh: the last package step returns €{rb_in:.2f} per €" if rb_in is not None else f"{bat:g} kWh"
         s_b += f", the next {rb_out:.2f}" if rb_out is not None else ""
         s_b += (f"; one night needs {nt['evening_kwh']:.1f} kWh" if nt else "") + "."
         if warn:
@@ -462,13 +462,13 @@ def recommend(inputs: dict, catalogue: dict | None = None, overrides: dict | Non
         eq = (f"envelope heat load {hp_raw:.1f} kW (LoD2 faces x IWU U-values), next size {hp_sz:g} kW" if heat_src.startswith("envelope")
               else f"{heat:,.0f} kWh heat / {FULL_LOAD_H:,} h = {hp_raw:.1f} kW, next size {hp_sz:g} kW")
         if other is not None:
-            eq += f"; 20-year value (money plus independence premium) with {npv if hp else other:,.0f} EUR, without {other if hp else npv:,.0f} EUR"
+            eq += f"; 20-year value (money plus independence premium) with €{npv if hp else other:,.0f}, without €{other if hp else npv:,.0f}"
         if hp:
             size_txt = f"the envelope's {hp_raw:.1f} kW heat load" if heat_src.startswith("envelope") else f"{heat:,.0f} kWh of heat over {FULL_LOAD_H:,} full-load hours"
             gain = npv - (other or 0)
-            s_h = f"{hp:g} kW heat pump: {size_txt}; it {'adds' if gain >= 0 else 'costs'} {abs(gain):,.0f} EUR of 20-year value."
+            s_h = f"{hp:g} kW heat pump: {size_txt}; it {'adds' if gain >= 0 else 'costs'} €{abs(gain):,.0f} of 20-year value."
         else:
-            s_h = f"No heat pump: with one, this home's 20-year value would be {npv - other:,.0f} EUR lower." if other is not None else "No heat pump."
+            s_h = f"No heat pump: with one, this home's 20-year value would be €{npv - other:,.0f} lower." if other is not None else "No heat pump."
         der_h = {"axiom": RULES[2]["sentence"], "equation": eq,
                  "inputs": ([{"name": "design heat load", "value": round(hp_raw, 1), "unit": "kW", "source": "envelope: LoD2 faces x IWU U-values, DIN EN 12831 simplified"}] if heat_src.startswith("envelope") else [])
                            + [{"name": "heat a year", "value": round(heat), "unit": "kWh", "source": S.heat_demand_kwh(inp, {})[1]},
