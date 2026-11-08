@@ -87,7 +87,7 @@ export default function SendSheet({ leadId, name, link, version, onClose, onSent
         )}
         <div className={s.sheetGo}>
           <button type="button" className="btn ghost" onClick={onClose}>{state === "sent" ? "Done" : "Close"}</button>
-          {state !== "sent" && <button type="button" className="btn" onClick={go} disabled={state === "busy"}>{state === "busy" ? "Sending" : ch === "copy" ? "Copy link" : "Send"}</button>}
+          {state !== "sent" && <button type="button" className="btn" onClick={go} disabled={state === "busy"} aria-busy={state === "busy" || undefined}>{ch === "copy" ? "Copy link" : "Send"}</button>}
         </div>
       </div>
     </div>

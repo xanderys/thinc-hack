@@ -22,6 +22,7 @@ import ShadingPanel from "@/components/spatial/ShadingScrubber";
 import { EnvelopeBar, HeatPumpStep } from "@/components/spatial/EnvelopeBar";
 import SystemsChips from "@/components/systems/SystemsChips";
 import ProposedCard from "@/components/systems/ProposedCard";
+import { investmentOf } from "@/components/offer/facts";
 import SystemCard from "@/components/systems/SystemCard";
 import { elementsOf } from "@/lib/envelope";
 import { scrub } from "@/components/offer/facts";
@@ -365,8 +366,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   // Overrides and Approve come from the decide element Stage already passes, so Stage itself stays untouched.
   const dp = (isValidElement(decide) ? decide.props : null) as Partial<Pick<OfferProps, "overrides" | "setOverride" | "approvedAt" | "onApprove">> | null;
   const narrow = useNarrow();
-  const offer = (docked: boolean) => (
-    <OfferPanel docked={docked} res={resShown} economics={e} breakEven={breakEven} cause={cause} pending={waiting}
+  const offer = (docked: boolean, inPass = false) => (
+    <OfferPanel docked={docked} inPass={inPass} res={resShown} economics={e} breakEven={breakEven} cause={cause} pending={waiting}
       variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={roofFitKnown(layers?.checks ?? null, inputs.address)} checksFresh={fresh} model={model} leadId={leadId} inputs={inputs}
       undo={{ can: canUndo, run: () => { holdOffer(); onUndo(); } }} overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
   );
@@ -543,7 +544,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     </SystemCard>
   );
   // A flat in an apartment block: the engine's single-family design does not apply, so the pass shows none and Approve waits.
-  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={waiting} none={multi ? "No design for this building yet" : null}>{offer(false)}</ProposedCard>;
+  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={investmentOf(res as Parameters<typeof investmentOf>[0])} pending={waiting} none={multi ? "No design for this building yet" : null}>{offer(false, true)}</ProposedCard>;
   const overlays = (
     <>
       {!SYS && address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}

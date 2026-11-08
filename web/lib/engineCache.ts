@@ -35,3 +35,8 @@ export function seedDesign(inputs: HomeInputs, r: DesignResponse) {
   const key = "/api/design" + JSON.stringify(stable({ inputs }));
   if (!memo.has(key)) memo.set(key, Promise.resolve({ ok: true, data: r } as Result<unknown>));
 }
+
+// The product catalogue (engine v2.15): the size ladder per part and the SKUs. Read once per page.
+export type Catalogue = { module_w?: number; ladder?: Partial<Record<"battery" | "inverter" | "heatpump" | "wallbox", number[]>> };
+let catalogue: Promise<Catalogue | null> | null = null;
+export const catalogueOf = () => (catalogue ??= call<Catalogue>("/api/catalogue").then((r) => (r.ok ? r.data : null), () => null));
