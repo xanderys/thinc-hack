@@ -861,7 +861,8 @@ export class SpatialScene {
     const own: Record<string, number> = {};
     this.panels.children.forEach((g) => { const id = g.userData?.plane; if (id) own[id] = (own[id] ?? 0) + 1; });
     const cnt = (id: string) => counts?.[id] ?? own[id] ?? 0;
-    return this.targets.map(({ p, c, n }) => {
+    // Panels: a face without modules gets no label element at all.
+    return this.targets.filter(({ p }) => kind !== "panels" || cnt(p.id) > 0).map(({ p, c, n }) => {
       const at = c.clone().addScaledVector(n, 0.4), k = cnt(p.id);
       const face = p.pitch < 3 ? "flat roof" : `${facing(p.azimuth)} face, ${Math.round(p.pitch)}° pitch`;
       const html = kind === "roof"

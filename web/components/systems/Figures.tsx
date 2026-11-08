@@ -27,7 +27,7 @@ export function PairBars({ roof, parts, share }: { roof: number; parts: { k: str
       <span className="fg-stack" style={{ width: `${(home / max) * 100}%` }}>{shown.map((p, i) => <i key={p.k} style={{ flexGrow: p.v, background: HOME[i % HOME.length] }} />)}</span>
       <span className="fg-v"><b>{n0(home)}</b> kWh a year</span>
       <ul className="fg-legend fg-under">
-        {shown.map((p, i) => <li key={p.k}><i style={{ background: HOME[i % HOME.length] }} />{p.k} <b>{n0(p.v)}</b></li>)}
+        {shown.map((p, i) => <li key={p.k}><i style={{ background: HOME[i % HOME.length] }} />{p.k} <b>{n0(p.v)}</b> kWh</li>)}
         {cov != null && <li className="fg-cov"><b>{Math.round(cov * 100)} %</b> from the roof</li>}
       </ul>
     </div>
