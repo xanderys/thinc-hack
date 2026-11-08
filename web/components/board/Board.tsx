@@ -21,6 +21,13 @@ import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
 const factsTip = (q: { facts?: { stated: number; total: number }; confidence_line?: string }) => `${q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : q.confidence_line?.split(",")[0] ?? ""}. Estimates until the site visit.`.replace(/^\. /, "");
 import qs from "@/components/qualify/qualify.module.css";
 import { berlinStamp, berlinTime } from "@/lib/time";
+import { undoLast, useCanUndo } from "@/lib/edits";
+
+// The open card's one Undo: in the header, visible without scrolling at every width; one kit edit at a time.
+function HeaderUndo({ id }: { id: string }) {
+  const can = useCanUndo(id);
+  return <button type="button" className="b-undo" disabled={!can} onClick={() => undoLast(id)} title="Revert the last edit">Undo</button>;
+}
 
 const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
@@ -300,6 +307,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
               const st = calling ? "in_call" : DECIDED.has(base) || base === "approved" ? base : approved[openId] ? "approved" : base;
               return <span className={`b-st b-chip ${st}`}>{(st === base && (openCard?.label ?? ll?.status_label)) || STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${berlinStamp(openCard.decision?.decided_at)}` : ""}</span>;
             })()}
+            <HeaderUndo id={openId} />
           </div>
           <p className="b-l2">{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
           <p className={`${qs.head} b-l3`}><VerdictChip verdict={openCard?.q?.verdict ?? null} tip={openCard?.q ? `${reasonOf(openCard.q)} ${factsTip(openCard.q)}`.trim() : undefined} /></p>

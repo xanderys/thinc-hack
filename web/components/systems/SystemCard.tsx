@@ -22,8 +22,11 @@ export default function SystemCard({ sys, head, label, children, info, pending, 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || live.current.folded || live.current.open) return;
-      const canvas = root.current?.parentElement?.closest("section"), a = document.activeElement;
-      if (!canvas || !(a === document.body || a === null || canvas.contains(a))) return;
+      // On a phone the card sits under the canvas, outside its section, so the focus test is about what Escape
+      // belongs to instead: a text field, an open menu or dialog, or a control that claims Escape first keeps it.
+      const a = document.activeElement as HTMLElement | null;
+      if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.closest('[role="dialog"], [role="menu"]'))) return;
+      if (document.querySelector("[data-esc-first], [data-pop]")) return;
       e.stopImmediatePropagation(); e.preventDefault(); setFolded(true);
     };
     addEventListener("keydown", esc, true);

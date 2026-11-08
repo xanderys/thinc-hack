@@ -49,7 +49,7 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
     <div className={s.approve}>
       <div className={s.approveRow}>
       {/* Undo reverts the last edit to the design (moved here from the model toolbar, where it read as restart). */}
-      {undo && <button type="button" className={s.undoBtn} onClick={undo.run} disabled={!undo.can} title="Revert the last edit">Undo</button>}
+
       {signed ? (
         <span className={s.done} data-k="signed">Signed{dec?.name ? ` by ${dec.name}` : ""}</span>
       ) : complete ? (

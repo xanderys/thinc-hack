@@ -222,14 +222,27 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const breakEven = le?.break_even_year ?? (e as { break_even_year?: number | null }).break_even_year ?? null;
   // While an edit waits on the engine, the sizes the planner just chose show at once (on the model, the labels, the
   // cards and the pass, which tween on a design change); prices and yields follow when the engine answers.
+  // An edit from the model or a chooser is also held here from the tap until the engine's design matches it, so the
+  // roof, the cards, the tiles and the pass read one design from the same frame.
   const ovNow = ((isValidElement(decide) ? (decide.props as { overrides?: Record<string, unknown> }).overrides : null) ?? {});
   const ovKey = JSON.stringify(ovNow);
+  const [opt, setOpt] = useState<Record<string, unknown> | null>(null);
+  const sizeOf = (v: unknown) => (typeof v === "number" ? v : v === null ? 0 : undefined);
+  useEffect(() => {
+    if (!opt) return;
+    const rd = res.design as unknown as Record<string, unknown>;
+    if (Object.entries(opt).every(([k, v]) => sizeOf(v) === undefined || (Number(rd[k]) || 0) === sizeOf(v))) { setOpt(null); return; }
+    const t = setTimeout(() => setOpt(null), 20000);
+    return () => clearTimeout(t);
+  }, [res.design, opt]);
   const d = useMemo(() => {
-    if (!pending) return res.design;
+    if (!pending && !opt) return res.design;
     const o: Record<string, unknown> = { ...res.design };
-    Object.entries(ovNow).forEach(([k, v]) => { if (typeof v === "number") o[k] = v; else if (v === null && k !== "pv_kwp") o[k] = 0; });
+    Object.entries({ ...(pending ? ovNow : {}), ...(opt ?? {}) }).forEach(([k, v]) => { const x = sizeOf(v); if (x !== undefined && !(x === 0 && k === "pv_kwp")) o[k] = x; });
     return o as unknown as typeof res.design;
-  }, [res.design, pending, ovKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [res.design, pending, ovKey, opt]); // eslint-disable-line react-hooks/exhaustive-deps
+  const waiting = !!pending || !!opt;   // prices and yields shimmer until the engine answers
+  const resShown = useMemo(() => (d === res.design ? res : { ...res, design: d }), [res, d]);   // kit rows read the same sizes
   const rot = rotLine(findRot(res.components.pv?.derivation, layers, res));
 
   const checkHead = (() => { const c = layers?.checks ?? []; const bad = c.filter(isFail).length, out = c.filter(refOut).length; return c.length ? (bad ? `${bad} of ${c.length} checks flag` : out ? "Checks pass; battery above Reonic’s guide" : `All ${c.length} checks pass`) : "Checks"; })();
@@ -327,7 +340,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const dp = (isValidElement(decide) ? decide.props : null) as Partial<Pick<OfferProps, "overrides" | "setOverride" | "approvedAt" | "onApprove">> | null;
   const narrow = useNarrow();
   const offer = (docked: boolean) => (
-    <OfferPanel docked={docked} res={res} economics={e} breakEven={breakEven} cause={cause} pending={!!pending}
+    <OfferPanel docked={docked} res={resShown} economics={e} breakEven={breakEven} cause={cause} pending={waiting}
       variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={roofFitKnown(layers?.checks ?? null, inputs.address)} checksFresh={fresh} model={model} leadId={leadId} inputs={inputs}
       undo={{ can: canUndo, run: () => { holdOffer(); onUndo(); } }} overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
   );
@@ -343,7 +356,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
               <button type="button" className={s.ih} onClick={() => go(n)} aria-expanded={open}>
                 <span className={s.num}>{n}</span>
                 <span className={s.it}>{t}{multi && FIVE && (n <= 2 || n === N) && <span className={s.flatTag}>Single-family figure</span>}</span>
-                <span className={s.ihead} data-pending={!!pending || !fresh}>{head[i]}</span>
+                <span className={s.ihead} data-pending={waiting || !fresh}>{head[i]}</span>
               </button>
               {built && bar && !(FIVE && open && n <= 4) && !(FIVE && n === 3 && !d.wallbox_kw && !layers?.ev) && !(FIVE && n === 4 && (multi || (open && hasEnv))) && (open ? <BarView bar={FIVE && n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} /> : <BarStrip bar={bar} />)}
               {FIVE && open && n <= 4 && (
@@ -352,7 +365,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
                     <p className={s.l2}>{n === 1 ? "Shared roof, apartment building: the single-family design does not apply." : "The walls and roof are the whole building's, so no heat pump size for one flat."}</p>
                   ) : (
                     <>
-                      {line2[n] && <p className={s.l2} data-pending={!!pending || !fresh}>{line2[n]}</p>}
+                      {line2[n] && <p className={s.l2} data-pending={waiting || !fresh}>{line2[n]}</p>}
                       {n <= 3 && bar && !(n === 3 && !d.wallbox_kw && !layers?.ev) && <BarView bar={n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} bare />}
                       {n === 4 && hasEnv && <EnvelopeBar env={model!.envelope!} bare />}
                     </>
@@ -497,13 +510,13 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   };
   const cardNow = sysNow ? sysBody[sysNow] : null;
   const sysCard = sysNow && cardNow && (
-    <SystemCard sys={sysNow} head={cardNow.head} label={cardNow.label} info={cardNow.info} pending={!!pending || !fresh}
+    <SystemCard sys={sysNow} head={cardNow.head} label={cardNow.label} info={cardNow.info} pending={waiting || !fresh}
       extra={sysNow === "panels" && address && spatial !== false ? <ShadingPanel address={address} kwp={d.pv_kwp} solarStage start={{ m: 6, h: 11 }} compact /> : undefined}>
       {cardNow.body}
     </SystemCard>
   );
   // A flat in an apartment block: the engine's single-family design does not apply, so the pass shows none and Approve waits.
-  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending} none={multi ? "No design for this building yet" : null} undo={{ can: canUndo, run: () => { holdOffer(); onUndo(); } }}>{offer(false)}</ProposedCard>;
+  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={waiting} none={multi ? "No design for this building yet" : null}>{offer(false)}</ProposedCard>;
   const overlays = (
     <>
       {!SYS && address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}
@@ -536,7 +549,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         {address && spatial !== false ? (
           <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatLayer ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && panelHeat}
-            edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); stayChip.current = Date.now() + 60000; dp.setOverride?.(f, v); }, setKit: setKit ? (p) => { holdOffer(); stayChip.current = Date.now() + 60000; setKit(p); } : undefined,
+            edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); stayChip.current = Date.now() + 60000; setOpt({ [f]: v }); dp.setOverride?.(f, v); }, setKit: setKit ? (p) => { holdOffer(); stayChip.current = Date.now() + 60000; setOpt(p); setKit(p); } : undefined,
               slots: Array.isArray((ovNow as { layout_slots?: unknown }).layout_slots) ? (ovNow as { layout_slots: string[] }).layout_slots : null } : undefined}>
             {overlays}
           </SpatialDemo>
