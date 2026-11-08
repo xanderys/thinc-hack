@@ -2,7 +2,7 @@
 // The layers menu on the model toolbar: sun heatmap (on the hero card), White context, Solid walls, the ground picture, and
 // how old the pictures on screen are. Options live in whiteMode.ts so the scene and photo layer follow them.
 import { useEffect, useRef, useState } from "react";
-import { imageryLines, setGround, setSolid, setWhite, useViewOpts } from "./whiteMode";
+import { imageryLines, licenceLine, setGround, setSolid, setWhite, useViewOpts } from "./whiteMode";
 import { setMeshWanted, useMeshPref } from "./meshPref";
 import m from "./LayersMenu.module.css";
 
@@ -42,6 +42,7 @@ export default function LayersMenu({ className, up, heatmap }: Props) {
             </div>
           )}
           {lines.map((l) => <p key={l} className={m.age}>{l}</p>)}
+          <p className={m.licence}>{licenceLine(o)}</p>
         </div>
       )}
     </div>

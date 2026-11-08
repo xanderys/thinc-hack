@@ -23,6 +23,7 @@ export type OfferProps = {
   overrides: Overrides; setOverride: (f: keyof Design, v: OverrideValue | undefined) => void;
   approvedAt: string | null; onApprove: (want?: unknown) => Promise<string | null> | void; leadId?: string | null;
   inputs?: HomeInputs;   // the facts the design on screen was drawn from; a fact change re-reads the offers
+  undo?: { can: boolean; run: () => void };   // Undo beside Approve (the last edit to the design)
   docked?: boolean;   // inside the canvas on desktop: marks itself as cover so the house fits beside it
 };
 
@@ -110,6 +111,16 @@ export default function OfferPanel(p: OfferProps) {
     p.setOverride(f, v);
   };
   const handSet = (f: keyof Design) => (hand.has(f) ? overrides[f] : undefined);
+  // On open, the lead's stored kit edits carry their lock again; a stored offer-tab pick (all sizes equal to an offer) does not.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current) return;
+    const keys = Object.keys(overrides) as (keyof Design)[];
+    if (!keys.length) return;
+    seeded.current = true;
+    const tab = (res.variants ?? []).some((v) => (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (v.design[k] ?? null) === (overrides[k] ?? null)));
+    if (!tab && !hand.size) setHand(new Set(keys));
+  }, [overrides]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One source for the four offers: the engine's recommendation for the facts on screen, read without any fixed
   // sizes (a refine reports its offers relative to the sizes it was given, so its planners' pick is the edit).
@@ -170,7 +181,7 @@ export default function OfferPanel(p: OfferProps) {
         </details>
       )}
       <p className={s.confirm}>Confirm on site: roof condition and shade (estimated from the 3D model), meter and grid connection, battery location</p>
-      <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} onApproved={setApproved} />
+      <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} onApproved={setApproved} undo={p.undo} />
     </aside>
   );
 }
