@@ -48,12 +48,12 @@ export const defaultLaunchProps: LaunchProps = {
     start: 0,
     len: 10.0,
     rate: 1,
-    // Composite of 16:25: the house sits left of Zi Yuan, centre about (0.24, 0.73) at 8.5 s
-    // drifting to (0.26, 0.68) by 9.9 s, about a quarter of the width.
-    focusX: 0.24,
-    focusY: 0.71,
+    // Final composite (16:51): the house sits on the back half of the paper, centre about
+    // (0.22, 0.72) at 8.5 s and (0.24, 0.70) at 9.9 s, about 30% of the width.
+    focusX: 0.23,
+    focusY: 0.72,
     pushStart: 8.5,
-    pushScale: 0.7,
+    pushScale: 0.6,
   },
   musicSrc: "music/moon-cut.mp3",
   musicVolume: 1,
