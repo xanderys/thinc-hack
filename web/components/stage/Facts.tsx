@@ -54,13 +54,12 @@ export function showPhone(e: string) {
 }
 
 function PhoneField({ value, onSet }: { value: string | null | undefined; onSet: (v: string) => void }) {
-  const [d, setD] = useState(value ?? "+");
+  const [d, setD] = useState(value ?? "");
   const clean = d.replace(/[\s().-]/g, "");
   const ok = E164.test(clean) && clean !== value;
   return (
     <form className="fc-phone" onSubmit={(e) => { e.preventDefault(); if (ok) onSet(clean); }}>
-      <input type="tel" inputMode="tel" autoComplete="tel" value={d} aria-label="Phone number" aria-invalid={d !== "+" && !E164.test(clean)} onChange={(e) => setD(e.target.value.replace(/[^\d+\s().-]/g, ""))} />
-      <span className="u">{d !== "+" && !E164.test(clean) ? "Country code first, like +49 151 2345678" : "International format"}</span>
+      <input type="tel" inputMode="tel" autoComplete="tel" value={d} aria-label="Phone number" placeholder="Country code first, like +49 151 2345678" autoFocus aria-invalid={d !== "" && !E164.test(clean)} onChange={(e) => setD(e.target.value.replace(/[^\d+\s().-]/g, ""))} />
       <button type="submit" className="fc-set" disabled={!ok}>Set</button>
     </form>
   );
