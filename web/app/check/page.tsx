@@ -273,58 +273,6 @@ function Replay({ ev }: { ev: EvalX | null }) {
   );
 }
 
-function ByComponent({ ev }: { ev: EvalX }) {
-  const tb = ev.baselines?.textbook?.rule, fs = ev.baselines?.floor_slope?.rule, rot = ev.rule_of_thumb_comparison;
-  return (
-    <section className={s.sec}>
-      <h2>Per part, against similar recorded homes and two baselines</h2>
-      <p className={s.lede}>Share of the {n0(ev.split.test)} held-out projects within tolerance. Agreement with designs for similar recorded homes: how often the same installer's own designs agree on near-identical homes.</p>
-      <div className={`${s.panel} ${s.scroll}`}>
-        <table className={s.t}>
-          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r}>Similar recorded homes</th><th className={s.r}>Textbook</th><th className={s.r}>Floor plus slope</th><th>Tolerance</th></tr></thead>
-          <tbody>
-            <tr className={s.prod}><td>Whole design</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.ceiling_design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.textbook_design_match_share ?? ev.overall.baseline_design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.floor_slope_design_match_share)}</td><td className={s.dim}>all four at once</td></tr>
-            {KEYS.map((k) => { const c = ev.components[k]; return (
-              <tr key={k}><td>{NAME[k]}</td><td className={`${s.r} ${s.n}`}>{pct1(c.within_tolerance_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(c.ceiling_within_tolerance_share)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{pct1(c.textbook_within_tolerance_share ?? c.baseline_within_tolerance_share)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{pct1(c.floor_slope_within_tolerance_share)}</td><td className={s.dim}>{c.tolerance}</td></tr>
-            ); })}
-          </tbody>
-        </table>
-      </div>
-      <ul className={s.note} style={{ paddingLeft: 18 }}>
-        {tb && <li>Textbook: {tb}.</li>}
-        {fs && <li>Floor plus slope: {fs}.</li>}
-        {ev.ceiling && <li>{ev.ceiling.method}{ev.ceiling.covered_test_share != null && ` ${pct1(ev.ceiling.covered_test_share)} of test homes covered.`}</li>}
-        <li>{ev.split.method}.</li>
-      </ul>
-
-      <h3>Per installer</h3>
-      <div className={`${s.panel} ${s.scroll}`}>
-        <table className={s.t}>
-          <thead><tr><th>Installer</th><th className={s.r}>Held-out projects</th><th className={s.r}>Draft</th><th className={s.r}>Textbook</th></tr></thead>
-          <tbody>{(Object.entries(ev.per_installer) as [InstallerId, Eval["per_installer"][InstallerId]][]).map(([k, v]) => (
-            <tr key={k}><td>{INSTALLER_NAME[k] ?? k}</td><td className={`${s.r} ${s.n}`}>{n0(v.test)}</td><td className={`${s.r} ${s.n}`}>{pct1(v.design_match_share)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{pct1(v.baseline_design_match_share)}</td></tr>
-          ))}</tbody>
-        </table>
-      </div>
-
-      {rot && (<>
-        <h3>Solar per 1,000 kWh of annual use</h3>
-        <div className={`${s.panel} ${s.scroll}`}>
-          <table className={s.t}>
-            <thead><tr><th>Who</th><th className={s.r}>kWp per MWh</th></tr></thead>
-            <tbody>
-              <tr><td>Reonic rule of thumb</td><td className={`${s.r} ${s.n}`}>{rot.reonic_kwp_per_mwh.toFixed(2)}</td></tr>
-              {Object.entries(rot.planners_kwp_per_mwh).map(([k, v]) => <tr key={k}><td>Planners, {k === "all" ? "both installers" : INSTALLER_NAME[k as InstallerId] ?? k}</td><td className={`${s.r} ${s.n}`}>{v.toFixed(2)}</td></tr>)}
-            </tbody>
-          </table>
-        </div>
-        <p className={s.note}>{rot.note}</p>
-      </>)}
-      <Src><Api path="/api/eval" />, <Doc path="docs/domain.md" />, <Doc path="docs/data-insights.md" />, <a href="/classic/check">full tables</a></Src>
-    </section>
-  );
-}
-
 function Recommenders({ ev }: { ev: EvalX }) {
   const ft = ev.final_test;
   const rows = ft?.rows.filter((r) => r.population === "test half" && r.ground_truth === "lowest option" && r.band === "ours") ?? [];
@@ -395,31 +343,6 @@ function Deviations({ ev }: { ev: EvalX }) {
   );
 }
 
-// Aggregates from engine/lab/qualification_backtest.md (engine-lab); the engine does not serve them.
-const BACKTEST = [
-  { set: "258 held-out board", n: 258, visit: [211, 0.818], call: [45, 0.174], decline: [2, 0.008] },
-  { set: "Clean 126", n: 126, visit: [101, 0.802], call: [23, 0.183], decline: [2, 0.016] },
-] as const;
-
-function Backtest() {
-  return (
-    <section className={s.sec}>
-      <h2>Priority verdict backtest</h2>
-      <p className={s.lede}>The lead verdict rule replayed on held-out homes. Every project was a signed sale, so each Decline is a false decline.</p>
-      <div className={`${s.panel} ${s.scroll}`}>
-        <table className={s.t}>
-          <thead><tr><th>Set</th><th className={s.r}>Priority</th><th className={s.r}>Call first</th><th className={s.r}>Decline</th></tr></thead>
-          <tbody>{BACKTEST.map((b) => (
-            <tr key={b.set}><td>{b.set}</td>{[b.visit, b.call, b.decline].map(([c, p], i) => <td key={i} className={`${s.r} ${s.n}`}>{c} ({pct1(p)})</td>)}</tr>
-          ))}</tbody>
-        </table>
-      </div>
-      <p className={s.note}>Both declines are homes where the draft proposes no solar. Call first fires almost only on the 4,500 kWh default. Roof, north-only and homeowner-declined clauses are not testable on the pack.</p>
-      <Src><Doc path="engine/lab/qualification_backtest.md" branch="engine-lab" />, <Doc path="docs/qualification.md" /></Src>
-    </section>
-  );
-}
-
 function Synthetic({ ev }: { ev: EvalX }) {
   const y = ev.synthetic;
   if (!y) return null;
@@ -475,11 +398,9 @@ export default function Check() {
       <Reality ev={ev} id={real} onOther={() => setReal((x) => x === REALITY_PROJECT ? REALITY_MISS : REALITY_PROJECT)} />
       <Replay ev={ev} />
       {ev && <>
-        <ByComponent ev={ev} />
         <Recommenders ev={ev} />
         <Deviations ev={ev} />
       </>}
-      <Backtest />
       {ev && <Synthetic ev={ev} />}
       <ResetDemo />
     </div>
