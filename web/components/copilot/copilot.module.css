@@ -73,3 +73,10 @@
 .circle:focus-visible { box-shadow: 0 0 0 3px rgba(55, 75, 230, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 8px 24px -6px rgba(27, 29, 32, 0.24); }
 .collapse:focus-visible { background: rgba(55, 75, 230, 0.1); }
 @media (max-width: 600px) { .collapse { flex-basis: 32px; width: 32px; height: 32px; } }
+
+/* Lead page: the circle sits above the tucked Proposed Design pass (--pc-peek, set by the pass) and gets out of the way while the pass is open. */
+.circle { bottom: calc(var(--pc-peek, 0px) + 16px + env(safe-area-inset-bottom)); }
+:global(html:has(.pc-bottom.pc-open)) .circle[data-on] { opacity: 0; transform: translateY(-24px); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { :global(html:has(.pc-bottom.pc-open)) .circle[data-on] { transform: none; } }
+/* Narrow: the map toolbar sits on top of the pass, so the circle clears that too. */
+@media (max-width: 600px) { .circle { bottom: calc(var(--pc-peek, 0px) + 76px + env(safe-area-inset-bottom)); } }
