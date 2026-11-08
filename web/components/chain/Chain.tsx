@@ -59,7 +59,7 @@ const bandText = (b: string) => {
   const last = items.pop();
   return `Reonic's planners rate ${items.length ? `${items.join(", ")} and ${last}` : last}.`;
 };
-const TAG: Record<string, string> = { lead: "from the enquiry", rina: "stated by the homeowner", address: "from the address", default: "assumed" };
+const TAG: Record<string, string> = { lead: "from the enquiry", rina: "stated by the homeowner", address: "from the address", default: "estimated" };
 // One muted palette for every bar, in Reonic's heat-load order; component colours where the segment is a component.
 const PALETTE = ["#f5c35a", "#5b8def", "#4fb477", "#a58bea", "#e3634f", "#f0924a", "#a1a1aa", "#71717b"];
 const SEG_COLOUR: Record<string, string> = {
