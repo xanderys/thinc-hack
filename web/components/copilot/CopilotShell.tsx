@@ -59,6 +59,8 @@ export default function CopilotShell() {
       else { const f = el.querySelector("form")?.getBoundingClientRect(); if (f && f.width) r = { left: f.left, top: f.top, width: f.width, height: f.height }; }
       if (!r) return;
       el.style.setProperty("--from", `translate(${r.left - card.offsetLeft}px, ${r.top - card.offsetTop}px) scale(${r.width / w}, ${r.height / h})`);
+      // The glass keeps its shape on the way: elliptical corner radii cancel the stretch, so the pill grows into the card.
+      el.style.setProperty("--r0x", `${(asCircle ? 28 : 26) * (w / r.width)}px`); el.style.setProperty("--r0y", `${(asCircle ? 28 : 26) * (h / r.height)}px`);
       // The composer line's own travel to the corner on a lead page.
       const dock = el.querySelector("form")?.parentElement as HTMLElement | null;
       if (dock) {
@@ -102,8 +104,11 @@ export default function CopilotShell() {
         </div>
         <div className={s.scrim} onClick={close} aria-hidden />
         <section ref={cardEl} className={s.card} data-copilot-card aria-hidden={!open} aria-label="Copilot">
+          <div className={s.glass} aria-hidden />
+          <div className={s.content}>
           {lead && name && <span className={s.chip}>{name}</span>}
           {open && <Thread onLead={goLead} trailing={<button type="button" className={s.collapse} aria-label="Collapse" aria-expanded onClick={close}><Chev /></button>} />}
+          </div>
         </section>
       </div>
       <button type="button" className={s.circle} aria-label="Open the copilot" data-on={asCircle && !open ? "1" : undefined} data-off={off} tabIndex={asCircle && !open ? 0 : -1} onClick={() => setOpen(true)}>
