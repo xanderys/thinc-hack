@@ -56,8 +56,10 @@ export function useDay(lead: string | null | undefined, day: Season, sizes: Size
     if (!lead) return;
     let live = true;
     setError(null);
-    fetchDay(lead, day, sizes, version).then((r) => { if (!live) return; if (typeof r === "string") setError(r); else setData(r); });
-    return () => { live = false; };
+    // Never a permanent skeleton: no answer in 15 s shows as an error with Try again.
+    const t = setTimeout(() => { if (live) setError("No answer from the engine in 15 s."); }, 15000);
+    fetchDay(lead, day, sizes, version).then((r) => { if (!live) return; clearTimeout(t); if (typeof r === "string") setError(r); else { setError(null); setData(r); } });
+    return () => { live = false; clearTimeout(t); };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const fits = data && data.day === day ? data : null;
   return { data: fits, error };
