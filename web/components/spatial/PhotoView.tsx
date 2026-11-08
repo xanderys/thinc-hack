@@ -39,7 +39,7 @@ function profileOf(): Profile {
 }
 
 export function usePhoto(origin: unknown, scene: SpatialScene | null, active: boolean, opts: { creditBottom?: number; planes?: RoofPlane[]; snapKey?: string } = {}): {
-  available: boolean; on: boolean; setOn: (on: boolean) => void; overlay: ReactNode; under: ReactNode;
+  available: boolean; possible: boolean; want: boolean; on: boolean; setOn: (on: boolean) => void; overlay: ReactNode; under: ReactNode;
 } {
   const on = useMeshPref().want;
   const [status, setStatus] = useState<Status | null>(null);
@@ -150,5 +150,7 @@ export function usePhoto(origin: unknown, scene: SpatialScene | null, active: bo
       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none", opacity: sharp ? 0 : 1, transition: "opacity 400ms ease-out" }} />
   ) : null;
 
-  return { available, on: live && shown, setOn: setMeshWanted, overlay, under };
+  // possible: worth offering in the toolbar (an origin, and no tile check or device check has said no yet).
+  const possible = !!o && !failed && capable !== false && (!status || available);
+  return { available, possible, want: on, on: live && shown, setOn: setMeshWanted, overlay, under };
 }
