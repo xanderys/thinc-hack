@@ -65,16 +65,19 @@ export function WallboxDay({ leadId, sizes, version }: Props) {
   }, [w, hour]);
   if (error && !data) return <Err error={error} retry={() => setTries((t) => t + 1)} />;
   const kw = sizes.wallbox_kw ?? w?.kw ?? null;
+  // ENGINE may send the same car charged at midday; shown only when present, never worked out here.
+  const sc = w?.solar_charging && Array.isArray(w.solar_charging.charging_kwh) ? w.solar_charging : null;
   return (
     <div className="dv">
       <Figs loading={!at || !w} items={[
         { v: w ? n0(w.ev_kwh_year) : "0", u: "kWh a year" },
         { v: at ? pc(at.solar_share_of_charging) : "0 %", u: "from own solar" },
+        ...(sc ? [{ v: pc(sc.solar_share_of_charging), u: "with solar charging" }] : []),
         { v: at ? `${n1(at.full_charge_hours)} h` : "0 h", u: kw ? `full charge at ${n0(kw)} kW` : "full charge" },
       ]} />
       <DayStrip label="A typical day" loading={!data} hour={hour} onHour={setHour} season={season} onSeason={setSeason}
         sunrise={data?.sunrise_h} sunset={data?.sunset_h}
-        series={data ? [{ k: "Solar", v: data.solar_kwh, tone: "solar" }, { k: "Home", v: data.load_kwh, tone: "load" }, ...(w ? [{ k: "Car", v: w.charging_kwh, tone: "accent" as const }] : [])] : []}
+        series={data ? [{ k: "Solar", v: data.solar_kwh, tone: "solar" }, { k: "Home", v: data.load_kwh, tone: "load" }, ...(w ? [{ k: "Car", v: w.charging_kwh, tone: "accent" as const }] : []), ...(sc ? [{ k: "Midday", v: sc.charging_kwh, tone: "soft" as const }] : [])] : []}
         readout={data ? <><b>{n1(data.solar_kwh[hour])}</b> kWh solar{w ? <>, car <b>{n1(w.charging_kwh[hour])}</b> kWh</> : null}</> : null} />
       {error && <Err error={error} retry={() => setTries((t) => t + 1)} />}
     </div>

@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import type { Season } from "./day";
 import "./strip.css";
 
-export type Series = { k: string; v: number[]; tone: "solar" | "load" | "accent" | "line"; axis?: "right"; unit?: string };
+export type Series = { k: string; v: number[]; tone: "solar" | "load" | "accent" | "soft" | "line"; axis?: "right"; unit?: string };
 type Props = {
   series: Series[]; band?: { k: string; v: number[] } | null;
   hour: number; onHour: (h: number) => void;

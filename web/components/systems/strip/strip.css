@@ -9,7 +9,8 @@
 .ds-key li { display: inline-flex; align-items: center; gap: 4px; }
 .ds-sw { width: 10px; height: 6px; border-radius: 2px; display: inline-block; }
 .ds-sw.ds-solar { background: rgba(7, 27, 113, 0.18); box-shadow: inset 0 0 0 1px rgba(7, 27, 113, 0.35); }
-.ds-sw.ds-load, .ds-sw.ds-line { height: 2px; background: var(--navy); }
+.ds-sw.ds-load { height: 2px; background: var(--navy); }
+.ds-sw.ds-line { height: 0; border-top: 2px dashed var(--navy); border-radius: 0; }
 .ds-sw.ds-accent { background: var(--accent); }
 /* Same horizontal travel as the native thumb (about 16 px wide), so the hour line sits under the handle. */
 .ds-plot { display: grid; gap: 3px; padding: 0 8px; }
@@ -22,6 +23,8 @@
 .ds-a.ds-load { fill: rgba(7, 27, 113, 0.05); } .ds-l.ds-load, .ds-line { stroke: var(--navy); }
 .ds-a.ds-accent { fill: var(--accent); opacity: 0.55; } .ds-l.ds-accent { stroke: var(--accent); }
 .ds-a.ds-full { opacity: 0.85; }
+.ds-a.ds-soft { fill: var(--accent); opacity: 0.2; } .ds-l.ds-soft { stroke: var(--accent); stroke-dasharray: 2 2; opacity: 0.7; }
+.ds-sw.ds-soft { background: rgba(55, 75, 230, 0.25); box-shadow: inset 0 0 0 1px rgba(55, 75, 230, 0.6); }
 .ds-temp { stroke: var(--navy); stroke-dasharray: 3 2; stroke-width: 1.25; }
 .ds-track { fill: rgba(7, 27, 113, 0.07); }
 .ds-cur { stroke: var(--ink); stroke-width: 1; opacity: 0.55; }

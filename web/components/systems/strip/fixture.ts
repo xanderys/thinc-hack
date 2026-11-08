@@ -36,9 +36,10 @@ export function mockDay(s: Season, sizes: { battery_kwh?: number; wallbox_kw?: n
   const kwh = sizes.battery_kwh ?? 10;
   const battery = { kwh, ...simBattery(solar, load, kwh, sunset_h), ladder, by_size: Object.fromEntries(ladder.map((k) => { const b = simBattery(solar, load, k, sunset_h); return [String(k), { hours_after_sunset_covered: b.hours_after_sunset_covered, self_sufficiency_share: b.self_sufficiency_share }]; })) };
   const kw = sizes.wallbox_kw ?? 11, need = 9.5;
-  const charging_kwh = H.map((h) => (s === "summer" ? (h >= 11 && h <= 14 ? Math.min(kw, need / 4) : 0) : (h >= 22 || h <= 1 ? need / 4 : 0))).map(r2);
+  const charging_kwh = H.map((h) => (h >= 18 && h <= 21 ? Math.min(kw, need / 4) : 0)).map(r2);
   const wb = (k: number) => ({ solar_share_of_charging: s === "summer" ? 0.62 : 0.18, full_charge_hours: r2(60 / k) });
-  const wallbox = { kw, ev_kwh_year: 2400, charging_kwh, ...wb(kw), ladder: [11, 22], by_size: { "11": wb(11), "22": wb(22) } };
+  const solar_charging = { charging_kwh: H.map((h) => (h >= 11 && h <= 14 ? r2(need / 4) : 0)), solar_share_of_charging: s === "summer" ? 0.81 : 0.22 };
+  const wallbox = { kw, ev_kwh_year: 2400, charging_kwh, solar_charging, ...wb(kw), ladder: [11, 22], by_size: { "11": wb(11), "22": wb(22) } };
   const temp = H.map((h) => r2(-3 + 5 * Math.sin((Math.PI * (h - 8)) / 16) * (h >= 8 && h <= 23 ? 1 : 0.2)));
   const hpkw = sizes.heatpump_kw ?? 7.5;
   const heat_demand_kwh = temp.map((t, h) => r2(Math.max(0.6, (20 - t) * 0.28 * (h >= 23 || h < 5 ? 0.75 : 1))));

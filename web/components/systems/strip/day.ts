@@ -8,7 +8,7 @@ import { call } from "@/lib/client";
 export type Season = "summer" | "winter";
 type BySize<T> = Record<string, T>;
 export type DayBattery = { kwh: number; soc: number[]; charge_kwh: number[]; discharge_kwh: number[]; hours_after_sunset_covered: number; self_sufficiency_share: number; ladder?: number[]; by_size?: BySize<{ hours_after_sunset_covered: number; self_sufficiency_share: number }> };
-export type DayWallbox = { kw: number; ev_kwh_year: number; charging_kwh: number[]; solar_share_of_charging: number; full_charge_hours: number; ladder?: number[]; by_size?: BySize<{ solar_share_of_charging: number; full_charge_hours: number }> };
+export type DayWallbox = { kw: number; ev_kwh_year: number; charging_kwh: number[]; solar_share_of_charging: number; full_charge_hours: number; solar_charging?: { charging_kwh: number[]; solar_share_of_charging: number } | null; ladder?: number[]; by_size?: BySize<{ solar_share_of_charging: number; full_charge_hours: number }> };
 export type DayHeatpump = { kw: number; heat_demand_kwh: number[]; outdoor_temp_c: number[]; heat_load_kw: number; heating_kwh_year: number; electricity_kwh_year: number; cop: number; cost_eur_year: number; boiler_cost_eur_year: number; ladder?: number[]; by_size?: BySize<{ electricity_kwh_year: number; cost_eur_year: number }> };
 export type Day = { day: Season; hours: number; solar_kwh: number[]; load_kwh: number[]; battery: DayBattery | null; wallbox: DayWallbox | null; heatpump: DayHeatpump | null; sunrise_h: number; sunset_h: number };
 export type Sizes = { battery_kwh?: number | null; wallbox_kw?: number | null; heatpump_kw?: number | null };
