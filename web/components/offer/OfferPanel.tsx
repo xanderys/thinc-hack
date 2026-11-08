@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Design, DesignResponse, Economics, HomeInputs, Lead, OverrideValue, Overrides, Variant as EngineVariant } from "@/lib/api";
 import { call } from "@/lib/client";
-import { designOf } from "@/lib/engineCache";
+import { catalogueOf, designOf, type Catalogue } from "@/lib/engineCache";
 import type { Variant as StageVariant } from "@/components/stage/Plan";
 import type { Check, RoofModel } from "@/components/spatial/types";
 import { eur, n0, n2, pc, type Part } from "./format";
@@ -13,9 +13,8 @@ import KitSheet from "./KitSheet";
 import VariantTabs, { rowsOf, type Row } from "./VariantTabs";
 import InlineOverride from "./InlineOverride";
 import Approve from "./Approve";
-import { brandsOf, checkLine, findCheck, skusOf, years, type SkuPart } from "./facts";
+import { brandsOf, checkLine, findCheck, investmentOf, skusOf, years, type Rates, type SkuPart } from "./facts";
 import Info, { InfoRows } from "./Info";
-import RateCard from "./RateCard";
 import s from "./offer.module.css";
 
 export type OfferProps = {
@@ -27,6 +26,7 @@ export type OfferProps = {
   approvedAt: string | null; onApprove: (want?: unknown) => Promise<string | null> | void; leadId?: string | null;
   inputs?: HomeInputs;   // the facts the design on screen was drawn from; a fact change re-reads the offers
   undo?: { can: boolean; run: () => void };   // Undo beside Approve (the last edit to the design)
+  inPass?: boolean;   // inside the Proposed Design pass, which shows solar, battery and investment itself
   docked?: boolean;   // inside the canvas on desktop: marks itself as cover so the house fits beside it
 };
 
@@ -92,16 +92,23 @@ export default function OfferPanel(p: OfferProps) {
   const modules = target?.layout?.panels ?? null;
 
   // Package sizes the installer sells for each component: the engine's alternatives and the offers' sizes.
+  // The catalogue's size ladder (battery 5 / 7 / 9 / 10 / 18 kWh and so on) is what the chooser offers; without it,
+  // the engine's alternatives and the offers' sizes.
+  const [ladder, setLadder] = useState<Catalogue["ladder"] | null>(null);
+  useEffect(() => { let on = true; void catalogueOf().then((c) => { if (on && c?.ladder) setLadder(c.ladder); }); return () => { on = false; }; }, []);
+  const LADDER: Partial<Record<keyof Design, "battery" | "inverter" | "heatpump" | "wallbox">> = { battery_kwh: "battery", inverter_kw: "inverter", heatpump_kw: "heatpump", wallbox_kw: "wallbox" };
   const sizes = useMemo(() => {
     const out: Partial<Record<keyof Design, number[]>> = {};
     (Object.keys(PART) as (keyof Design)[]).forEach((f) => {
+      const l = LADDER[f] && ladder?.[LADDER[f]!];
+      if (l?.length) { out[f] = [...l].sort((x, y) => x - y); return; }
       const c = COMP[f] ? res.components[COMP[f]!] : null;
       const xs = [...(c?.alternatives ?? []).map((x) => x.size), ...(res.variants ?? []).map((v) => v.design[f]), d[f]]
         .filter((x): x is number => typeof x === "number" && x > 0);
       out[f] = [...new Set(xs.map((x) => Math.round(x * 100) / 100))].sort((x, y) => x - y);
     });
     return out;
-  }, [res]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [res, ladder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Locks belong to what the planner chose on a line; a variant's sizes are the variant, not a lock.
   const [hand, setHand] = useState<Set<keyof Design>>(new Set());
@@ -144,7 +151,7 @@ export default function OfferPanel(p: OfferProps) {
     const mark = <R extends Row>(r: R): R => ({ ...r, approved: !cause && !!approved?.design && same(r.design, approved.design) && (approved.variant === r.key || approved.variant === "edit" || r.key === "edit") });
     const four = (offers?.rows ?? opening.current ?? []).map((r) => ({ ...r, selected: same(r.design) }));
     if (!four.length || four.some((r) => r.selected)) return four.map(mark);
-    return [...four, { key: "edit" as const, name: "Your edit", line: "as you changed it", design: d, e, pick: null, selected: true }].map(mark);
+    return [...four, { key: "edit" as const, name: "Your edit", line: "As you changed it", design: d, e, pick: null, selected: true }].map(mark);
   }, [offers, d, e, approved, cause]); // eslint-disable-line react-hooks/exhaustive-deps
   // DC/AC ratio behind an "i" on the inverter row (something the row does not show).
   const line = (re: RegExp) => { const c = findCheck(checks, re); return c ? checkLine(c) : null; };
@@ -158,7 +165,7 @@ export default function OfferPanel(p: OfferProps) {
   const tiles = [
     { k: "Solar", v: d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "No solar" },
     { k: "Battery", v: d.battery_kwh ? `${n2(d.battery_kwh)} kWh` : "No battery" },
-    { k: "Investment", v: eur(e.capex_eur), info: <RateCard design={d} total={e.capex_eur} assumptions={e.assumptions} modules={modules} skus={skus} /> },
+    { k: "Investment", v: eur(investmentOf(res as Parameters<typeof investmentOf>[0])) },
     { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
     { k: "Autarky", v: pc(e.autarky_share) },
     { k: "Break-even", v: breakEven == null ? "20+ years" : years(breakEven) },
@@ -167,9 +174,9 @@ export default function OfferPanel(p: OfferProps) {
 
   return (
     <aside ref={box} className={`${s.panel} ${p.docked ? s.docked : s.under}`} aria-label="Offer" data-cover={p.docked ? "" : undefined}>
-      <Tiles items={tiles} mode={reduce ? "fade" : mode} pending={pending} />
+      <Tiles items={p.inPass ? tiles.slice(3) : tiles} mode={reduce ? "fade" : mode} pending={pending} />
       <VariantTabs rows={rows} pending={pending || offersPending} onPick={(r) => { if (!r.pick) return; setHand(new Set()); p.onVariant(r.pick); }} />
-      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} assumptions={e.assumptions} skus={skus} info={dcac ? { inverter_kw: <Info label="DC/AC ratio"><InfoRows rows={[dcac]} /></Info> } : undefined} note="Estimates until the site visit" changed={hl.parts} flash={hl.n}
+      <KitSheet kit={{ ...d, modules }} total={e.capex_eur} assumptions={e.assumptions} rates={(res as { rates?: Rates }).rates} skus={skus} info={dcac ? { inverter_kw: <Info label="DC/AC ratio"><InfoRows rows={[dcac]} /></Info> } : undefined} note="Estimates until the site visit" changed={hl.parts} flash={hl.n}
         edit={(f, label, content) => (
           <InlineOverride field={f} text={label} content={content} unit={UNIT[f]} sizes={sizes[f] ?? []} current={d[f]} set={handSet(f)} fixed={overrides[f] !== undefined}
             canNone={f !== "pv_kwp" && f !== "inverter_kw"} onChoose={choose}

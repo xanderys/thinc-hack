@@ -10,9 +10,13 @@ import { REALITY_MISS, REALITY_PROJECT } from "@/lib/demo";
 import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, unnamed as named } from "@/lib/stage";
 import s from "./check.module.css";
 
-// The population, counted from the engine's own eval payload (never typed): "Two installers".
-const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
-const installersWord = (n: number) => `${WORDS[n] ?? n0(n)} installer${n === 1 ? "" : "s"}`;
+// The population as the engine counts it (projects_total, engine restart 10:30): "1,619 projects in the data pack".
+// Without it, no project count at all (split.train + split.test is the older board's population).
+const projectCount = (ev: Eval) => {
+  const pt = (ev as unknown as { projects_total?: { in_pack?: number; exam_scored?: number } }).projects_total;
+  return pt?.in_pack != null ? `${n0(pt.in_pack)} projects in the data pack` : null;
+};
+const examScored = (ev: Eval, sealedN?: number) => (ev as unknown as { projects_total?: { exam_scored?: number } }).projects_total?.exam_scored ?? sealedN;
 // Fields /api/eval sends beyond lib/api.ts (docs/api.md v2.7).
 type Row4 = { population: string; ground_truth: string; band: string; engine: string; n: number; pv: number; battery: number; wallbox: number; heatpump?: number; all_four: number };
 type EvalX = Eval & {
@@ -71,7 +75,7 @@ function Headline({ ev, err, retry }: { ev: EvalX | null; err: string | null; re
   return (
     <section className={s.head}>
       <h2>Whole design within tolerance on {n0(sealed?.n ?? ev.split.test)} {sealed ? "sealed held-out signed homes, scored once" : "held-out signed projects"}</h2>
-      <p className={s.src}>{installersWord(Object.keys(ev.per_installer ?? {}).length)}, {n0(ev.split.train + ev.split.test)} projects in the data pack; {n0(sealed?.n ?? ev.split.test)} held out and scored here.</p>
+      {(() => { const pc = projectCount(ev), ex = examScored(ev, sealed?.n); const parts = [pc, ex != null ? `${n0(ex)} scored in the exam` : null].filter(Boolean); return parts.length ? <p className={s.src}>{parts.join(", ")}</p> : null; })()}
       <dl className={s.figs}>
         <div className={s.us}><dt>Marquee draft</dt><dd>{pct1(sealed?.all_four ?? o.design_match_share)}</dd></div>
         {!sealed && o.ceiling_design_match_share != null && <div className={s.them}><dt>Agreement with designs for similar recorded homes</dt><dd>{pct1(o.ceiling_design_match_share)}</dd></div>}

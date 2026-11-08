@@ -10,7 +10,7 @@
 import type { ReactNode } from "react";
 import { eur, n1, type Part } from "./format";
 import Num from "./Num";
-import { skuName, type Sku, type SkuPart } from "./facts";
+import { invoiceOf, skuShort, type Rates, type RowKey2, type Sku, type SkuPart } from "./facts";
 import RateCard from "./RateCard";
 import s from "./kitSheet.module.css";
 
@@ -24,8 +24,8 @@ const MODULE_KWP = 0.45;   // the engine's standard module when the layout gives
 
 type Row = { key: string; field?: KitField; part?: Part; qty: number; name: string; spec?: string; icon: ReactNode };
 
-export default function KitSheet({ kit, total, assumptions, skus, note, edit, info, changed, flash = 0, className }: {
-  kit: KitSheetKit; total?: number | null; assumptions?: string[] | null; skus?: Partial<Record<SkuPart, Sku>>; note?: string; info?: Partial<Record<KitField, ReactNode>>; edit?: (f: KitField, label: string, content: ReactNode) => ReactNode;
+export default function KitSheet({ kit, total, assumptions, rates, skus, note, edit, info, changed, flash = 0, className }: {
+  kit: KitSheetKit; total?: number | null; assumptions?: string[] | null; rates?: Rates | null; skus?: Partial<Record<SkuPart, Sku>>; note?: string; info?: Partial<Record<KitField, ReactNode>>; edit?: (f: KitField, label: string, content: ReactNode) => ReactNode;
   changed?: Part[]; flash?: number; className?: string;
 }) {
   if (!kit) return null;   // the design is not in yet
@@ -43,8 +43,12 @@ export default function KitSheet({ kit, total, assumptions, skus, note, edit, in
   if (kit.heatpump_kw) rows.push({ key: "hp", field: "heatpump_kw", part: "heatpump", qty: 1, name: "Heat pump", spec: `${n1(kit.heatpump_kw)} kW`, icon: <HeatPump /> });
   // The product name from the data where the engine sends one (engine v2.15), else the generic part name.
   const SKU_OF: Record<string, SkuPart> = { pv: "module", inv: "inverter", bat: "battery", wb: "wallbox", hp: "heatpump" };
-  for (const r of rows) { const s = skus?.[SKU_OF[r.key]]; if (s) r.name = skuName(s); }
+  for (const r of rows) { const k = SKU_OF[r.key], s = k && skus?.[k]; if (s) r.name = skuShort(s, k); }
   if (rows.length) rows.push({ key: "inst", qty: 1, name: "Installation and services", icon: <Cabinet /> });
+  // Each row's price and the total as their exact sum (no rounding line); the rate card shows the arithmetic.
+  const pvRow = rows.find((r) => r.key === "pv");
+  const inv = invoiceOf(kit, rates, assumptions, total, pvRow?.qty, { pv: skus?.module?.name, bat: skus?.battery?.name });
+  const sum = inv ? inv.total : total;
   const hot = new Set(changed ?? []);
 
   return (
@@ -60,11 +64,12 @@ export default function KitSheet({ kit, total, assumptions, skus, note, edit, in
               return r.field && edit ? edit(r.field, r.spec ? `${r.name} ${r.spec}` : r.name, content) : content;
             })()}</span>
             {r.field && info?.[r.field] && <span className={s.rowInfo}>{info[r.field]}</span>}
+            {inv && <span className={s.price}>{(() => { const v = inv.price[r.key as RowKey2]; return v == null ? "" : v === "included" ? "included" : <Num v={eur(v)} />; })()}</span>}
           </li>
         ))}
       </ol>
       {total != null && rows.length > 0 && (
-        <p className={s.total}><span>Total</span><b><Num v={eur(total)} /></b><em>estimate</em>{assumptions && <RateCard design={kit} total={total} assumptions={assumptions} modules={kit.modules} skus={skus} />}</p>
+        <p className={s.total}><span>Total</span><b><Num v={eur(sum ?? total)} /></b><em>estimate</em>{inv && <RateCard calc={inv.calc} />}</p>
       )}
       {note && total != null && rows.length > 0 && <p className={s.note}>{note}</p>}
     </div>
