@@ -11,15 +11,31 @@ function limited(ip: string) {
   if (hits.size > 5000) hits.clear();
   return h.length > 10;
 }
-async function released(req: NextRequest) {
-  const id = await req.clone().json().then((b) => (typeof b?.lead_id === "string" ? b.lead_id : null)).catch(() => null);
-  if (!id || !/^[\w-]+$/.test(id)) return false;
+// A lead still on its call: the homeowner's call screen draws its scene and sends what Rina hears.
+const CALLING = new Set(["draft", "in_call"]);
+async function statusOf(id: string | null, origin: string): Promise<string | null> {
+  if (!id || !/^[\w-]+$/.test(id)) return null;
   // Through this app's own proxy, which adds the intake secret server side.
-  const r = await fetch(`${req.nextUrl.origin}/api/leads/${id}`, { cache: "no-store" }).catch(() => null);
-  if (!r?.ok) return false;
+  const r = await fetch(`${origin}/api/leads/${id}`, { cache: "no-store" }).catch(() => null);
+  if (!r?.ok) return null;
   const l = await r.json().catch(() => null);
-  return RELEASED.has(l?.status);
+  return typeof l?.status === "string" ? l.status : null;
 }
+const bodyOf = (req: NextRequest) => req.clone().json().catch(() => null) as Promise<Record<string, unknown> | null>;
+async function released(req: NextRequest, alsoCalling = false) {
+  const b = await bodyOf(req);
+  const st = await statusOf(typeof b?.lead_id === "string" ? b.lead_id : null, req.nextUrl.origin);
+  return !!st && (RELEASED.has(st) || (alsoCalling && CALLING.has(st)));
+}
+// record_fact on the call screen: 20 facts a minute per lead.
+const factHits = new Map<string, number[]>();
+function factLimited(id: string) {
+  const now = Date.now(), h = (factHits.get(id) ?? []).filter((t) => now - t < 60_000);
+  h.push(now); factHits.set(id, h);
+  if (factHits.size > 5000) factHits.clear();
+  return h.length > 20;
+}
+const FACT_FIELDS = new Set(["annual_demand_kwh", "num_inhabitants", "heating_type", "boiler_age_years", "has_ev", "ev_planned", "house_built_year", "has_solar", "heating_demand_kwh"]);
 
 const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#071b71"/><path d="M4 22 L22 8 L28 8 L10 22Z" fill="#ffc043"/></svg>`;
 
@@ -41,7 +57,17 @@ export async function middleware(req: NextRequest) {
   if ((p === "/api/write" || p === "/api/explain/layers") && req.method === "POST") {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
     if (limited(ip)) return new NextResponse(JSON.stringify({ error: "Too many requests; try again in a minute." }), { status: 429, headers: { "content-type": "application/json" } });
-    if (await released(req)) return NextResponse.next();
+    if (await released(req, p === "/api/explain/layers")) return NextResponse.next();
+    return new NextResponse("Not found", { status: 404 });
+  }
+  // A fact heard on the call: only call facts, only the record_fact fields, only while the lead is on its call.
+  if (p === "/api/intake/step" && req.method === "POST") {
+    const b = await bodyOf(req), id = typeof b?.lead_id === "string" ? b.lead_id : null;
+    const facts = b?.facts_so_far && typeof b.facts_so_far === "object" ? Object.keys(b.facts_so_far as object) : [];
+    const shapeOk = !!b && Object.keys(b).every((k) => k === "lead_id" || k === "facts_so_far" || k === "source") && b.source === "call" && facts.length > 0 && facts.every((f) => FACT_FIELDS.has(f));
+    if (!id || !shapeOk) return new NextResponse("Not found", { status: 404 });
+    if (factLimited(id)) return new NextResponse(JSON.stringify({ error: "Too many facts; try again in a minute." }), { status: 429, headers: { "content-type": "application/json" } });
+    if (CALLING.has((await statusOf(id, req.nextUrl.origin)) ?? "")) return NextResponse.next();
     return new NextResponse("Not found", { status: 404 });
   }
   if ((p === "/api/health" || p === "/api/version") && req.method === "GET") return NextResponse.next();

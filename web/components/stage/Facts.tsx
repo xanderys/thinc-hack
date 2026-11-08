@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { setClientCard, useClientCard } from "./clientCard";
 import type { HeatingType, HomeInputs, RoofResult } from "@/lib/api";
 import { n0 } from "@/lib/stage";
@@ -128,6 +128,20 @@ export default function Facts({ inputs, roof, onFact, hidden, flash, slot, origi
   // A fact the planner sets here is stated from then on, whatever the lead said before.
   const [edited, setEdited] = useState<Set<string>>(new Set());
   const specs = SPECS.filter((s) => s.f !== hidden);
+  // A fact that changes while the card is up (a live call, a WhatsApp reply) gets one soft highlight.
+  const shown = specs.map((s) => { const b = s.state(inputs, roof); return [s.f, `${b === "missing" ? "" : s.value(inputs, roof)}|${sources?.[s.f] ?? b}`] as const; });
+  const last = useRef<Map<string, string> | null>(null);
+  const [live, setLive] = useState<{ fields: Set<string>; n: number }>({ fields: new Set(), n: 0 });
+  const sig = shown.map(([f, v]) => f + "=" + v).join(";");
+  useEffect(() => {
+    const prev = last.current; last.current = new Map(shown);
+    if (!prev) return;
+    const changed = new Set(shown.filter(([f, v]) => prev.has(f) && prev.get(f) !== v).map(([f]) => f));
+    if (!changed.size) return;
+    setLive((x) => ({ fields: changed, n: x.n + 1 }));
+    const t = setTimeout(() => setLive((x) => ({ ...x, fields: new Set() })), 1200);
+    return () => clearTimeout(t);
+  }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
   const cur = specs.find((s) => s.f === open);
   useEffect(() => {
     if (!open) return;
@@ -135,7 +149,7 @@ export default function Facts({ inputs, roof, onFact, hidden, flash, slot, origi
     addEventListener("keydown", on); return () => removeEventListener("keydown", on);
   }, [open]);
   const cell = (key: string, g: Glyph, label: string, st: string, value: string | null, via: boolean, field: Field | "phone", mark?: string) => (
-    <button key={key} type="button" className="fq" data-flash={flash === field ? "" : undefined} data-state={st} aria-expanded={open === field} aria-controls="fc-panel" onClick={() => setOpen((o) => o === field ? null : field)}>
+    <button key={key} type="button" className="fq" data-flash={flash === field || live.fields.has(field) ? "" : undefined} data-state={st} aria-expanded={open === field} aria-controls="fc-panel" onClick={() => setOpen((o) => o === field ? null : field)}>
       <Glyph g={g} />
       {st === "missing"
         ? <span className="fq-need">Needs: {label.toLowerCase()}</span>
