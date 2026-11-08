@@ -107,3 +107,8 @@ Hold time is 1.5 times the VO for the beat, rounded up. Record every shot at 192
 | 11 Close | `https://marquee-reonic.vercel.app/h/db67b84935`, hero (read only) | Panels chip, 3D | Optional slow drag to orbit; press nothing else | 20 s |
 
 After capture: delete or reset the test lead so it never reaches the board, and check db67b84935 still reads Draft, 10.35 kWp, 10 kWh, €15,820.
+
+## Recapture plan after the 08:18 reset (THINC HACK MASTER, 05:50 Munich)
+- Hero db67b84935 is read-only: 10.35 kWp, 10 kWh, €14,620, no car, and the Wallbox chip shows a dotted "+". Capture it as it stands.
+- Refinement beat (replaces the battery change): on a fresh test lead, set the Electric car chip. The wallbox, car and cable appear and the figures tween. Record that motion as a clip.
+- Never edit chips, variants, the chooser or Complete on any pinned lead.
