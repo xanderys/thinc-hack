@@ -390,11 +390,15 @@ export class SpatialScene {
     const b = this.unitBox(kind);
     if (!b || this.box.isEmpty()) return null;
     const c = b.getCenter(new THREE.Vector3());
-    const small = kind === "wallbox", d = small ? 8 : 15;
+    // Heat pump 11 m out (about 140 px tall at 1440, eave still in the frame), battery 15 m, wallbox 8 m. On a phone
+    // the aim drops 1 m, so the unit and its pill sit above the toolbar along the canvas foot.
+    const small = kind === "wallbox", narrow = this.host.clientWidth < 600;
+    const d = small ? 8 : kind === "heatpump" ? 11 : 15;
     const n = small ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
     n.applyAxisAngle(new THREE.Vector3(0, 1, 0), (small ? 1 : -1) * (15 * Math.PI) / 180);
     const eave = this.eaveY > 0 ? this.eaveY : 5.5;
-    const tgt = new THREE.Vector3(c.x, small ? 1.5 : THREE.MathUtils.clamp(eave - 2.8, 1.8, 2.8), c.z);
+    const y = small ? 1.5 : kind === "heatpump" ? THREE.MathUtils.clamp(eave - 2.3, 1.6, 3.0) : THREE.MathUtils.clamp(eave - 2.8, 1.8, 2.8);
+    const tgt = new THREE.Vector3(c.x, Math.max(1.0, y - (narrow ? 1.0 : 0)), c.z);
     const pos = tgt.clone().addScaledVector(n, d).setY(1.7);
     return { tgt, pos };
   }

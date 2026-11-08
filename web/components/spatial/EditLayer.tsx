@@ -92,8 +92,19 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet, 
           u.style.visibility = ok ? "visible" : "hidden";
           u.style.transform = `translate(${px.toFixed(1)}px, ${my.toFixed(1)}px)`;
           if (pop) {
-            const h = pop.offsetHeight, x = right ? px + pw + 6 : px - popW;
-            pop.style.transform = `translate(${Math.max(8, x).toFixed(0)}px, ${Math.max(8, Math.min(H - h - 8, my - h / 2)).toFixed(0)}px)`;
+            // Beside the pill when the row fits there; otherwise above the unit, centred on it, so it never covers it.
+            const h = pop.offsetHeight, pwid = pop.offsetWidth, x = right ? px + pw + 6 : px - popW;
+            const fits = x >= 8 && x + pwid <= W - 8;
+            const tx = fits ? x : Math.max(8, Math.min(W - pwid - 8, (x0 + x1) / 2 - pwid / 2));
+            const ty = fits ? Math.max(8, Math.min(H - h - 8, my - h / 2)) : Math.max(8, y0 - h - 10);
+            pop.style.transform = `translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px)`;
+          }
+          // The unit itself is a target too: a clear hit area over its box on screen opens the same size row.
+          const hit = root.querySelector<HTMLElement>("[data-unit-hit]");
+          if (hit) {
+            hit.style.visibility = ok ? "visible" : "hidden";
+            hit.style.transform = `translate(${x0.toFixed(0)}px, ${y0.toFixed(0)}px)`;
+            hit.style.width = `${Math.max(24, x1 - x0).toFixed(0)}px`; hit.style.height = `${Math.max(24, y1 - y0).toFixed(0)}px`;
           }
         }
       }
@@ -105,7 +116,7 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet, 
   // A tap elsewhere or Esc closes the size popover.
   useEffect(() => {
     if (!open) return;
-    const away = (e: PointerEvent) => { if (!box.current?.querySelector("[data-pop]")?.contains(e.target as Node) && !box.current?.querySelector("[data-unit]")?.contains(e.target as Node)) setOpen(false); };
+    const away = (e: PointerEvent) => { if (!box.current?.querySelector("[data-pop]")?.contains(e.target as Node) && !box.current?.querySelector("[data-unit]")?.contains(e.target as Node) && !box.current?.querySelector("[data-unit-hit]")?.contains(e.target as Node)) setOpen(false); };
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopImmediatePropagation(); setOpen(false); } };
     document.addEventListener("pointerdown", away); addEventListener("keydown", esc, true);
     return () => { document.removeEventListener("pointerdown", away); removeEventListener("keydown", esc, true); };
@@ -134,6 +145,9 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet, 
       {slots.filter((sl) => !sl.placed).map((sl) => (
         <span key={sl.id} className={s.mark} data-at={JSON.stringify(sl.c)} data-n={JSON.stringify(sl.n)} aria-hidden="true"><span>+</span></span>
       ))}
+      {unit && has && sizing !== unit && (
+        <button type="button" data-unit-hit="" className={s.unitHit} tabIndex={-1} aria-hidden="true" onClick={() => setOpen((x) => !x)} />
+      )}
       {unit && sizing === unit && !has ? (
         <span data-unit="" className={`${s.unit} b-skel-pill`} aria-busy="true" aria-label={`Sizing the ${NAME[unit]}`}><span className="b-skel" aria-hidden="true" /></span>
       ) : unit && (has ? (

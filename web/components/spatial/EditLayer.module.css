@@ -79,3 +79,4 @@
 .chip::after, .pop .remove::after { content: ""; position: absolute; inset: -10px -2px; } /* a 44 px tall target round a small chip */
 .pop .remove { min-height: 24px; padding: 0 6px; border: 0; background: none; font-size: 10.5px; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; position: relative; }
 .chip[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.unitHit { position: absolute; left: 0; top: 0; pointer-events: auto; padding: 0; border: 0; background: transparent; cursor: pointer; visibility: hidden; -webkit-tap-highlight-color: transparent; }
