@@ -1,0 +1,99 @@
+/* Systems hero (8 Nov 2026): the model dominates, four Systems chips drive it, the offer is a tucked pass.
+   Global on purpose: the layout overrides reach the chain's module classes and Stage's facts row, gated by .sys-on. */
+
+/* Heading and chips */
+.sys-head { display: grid; gap: 8px; min-width: 0; }
+.sys-h { margin: 0; font-family: var(--font-sans), sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--navy); }
+.sys-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.sys-chips::-webkit-scrollbar { display: none; }
+.sys-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px 0 10px;
+  border: 1px solid var(--rule-2); border-radius: 999px; background: #fff; color: var(--ink-2);
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  transition: background-color 200ms var(--spring-smooth), border-color 200ms var(--spring-smooth), color 200ms var(--spring-smooth);
+}
+.sys-chip i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.sys-chip[aria-selected="true"] { background: var(--navy); border-color: var(--navy); color: #fff; }
+.sys-chip.hot:not([aria-selected="true"]) { border-color: var(--c); background: #fff7e6; color: var(--ink); }
+.sys-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 760px) { .sys-chip { min-height: 40px; } }
+
+/* Proposed Design pass */
+.pc-card { background: #fff; border: 1px solid var(--rule); display: flex; flex-direction: column; min-height: 0; }
+.pc-pass {
+  all: unset; box-sizing: border-box; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;
+  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "h chev" "figs chev"; align-items: center; gap: 2px 12px;
+  padding: 12px 16px; width: 100%; position: relative;
+}
+.pc-pass:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pc-h { grid-area: h; font-family: var(--font-sans), sans-serif; font-size: 15px; font-weight: 600; color: var(--navy); letter-spacing: -0.01em; }
+.pc-figs { grid-area: figs; display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 15px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pc-fig { display: inline-block; border-radius: 6px; padding: 0 3px; margin: 0 -3px; }
+.pc-skel {
+  color: transparent; background: linear-gradient(90deg, var(--sheet-2) 0%, #e6e9f2 50%, var(--sheet-2) 100%) 0 0 / 200% 100%;
+  animation: pc-skel 1.2s linear infinite;
+}
+@keyframes pc-skel { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.pc-lit { animation: pc-lit 1400ms var(--spring-smooth) both; }
+@keyframes pc-lit { 0%, 30% { background-color: #fff0c2; } 100% { background-color: transparent; } }
+.pc-chev { grid-area: chev; color: var(--ink-3); transition: transform 300ms var(--spring-smooth); }
+.pc-open .pc-chev { transform: rotate(180deg); }
+.pc-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.pc-body > aside { border: 0; border-radius: 0; margin: 0; padding-top: 4px; }
+
+/* Phone: fixed above the sentence bar, rising over the page; a scrim dims what it covers. */
+.pc-bottom .pc-card {
+  position: fixed; left: 0; right: 0; bottom: var(--say-h, 64px); z-index: 19; height: min(84dvh, 760px);
+  border-radius: 16px 16px 0 0; border-bottom: 0; box-shadow: 0 -6px 24px rgba(7, 27, 113, 0.10); will-change: transform;
+}
+.pc-bottom .pc-pass { padding-top: 16px; }
+.pc-grip { position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--rule-2); }
+.pc-bottom .pc-body { flex: 1; padding: 0 4px calc(8px + env(safe-area-inset-bottom)); }
+.pc-scrim { position: fixed; inset: 0; z-index: 18; background: rgba(7, 27, 113, 0.28); opacity: 0; pointer-events: none; }
+
+/* Desktop: the pass at the canvas's right edge; the panel slides out from the right under it. */
+.pc-right { position: absolute; top: 12px; right: 12px; bottom: max(64px, calc(var(--say-h, 0px) + 42px)); z-index: 6; width: 380px; pointer-events: none; }
+.pc-right .pc-card { height: 100%; background: transparent; border: 0; gap: 8px; }
+.pc-right .pc-pass { pointer-events: auto; background: #fff; border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--shadow); flex: none; }
+.pc-right .pc-body { pointer-events: auto; flex: 0 1 auto; background: #fff; border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--shadow); will-change: transform; }
+
+/* Reduce Motion: no slide, the panel crossfades in place. */
+.pc-reduce .pc-body { transition: opacity 200ms ease-out; opacity: 0; }
+.pc-reduce.pc-open .pc-body { opacity: 1; }
+.pc-reduce .pc-scrim { transition: opacity 200ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .pc-skel, .pc-lit { animation: none; } .pc-lit { background-color: #fff0c2; } .pc-chev { transition: none; } }
+
+/* ---------- Layout with the Systems hero on (.sys-on on the chain root) ---------- */
+/* The info block is the open step card: its title is the chip's, so it goes. */
+.sys-on [class*="chain_it__"] { display: none; }
+.sys-on [class*="chain_rail__"] { gap: 0; }
+
+@media (max-width: 760px) {
+  /* Facts row compact above the model: one scrolling line of small chips. */
+  .st-open:has(.sys-on) > .t-bar { gap: 6px; padding-bottom: 6px; }
+  .st-open:has(.sys-on) .t-chip summary { min-height: 30px; font-size: 12.5px; padding: 0 10px; }
+  .st-open:has(.sys-on) .t-mail { display: none; }
+
+  .sys-on { padding-bottom: 150px; }
+  .sys-on [class*="chain_hero__"] { position: relative; top: auto; order: 1; height: 50vh; min-height: 320px; margin-bottom: 12px; }
+  .sys-on .sys-under { order: 2; margin-bottom: 10px; }
+  .sys-on [class*="chain_rail__"] { order: 3; }
+  .sys-on [class*="chain_shadeUnder__"] { order: 4; margin: 10px 0 0; }
+  .sys-on [class*="chain_item__"] { scroll-margin-top: 0; }
+}
+
+@media (min-width: 761px) {
+  /* The left column folds away: the model takes the full width, the blocks lie over it. */
+  .sys-on, .st-open > .sys-on[class*="chain_root__"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .sys-on [class*="chain_hero__"], .st-open > .sys-on [class*="chain_hero__"] { grid-column: 1; grid-row: 1; }
+  .sys-on [class*="chain_say__"], .st-open > .sys-on [class*="chain_say__"] { grid-column: 1; grid-row: 1; }
+  .sys-col {
+    position: absolute; top: 12px; left: 12px; bottom: max(64px, calc(var(--say-h, 0px) + 42px)); z-index: 4; width: 360px;
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  }
+  .sys-col > * { pointer-events: auto; }
+  .sys-col .sys-head { background: #fff; border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--shadow); padding: 12px; flex: none; }
+  .sys-col [class*="chain_rail__"] { overflow-y: auto; flex: 0 1 auto; min-height: 0; padding: 0; scrollbar-width: thin; }
+  .sys-col [class*="chain_item__"] { box-shadow: var(--shadow); }
+  .sys-col [class*="chain_shadeCard__"] { position: static; width: auto; flex: none; box-shadow: var(--shadow); }
+}
