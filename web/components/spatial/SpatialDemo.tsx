@@ -38,7 +38,7 @@ type Props = {
   leadId?: string;                    // sent with the layers call so call facts tag as Rina
   onLayers?: (l: Layers) => void;     // the one layers response, for bars, checks and the energy numbers
   sunTint?: boolean;                  // tint the roof faces by sun with the modules showing (per-panel shading not in yet)
-  tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void } }) => ReactNode;
+  tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void }; zoom?: { can: { in: boolean; out: boolean }; by: (d: 1 | -1) => void }; north?: ReactNode }) => ReactNode;
   children?: ReactNode;               // overlays drawn over the canvas
   system?: System | null;             // the Systems chip: its layer on the model and its camera (systems.ts)
   onScene?: (sc: SpatialScene | null) => void; // the live scene, for callers that drive it directly (scene.setSystem)
@@ -455,10 +455,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {photo.under}
         {!ready && !absent && !layersErr && <>
           <svg className={s.houseSkel} viewBox="0 0 240 160" aria-hidden><defs><linearGradient id="hsk" x1="0" x2="1"><stop offset="0" stopColor="#e3e6ef" /><stop offset="0.5" stopColor="#f3f4f8" /><stop offset="1" stopColor="#e3e6ef" /><animate attributeName="x1" values="-1;1" dur="1.2s" repeatCount="indefinite" /><animate attributeName="x2" values="0;2" dur="1.2s" repeatCount="indefinite" /></linearGradient></defs><path d="M30 84 L120 24 L210 84 V148 H30 Z" fill="url(#hsk)" /></svg>
-          {!homeowner && <div className={s.wait}>Building the 3D model of the house</div>}
         </>}
-        {ready && busy && !homeowner && <div className={s.wait}>Updating for this design</div>}
-        {ready && !glbOk && !glbErr && !homeowner && <div className={s.wait}>Fetching the aerial photo</div>}
         {glbErr && <div className={s.err}>{glbErr}<button type="button" onClick={() => setRetryGlb((x) => x + 1)}>Retry</button></div>}
         {layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTryN((x) => x + 1)}>Retry</button></div>}
 
@@ -473,14 +470,20 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
           </div>
         )}
 
-        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { setView(v); if (v === "3d" && L === 8) setLayer(3); }, recentre: () => scene.current?.refit() })}
-        {bare && <div className={`${s.tools} ${s.toolsBare}`}>{zoomPair}<button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button></div>}
+        {bare && tools?.({ view: L === 8 ? "2d" : view, setView: (v) => { setView(v); if (v === "3d" && L === 8) setLayer(3); }, recentre: () => scene.current?.refit(),
+          // One toolbar: zoom and Face north ride in the caller's toolbar row (the needle keeps this view's ref).
+          zoom: { can: zoomCan, by: (d) => scene.current?.zoomBy(d) },
+          north: <button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button> })}
+        {bare && !tools && <div className={`${s.tools} ${s.toolsBare}`}>{zoomPair}<button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button></div>}
         {!bare && <div className={s.tools}>
           <div className={s.toggle} role="group" aria-label="View">
             <button type="button" aria-pressed={L !== 8 && view === "3d"} onClick={() => { setView("3d"); if (L === 8) setLayer(3); }}>3D</button>
             <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => setView("2d")}>2D</button>
           </div>
           <LayersMenu className={s.layersBtn} />
+          <button type="button" className={s.compass} title="Reset view" aria-label="Reset view" onClick={() => scene.current?.refit()}>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></svg>
+          </button>
           {zoomPair}
           <button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button>
         </div>}

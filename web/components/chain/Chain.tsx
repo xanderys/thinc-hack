@@ -23,6 +23,8 @@ import SystemsChips from "@/components/systems/SystemsChips";
 import ProposedCard from "@/components/systems/ProposedCard";
 import SystemCard from "@/components/systems/SystemCard";
 import { elementsOf } from "@/lib/envelope";
+import { scrub } from "@/components/offer/facts";
+import { Chainline, Fig, Head, PairBars, SplitBar } from "@/components/systems/Figures";
 import { setSystem, stageOf, systemOf, type SystemName } from "@/components/systems/system";
 
 // While the 3D code loads, the hero shows the same house shimmer the view shows until its first frame.
@@ -126,9 +128,11 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     };
     fit();
     const ro = new ResizeObserver(fit); ro.observe(document.body);
-    addEventListener("resize", fit);
+    // The header and the facts bar above settle after mount (fonts, facts, the compact Systems layout): re-measure then.
+    document.querySelectorAll(".b-open-h, .t-bar").forEach((x) => ro.observe(x));
+    addEventListener("resize", fit); addEventListener("orientationchange", fit); window.visualViewport?.addEventListener("resize", fit);
     const mo = new MutationObserver(fit); mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });   // --pc-peek lands later
-    return () => { ro.disconnect(); mo.disconnect(); removeEventListener("resize", fit); };
+    return () => { ro.disconnect(); mo.disconnect(); removeEventListener("resize", fit); removeEventListener("orientationchange", fit); window.visualViewport?.removeEventListener("resize", fit); };
   }, []);
   const address = inputs.address ?? inputs.roof?.matched_address;
   const installer = INSTALLER_NAME[inputs.installer_id as keyof typeof INSTALLER_NAME] ?? "this installer";
@@ -275,13 +279,19 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     }));
   };
 
-  const tools = ({ view: v, setView, recentre, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
+  const tools = ({ view: v, setView, recentre, photo, zoom, north }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void }; zoom?: { can: { in: boolean; out: boolean }; by: (d: 1 | -1) => void }; north?: ReactNode }) => (
     <div className={s.toolbar} role="toolbar" aria-label="Model" data-cover>
       <LayersMenu className={s.tb} up heatmap={{ on: heatmap, set: setHeatmap }} />
-      <button type="button" className={s.tb} onClick={recentre} title="Re-centre" aria-label="Re-centre"><Ico><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4" /></Ico></button>
+      {/* Reset view: back to the selected chip's pose (or the opening view) on the camera spring. View only: design Undo lives beside Approve. */}
+      <button type="button" className={s.tb} onClick={recentre} title="Reset view" aria-label="Reset view"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
       <button type="button" className={s.tb} aria-pressed={expanded} title="Reasoning" aria-label="Reasoning" onClick={() => { setAuto(false); setExpanded((x) => !x); }}>
         <Ico>{expanded ? <><path d="M1.5 10S5 4 10 4s8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z" /><circle cx="10" cy="10" r="2.5" /></> : <><path d="M1.5 10S5 4 10 4s8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z" /><circle cx="10" cy="10" r="2.5" /><path d="M3 17L17 3" /></>}</Ico>
       </button>
+      {zoom && <>
+        <button type="button" className={s.tb} onClick={() => zoom.by(-1)} disabled={!zoom.can.out} title="Zoom out" aria-label="Zoom out"><Ico><path d="M4 10h12" /></Ico></button>
+        <button type="button" className={s.tb} onClick={() => zoom.by(1)} disabled={!zoom.can.in} title="Zoom in" aria-label="Zoom in"><Ico><path d="M10 4v12M4 10h12" /></Ico></button>
+      </>}
+      {north && <span className="tb-north">{north}</span>}
       <div className={s.seg} role="group" aria-label="View">
         <button type="button" aria-pressed={v === "2d"} onClick={() => setView("2d")}>2D</button>
         <button type="button" aria-pressed={v === "3d" && !photo?.on} onClick={() => setView("3d")}>3D</button>
@@ -374,68 +384,85 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />}
     </>
   ) : null;
+  // The Checks figures, moved from the Proposed Design card: each sits behind the i of the card it belongs to.
+  const checksFor = (re: RegExp) => (roofFitKnown(layers?.checks ?? null, inputs.address) ?? []).filter((c) => re.test(c.name)).map((c) => ({ ...c, name: scrub(c.name) ?? c.name }));
+  const pvChecks = checksFor(/roof fit|orient|shad/i), batChecks = checksFor(/battery/i);
   const roofBar = bars[1] && shading ? { ...bars[1], segments: [...bars[1].segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address" as const, citation: shading.source }] } : bars[1];
   const useKwh = (inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0);
-  const sysBody: Record<SystemName, { head: string; body: ReactNode; info: ReactNode }> = {
-    panels: {
-      head: head5[0],
-      body: multi ? <p>Shared roof, apartment building: the single-family design does not apply.</p> : a ? (
-        <p>About {n0(a.pv_yield_kwh)} kWh a year{faces ? ` from ${faces} face${faces === 1 ? "" : "s"}` : ""}, for a home using {n0(useKwh)} kWh{layers?.ev ? " including the car" : ""}.{e.autarky_share != null ? ` ${pc(e.autarky_share)} of that comes from the roof${d.battery_kwh ? ", with the battery" : ""}.` : ""}</p>
-      ) : <p>Working out the yield for this roof.</p>,
-      info: <>
-        {roofBar && <BarView bar={roofBar} bare />}
-        <BarView bar={useBar} bare />
-        <p>{n2(d.pv_kwp ?? 0)} kWp{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}.</p>
-        {shading?.source && <p>Shading: {shading.source}</p>}
-        {res.roof?.stated_direction_conflict && <p>{res.roof.note ?? "Roof measured from the building model; the stated direction was not found."}</p>}
-        {whyBlock(1)}
-      </>,
-    },
-    battery: (() => {
-      const day = bars[2], roof = seg(day, /solar|roof/i), fromB = seg(day, /battery/i), grid = seg(day, /grid/i);
+  // No sentences on the cards: figures only; every derivation sentence moved behind the i.
+  const sysBody: Record<SystemName, { head: ReactNode; label: string; body: ReactNode; info: ReactNode }> = {
+    panels: (() => {
+      const nMod = fresh && placed ? placed : null;
+      const usePara = a ? <p>About {n0(a.pv_yield_kwh)} kWh a year{faces ? ` from ${faces} face${faces === 1 ? "" : "s"}` : ""}, for a household using {n0(inputs.annual_demand_kwh ?? 0)} kWh{layers?.ev ? ` plus ${n0(layers.ev.annual_kwh)} kWh for the car, ${n0(useKwh)} kWh in all` : ""}.{e.autarky_share != null ? ` ${pc(e.autarky_share)} of that comes from the roof${d.battery_kwh ? ", with the battery" : ""}.` : ""}</p> : null;
       return {
-        head: head5[1] === "None" ? "No battery" : head5[1],
-        body: <>
-          {day && roof != null ? <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p> : null}
-          {d.battery_kwh && ratio != null ? <p>{n1(d.battery_kwh)} kWh is {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0 kWh per kWp for {n2(d.pv_kwp ?? 0)} kWp.</p> : !d.battery_kwh ? <p>No battery in this design.</p> : null}
+        head: nMod ? <Head main={`${nMod} panels`} sub={`${n2(d.pv_kwp ?? 0)} kWp`} /> : <Head main={`${n2(d.pv_kwp ?? 0)} kWp`} />,
+        label: `${nMod ? `${nMod} panels, ` : ""}${n2(d.pv_kwp ?? 0)} kWp`,
+        body: multi ? <p>Shared roof, apartment building: the single-family design does not apply.</p>
+          : a ? <PairBars roof={a.pv_yield_kwh} share={e.autarky_share ?? null} parts={[{ k: "Household", v: inputs.annual_demand_kwh ?? 0 }, ...(layers?.ev ? [{ k: "Car", v: layers.ev.annual_kwh }] : [])]} /> : null,
+        info: <>
+          {usePara}
+          {roofBar && <BarView bar={roofBar} bare />}
+          <BarView bar={useBar} bare />
+          <p>{n2(d.pv_kwp ?? 0)} kWp{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}.</p>
+          {pvChecks.length > 0 && <Checks checks={pvChecks} />}
+          {shading?.source && <p>Shading: {shading.source}</p>}
+          {res.roof?.stated_direction_conflict && <p>{res.roof.note ?? "Roof measured from the building model; the stated direction was not found."}</p>}
+          {whyBlock(1)}
         </>,
-        info: <>{day && <BarView bar={day} />}{whyBlock(2)}</>,
+      };
+    })(),
+    battery: (() => {
+      const day = bars[2], roof = seg(day, /solar|roof/i), fromB = seg(day, /from the battery/i) ?? seg(day, /^battery$/i), grid = seg(day, /grid/i);
+      const kwh = d.battery_kwh;
+      return {
+        head: kwh ? <Head main={`${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
+        label: kwh ? `${n1(kwh)} kWh battery` : "No battery",
+        body: day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null,
+        info: <>
+          {day && roof != null && <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p>}
+          {kwh && ratio != null ? <p>{n1(kwh)} kWh is {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0 kWh per kWp for {n2(d.pv_kwp ?? 0)} kWp.</p> : !kwh ? <p>No battery in this design.</p> : null}
+          {day && <BarView bar={day} />}{batChecks.length > 0 && <Checks checks={batChecks} />}{whyBlock(2)}
+        </>,
       };
     })(),
     wallbox: (() => {
-      const ch = bars[3], km = seg(ch, /^km\b/i) ?? layers?.ev?.annual_km, kwh = seg(ch, /^energy\b/i) ?? layers?.ev?.annual_kwh, home = seg(ch, /^charged at home/i);
-      const night = ch?.total ?? layers?.ev?.kwh_per_night_typical;
+      // Works with both engine bar shapes: "km a year"/"charged at home" in kWh, or "Driving"/"Charged at home" as a share.
+      const ch = bars[3], segOf = (re: RegExp) => ch?.segments.find((g) => re.test(g.name));
+      const km = segOf(/^km\b|^driving/i)?.value ?? layers?.ev?.annual_km, kwh = segOf(/^energy\b/i)?.value ?? layers?.ev?.annual_kwh;
+      const homeSeg = segOf(/^charged at home/i), homeKwh = homeSeg && /kwh/i.test(homeSeg.unit) ? homeSeg.value : null;
+      const homeShare = homeSeg && !homeKwh && homeSeg.value > 0 && homeSeg.value <= 1 ? homeSeg.value : !homeSeg ? layers?.ev?.home_share ?? null : null;
+      const night = segOf(/typical night/i)?.value ?? (ch && /night/i.test(ch.unit) ? ch.total : null) ?? layers?.ev?.kwh_per_night_typical;
+      const wb = d.wallbox_kw;
       return {
-        head: head5[2] === "None, no EV" ? "No wallbox" : head5[2] === "None" ? "No wallbox" : head5[2],
-        body: d.wallbox_kw && km && kwh ? (
-          <p>{n0(km)} km a year takes about {n0(kwh)} kWh{home ? `; ${n0(home)} kWh of it is charged at home` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p>
-        ) : <p>{line2[3]}</p>,
-        info: d.wallbox_kw || layers?.ev ? <>{ch && <BarView bar={ch} />}{whyBlock(3)}</> : null,
+        head: wb ? <Head main={`${n1(wb)} kW`} sub="wallbox" /> : <Head main="No wallbox" />,
+        label: wb ? `${n1(wb)} kW wallbox` : "No wallbox",
+        body: wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
+        info: <>
+          {wb && km && kwh ? <p>{n0(km)} km a year takes about {n0(kwh)} kWh{homeKwh ? `; ${n0(homeKwh)} kWh of it is charged at home` : homeShare ? `; ${pc(homeShare)} of it is charged at home` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p> : <p>{line2[3]}</p>}
+          {ch && (wb || layers?.ev) && <BarView bar={ch} />}{whyBlock(3)}
+        </>,
       };
     })(),
     heatpump: (() => {
-      // The engine's heat-loss sentence, in product copy: degrees marked, the room-scan clause plain.
-      const loss = plain(bars[4]?.sentence)?.replace(/(-?\d+) C\b/g, "$1 °C").replace(/;\s*[^;]*room scan[^;]*\.$/i, ". A room scan on site refines this.") ?? null;
-      // The x-ray's heat-loss shares, folded into the card as one sentence (same numbers and colours as the tint).
+      const lossS = plain(bars[4]?.sentence)?.replace(/(-?\d+) C\b/g, "$1 °C").replace(/;\s*[^;]*room scan[^;]*\.$/i, ".") ?? null;
+      const designT = bars[4]?.sentence?.match(/(-?\d+) C\b/)?.[1];
       const env = hasEnv ? model!.envelope! : null;
       const shares = env ? (() => {
         const { list } = elementsOf(env), by = new Map(list.map((x) => [x.key, x]));
         const roof = by.get("roof")?.share ? by.get("roof") : by.get("ceiling") ?? by.get("roof");
         return [roof, by.get("wall"), by.get("window"), by.get("floor")].filter((x): x is NonNullable<typeof x> => !!x && x.share > 0).sort((p, q) => q.share - p.share);
       })() : [];
-      const sharesP = shares.length ? (
-        <p className="sc-shares">{shares.map((x, i) => (
-          <span key={x.key}>{i === 0 ? "" : i === shares.length - 1 ? " and " : ", "}<i style={{ background: x.colour }} aria-hidden="true" />{i === 0 ? x.name : x.name.toLowerCase()} {pc(x.share)}</span>
-        ))} of the heat loss, estimated.</p>
-      ) : null;
+      const hp = d.heatpump_kw;
       return {
-        head: multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW heat pump` : "No heat pump in this design",
-        body: multi ? <p>The walls and roof are the whole building&rsquo;s, so no heat pump size for one flat.</p> : <>
-          {loss && <p>{loss}</p>}
-          {sharesP}
-          <p>{d.heatpump_kw ? "Sized from the heating bill." : hpWhy ?? "Heating facts not asked yet."}</p>
+        head: multi ? <Head main="No heat load" sub="for flats" /> : hp ? <Head main={`${n1(hp)} kW`} sub="heat pump" /> : <Head main="No heat pump" />,
+        label: multi ? "Heat load not estimated for flats" : hp ? `${n1(hp)} kW heat pump` : "No heat pump",
+        body: multi ? null : <>
+          {shares.length > 0 && <SplitBar label="Heat loss" unit="" parts={shares.map((x) => ({ k: x.name, v: Math.round(x.share * 100), c: x.colour }))} />}
+          {bars[4] && <Fig v={`${n1(bars[4].total)} kW`} u={designT ? `heat loss at ${designT} °C` : "heat loss"} />}
         </>,
-        info: multi ? null : <>
+        info: multi ? <p>The walls and roof are the whole building&rsquo;s, so no heat pump size for one flat.</p> : <>
+          {lossS && <p>{lossS}</p>}
+          <p>{hp ? "Sized from the heating bill." : hpWhy ?? "Heating facts not asked yet."}</p>
           {hasEnv && <EnvelopeBar env={model!.envelope!} bare />}
           {bars[4] && <BarView bar={bars[4]} />}
           <HeatPumpStep res={res} inputs={inputs} env={null} multi={multi} variants={variants} onVariant={onVariant} />
@@ -446,8 +473,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   };
   const cardNow = sysNow ? sysBody[sysNow] : null;
   const sysCard = sysNow && cardNow && (
-    <SystemCard sys={sysNow} head={cardNow.head} info={cardNow.info} pending={!!pending || !fresh}
-      extra={sysNow === "panels" && address && spatial !== false ? <ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /> : undefined}>
+    <SystemCard sys={sysNow} head={cardNow.head} label={cardNow.label} info={cardNow.info} pending={!!pending || !fresh}
+      extraLabel={shading ? <>Shading <b>{n1(shading.total.shade_share * 100)} %</b> <span className="sc-sub">{n0(shading.total.loss_kwh_year)} kWh a year</span></> : "Shading"} onMore={(o) => { if (!o) setShadeOn(false); }} extra={sysNow === "panels" && address && spatial !== false ? <ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /> : undefined}>
       {cardNow.body}
     </SystemCard>
   );

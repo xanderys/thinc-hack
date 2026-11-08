@@ -1066,7 +1066,7 @@ def pin_lead(lead_id: str, req: Optional[PinReq] = None, x_intake_secret: Option
 @app.put("/api/leads/{lead_id}/reset")
 def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     """Rehearsal reset: facts back to the creation snapshot, redrafted with the one pipeline; steps, approval and any
-    decision (and its signature) are dropped. Pinned and aliases stay."""
+    decision (and its signature) and kit overrides are dropped. Pinned and aliases stay; version still goes up (409 guard)."""
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
@@ -1080,7 +1080,7 @@ def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     draft = eng.predict(dict(inp))
     unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
     nq, spread = _question(eng, inp, unknown)
-    for k in ("decision", "approved_at", "approved_variant", "approved_hash", "approved"):
+    for k in ("decision", "approved_at", "approved_variant", "approved_hash", "approved", "overrides"):  # kit edits go too
         lead.pop(k, None)
     (SIG_DIR / f"{lead['lead_id']}.png").unlink(missing_ok=True)
     lead.update(inputs=inp, draft=draft, unknown=unknown, next_question=nq, next_spread=spread, questions_asked=0, history=[],
