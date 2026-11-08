@@ -219,7 +219,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   // The four numbers come from the same run as the bars and checks when it is in; the design's own until then.
   const d0 = res.design as unknown as Record<string, unknown>;
   const fresh = !layers?.chosen || (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (Number((layers.chosen as unknown as Record<string, unknown>)[k]) || 0) === (Number(d0[k]) || 0));
-  const le = fresh ? layers?.economics : undefined;
+  // A Complete lead shown as approved (Stage marks it frozen) keeps the approval's own economics, so autarky, yield and
+  // break-even match the homeowner's page; the live re-simulation applies again after an edit.
+  const le = fresh && !(res as { frozen?: boolean }).frozen ? layers?.economics : undefined;
   // The price is the refine's own (it lands with the design); the layers run adds yields and shares, never a second price.
   const e = le ? { ...res.economics, ...le, capex_eur: res.economics.capex_eur, annual: { ...res.economics.annual!, ...(le.annual ?? {}) } } as typeof res.economics : res.economics, a = e.annual;
   const breakEven = le?.break_even_year ?? (e as { break_even_year?: number | null }).break_even_year ?? null;
