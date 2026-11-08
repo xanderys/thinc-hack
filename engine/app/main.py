@@ -409,9 +409,11 @@ def refine(req: RefineReq):
     eng = engine()
     inp = {**req.inputs.model_dump(), "_given": sorted(req.inputs.model_fields_set)}
     check_inputs(inp)
-    bad = [k for k in (req.overrides or {}) if k not in FIELDS]
+    if "layout_slots" in (req.overrides or {}):
+        _slots(req.overrides["layout_slots"])  # stored on the lead by the intake step; the design itself is sized from pv_kwp
+    bad = [k for k in (req.overrides or {}) if k not in FIELDS and k != "layout_slots"]
     if bad:
-        return err(422, f"Unknown override field: {', '.join(bad)}. Allowed: {', '.join(FIELDS)}.")
+        return err(422, f"Unknown override field: {', '.join(bad)}. Allowed: {', '.join(FIELDS)}, layout_slots.")
     ov = {k: v for k, v in (req.overrides or {}).items() if k in FIELDS}
     nonnum = [k for k, v in ov.items() if v is not None and v != "include" and not (isinstance(v, (int, float)) and not isinstance(v, bool))]
     if nonnum:
@@ -692,8 +694,17 @@ class StepReq(BaseModel):
     overrides: Optional[dict] = None  # v2.13: the planner's kit choices (as /api/refine), stored on the lead; {} clears them
 
 
+def _slots(v) -> list:
+    """layout_slots: the slot ids the planner chose on the roof (from /api/explain/layers planes[].slots), stored as given."""
+    if not isinstance(v, list) or len(v) > 2000 or not all(isinstance(x, str) and 0 < len(x) <= 64 for x in v):
+        raise InputError("layout_slots must be a list of slot id strings (at most 2,000).")
+    return list(v)
+
+
 def _clean_overrides(raw: dict) -> dict:
     """Validate kit overrides exactly as /api/refine does; raises InputError (422) on a bad key or value."""
+    raw = dict(raw)
+    slots = _slots(raw.pop("layout_slots")) if "layout_slots" in raw else None
     bad = [k for k in raw if k not in FIELDS]
     if bad:
         raise InputError(f"Unknown override field: {', '.join(bad)}. Allowed: {', '.join(FIELDS)}.")
@@ -702,6 +713,8 @@ def _clean_overrides(raw: dict) -> dict:
         raise InputError(f"Override {', '.join(nonnum)} must be a number, null or \"include\".")
     ov = {k: v for k, v in raw.items() if not (k == "inverter_kw" and v == "include")}
     check_design({k: v for k, v in ov.items() if v != "include"}, "overrides")
+    if slots is not None:
+        ov["layout_slots"] = slots
     return ov
 
 
@@ -1114,6 +1127,35 @@ def pin_lead(lead_id: str, req: Optional[PinReq] = None, x_intake_secret: Option
     return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "pinned": lead["pinned"]}
 
 
+DEMO_KEYS = ("status", "inputs", "draft", "draft_stamp", "unknown", "next_question", "next_spread", "questions_asked", "history", "decision",
+             "approved", "approved_at", "approved_variant", "approved_hash", "overrides", "sent", "meta", "fact_sources", "whatsapp")
+
+
+class DemoStateReq(BaseModel):
+    decided_at: Optional[str] = None  # ISO time shown for a stored decision (e.g. Lindner declined at 08:15 Munich)
+    clear: bool = False                # true: forget the demo state, reset goes back to creation again
+
+
+@app.put("/api/leads/{lead_id}/demo-state")
+def set_demo_state(lead_id: str, req: Optional[DemoStateReq] = None, x_intake_secret: Optional[str] = Header(None)):
+    """Store the lead as it is now as its demo state: reset (and reset-pinned) brings it back to exactly this."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    req = req or DemoStateReq()
+    lead = _find_lead(lead_id)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    if req.clear:
+        lead.pop("demo_state", None)
+    else:
+        if req.decided_at and lead.get("decision"):
+            lead["decision"]["decided_at"] = req.decided_at
+        lead["demo_state"] = json.loads(json.dumps({k: lead[k] for k in DEMO_KEYS if k in lead}, default=float))
+    leads.save(lead)
+    return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "demo_state": bool(lead.get("demo_state")),
+            "status": (lead.get("demo_state") or {}).get("status"), "decided_at": ((lead.get("demo_state") or {}).get("decision") or {}).get("decided_at")}
+
+
 @app.put("/api/leads/{lead_id}/reset")
 def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     """Rehearsal reset: facts back to the creation snapshot, redrafted with the one pipeline; steps, approval and any
@@ -1123,6 +1165,19 @@ def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     lead = leads.LEADS.get(lead_id) or next((l for l in leads.LEADS.values() if lead_id in l.get("aliases", [])), None)
     if not lead:
         return err(404, f"No lead with id {lead_id}")
+    if lead.get("demo_state"):  # a pinned demo lead goes back to its demo state (Declined stays Declined), not to creation
+        demo = json.loads(json.dumps(lead["demo_state"]))
+        for k in DEMO_KEYS:
+            if k in demo:
+                lead[k] = demo[k]
+            else:
+                lead.pop(k, None)
+        if not lead.get("decision"):
+            (SIG_DIR / f"{lead['lead_id']}.png").unlink(missing_ok=True)
+        lead["updated_at"] = leads.now()
+        leads.save(lead)
+        return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "status": lead["status"], "design": lead["draft"]["design"],
+                "reset_to": "demo state", "pinned": bool(lead.get("pinned"))}
     snap = lead.get("initial")
     if not snap:
         return err(409, "This lead has no creation snapshot (it was changed before snapshots existed); delete and recreate it.")
@@ -1197,10 +1252,11 @@ def set_phone(lead_id: str, req: PhoneReq, x_intake_secret: Optional[str] = Head
 class WaAskReq(BaseModel):
     facts: Optional[list[str]] = None  # ask about these fields; default: missing or estimated facts by design impact
     base_version: Optional[int] = None
+    dry: bool = False  # compose and log as kind "dry", send nothing
 
 
 @app.post("/api/leads/{lead_id}/whatsapp/ask")
-def whatsapp_ask(lead_id: str, req: Optional[WaAskReq] = None, x_intake_secret: Optional[str] = Header(None)):
+def whatsapp_ask(lead_id: str, req: Optional[WaAskReq] = None, dry: bool = False, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     req = req or WaAskReq()
@@ -1214,7 +1270,7 @@ def whatsapp_ask(lead_id: str, req: Optional[WaAskReq] = None, x_intake_secret: 
     if bad:
         return err(422, f"Cannot ask about {', '.join(bad)}. Askable: {', '.join(wa.ASK)}.")
     try:
-        out = wa.ask(lead, req.facts)
+        out = wa.ask(lead, req.facts, dry=req.dry or dry)
     except wa.ConversationError as e:
         return err(e.code, str(e))
     return {**out, "version": int(lead.get("version") or 0), "whatsapp": wa.public(lead)}
@@ -1223,10 +1279,11 @@ def whatsapp_ask(lead_id: str, req: Optional[WaAskReq] = None, x_intake_secret: 
 class SendReq(BaseModel):
     channel: Literal["whatsapp", "copy"]
     base_version: Optional[int] = None
+    dry: bool = False  # compose and log as kind "dry", send nothing, status unchanged
 
 
 @app.post("/api/leads/{lead_id}/send")
-def send_proposal(lead_id: str, req: SendReq, x_intake_secret: Optional[str] = Header(None)):
+def send_proposal(lead_id: str, req: SendReq, dry: bool = False, x_intake_secret: Optional[str] = Header(None)):
     if not _key_ok(x_intake_secret):
         return err(401, "Missing or wrong X-Intake-Secret header.")
     lead = _find_lead(lead_id)
@@ -1235,6 +1292,13 @@ def send_proposal(lead_id: str, req: SendReq, x_intake_secret: Optional[str] = H
     stale = _stale(lead, req.base_version)
     if stale is not None:
         return stale
+    if req.dry or dry:
+        try:
+            out = wa.send_proposal(lead, req.channel, dry=True)
+        except wa.ConversationError as e:
+            return err(e.code, str(e))
+        return {"version": int(lead.get("version") or 0), "status": lead["status"], "status_label": STATUS_LABEL.get(lead["status"], lead["status"]),
+                "dry": True, "sent": out, "whatsapp": wa.public(lead)}
     if lead.get("status") not in ("approved", "sent"):
         return err(409, "Complete the design before sending the proposal.")
     try:

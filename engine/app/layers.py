@@ -84,6 +84,24 @@ EV_SOURCES = [
 ]
 
 
+def _slot_grid(planes):
+    """v2.14: every position a module fits on each target face, with an id ("<face id>:<index>"), its corners and whether the
+    engine's layout uses it (the layout is always the first n slots of a face, filled best face first)."""
+    try:
+        if not isinstance(planes, dict) or not isinstance(planes.get("planes"), list):
+            return
+        from . import shading
+        shading._mods()
+        from model.layout import slots
+        for p in planes["planes"]:
+            if not p.get("is_target"):
+                continue
+            n = len(p.get("chosen_panels") or [])
+            p["slots"] = [{"id": f"{p['id']}:{i}", "face": p["id"], "corners": r, "placed": i < n} for i, r in enumerate(slots(p))]
+    except Exception:
+        log.exception("slot grid")
+
+
 def ev_block(inp: dict, design: dict):
     """The car in numbers, when the home has one: what it adds to the home's load and what the wallbox must deliver."""
     if not inp.get("has_ev"):
@@ -152,6 +170,7 @@ def explain(eng, inp: dict, design: dict | None) -> dict:
     fr = L.public_rows(L.value_frontier(eng, inp, design))  # the same simulated set the variants are picked from
     obj = resp.get("objective") or L.OBJECTIVE
     ev = ev_block(inp, design)
+    _slot_grid(planes)
     out = {"planes": planes, "day": day, "night": night, "frontier": fr, "chosen": design, "objective": obj, "sources": P.sources(),
            **({"ev": ev} if ev else {}),
            "economics": econ,
@@ -224,6 +243,7 @@ def explain_grid(eng, inp: dict, design: dict | None) -> dict:
         except Exception as ex:
             planes = {"error": str(ex)}
 
+    _slot_grid(planes)
     rec = __import__("app.model", fromlist=["RECOMMENDER"]).RECOMMENDER["mode"]
     out = {"planes": planes, "day": day, "night": night, "frontier": frontier, "chosen": design,
            "objective": {"name": "planner rules (rules-1)" if rec == "rules" else "learned chain",

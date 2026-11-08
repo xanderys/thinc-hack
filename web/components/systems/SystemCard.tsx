@@ -16,6 +16,19 @@ export default function SystemCard({ sys, head, label, children, info, pending, 
   // The card folds to its one-line title (tap the title, or Escape inside the card); the house re-frames into the room
   // it gives back, because the card is a cover the canvas measures.
   const [folded, setFolded] = useState(false);
+  // Escape anywhere in the canvas folds the open card first, ahead of the pass and any chooser: one window capture
+  // listener registered at mount (so before theirs), reading the live state through a ref.
+  const live = useRef({ folded, open }); live.current = { folded, open };
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || live.current.folded || live.current.open) return;
+      const canvas = root.current?.parentElement?.closest("section"), a = document.activeElement;
+      if (!canvas || !(a === document.body || a === null || canvas.contains(a))) return;
+      e.stopImmediatePropagation(); e.preventDefault(); setFolded(true);
+    };
+    addEventListener("keydown", esc, true);
+    return () => removeEventListener("keydown", esc, true);
+  }, []);
   useEffect(() => { setMore(false); }, [sys]);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { setOpen(false); }, [sys]);
