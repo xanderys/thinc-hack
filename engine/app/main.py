@@ -553,6 +553,9 @@ def _geometry(r: dict, building=None, tile=None) -> dict:
         return {"footprint_m2": None, "storeys": None, "height_m": None, "large_building": None, "source": None,
                 "note": "no measured building"}
     large = bool(fp >= LARGE_FOOTPRINT_M2 or (st or 0) >= LARGE_STOREYS or (h or 0) >= LARGE_HEIGHT_M)
+    dw = re.match(r"\s*(\d+)", str(r.get("dwellings_class") or ""))
+    if large and dw and int(dw.group(1)) <= 2 and (st or 0) < LARGE_STOREYS and (h or 0) < LARGE_HEIGHT_M and fp < 2 * LARGE_FOOTPRINT_M2:
+        large = False  # a big footprint alone (a house with an attached garage or annex) is not a block when the census counts 1 or 2 dwellings
     return {"footprint_m2": fp, "storeys": st, "height_m": round(h, 1) if h else None, "large_building": large,
             "source": f"LoD2 building {building}" if building else (r.get("source") or "roof lookup"),
             "note": (f"large_building when footprint >= {LARGE_FOOTPRINT_M2:g} m2, storeys >= {LARGE_STOREYS} or height >= "
