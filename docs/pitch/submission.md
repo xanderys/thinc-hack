@@ -16,7 +16,7 @@ Form: https://thinc-hack.lovable.app
 
 **Deck:** deck/marquee-reonic.pdf
 
-**Demo video:** TBD by VIDEO
+**Demo video:** (link from Zi Yuan; fallback v7)
 
 **One sentence:** Marquee drafts a home's panels, battery, wallbox and heat pump with the rules it used, reports how often the experts agreed on homes it never saw, and hands the completed design to the homeowner to sign.
 
