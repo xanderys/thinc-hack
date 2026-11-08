@@ -31,7 +31,7 @@ export async function send<T>(path: string, body: unknown, route: string, method
 
 export const fmt = {
   n: (x: number | null | undefined, d = 2) => x == null ? "none" : x.toLocaleString("en-GB", { maximumFractionDigits: d }),
-  eur: (x: number) => `${Math.round(x).toLocaleString("en-GB")} EUR`,
+  eur: (x: number) => `€${Math.round(x).toLocaleString("en-GB")}`,
   pct: (x: number | null | undefined) => x == null ? "n/a" : `${Math.round(x * 100)}%`,
 };
 

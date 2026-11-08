@@ -2,6 +2,7 @@
 // The rule in plain words, with sources: docs/qualification.md. Every number here is an estimate until the site visit.
 import type { DesignResponse, HomeInputs, Lead, RoofResult } from "./api";
 import { isMultiUnit } from "./building";
+import { eur } from "@/components/offer/format";
 
 export type Verdict = "visit" | "call_first" | "decline";
 export type FactSource = "stated" | "measured" | "estimated";
@@ -12,7 +13,7 @@ export interface Qualification {
   sentence: string;                       // "Priority: Worth a visit: the roof fits 10.35 kWp ..." (verdict word, then reason)
   reason: string;                         // a planner's sentence plus the value: "Worth a visit: the roof fits 10.35 kWp and pays back in 10 years. Expected offer about €14,600."
   facts: { stated: number; total: number; list: { field: FactField | "roof"; source: FactSource }[] };   // roof is listed, never counted
-  expected_offer_eur: number | null;      // draft investment, rounded to 100 EUR; null on Decline
+  expected_offer_eur: number | null;      // draft investment in euros, as the offer shows it; null on Decline
   confidence_line: string;                // "7 of 9 facts stated, roof measured from the address, consumption from the bill"
   confirm_on_site: string[];
 }
@@ -30,7 +31,7 @@ type LeadLike = Pick<Lead, "status" | "facts" | "address_or_postcode"> & Partial
 const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-GB");
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
-export const offerEur = (x: number | null) => x == null ? "No offer" : `${n0(x)} EUR, estimate`;
+export const offerEur = (x: number | null) => x == null ? "No offer" : `${eur(x)}, estimate`;
 
 const isPostcode = (s: string | undefined | null) => !!s && /^\s*\d{5}\s*$/.test(s);
 // A roof face is usable when it is flat enough to tilt panels on, or not facing north (more than 60 degrees off north).
@@ -60,7 +61,7 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
   list.push({ field: "roof", source: measuredRoof(roof) && roof.confidence === "measured" ? "measured" : "estimated" });
 
   const d = design?.design, e = design?.economics;
-  const capex = e && d?.pv_kwp ? Math.round(e.capex_eur / 100) * 100 : null;
+  const capex = e && d?.pv_kwp ? Math.round(e.capex_eur) : null;
   const payback = e?.payback_years ?? null;
 
   const roofWords = !hasStreet ? "roof not measured"
@@ -71,7 +72,7 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
   const confidence_line = `${stated} of ${total} facts stated, ${roofWords}, ${useWords}`;
 
   const confirm_on_site = [
-    hasStreet && measuredRoof(roof) ? "roof condition and shade (estimate from the surface model)" : "roof size, condition and shade (not measured yet)",
+    hasStreet && measuredRoof(roof) ? "roof condition and shade (estimated from the 3D model)" : "roof size, condition and shade (not measured yet)",
     "meter and grid connection",
     ...(d?.battery_kwh ? ["battery location"] : []),
     ...(d?.heatpump_kw ? ["heat pump location and the radiators"] : []),

@@ -41,7 +41,7 @@ export default function Refine(p: Props) {
     <section className={p.bare ? "s-refine bare" : "s-refine"} aria-label="Change it in a sentence">
       <div>
         <h3 className="s-h3">Change it in a sentence</h3>
-        {p.llm === false && <p className="s-quiet">Sentences are off: no ANTHROPIC_API_KEY in web/.env.local. Change by hand still works.</p>}
+        {p.llm === false && <p className="s-quiet">Sentence changes are off. Change it by hand.</p>}
         {p.bare ? (
           // The open card's bar: sentence box, Apply, Undo, Listen; nothing else.
           <div className="s-bar">
