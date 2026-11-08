@@ -24,6 +24,8 @@ async function released(req: NextRequest) {
 const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#071b71"/><path d="M4 22 L22 8 L28 8 L10 22Z" fill="#ffc043"/></svg>`;
 
 export async function middleware(req: NextRequest) {
+  // A preflight on any path answers 204 instead of the 400 a missing OPTIONS handler gives.
+  if (req.method === "OPTIONS") return new NextResponse(null, { status: 204, headers: { allow: "GET, POST, PUT, OPTIONS", "access-control-max-age": "600" } });
   if (req.nextUrl.pathname === "/favicon.ico") return new NextResponse(ICON, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
   if (process.env.HOMEOWNER_SITE !== "1") return NextResponse.next();
   const p = req.nextUrl.pathname;

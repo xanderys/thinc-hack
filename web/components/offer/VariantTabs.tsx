@@ -1,9 +1,10 @@
-// The four offers a homeowner can choose between, as Reonic lists variants: glyph, name, one plain line,
-// labelled size chips in component colours, an absolute price marked estimate. Planners' pick first, then by price.
+// The four offers a homeowner can choose between: glyph, name, one plain line, then the same figures in the same
+// order for each (price estimate, break-even, what differs from the planners' pick). Planners' pick first, then by price.
 // "Your edit" appears only when the design on screen matches none of the four.
 import type { Design, Economics } from "@/lib/api";
 import type { Variant as StageVariant } from "@/components/stage/Plan";
-import { COLOUR, eur, n1, n2 } from "./format";
+import { COLOUR, n1, n2 } from "./format";
+import { sentence, variantFacts, type Fact } from "./facts";
 import Glyph from "./Glyph";
 import s from "./offer.module.css";
 
@@ -35,6 +36,7 @@ export function rowsOf(variants: StageVariant[]): Row[] {
       upfront: (r.e?.autarky_share ?? 0) <= Math.min(...auts) ? "smallest outlay, least of your own power" : "smallest outlay",
       edit: "as you changed it",
     }[r.key];
+    r.line = sentence(r.line);
   }
   const four = rows.filter((r) => r.key !== "edit");
   return [...four.filter((r) => r.key === "expert"), ...four.filter((r) => r.key !== "expert").sort((a, b) => price(a) - price(b)), ...rows.filter((r) => r.key === "edit")];
@@ -58,8 +60,18 @@ export function SizeChips({ d }: { d: Partial<Design> }) {
   );
 }
 
+// Label then value, one column per figure; shared with the homeowner alternatives.
+export function Facts({ items, className }: { items: Fact[]; className?: string }) {
+  return (
+    <dl className={`${s.facts} ${className ?? ""}`}>
+      {items.map((f) => <div key={f.label}><dt>{f.label}</dt><dd>{f.value}{f.note && <em> {f.note}</em>}</dd></div>)}
+    </dl>
+  );
+}
+
 export default function VariantTabs({ rows, onPick, pending }: { rows: Row[]; onPick: (r: Row) => void; pending?: boolean }) {
   if (!rows.length) return null;
+  const ref = rows.find((r) => r.key === "expert")?.design ?? null;
   return (
     <div className={s.vtabs} role="radiogroup" aria-label="Offers" data-pending={pending || undefined}>
       {rows.map((r) => (
@@ -69,9 +81,8 @@ export default function VariantTabs({ rows, onPick, pending }: { rows: Row[]; on
           <span className={s.vtBody}>
             <span className={s.vtName}>{r.name}{r.approved && <span className={s.vtMark}>Approved</span>}</span>
             <span className={s.vtLine}>{r.line}</span>
-            <SizeChips d={r.design} />
+            <Facts items={variantFacts(r.e, r.design, r.key === "expert" ? null : ref)} />
           </span>
-          <span className={s.vtPrice}>{r.e ? <>{eur(r.e.capex_eur)}<em>estimate</em></> : null}</span>
         </button>
       ))}
     </div>
