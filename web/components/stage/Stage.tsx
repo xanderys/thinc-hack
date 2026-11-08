@@ -251,7 +251,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const hit = designs.current.get(k);
     if (hit) { land({ ok: true, data: hit }, asked, why, fixed, null); return; }
     if (cause.current) setPending((p) => p ?? Date.now());
-    if (seedDraft.current) { seedDesign(inputs, seedDraft.current); seedDraft.current = null; }   // the plain draft for these facts, also when opening on kit edits
+    // A stored draft from before the engine named products (no skus) is read again once, so the rows can name them.
+    if (seedDraft.current) { if ("skus" in seedDraft.current) seedDesign(inputs, seedDraft.current); seedDraft.current = null; }   // the plain draft for these facts, also when opening on kit edits
     const t = setTimeout(async () => {
       setBusy(true);
       try {
@@ -290,12 +291,18 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         const o: Overrides = v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw };
         const k = keyOf(i, o);
         if (designs.current.has(k)) continue;
-        keep(k, v.key === "expert" ? base : { ...base, design: v.design, economics: v.economics, ...("layout" in v ? { layout: (v as { layout?: unknown }).layout } : {}) } as DesignResponse);
+        keep(k, v.key === "expert" ? base : { ...base, design: v.design, economics: v.economics, ...("layout" in v ? { layout: (v as { layout?: unknown }).layout } : {}), skus: (v as { skus?: unknown }).skus ?? sameSize((base as { skus?: Record<string, { size?: number; unit?: string }> }).skus, v.design) } as DesignResponse);
       }
     }, 300);   // after first paint
     return () => { clearTimeout(t); ctl.abort(); };
   }, [ready, drafted === null, inputs]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The draft's products that fit a variant's sizes (a variant without its own skus keeps only those).
+  const sameSize = (skus: Record<string, { size?: number; unit?: string }> | undefined, d: Design) => {
+    if (!skus) return undefined;
+    const want: Record<string, number | null | undefined> = { inverter: d.inverter_kw, battery: d.battery_kwh, wallbox: d.wallbox_kw, heatpump: d.heatpump_kw };
+    return Object.fromEntries(Object.entries(skus).filter(([k, s]) => k === "module" ? !!d.pv_kwp : want[k] != null && s.size === want[k]));
+  };
   // One path for a design that arrived, from the engine or from memory.
   function land(r: { ok: true; data: DesignResponse | RefineResponse } | { ok: false; error: string; status?: number }, asked: HomeInputs, why: string | null, fixed: boolean, lid: string | null) {
         if (r.ok) {

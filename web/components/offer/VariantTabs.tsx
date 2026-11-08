@@ -44,8 +44,8 @@ export function rowsOf(variants: StageVariant[]): Row[] {
     }[r.key];
     r.line = sentence(r.line);
   }
-  const four = rows.filter((r) => r.key !== "edit");
-  return [...four.filter((r) => r.key === "expert"), ...four.filter((r) => r.key !== "expert").sort((a, b) => price(a) - price(b)), ...rows.filter((r) => r.key === "edit")];
+  const ORDER: RowKey[] = ["expert", "payback", "upfront", "independence", "edit"];
+  return ORDER.flatMap((k) => rows.filter((r) => r.key === k));
 }
 
 export function SizeChips({ d: d0 }: { d: Partial<Design> | null | undefined }) {
@@ -76,22 +76,35 @@ export function Facts({ items, className }: { items: Fact[]; className?: string 
   );
 }
 
-export default function VariantTabs({ rows, onPick, pending }: { rows: Row[]; onPick: (r: Row) => void; pending?: boolean }) {
+// The variant selector: one short row per offer (glyph, name, one line), the chosen one filled like a chip. Picking a
+// row changes everything else on the card. Without onPick the rows are a read-only list (the homeowner's alternatives).
+export const LINE: Record<RowKey, string> = { expert: "What planners here fit to homes like this", payback: "Earns its cost back soonest", upfront: "Smallest outlay", independence: "Most of your own power", edit: "As you changed it" };
+export function VariantRows({ rows, onPick, pending, label = "Offers" }: { rows: Pick<Row, "key" | "name" | "line" | "selected">[]; onPick?: (k: RowKey) => void; pending?: boolean; label?: string }) {
   if (!rows.length) return null;
-  const ref = rows.find((r) => r.key === "expert")?.design ?? null;
+  if (!onPick) return (
+    <ul className={s.vrows} aria-label={label}>
+      {rows.map((r) => <li key={r.key} className={s.vrow} data-k={r.key}><span className={s.vtGlyph}><Glyph k={r.key} size={18} /></span><span className={s.vtBody}><span className={s.vtName}>{r.name}</span><span className={s.vtLine}>{r.line}</span></span></li>)}
+    </ul>
+  );
   return (
-    <div className={s.vtabs} role="radiogroup" aria-label="Offers" data-pending={pending || undefined}>
+    <div className={s.vrows} role="radiogroup" aria-label={label} data-pending={pending || undefined}>
       {rows.map((r) => (
-        <button key={r.key} type="button" role="radio" aria-checked={r.selected} className={s.vtab} data-k={r.key}
-          onClick={() => { if (r.selected || !r.pick) return; dispatchEvent(new CustomEvent("marquee:variant", { detail: { id: r.key, design: r.design } })); onPick(r); }}>
+        <button key={r.key} type="button" role="radio" aria-checked={r.selected} className={s.vrow} data-k={r.key} onClick={() => { if (!r.selected) onPick(r.key); }}>
           <span className={s.vtGlyph}><Glyph k={r.key} size={18} /></span>
-          <span className={s.vtBody}>
-            <span className={s.vtName}>{r.name}{r.approved && <span className={s.vtMark}>Complete</span>}</span>
-            <span className={s.vtLine}>{r.line}</span>
-            <Facts items={variantFacts(r.e, r.design, r.key === "expert" ? null : ref)} />
-          </span>
+          <span className={s.vtBody}><span className={s.vtName}>{r.name}</span><span className={s.vtLine}>{r.line}</span></span>
         </button>
       ))}
     </div>
+  );
+}
+
+export default function VariantTabs({ rows, onPick, pending }: { rows: Row[]; onPick: (r: Row) => void; pending?: boolean }) {
+  return (
+    <VariantRows rows={rows} pending={pending} onPick={(k) => {
+      const r = rows.find((x) => x.key === k);
+      if (!r || !r.pick) return;
+      dispatchEvent(new CustomEvent("marquee:variant", { detail: { id: r.key, design: r.design } }));
+      onPick(r);
+    }} />
   );
 }

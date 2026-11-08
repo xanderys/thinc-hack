@@ -15,8 +15,8 @@ import Tiles from "@/components/offer/Tiles";
 import type { SystemName } from "@/components/systems/system";
 import type { Layers } from "@/components/spatial/types";
 import RoofNote from "@/components/home/RoofNote";
-import { Facts } from "@/components/offer/VariantTabs";
-import { variantFacts } from "@/components/offer/facts";
+import { LINE, VariantRows, type RowKey } from "@/components/offer/VariantTabs";
+import { skusOf, years } from "@/components/offer/facts";
 import { pastLine } from "@/lib/past";
 import "./proposal.css";
 import { berlinStamp } from "@/lib/time";
@@ -48,8 +48,8 @@ export function offered(lead: Lead): { key: Key; design: Design; economics: Desi
 
 // The planner's four offers, in the planner's order and names (web/components/offer/VariantTabs.tsx). Best value is not offered here.
 const ROWS: { key: Variant["key"]; name: string }[] = [
-  { key: "expert", name: "Planners' pick" }, { key: "independence", name: "Most independence" },
-  { key: "payback", name: "Best payback" }, { key: "upfront", name: "Lowest upfront cost" },
+  { key: "expert", name: "Planners' pick" }, { key: "payback", name: "Best payback" },
+  { key: "upfront", name: "Lowest upfront cost" }, { key: "independence", name: "Most independence" },
 ];
 // The other offers, for the installer to talk through; the proposed one is the page itself.
 function rowsOf(variants: Variant[], key: Key) {
@@ -88,7 +88,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
     ...figs.map((f, i) => ({ k: ["Solar", "Battery", "Investment"][i], v: f.v })),
     ...(yieldKwh != null ? [{ k: "Yield", v: `${n0(yieldKwh)} kWh` }] : []),
     { k: "Supplied by your system", v: pc(e.autarky_share) },
-    { k: "Break-even", v: be == null ? "20+ years" : `${n0(be)} years` },
+    { k: "Break-even", v: be == null ? "20+ years" : years(be) },
   ];
   const decided = lead.status === "signed" ? "Signed" : lead.status === "declined" ? "Declined" : lead.status === "question" ? "Question sent" : "Sign";
 
@@ -114,19 +114,12 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
           {alts.length > 0 && (
             <section className="pp-card" aria-labelledby="pp-alts">
               <h2 id="pp-alts">Alternatives for your installer to discuss</h2>
-              <ul className="pp-vars">
-                {alts.map(({ key: k, name: label, v }) => (
-                  <li key={k}>
-                    <span className="pp-vname">{label}</span>
-                    <Facts className="pp-facts" items={variantFacts(v.economics, v.design, design)} />
-                  </li>
-                ))}
-              </ul>
+              <VariantRows label="Alternatives" rows={alts.map(({ key: k, name: label }) => ({ key: k as RowKey, name: label, line: LINE[k as RowKey], selected: false }))} />
             </section>
           )}
           <section className="pp-card" aria-label="Your system">
             <h2>Your system</h2>
-            <KitSlot design={design} total={e.capex_eur} assumptions={e.assumptions} />
+            <KitSlot design={design} total={e.capex_eur} assumptions={e.assumptions} skus={skusOf(key === "expert" || key === "edit" ? (lead.approved ?? lead.draft) : lead.draft.variants?.find((v) => v.key === key) ?? lead.draft)} />
           </section>
         </div>
       </ProposedCard>

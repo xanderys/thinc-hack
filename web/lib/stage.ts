@@ -94,3 +94,5 @@ export function optionLabel(field: keyof HomeInputs, v: unknown): string {
 export function named(s: string): string {
   return s.replace(/installer (2a8ba8e2|23c108b7)/gi, (_, id: keyof typeof INSTALLER_NAME) => INSTALLER_NAME[id]);
 }
+// The same text with no installer named (the check page: homes from both installers in the data pack).
+export const unnamed = (s: string) => s.replace(/installer (2a8ba8e2|23c108b7)/gi, "the installer");

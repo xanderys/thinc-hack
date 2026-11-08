@@ -116,7 +116,7 @@ export default function Lead(p: Props) {
             <div className="s-fact">
               <span className="fk">Installer</span>
               <span className="fv"><span className="seg" role="group" aria-label="Installer style">
-                {(Object.keys(INSTALLER_NAME) as InstallerId[]).map((id) => <button key={id} type="button" aria-pressed={i.installer_id === id} onClick={() => p.setInstaller(id)}>{INSTALLER_NAME[id]}</button>)}
+                {(Object.keys(INSTALLER_NAME) as InstallerId[]).filter((id) => id === "2a8ba8e2").map((id) => <button key={id} type="button" aria-pressed={i.installer_id === id} onClick={() => p.setInstaller(id)}>{INSTALLER_NAME[id]}</button>)}
               </span></span>
               <span className="fq">Design style to follow</span>
             </div>
