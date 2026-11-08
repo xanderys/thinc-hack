@@ -1,3 +1,4 @@
+import json
 """Chained sizing model: PV, then battery given PV, then heat pump, then wallbox. Statistics plus physics, no LLM."""
 import math
 from dataclasses import dataclass, field
@@ -97,6 +98,59 @@ def fmt(x, unit):
         return "None"
     s = f"{x:,.1f}".rstrip("0").rstrip(".")
     return f"{s} {unit}"
+
+
+SIZES = ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")
+
+
+def proposal_hash(design: dict, variant: str, investment: float) -> str:
+    """sha256 over {"design": the five sizes, "variant": key, "investment_eur": capex}, keys sorted, compact JSON."""
+    import hashlib
+    body = json.dumps({"design": {k: design.get(k) for k in SIZES}, "variant": variant,
+                       "investment_eur": round(float(investment or 0), 2)}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def add_hashes(out: dict, top_key: str = "expert") -> dict:
+    """design_hash on the response and on every variant: what a planner sends back with PUT approve."""
+    try:
+        out["design_hash"] = proposal_hash(out["design"], top_key, (out.get("economics") or {}).get("capex_eur"))
+        for v in out.get("variants") or []:
+            v["design_hash"] = proposal_hash(v["design"], v["key"], (v.get("economics") or {}).get("capex_eur"))
+    except Exception:
+        pass
+    return out
+
+
+COMPASS_DEG = {"north": 0, "north-east": 45, "east": 90, "south-east": 135, "south": 180, "south-west": 225, "west": 270,
+               "north-west": 315}
+
+
+def stated_direction_check(inp: dict, out: dict):
+    """A stated roof direction against the measured LoD2 faces: the measured design stands; a conflict is flagged
+    (out["roof"]) and said in the explanation. Without a building model the stated direction drives the yield as before."""
+    az = inp.get("roof_azimuth_deg")
+    if az is None:
+        az = COMPASS_DEG.get(str(inp.get("roof_orientation") or "").strip().lower())
+    if az is None or not inp.get("address") or not out["design"].get("pv_kwp"):
+        return
+    from . import layout as L
+    lo = L.layout(inp, out["design"]["pv_kwp"])
+    if not lo:
+        return
+    faces = sorted({round(float(p["azimuth"])) % 360 for p in lo["planes"].get("planes", [])
+                    if p.get("is_target") and p.get("azimuth") is not None})
+    if not faces:
+        return
+    off = min(min(abs(f - az) % 360, 360 - abs(f - az) % 360) for f in faces)
+    conflict = off > 45
+    name = next((k for k, v in COMPASS_DEG.items() if min(abs(v - az) % 360, 360 - abs(v - az) % 360) <= 22.5), f"{az:g} degree")
+    out["roof"] = {"stated_azimuth_deg": float(az), "measured_azimuths_deg": faces, "stated_direction_conflict": conflict,
+                   "source": "LoD2 building model"}
+    if conflict:
+        note = f"Roof measured from the building model; your stated {name} face was not found."
+        out["roof"]["note"] = note
+        out["explanation"] = [note] + list(out.get("explanation") or [])
 
 
 MIN_PV_FOR_BATTERY = 2.0  # kWp; below it a planner would not sign a battery (engine guard over the rules)
@@ -281,6 +335,11 @@ class Engine:
             out["same_run_id"] = L.run_id(inp, out["design"], lo["pv_planes"] if lo else None)
         except Exception:
             pass
+        try:
+            stated_direction_check(inp, out)
+        except Exception:
+            pass
+        add_hashes(out, "edit" if overrides else "expert")
         return out
 
     def rules_catalogue(self, inst: str, t: float) -> dict:
@@ -317,6 +376,16 @@ class Engine:
             if rc.get("derivation"):
                 d["derivation"] = rc["derivation"]
             comps[c] = d
+        if design.get("pv_kwp") and inp.get("address") and "pv_kwp" not in ov:  # one pipeline: never more PV than the layout places
+            from . import layout as L
+            lo = L.layout(inp, design["pv_kwp"])
+            if lo and lo["modules"] < L.modules_for(design["pv_kwp"]):
+                want, got = design["pv_kwp"], round(lo["modules"] * L.MODULE_KWP, 2)
+                design["pv_kwp"] = got
+                design["inverter_kw"] = rules.inverter_kw(got)
+                comps["pv"].update(size=got, reason=f"{got:g} kWp: the roof layout places {lo['modules']} modules on this house's "
+                                                    f"planes (the rule asked {want:g} kWp, {L.modules_for(want)} modules). "
+                                                    + (comps["pv"].get("reason") or ""))
         if (design.get("battery_kwh") and (design.get("pv_kwp") or 0) < MIN_PV_FOR_BATTERY and "battery_kwh" not in ov):
             was = design["battery_kwh"]
             design["battery_kwh"] = None
@@ -714,6 +783,9 @@ class Engine:
         for r, d, w in self._inbox[:limit]:
             inp = row_inputs(r)
             full = self.predict(inp, full=False)
+            d = full["design"]  # the flags judge the design shown on the row, not the order-time draft
+            w = {c: bool(rules.within(c, [d[TARGET[c]] or 0.0], [r[TARGET[c]]])[0]) for c in COMPONENTS}
+            w["all"] = all(w.values())
             inc = [c for c in full["components"].values() if c["decision"] == "include"]
             note = ""
             if not w["all"]:

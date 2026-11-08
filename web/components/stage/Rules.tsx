@@ -16,7 +16,7 @@ function origin(c: RuleConstant, installer: string) {
   const f = c.fitted_on?.trim();
   if (!f || /textbook|literature|^none$/i.test(f)) return "textbook";
   const jobs = f.match(/(\d[\d,]*) new-system jobs/)?.[1];
-  return `fitted on half of ${installer}'s projects${jobs ? `, ${jobs} jobs` : ""}`;
+  return `learned from half of ${installer}'s projects${jobs ? `, ${jobs} jobs` : ""}`;
 }
 
 // v2.0: the named planner rules behind the design. Hidden when the engine sends none.
@@ -37,7 +37,7 @@ export default function Rules({ rules, installer }: { rules?: Rule[]; installer:
             )}
             {!!r.constants?.length && (
               <dl>{r.constants.map((c) => (
-                <div key={c.name}><dt>{human(c.name, CONST)}</dt><dd><span className="num">{val(c.value)}{c.unit ? ` ${c.unit}` : ""}</span><span className="src">{origin(c, installer) === "textbook" ? `${c.source}; textbook` : origin(c, installer)}</span></dd></div>
+                <div key={c.name}><dt>{human(c.name, CONST)}</dt><dd><span className="num">{val(c.value)}{c.unit ? ` ${c.unit}` : ""}</span><span className="src">{origin(c, installer) === "textbook" ? `${c.source}; Reonic rule of thumb` : origin(c, installer)}</span></dd></div>
               ))}</dl>
             )}
           </li>

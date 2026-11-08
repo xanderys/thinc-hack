@@ -29,8 +29,8 @@ export default function LayersMenu({ className, up, heatmap }: Props) {
       {open && (
         <div className={`${m.menu} ${up ? m.up : ""}`} role="menu" aria-label="Layers">
           {heatmap && <label className={m.row}><input type="checkbox" checked={heatmap.on} onChange={(e) => heatmap.set(e.target.checked)} />Sun heatmap</label>}
-          <label className={m.row}><input type="checkbox" checked={o.white} onChange={(e) => setWhite(e.target.checked)} />White context</label>
-          <label className={m.row}><input type="checkbox" checked={mesh.want} onChange={(e) => setMeshWanted(e.target.checked)} />Photo mesh</label>
+          <label className={m.row}><input type="checkbox" checked={o.white} onChange={(e) => setWhite(e.target.checked)} />Surrounding buildings</label>
+          <label className={m.row}><input type="checkbox" checked={mesh.want} onChange={(e) => setMeshWanted(e.target.checked)} />Photo 3D</label>
           {mesh.note && <p className={m.age}>{mesh.note}</p>}
           {o.google && (
             <div className={m.ground} role="group" aria-label="Ground">

@@ -170,7 +170,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   useEffect(() => { if (ready && isOrigin(groundOrigin)) scene.current?.groundFor(groundOrigin); }, [ready, groundKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
   const vo = useViewOpts();
-  const credit = vo.google && vo.ground === "google" && vo.credit ? ` · Ground: ${vo.credit}` : "";
+  const credit = vo.google && vo.ground === "google" && vo.credit ? `, ground: ${vo.credit}` : "";
   // Overlays marked data-cover inside the view (the number card, the shading strip) report their rects; each takes
   // the side of the canvas that costs the house least, and the scene fits the house into what is left. The free
   // area is also published as CSS variables (--free-l, --free-t, --free-w, --free-h) so a loading skeleton can sit
@@ -345,7 +345,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         const alts = layers.frontier.filter((p) => p.label && !p.chosen).map((p) => `${labelOf(p).toLowerCase()} ${n2(p.kwp)} kWp + ${n1(p.kwh)} kWh`);
         return {
           sentence: "Every size, through the same year: upfront cost against 20-year value.",
-          eq: `${c ? `recommended ${n2(c.kwp)} kWp + ${n1(c.kwh)} kWh: ${n0(c.capex_eur)} EUR → ${n0(c.npv_20y_eur)} EUR` : ""}${best && best !== c ? `; best value ${n2(best.kwp)} kWp + ${n1(best.kwh)} kWh: ${n0(best.capex_eur)} EUR → ${n0(best.npv_20y_eur)} EUR` : ""}${alts.length ? `; ${alts.join("; ")}` : ""}${layers.objective.sentence ? `. ${layers.objective.sentence}` : ""}`,
+          eq: `${c ? `recommended ${n2(c.kwp)} kWp + ${n1(c.kwh)} kWh: €${n0(c.capex_eur)} → €${n0(c.npv_20y_eur)}` : ""}${best && best !== c ? `; best value ${n2(best.kwp)} kWp + ${n1(best.kwh)} kWh: ${n0(best.capex_eur)} EUR → ${n0(best.npv_20y_eur)} EUR` : ""}${alts.length ? `; ${alts.join("; ")}` : ""}${layers.objective.sentence ? `. ${layers.objective.sentence}` : ""}`,
           sources: src(layers.objective.sources.length ? layers.objective.sources : ["knee", "discount", "pv_cost", "battery_cost"]),
         };
       }
@@ -393,7 +393,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     : designPt ? { y: model?.layout?.kwh_per_year ?? null, a: designPt.autarky_share, c: designPt.capex_eur, p: designPt.payback_years } : null;
   if (four && L >= 3 && L <= 6) {
     if (four.y != null) numbers.push({ k: "Yield", v: n0(four.y), u: "kWh" });
-    numbers.push({ k: "Autarky", v: pct(four.a), u: "" }, { k: "Investment", v: n0(four.c), u: "EUR" }, { k: "Payback", v: four.p == null ? "none" : n1(four.p), u: four.p == null ? "" : "years" });
+    numbers.push({ k: "Autarky", v: pct(four.a), u: "" }, { k: "Investment", v: `€${n0(four.c)}`, u: "" }, { k: "Payback", v: four.p == null ? "none" : n1(four.p), u: four.p == null ? "" : "years" });
   }
   // One run check: modules on the roof against the design, and the yield the economics used against the numbers shown.
   const cs = layers?.consistency;

@@ -29,6 +29,7 @@ If Reonic's AI chat comes up: "Your chat sizes from the catalogue when the plann
 
 ## 3:20 to 3:40, slide 8, Jamon
 "The planner picks a variant and approves. The homeowner page shows exactly that design and nothing else, and the signature or the decline comes back to the board."
+If the homeowner page is on screen, its header reads Isarwerk Solar: our fictional demo installer, never a real company. Installer A and B on slide 5 are the two anonymised installers in the data pack.
 
 ## 3:40 to 3:55, slide 9, Jamon
 "Inside Reonic, three steps: rules fitted for every installer, the computed next question inside the intake, and meter data from installed systems back into the next rule set."

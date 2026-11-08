@@ -161,7 +161,7 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
   const i = p.inputs, tol = (k: ComponentKey) => ev?.components[k]?.tolerance ?? "";
   const rows = KEYS.map((k) => { const f = COMPONENT_DESIGN_FIELD[k]; const o = p.ours.design[f], x = p.expert[f]; return { k, o, x, ok: within(o, x, tol(k)) }; });
   const misses = rows.filter((r) => !r.ok);
-  const what = [INSTALLER_NAME[p.installer_id], `${n0(i.annual_demand_kwh)} kWh a year`, i.heating_type !== "Unknown" ? `${HEATING_WORD[i.heating_type].toLowerCase()} heating${i.heating_cost_per_year_eur ? ` at ${n0(i.heating_cost_per_year_eur)} EUR a year` : ""}` : null, i.has_ev ? "an electric car" : null].filter(Boolean).join(", ");
+  const what = [INSTALLER_NAME[p.installer_id], `${n0(i.annual_demand_kwh)} kWh a year`, i.heating_type !== "Unknown" ? `${HEATING_WORD[i.heating_type].toLowerCase()} heating${i.heating_cost_per_year_eur ? ` at €${n0(i.heating_cost_per_year_eur)} a year` : ""}` : null, i.has_ev ? "an electric car" : null].filter(Boolean).join(", ");
   return (
     <>
       <section className={s.sec}>
@@ -351,7 +351,7 @@ function Deviations({ ev }: { ev: EvalX }) {
             </tbody>
           </table>
         </div>
-        <p className={s.note}>{q.median_npv_gain_eur != null && `Median net present value gain ${n0(q.median_npv_gain_eur)} EUR. `}{q.method}.</p>
+        <p className={s.note}>{q.median_npv_gain_eur != null && `Median net present value gain €${n0(q.median_npv_gain_eur)}. `}{q.method}.</p>
       </>)}
       {ev.deviations.length > 0 && (<>
         <h3>Largest single deviations</h3>
