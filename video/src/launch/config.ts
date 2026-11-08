@@ -38,9 +38,9 @@ export const defaultLaunchProps: LaunchProps = {
   intro: "footage/zy.mp4",
   introRawEnd: 0,
   roomSound: { src: "footage/zy.mp4", from: 0.3 },
-  // Take 2 covers the whole intro; a take 3 with the same timing swaps in by path.
+  // Take 3 reveal: the original clip up to the chair pass, then take 3.
   hologram: {
-    src: "capture/holo-take2.mp4",
+    src: "capture/holo-take3-reveal.mp4",
     from: 0,
     start: 0,
     len: 10.04,
