@@ -32,6 +32,7 @@ type Props = {
   response?: DesignResponse | null;   // optional: the heat layer reads the heat pump derivation from it
   view?: StageView;                   // optional: the reasoning stage the camera should frame (camera.ts)
   bare?: boolean;                     // the reasoning chain draws its own chrome: canvas, labels and compass only
+  homeowner?: boolean;                // the homeowner's proposal: no numbers tile, check line, equation, plan notes or sources; sans font
   leadId?: string;                    // sent with the layers call so call facts tag as Rina
   onLayers?: (l: Layers) => void;     // the one layers response, for bars, checks and the energy numbers
   sunTint?: boolean;                  // tint the roof faces by sun with the modules showing (per-panel shading not in yet)
@@ -60,7 +61,7 @@ function useReduce() {
   return r;
 }
 
-export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, leadId, onLayers, tools, sunTint, children }: Props) {
+export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, homeowner, leadId, onLayers, tools, sunTint, children }: Props) {
   const reduce = useReduce();
   const [own, setOwn] = useState(1);
   const layer = ctrl ?? own;
@@ -382,7 +383,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const chart = battery ?? frontier;
 
   return (
-    <section className={s.wrap} aria-label="How the design is computed, over the house">
+    <section className={homeowner ? `${s.wrap} ${s.homeowner}` : s.wrap} aria-label="How the design is computed, over the house">
       {!bare && <div className={s.strip} style={{ ["--n" as string]: nSteps }} role="group" aria-label="Layers">
         {ids.map((id, i) => (
           <button key={id} type="button" className={s.step} aria-pressed={L === id} onClick={() => setLayer(id)}>
@@ -405,7 +406,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {glbErr && <div className={s.err}>{glbErr}<button type="button" onClick={() => setRetryGlb((x) => x + 1)}>Retry</button></div>}
         {layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTryN((x) => x + 1)}>Retry</button></div>}
 
-        {!bare && (numbers.length > 0 || check) && (
+        {!bare && !homeowner && (numbers.length > 0 || check) && (
           <div className={s.nwrap} data-cover>
             {numbers.length > 0 && (
               <dl className={s.numbers}>
@@ -457,9 +458,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
           </div>
         )}
         {chart && <div className={s.below}>{L === 5 ? <BatteryChart layers={layers!} battery={design.battery_kwh} reduce={reduce} /> : <FrontierChart frontier={layers!.frontier} />}</div>}
-        {content && <p className={s.eq}>{content.eq}</p>}
-        {content && "items" in content && content.items && content.items.length > 0 && <ul className={s.items}>{content.items.map((x) => <li key={x}>{x}</li>)}</ul>}
-        {content && content.sources.length > 0 && (
+        {content && !homeowner && <p className={s.eq}>{content.eq}</p>}
+        {content && !homeowner && "items" in content && content.items && content.items.length > 0 && <ul className={s.items}>{content.items.map((x) => <li key={x}>{x}</li>)}</ul>}
+        {content && !homeowner && content.sources.length > 0 && (
           <p className={s.sources}>Sources: {content.sources.map((x, i) => <span key={x.key}>{i ? "; " : ""}{x.url ? <a href={x.url} target="_blank" rel="noreferrer">{x.citation}</a> : x.citation}</span>)}</p>
         )}
         <p className={s.licence}>{LICENCE}{credit}</p>

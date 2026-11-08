@@ -1,19 +1,23 @@
 "use client";
-// Verdict chip, offer value and the site-visit note. Colours: Reonic navy for Visit, the one blue for Call first, a neutral for Decline.
+// Verdict chip, offer value and the site-visit note. Colours: Reonic navy for Priority, the one blue for Call first, a neutral for Decline.
 import type { DesignResponse, HomeInputs, RoofResult } from "@/lib/api";
 import { offerEur, qualify, VERDICT_WORD, type Qualification, type Verdict } from "@/lib/qualify";
 import { recallVerdict, useRoofs } from "./roof";
 import s from "./qualify.module.css";
 
-export function VerdictChip({ verdict, className }: { verdict: Verdict | null; className?: string }) {
-  return <span className={`${s.chip} ${verdict ? s[verdict] : s.checking} ${className ?? ""}`}>{verdict ? VERDICT_WORD[verdict] : "Checking"}</span>;
+// tip: the facts count ("7 of 9 facts stated") lives on the chip as its tooltip, never in the line.
+export function VerdictChip({ verdict, className, tip }: { verdict: Verdict | null; className?: string; tip?: string }) {
+  return <span title={tip} className={`${s.chip} ${verdict ? s[verdict] : s.checking} ${className ?? ""}`}>{verdict ? VERDICT_WORD[verdict] : "Checking"}</span>;
 }
 
-/** Header line: chip plus the sentence after its colon. */
-export function VerdictLine({ q }: { q: Pick<Qualification, "verdict" | "sentence"> | null }) {
+/** Header line: the chip and the planner's sentence, nothing else. */
+export function VerdictLine({ q }: { q: Pick<Qualification, "verdict" | "sentence" | "reason"> & Partial<Pick<Qualification, "facts">> | null }) {
   if (!q) return <span className={s.line}><VerdictChip verdict={null} /></span>;
-  return <span className={s.line}><VerdictChip verdict={q.verdict} /><span className={s.sent}>{(([w]) => w.charAt(0).toUpperCase() + w.slice(1))([q.sentence.split(": ").slice(1).join(": ")])}</span></span>;
+  return <span className={s.line}><VerdictChip verdict={q.verdict} tip={q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : undefined} /><span className={s.sent}>{reasonOf(q)}</span></span>;
 }
+
+// Verdicts kept from before the reason field read their sentence after the verdict word.
+export const reasonOf = (q: Pick<Qualification, "sentence"> & { reason?: string }) => q.reason ?? q.sentence.split(": ").slice(1).join(": ");
 
 const isPc = (x?: string | null) => !!x && /^\s*\d{5}\s*$/.test(x);
 

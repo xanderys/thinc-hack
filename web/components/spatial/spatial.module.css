@@ -137,3 +137,6 @@
 .overlay :global(.sp-label.chip.c-el i) { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
 @media (max-width: 700px) { .overlay :global(.sp-label.chip) { font-size: 12px; padding: 3px 8px; } }
 @media (prefers-reduced-motion: reduce) { .houseSkel animate { display: none; } }
+
+/* The homeowner's proposal: everything in the sans. */
+.homeowner, .homeowner * { font-family: var(--font-sans), sans-serif; }

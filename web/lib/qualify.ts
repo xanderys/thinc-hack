@@ -9,19 +9,21 @@ export type FactField = "address" | "annual_use" | "people" | "floor_area" | "bu
 
 export interface Qualification {
   verdict: Verdict;
-  sentence: string;                       // "Visit: 10.35 kWp fits, payback 10 years, 7 of 9 facts stated."
+  sentence: string;                       // "Priority: Worth a visit: the roof fits 10.35 kWp ..." (verdict word, then reason)
+  reason: string;                         // a planner's sentence plus the value: "Worth a visit: the roof fits 10.35 kWp and pays back in 10 years. Expected offer about €14,600."
   facts: { stated: number; total: number; list: { field: FactField | "roof"; source: FactSource }[] };   // roof is listed, never counted
   expected_offer_eur: number | null;      // draft investment, rounded to 100 EUR; null on Decline
   confidence_line: string;                // "7 of 9 facts stated, roof measured from the address, consumption from the bill"
   confirm_on_site: string[];
 }
 
-export const VERDICT_WORD: Record<Verdict, string> = { visit: "Visit", call_first: "Call first", decline: "Decline" };
+export const VERDICT_WORD: Record<Verdict, string> = { visit: "Priority", call_first: "Call first", decline: "Decline" };
 export const VERDICT_ORDER: Verdict[] = ["visit", "call_first", "decline"];
 
 export const DEFAULT_ANNUAL_KWH = 4500;   // the engine's default when the lead gives no use
 export const MIN_KWP = 3;                 // under this the roof cannot carry a system worth an offer
 export const MAX_PAYBACK_YEARS = 20;
+const MODULE_KWP = 0.45;                  // the engine's standard module (450 W)
 
 type LeadLike = Pick<Lead, "status" | "facts" | "address_or_postcode"> & Partial<Pick<Lead, "history" | "decision">>;
 
@@ -77,29 +79,39 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
   ];
 
   const out = (verdict: Verdict, why: string): Qualification => ({
-    verdict, sentence: `${VERDICT_WORD[verdict]}: ${why}`, facts: { stated, total, list }, expected_offer_eur: verdict === "decline" ? null : capex, confidence_line, confirm_on_site,
+    verdict, reason: why, sentence: `${VERDICT_WORD[verdict]}: ${why}`, facts: { stated, total, list }, expected_offer_eur: verdict === "decline" ? null : capex, confidence_line, confirm_on_site,
   });
 
   // 1. The homeowner said no.
-  if (lead.status === "declined" || lead.decision?.action === "decline") return out("decline", "the homeowner declined the offer.");
+  if (lead.status === "declined" || lead.decision?.action === "decline") {
+    const at = lead.decision?.decided_at ? new Date(lead.decision.decided_at) : null;
+    return out("decline", at && !isNaN(+at) ? `Declined by the homeowner on ${at.getDate()} ${at.toLocaleString("en-GB", { month: "short" })}.` : "Declined by the homeowner.");
+  }
   // 2. A flat in a block: the roof is shared, a single-family design does not apply.
-  if (hasStreet && measuredRoof(roof) && isMultiUnit(roof, f).multi) return out("call_first", "is this a house or a flat? Shared roof, single-family design does not apply.");
+  if (hasStreet && measuredRoof(roof) && isMultiUnit(roof, f).multi) return out("call_first", "One call first: is this a house or a flat? A shared roof needs a different design.");
   // 3. The roof cannot carry a system (only when it was really looked up at a street address).
   if (hasStreet && measuredRoof(roof)) {
-    if (roof.segments.length > 0 && !roof.segments.some(usableFace)) return out("decline", "north-facing roof only, no usable face.");
-    // max_kwp already counts only the usable faces (the engine leaves north faces out of usable_area_m2).
-    if (roof.max_kwp != null && roof.max_kwp < MIN_KWP) return out("decline", `the roof fits only ${n1(roof.max_kwp)} kWp, under ${MIN_KWP} kWp.`);
+    if (roof.segments.length > 0 && !roof.segments.some(usableFace)) return out("decline", "Not worth a visit: the roof faces north only.");
+    // max_kwp already counts only the usable faces (the engine leaves north faces out of usable_area_m2). The sentence
+    // quotes the laid-out design (the engine caps the design at the modules the layout places); the area maximum only
+    // when there is no design.
+    if (roof.max_kwp != null && roof.max_kwp < MIN_KWP) {
+      const kwp = d?.pv_kwp ?? null, mods = kwp ? Math.round(kwp / MODULE_KWP) : 0;
+      return out("decline", kwp
+        ? `Not worth a visit: the roof fits only ${mods === 1 ? "one module" : `${mods} modules`}, ${n2(kwp)} kWp.`
+        : `Not worth a visit: the roof fits only ${n1(roof.max_kwp)} kWp.`);
+    }
   }
   // 4. One fact would change the design: the roof first, since everything sits on it.
-  if (!hasStreet) return out("call_first", "roof not measured, ask the address.");
-  if (roof?.pending || roof === undefined) return out("call_first", "roof being measured.");
-  if (!measuredRoof(roof)) return out("call_first", "roof not found at this address, confirm the address.");
+  if (!hasStreet) return out("call_first", "One call first: the roof is not measured, ask for the address.");
+  if (roof?.pending || roof === undefined) return out("call_first", "One call first: the roof is still being measured.");
+  if (!measuredRoof(roof)) return out("call_first", "One call first: no building found at this address, confirm it.");
   // 5. No system that pays back.
-  if (!d?.pv_kwp) return out("decline", "no system fits this home.");
-  if (payback == null || payback > MAX_PAYBACK_YEARS) return out("decline", `payback over ${MAX_PAYBACK_YEARS} years.`);
+  if (!d?.pv_kwp) return out("decline", "Not worth a visit: no system fits this home.");
+  if (payback == null || payback > MAX_PAYBACK_YEARS) return out("decline", `Not worth a visit: it would not pay back within ${MAX_PAYBACK_YEARS} years.`);
   // 6. The other facts that move the design.
-  if (!useStated) return out("call_first", `annual use is the ${n0(DEFAULT_ANNUAL_KWH)} kWh default, ask for the bill.`);
+  if (!useStated) return out("call_first", "One call first: annual use is the default, ask for the bill.");
   if ((!f.heating_type || f.heating_type === "Unknown") && f.heating_cost_per_year_eur != null)
-    return out("call_first", `heating type unknown on a ${n0(f.heating_cost_per_year_eur)} EUR heating bill, ask what heats the house.`);
-  return out("visit", `${n2(d.pv_kwp)} kWp fits, payback ${Math.round(payback)} years, ${stated} of ${total} facts stated.`);
+    return out("call_first", "One call first: the heating type is unknown, ask what heats the house.");
+  return out("visit", `Worth a visit: the roof fits ${n2(d.pv_kwp)} kWp and pays back in ${Math.round(payback)} years.${capex ? ` Expected offer about €${n0(capex)}.` : ""}`);
 }

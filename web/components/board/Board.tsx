@@ -13,7 +13,10 @@ import HousePhoto from "./HousePhoto";
 import ModelThumb from "./ModelThumb";
 import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
 import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
-import { VerdictChip, VerdictLine } from "@/components/qualify/Verdict";
+import { reasonOf, VerdictChip, VerdictLine } from "@/components/qualify/Verdict";
+
+// The facts count is the verdict chip's tooltip, never part of the line.
+const factsTip = (q: { facts?: { stated: number; total: number }; confidence_line?: string }) => q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : q.confidence_line?.split(",")[0];
 import qs from "@/components/qualify/qualify.module.css";
 
 const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
@@ -239,11 +242,11 @@ export default function Board({ openId: initial }: { openId?: string }) {
           </div>
           <p className="b-l2">{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
           <p className={`${qs.head} b-l3`}>{openCard?.q
-            ? <span className="b-verdict"><VerdictChip verdict={openCard.q.verdict} /><span className="b-offer">{[cap(openCard.q.sentence.split(": ").slice(1).join(": ").replace(/\.$/, "").replace(/, \d+ of \d+ facts stated$/, "")), ...(openCard.q.expected_offer_eur != null ? [`€${(Math.round(openCard.q.expected_offer_eur / 100) * 100).toLocaleString("en-GB")} estimate`] : [])].join(" · ")}</span></span>
+            ? <span className="b-verdict"><VerdictChip verdict={openCard.q.verdict} tip={factsTip(openCard.q)} /><span className="b-offer">{reasonOf(openCard.q)}</span></span>
             : <VerdictLine q={null} />}</p>
           {openCard?.q && <p className="b-small">Every number is an estimate until the site visit.</p>}
           {openCard?.q && !calling && liveLead?.lead_id === openId && liveLead.history.length > 0 && (
-            <p className={`${qs.rina} b-rina`}>Rina, after the call: {liveLead.history.length} {liveLead.history.length === 1 ? "answer" : "answers"}. {openCard.q.sentence} Expected offer {offerEur(openCard.q.expected_offer_eur)}.</p>
+            <p className={`${qs.rina} b-rina`}>Rina, after the call: {liveLead.history.length} {liveLead.history.length === 1 ? "answer" : "answers"}. {reasonOf(openCard.q)}{openCard.q.verdict === "call_first" && openCard.q.expected_offer_eur != null ? ` Expected offer about €${Math.round(openCard.q.expected_offer_eur).toLocaleString("en-GB")}.` : ""}</p>
           )}
           {shared && <p className="b-shared" title={shared.reason}>Shared roof, apartment building: single-family design does not apply</p>}
         </div>
@@ -283,14 +286,14 @@ export default function Board({ openId: initial }: { openId?: string }) {
             <li key={c.id}>
               <button type="button" className={lv ? "b-card live" : "b-card"} style={{ viewTransitionName: `card-${c.id}` }} onClick={() => open(c.id)}>
                 {lv && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
-                <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{STATUS[st]}</span>{c.q ? <VerdictChip verdict={c.q.verdict} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
+                <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{STATUS[st]}</span>{c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
                 <span className="b-name">{c.name}</span>
                 <span className="b-place">{c.place}</span>
                 {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><ModelThumb lead={designs[c.id]?.lead} design={c.design} /></span>}
                 {!c.design && !lv && <span className="b-house b-skel b-skel-house" aria-hidden />}
                 {c.design || lv ? <span className="b-line num">{c.line}</span> : <span className="b-skel b-skel-line" aria-hidden />}
                 {c.q ? <span className={`${qs.cardValue} num`}>{offerEur(c.q.expected_offer_eur)}</span> : !lv && <span className="b-skel b-skel-line short" aria-hidden />}
-                {c.q && c.q.verdict !== "visit" && <span className={qs.cardWhy}>{cap(c.q.sentence.split(": ").slice(1).join(": "))}</span>}
+                {c.q && c.q.verdict !== "visit" && <span className={qs.cardWhy}>{reasonOf(c.q)}</span>}
                 {dec && <span className={`b-dec ${c.status}`}>{STATUS[c.status]} {hm(dec.decided_at)}{c.status === "signed" && span(c.created, dec.decided_at) ? `, ${span(c.created, dec.decided_at)} from enquiry` : ""}</span>}
                 {dec && c.status === "signed" && <span className="b-today">Today: 8 days to an offer, 29 more to a signature</span>}
                 {dec && dec.matches_current === false && <span className="b-warn">Signed a different version than the one on file</span>}

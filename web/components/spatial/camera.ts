@@ -18,9 +18,9 @@ export const POSES: Record<StageView, Pose> = {
   extras: { focus: "wallbox", az: 120, el: 44, dist: 0.72 },     // the wallbox at the drive
   heatpump: { focus: "west", az: 250, el: 40, dist: 1.05 },       // the heat pump wall, pulled back so the envelope x-ray reads whole
   // The view stays 3D on every stage: the old top-down pins are a high angle from the south, north up.
-  heat: { focus: "house", az: 180, el: 62, dist: 1.1 },
-  sanity: { focus: "house", az: 180, el: 62, dist: 1.1 },
-  offer: { focus: "house", az: 180, el: 62, dist: 1.1 },
+  heat: { focus: "house", az: 180, el: 52, dist: 1.1 },
+  sanity: { focus: "house", az: 180, el: 52, dist: 1.1 },
+  offer: { focus: "house", az: 180, el: 52, dist: 1.1 },
 };
 
 // Chain stage (1 to 8) to its pose; EXTRAS shows the wallbox first, the heat pump wall on a second call.
