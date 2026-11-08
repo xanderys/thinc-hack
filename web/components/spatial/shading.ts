@@ -13,7 +13,8 @@ const PCT_CSS = "position:absolute;left:0;top:0;padding:0;border:0;background:no
 const EDGE_CSS = "position:absolute;left:0;top:0;padding:0 3px;border:0;border-radius:3px;background:rgba(255,255,255,.82);box-shadow:none;font:500 9.5px/1.3 var(--font-sans),sans-serif;font-variant-numeric:tabular-nums;color:#0A0C14;white-space:nowrap;";
 
 type Mod = { key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; centre: THREE.Vector3; a: THREE.Vector3; b: THREE.Vector3; el: HTMLDivElement; has?: boolean };
-type Edge = { at: THREE.Vector3; el: HTMLDivElement; len: number; w?: number; h?: number };
+type Edge = { a: THREE.Vector3; b: THREE.Vector3; c: THREE.Vector3; el: HTMLDivElement; len: number; w?: number; h?: number };
+type Rect = { x0: number; x1: number; y0: number; y1: number };
 
 export class ShadeLayer {
   private overlay: HTMLElement | null = null;
@@ -98,6 +99,7 @@ export class ShadeLayer {
     const seen: THREE.Vector3[] = [];
     this.planes.forEach((p) => {
       const pts = p.polygon.map(toV), given = lens.get(p.id);
+      const c = pts.reduce((q, v) => q.add(v), new THREE.Vector3()).multiplyScalar(1 / Math.max(1, pts.length));
       pts.forEach((a, i) => {
         const b = pts[(i + 1) % pts.length], len = given?.[i] ?? a.distanceTo(b);
         if (len < 1.5) return;
@@ -109,12 +111,14 @@ export class ShadeLayer {
         el.textContent = `${len.toFixed(1)} m`;
         el.style.cssText = EDGE_CSS + "visibility:hidden;";
         this.overlay!.appendChild(el);
-        this.edges.push({ at: mid.setY(mid.y + 0.15), el, len });
+        const lift = new THREE.Vector3(0, 0.15, 0);
+        this.edges.push({ a: a.clone().add(lift), b: b.clone().add(lift), c: c.clone().add(lift), el, len });
       });
     });
   }
 
-  frame(camera: THREE.Camera, mode: "3d" | "2d", project: (v: THREE.Vector3) => { x: number; y: number; ok: boolean }, width: number) {
+  // avoid: screen rects already taken by the scene's own labels (the face pills), which edge lengths keep clear of.
+  frame(camera: THREE.Camera, mode: "3d" | "2d", project: (v: THREE.Vector3) => { x: number; y: number; ok: boolean }, width: number, avoid: Rect[] = []) {
     this.camera = camera;
     const now = performance.now(), dt = Math.min(0.05, this.last ? (now - this.last) / 1000 : 0); this.last = now;
     const goal = this.on ? 1 : 0;
@@ -128,7 +132,7 @@ export class ShadeLayer {
     const narrow = width < NARROW;
     const size = narrow ? "8.5px" : "10px";
     if (this.overlay && this.overlay.style.getPropertyValue("--sp-pct-size") !== size) this.overlay.style.setProperty("--sp-pct-size", size);
-    const taken: { x0: number; x1: number; y0: number; y1: number }[] = [];
+    const taken: Rect[] = [];
     const loss = (m: Mod) => (m.el.textContent ? parseInt(m.el.textContent, 10) || 0 : 0);
     [...this.mods].sort((a, b) => loss(b) - loss(a)).forEach((m) => {
       const show = this.on && m.mesh.visible;
@@ -142,19 +146,27 @@ export class ShadeLayer {
       m.el.style.visibility = free ? "visible" : "hidden";
       m.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)`;
     });
-    // Edge lengths on the roof faces wherever shading shows (the Panels view), small, like a drawing's dimensions.
-    // They never stack: longest first, a tag that would touch one already shown stays hidden.
-    const shown = [...taken];
+    // Edge lengths on the roof faces wherever shading shows (the Panels view), small, like a drawing's dimensions,
+    // longest first. Each sits just outside its edge (away from the face's centre on screen) and slides along the edge, middle
+    // first, until it clears the face pills, the module figures and the other lengths; with no room it stays hidden.
+    const shown: Rect[] = [...taken, ...avoid];
+    const hit = (r: Rect) => shown.some((q) => r.x0 < q.x1 + 6 && q.x0 < r.x1 + 6 && r.y0 < q.y1 + 6 && q.y0 < r.y1 + 6);
     [...this.edges].sort((a, b) => b.len - a.len).forEach((e) => {
-      const show = this.on;
-      if (!show) { if (e.el.style.visibility !== "hidden") e.el.style.visibility = "hidden"; return; }
-      const p = project(e.at);
+      if (!this.on) { if (e.el.style.visibility !== "hidden") e.el.style.visibility = "hidden"; return; }
+      const A = project(e.a), B = project(e.b), C = project(e.c);
       if (!e.w) { e.w = e.el.offsetWidth || 36; e.h = e.el.offsetHeight || 14; }
-      const r = { x0: p.x - e.w / 2, x1: p.x + e.w / 2, y0: p.y - e.h! / 2, y1: p.y + e.h! / 2 };
-      const free = p.ok && !shown.some((q) => r.x0 < q.x1 + 8 && q.x0 < r.x1 + 8 && r.y0 < q.y1 + 8 && q.y0 < r.y1 + 8);
-      if (free) shown.push(r);
-      e.el.style.visibility = free ? "visible" : "hidden";
-      e.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)`;
+      const w = e.w, h = e.h!, ex = B.x - A.x, ey = B.y - A.y, L = Math.hypot(ex, ey) || 1;
+      let nx = -ey / L, ny = ex / L;
+      if (nx * ((A.x + B.x) / 2 - C.x) + ny * ((A.y + B.y) / 2 - C.y) < 0) { nx = -nx; ny = -ny; }
+      // Out far enough that the tag's own box clears the line, whatever the edge's angle.
+      const off = 3 + Math.abs(nx) * w / 2 + Math.abs(ny) * h / 2;
+      let at: { x: number; y: number } | null = null;
+      if (A.ok && B.ok) for (const t of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+        const x = A.x + ex * t + nx * off, y = A.y + ey * t + ny * off, r = { x0: x - w / 2, x1: x + w / 2, y0: y - h / 2, y1: y + h / 2 };
+        if (!hit(r)) { shown.push(r); at = { x, y }; break; }
+      }
+      e.el.style.visibility = at ? "visible" : "hidden";
+      if (at) e.el.style.transform = `translate(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px) translate(-50%, -50%)`;
     });
   }
 

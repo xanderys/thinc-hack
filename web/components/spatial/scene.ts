@@ -1438,7 +1438,7 @@ export class SpatialScene {
       });
 
     if (this.plan) this.drawPlan();
-    this.shade.frame(this.camera, this.mode, (v) => this.project(v), this.host.clientWidth);
+    this.shade.frame(this.camera, this.mode, (v) => this.project(v), this.host.clientWidth, shown);
     this.xray.frame(dt);
     this.stepFx(dt); this.stepFades(dt);
     this.panelsOut.visible = this.panels.visible;
