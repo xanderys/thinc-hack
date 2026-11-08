@@ -8,6 +8,7 @@ import { call } from "@/lib/client";
 import type { Envelope, Layers, PanelRect, RoofModel, RoofPlane } from "./types";
 import { labelOf, p2, planesOf } from "./types";
 import type { SpatialScene } from "./scene";
+import type { System } from "./systems";
 import { POSES, type StageView } from "./camera";
 import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
@@ -38,6 +39,8 @@ type Props = {
   sunTint?: boolean;                  // tint the roof faces by sun with the modules showing (per-panel shading not in yet)
   tools?: (c: { view: "3d" | "2d"; setView: (v: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void } }) => ReactNode;
   children?: ReactNode;               // overlays drawn over the canvas
+  system?: System | null;             // the Systems chip: its layer on the model and its camera (systems.ts)
+  onScene?: (sc: SpatialScene | null) => void; // the live scene, for callers that drive it directly (scene.setSystem)
 };
 
 // Layer ids are fixed (7 Heat, 8 Plan); a step shows only when its data is present.
@@ -61,7 +64,7 @@ function useReduce() {
   return r;
 }
 
-export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, homeowner, leadId, onLayers, tools, sunTint, children }: Props) {
+export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, homeowner, leadId, onLayers, tools, sunTint, children, system, onScene }: Props) {
   const reduce = useReduce();
   const [own, setOwn] = useState(1);
   const layer = ctrl ?? own;
@@ -164,7 +167,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   useEffect(() => { if (ready && isOrigin(groundOrigin)) scene.current?.groundFor(groundOrigin); }, [ready, groundKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const l = layers as unknown as { imagery?: Imagery; planes?: { imagery?: Imagery } } | null; setImagery(l?.imagery ?? l?.planes?.imagery ?? null); }, [layers]);
   const vo = useViewOpts();
-  const credit = vo.google && vo.ground === "google" && vo.credit ? ` · Ground: ${vo.credit}` : "";
+  const credit = vo.google && vo.ground === "google" && vo.credit ? `, ground: ${vo.credit}` : "";
   // Overlays marked data-cover inside the view (the number card, the shading strip) report their rects; each takes
   // the side of the canvas that costs the house least, and the scene fits the house into what is left. The free
   // area is also published as CSS variables (--free-l, --free-t, --free-w, --free-h) so a loading skeleton can sit
@@ -233,7 +236,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     sc.show({ outlines: L <= 3, panels: L >= 3 && L !== 7, kit: L >= 4 && L <= 6, sun: L === 4, battery: L === 5 && !!design.battery_kwh ? "lit" : "plain" });
     sc.setTint(L === 2 || (sunTint && L === 3) ? "yield" : "off");
     sc.setWallbox(!!design.wallbox_kw);
-    sc.setUnits({ inverter: !!design.inverter_kw, heatpump: !!design.heatpump_kw && L >= 4 && L <= 7 });
+    sc.setUnits({ inverter: !!design.inverter_kw, heatpump: !!design.heatpump_kw, layer: L >= 4 && L <= 7 });
     if (L === 3 && prev !== 3 && prev < 3) sc.setPanels(panelList, !reduce);
     if (L === 4 && layers) sc.setDay(layers.day.hours, !reduce); else sc.setDay(null, false);
     if (L === 1) sc.setLabels(sc.planeLabels("roof"));
@@ -253,6 +256,24 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
 
   // The plan layer is always top-down; the other layers keep the planner's choice.
   useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);
+
+  // Systems chips (systems.ts): the envelope is kept for the Heat pump x-ray, and the chosen system drives the layer
+  // and the camera; null hands back to the layers above. The live scene goes to callers that drive it directly.
+  useEffect(() => { if (ready) scene.current?.setEnvelope(envelope); }, [envelope, ready, modelGen]);
+  useEffect(() => { if (ready && system !== undefined) scene.current?.setSystem(system); }, [system, ready, modelGen]);
+  // The Systems chips (components/systems/system.ts) announce the choice as a window event "marquee:system"
+  // { name } and keep the latest in window.__marqueeSystem; the scene follows it unless a system prop is given.
+  useEffect(() => {
+    if (!ready || system !== undefined) return;
+    const ok = (n: unknown): n is System | null => n === null || n === "panels" || n === "battery" || n === "wallbox" || n === "heatpump";
+    const apply = (n: unknown) => { if (ok(n)) scene.current?.setSystem(n); };
+    const w = window as unknown as { __marqueeSystem?: unknown };
+    if (w.__marqueeSystem !== undefined) apply(w.__marqueeSystem);
+    const on = (e: Event) => apply((e as CustomEvent<{ name?: unknown }>).detail?.name ?? null);
+    window.addEventListener("marquee:system", on);
+    return () => window.removeEventListener("marquee:system", on);
+  }, [ready, modelGen, system]);
+  useEffect(() => { onScene?.(ready ? scene.current : null); }, [ready, modelGen, onScene]);
 
   // The camera follows the reasoning: each stage flies to its pose; the 2D/3D pill still overrides afterwards.
   useEffect(() => { if (stage && ready) scene.current?.flyTo(POSES[stage]); }, [stage, ready, modelGen]);
@@ -322,7 +343,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         const alts = layers.frontier.filter((p) => p.label && !p.chosen).map((p) => `${labelOf(p).toLowerCase()} ${n2(p.kwp)} kWp + ${n1(p.kwh)} kWh`);
         return {
           sentence: "Every size, through the same year: upfront cost against 20-year value.",
-          eq: `${c ? `recommended ${n2(c.kwp)} kWp + ${n1(c.kwh)} kWh: ${n0(c.capex_eur)} EUR → ${n0(c.npv_20y_eur)} EUR` : ""}${best && best !== c ? `; best value ${n2(best.kwp)} kWp + ${n1(best.kwh)} kWh: ${n0(best.capex_eur)} EUR → ${n0(best.npv_20y_eur)} EUR` : ""}${alts.length ? `; ${alts.join("; ")}` : ""}${layers.objective.sentence ? `. ${layers.objective.sentence}` : ""}`,
+          eq: `${c ? `recommended ${n2(c.kwp)} kWp + ${n1(c.kwh)} kWh: €${n0(c.capex_eur)} → €${n0(c.npv_20y_eur)}` : ""}${best && best !== c ? `; best value ${n2(best.kwp)} kWp + ${n1(best.kwh)} kWh: ${n0(best.capex_eur)} EUR → ${n0(best.npv_20y_eur)} EUR` : ""}${alts.length ? `; ${alts.join("; ")}` : ""}${layers.objective.sentence ? `. ${layers.objective.sentence}` : ""}`,
           sources: src(layers.objective.sources.length ? layers.objective.sources : ["knee", "discount", "pv_cost", "battery_cost"]),
         };
       }
@@ -370,7 +391,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     : designPt ? { y: model?.layout?.kwh_per_year ?? null, a: designPt.autarky_share, c: designPt.capex_eur, p: designPt.payback_years } : null;
   if (four && L >= 3 && L <= 6) {
     if (four.y != null) numbers.push({ k: "Yield", v: n0(four.y), u: "kWh" });
-    numbers.push({ k: "Autarky", v: pct(four.a), u: "" }, { k: "Investment", v: n0(four.c), u: "EUR" }, { k: "Payback", v: four.p == null ? "none" : n1(four.p), u: four.p == null ? "" : "years" });
+    numbers.push({ k: "Autarky", v: pct(four.a), u: "" }, { k: "Investment", v: `€${n0(four.c)}`, u: "" }, { k: "Payback", v: four.p == null ? "none" : n1(four.p), u: four.p == null ? "" : "years" });
   }
   // One run check: modules on the roof against the design, and the yield the economics used against the numbers shown.
   const cs = layers?.consistency;

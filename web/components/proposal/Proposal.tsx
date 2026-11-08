@@ -9,6 +9,8 @@ import { decide } from "@/lib/proposal";
 import Signature, { type SignatureHandle } from "./Signature";
 import KitSlot from "@/components/home/KitSlot";
 import RoofNote from "@/components/home/RoofNote";
+import { Facts } from "@/components/offer/VariantTabs";
+import { variantFacts } from "@/components/offer/facts";
 import "./proposal.css";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
@@ -78,6 +80,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
           <polygon points="0,78 112,50 112,88 0,116" />
         </svg>
         <p className="pp-brand">{brand}</p>
+        {lead.approved && <p className="pp-mark">Approved: {key === "edit" ? "Planner's adjusted design" : ROWS.find((r) => r.key === key)?.name ?? "Planners' pick"}</p>}
         <div className="pp-title">
           <h1>Your proposal</h1>
           <p>{[name, address].filter(Boolean).join(", ")}</p>
@@ -101,7 +104,6 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
         {yieldKwh != null && <Kpi label="Yield a year" value={`${n0(yieldKwh)} kWh`} />}
         <div className="pp-kpi">
           <span>Supplied by your system</span><b>{pc(e.autarky_share)}</b>
-          <small>{pc(e.autarky_share)} of your electricity supplied by your system</small>
           {e.annual && own != null && (
             <details className="pp-more-d">
               <summary>Details</summary>
@@ -120,8 +122,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
             {alts.map(({ key: k, name: label, v }) => (
               <li key={k}>
                 <span className="pp-vname">{label}</span>
-                <Chips d={v.design} />
-                <span className="pp-vnum">{eur(v.economics.capex_eur)}<small>estimate</small></span>
+                <Facts className="pp-facts" items={variantFacts(v.economics, v.design, design)} />
               </li>
             ))}
           </ul>
@@ -151,17 +152,6 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
 
 function Kpi({ label, value, note }: { label: string; value: string; note?: string }) {
   return <div className="pp-kpi"><span>{label}</span><b>{value}</b>{note && <small>{note}</small>}</div>;
-}
-
-function Chips({ d }: { d: Design }) {
-  return (
-    <span className="pp-chips">
-      {d.pv_kwp != null && <span className="pp-pill pv">{n2(d.pv_kwp)} kWp</span>}
-      {d.battery_kwh != null && <span className="pp-pill battery">{n2(d.battery_kwh)} kWh</span>}
-      {d.heatpump_kw != null && <span className="pp-pill heatpump">{n2(d.heatpump_kw)} kW</span>}
-      {d.wallbox_kw != null && <span className="pp-pill wallbox">{n2(d.wallbox_kw)} kW</span>}
-    </span>
-  );
 }
 
 type Act = "sign" | "decline" | "question";

@@ -161,7 +161,7 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
   const i = p.inputs, tol = (k: ComponentKey) => ev?.components[k]?.tolerance ?? "";
   const rows = KEYS.map((k) => { const f = COMPONENT_DESIGN_FIELD[k]; const o = p.ours.design[f], x = p.expert[f]; return { k, o, x, ok: within(o, x, tol(k)) }; });
   const misses = rows.filter((r) => !r.ok);
-  const what = [INSTALLER_NAME[p.installer_id], `${n0(i.annual_demand_kwh)} kWh a year`, i.heating_type !== "Unknown" ? `${HEATING_WORD[i.heating_type].toLowerCase()} heating${i.heating_cost_per_year_eur ? ` at ${n0(i.heating_cost_per_year_eur)} EUR a year` : ""}` : null, i.has_ev ? "an electric car" : null].filter(Boolean).join(", ");
+  const what = [INSTALLER_NAME[p.installer_id], `${n0(i.annual_demand_kwh)} kWh a year`, i.heating_type !== "Unknown" ? `${HEATING_WORD[i.heating_type].toLowerCase()} heating${i.heating_cost_per_year_eur ? ` at €${n0(i.heating_cost_per_year_eur)} a year` : ""}` : null, i.has_ev ? "an electric car" : null].filter(Boolean).join(", ");
   return (
     <>
       <section className={s.sec}>
@@ -200,14 +200,16 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
   );
 }
 
-// The parts outside tolerance, from the row's own fields: only a part whose sizes really differ is named (a part the
-// engine marks out at the shown precision, e.g. 7.2 against 7.2, is not a miss to show).
+// Every part outside tolerance, named with the sizes and by how much, from the row's own fields.
 function miss(r: InboxRow) {
-  const out = KEYS.filter((k) => r.within[k] === false).map((k) => {
-    const f = COMPONENT_DESIGN_FIELD[k], x = sz(r.expert[f], UNIT[k]), o = sz(r.draft[f], UNIT[k]);
-    return x === o ? null : `${NAME[k]}: expert fitted ${x}, draft ${o}.`;
-  }).filter(Boolean);
-  return out.join(" ");
+  return KEYS.filter((k) => r.within[k] === false).map((k) => {
+    const f = COMPONENT_DESIGN_FIELD[k], e = r.expert[f] as number | null, d = r.draft[f] as number | null, u = UNIT[k];
+    if (d == null) return `${NAME[k]}: expert fitted ${sz(e, u)}, draft left it out.`;
+    if (e == null) return `${NAME[k]}: draft added ${sz(d, u)}, expert fitted none.`;
+    const diff = n2(Math.abs(d - e));
+    if (sz(d, u) === sz(e, u)) return `${NAME[k]}: draft ${sz(d, u)}, expert ${sz(e, u)}, flagged outside tolerance by rounding.`;
+    return `${NAME[k]}: draft ${sz(d, u)}, expert ${sz(e, u)}, ${diff} ${u} ${d > e ? "over" : "under"}.`;
+  }).join(" ");
 }
 
 function Replay({ ev }: { ev: EvalX | null }) {
@@ -274,53 +276,28 @@ function Replay({ ev }: { ev: EvalX | null }) {
 }
 
 function ByComponent({ ev }: { ev: EvalX }) {
-  const tb = ev.baselines?.textbook?.rule, fs = ev.baselines?.floor_slope?.rule, rot = ev.rule_of_thumb_comparison;
+  const ft = ev.final_test;
+  const half = ft?.rows.filter((r) => r.population === "test half" && r.ground_truth === "lowest option" && r.band === "ours") ?? [];
+  const prod = ft?.production.replace(/-readout$/, "");
+  const us = half.find((r) => r.engine === prod), tb = half.find((r) => r.engine === "textbook");
+  if (!us) return null;
+  const val = (r: typeof us | undefined, k: ComponentKey) => r ? pct1((r as unknown as Record<string, number>)[k === "heatpump" ? "heatpump" : k === "pv" ? "pv" : k]) : "";
   return (
     <section className={s.sec}>
-      <h2>Per part, against similar recorded homes and two baselines</h2>
-      <p className={s.lede}>Share of the {n0(ev.split.test)} held-out projects within tolerance. Agreement with designs for similar recorded homes: how often the same installer's own designs agree on near-identical homes.</p>
+      <h2>Per part, sealed test half</h2>
+      <p className={s.lede}>Share of the {n0(us.n)} sealed held-out homes within tolerance, per part.</p>
       <div className={`${s.panel} ${s.scroll}`}>
         <table className={s.t}>
-          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r}>Similar recorded homes</th><th className={s.r}>Textbook</th><th className={s.r}>Floor plus slope</th><th>Tolerance</th></tr></thead>
+          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r}>Textbook</th><th>Tolerance</th></tr></thead>
           <tbody>
-            <tr className={s.prod}><td>Whole design</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.ceiling_design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.textbook_design_match_share ?? ev.overall.baseline_design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(ev.overall.floor_slope_design_match_share)}</td><td className={s.dim}>all four at once</td></tr>
-            {KEYS.map((k) => { const c = ev.components[k]; return (
-              <tr key={k}><td>{NAME[k]}</td><td className={`${s.r} ${s.n}`}>{pct1(c.within_tolerance_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(c.ceiling_within_tolerance_share)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{pct1(c.textbook_within_tolerance_share ?? c.baseline_within_tolerance_share)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{pct1(c.floor_slope_within_tolerance_share)}</td><td className={s.dim}>{c.tolerance}</td></tr>
-            ); })}
+            <tr className={s.prod}><td>Whole design</td><td className={`${s.r} ${s.n}`}>{pct1(us.all_four)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{tb ? pct1(tb.all_four) : ""}</td><td className={s.dim}>all four at once</td></tr>
+            {KEYS.map((k) => (
+              <tr key={k}><td>{NAME[k]}</td><td className={`${s.r} ${s.n}`}>{val(us, k)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{val(tb, k)}</td><td className={s.dim}>{ev.components[k]?.tolerance}</td></tr>
+            ))}
           </tbody>
         </table>
       </div>
-      <ul className={s.note} style={{ paddingLeft: 18 }}>
-        {tb && <li>Textbook: {tb}.</li>}
-        {fs && <li>Floor plus slope: {fs}.</li>}
-        {ev.ceiling && <li>{ev.ceiling.method}{ev.ceiling.covered_test_share != null && ` ${pct1(ev.ceiling.covered_test_share)} of test homes covered.`}</li>}
-        <li>{ev.split.method}.</li>
-      </ul>
-
-      <h3>Per installer</h3>
-      <div className={`${s.panel} ${s.scroll}`}>
-        <table className={s.t}>
-          <thead><tr><th>Installer</th><th className={s.r}>Held-out projects</th><th className={s.r}>Draft</th><th className={s.r}>Textbook</th></tr></thead>
-          <tbody>{(Object.entries(ev.per_installer) as [InstallerId, Eval["per_installer"][InstallerId]][]).map(([k, v]) => (
-            <tr key={k}><td>{INSTALLER_NAME[k] ?? k}</td><td className={`${s.r} ${s.n}`}>{n0(v.test)}</td><td className={`${s.r} ${s.n}`}>{pct1(v.design_match_share)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{pct1(v.baseline_design_match_share)}</td></tr>
-          ))}</tbody>
-        </table>
-      </div>
-
-      {rot && (<>
-        <h3>Solar per 1,000 kWh of annual use</h3>
-        <div className={`${s.panel} ${s.scroll}`}>
-          <table className={s.t}>
-            <thead><tr><th>Who</th><th className={s.r}>kWp per MWh</th></tr></thead>
-            <tbody>
-              <tr><td>Reonic rule of thumb</td><td className={`${s.r} ${s.n}`}>{rot.reonic_kwp_per_mwh.toFixed(2)}</td></tr>
-              {Object.entries(rot.planners_kwp_per_mwh).map(([k, v]) => <tr key={k}><td>Planners, {k === "all" ? "both installers" : INSTALLER_NAME[k as InstallerId] ?? k}</td><td className={`${s.r} ${s.n}`}>{v.toFixed(2)}</td></tr>)}
-            </tbody>
-          </table>
-        </div>
-        <p className={s.note}>{rot.note}</p>
-      </>)}
-      <Src><Api path="/api/eval" />, <Doc path="docs/domain.md" />, <Doc path="docs/data-insights.md" />, <a href="/classic/check">full tables</a></Src>
+      <Src><Api path="/api/eval" /> (<code>final_test</code>), <Doc path="engine/lab/reports/final_test_v2.md" /></Src>
     </section>
   );
 }
@@ -374,7 +351,7 @@ function Deviations({ ev }: { ev: EvalX }) {
             </tbody>
           </table>
         </div>
-        <p className={s.note}>{q.median_npv_gain_eur != null && `Median net present value gain ${n0(q.median_npv_gain_eur)} EUR. `}{q.method}.</p>
+        <p className={s.note}>{q.median_npv_gain_eur != null && `Median net present value gain €${n0(q.median_npv_gain_eur)}. `}{q.method}.</p>
       </>)}
       {ev.deviations.length > 0 && (<>
         <h3>Largest single deviations</h3>
@@ -391,31 +368,6 @@ function Deviations({ ev }: { ev: EvalX }) {
         </div>
       </>)}
       <Src><Api path="/api/eval" /> (<code>deviation_quality</code>, <code>deviations</code>)</Src>
-    </section>
-  );
-}
-
-// Aggregates from engine/lab/qualification_backtest.md (engine-lab); the engine does not serve them.
-const BACKTEST = [
-  { set: "258 held-out board", n: 258, visit: [211, 0.818], call: [45, 0.174], decline: [2, 0.008] },
-  { set: "Clean 126", n: 126, visit: [101, 0.802], call: [23, 0.183], decline: [2, 0.016] },
-] as const;
-
-function Backtest() {
-  return (
-    <section className={s.sec}>
-      <h2>Priority verdict backtest</h2>
-      <p className={s.lede}>The lead verdict rule replayed on held-out homes. Every project was a signed sale, so each Decline is a false decline.</p>
-      <div className={`${s.panel} ${s.scroll}`}>
-        <table className={s.t}>
-          <thead><tr><th>Set</th><th className={s.r}>Priority</th><th className={s.r}>Call first</th><th className={s.r}>Decline</th></tr></thead>
-          <tbody>{BACKTEST.map((b) => (
-            <tr key={b.set}><td>{b.set}</td>{[b.visit, b.call, b.decline].map(([c, p], i) => <td key={i} className={`${s.r} ${s.n}`}>{c} ({pct1(p)})</td>)}</tr>
-          ))}</tbody>
-        </table>
-      </div>
-      <p className={s.note}>Both declines are homes where the draft proposes no solar. Call first fires almost only on the 4,500 kWh default. Roof, north-only and homeowner-declined clauses are not testable on the pack.</p>
-      <Src><Doc path="engine/lab/qualification_backtest.md" branch="engine-lab" />, <Doc path="docs/qualification.md" /></Src>
     </section>
   );
 }
@@ -479,7 +431,6 @@ export default function Check() {
         <Recommenders ev={ev} />
         <Deviations ev={ev} />
       </>}
-      <Backtest />
       {ev && <Synthetic ev={ev} />}
       <ResetDemo />
     </div>

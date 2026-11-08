@@ -277,7 +277,7 @@ function Page({ agentId, installerId, test }: Props) {
         {pick("people", "People in the home")}
         {pick("heating", "Heating")}
         {pick("ev", "Electric car")}
-        {pick("bill_band", "Electricity bill", "EUR a month")}
+        {pick("bill_band", "Electricity bill", "€ a month")}
         {pick("roof", "Roof faces")}
         <button type="submit" className="h-go" disabled={step !== "form"}>{step === "waiting" ? "Sending" : "Submit"}</button>
         {leadError && step === "form" && <p className="h-why" role="alert">{leadError} <button type="button" className="h-retry" onClick={submit}>Retry</button></p>}
@@ -343,7 +343,7 @@ function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: L
       <dl className="h-nums">
         <div><dt>Solar a year</dt><dd>{e ? (e.annual ? `${n0(e.annual.pv_yield_kwh)} kWh` : "None") : <Bar w="9ch" />}</dd></div>
         <div><dt>Supplied by your system</dt><dd>{e ? `${pct(e.autarky_share)} %` : <Bar w="4ch" />}</dd></div>
-        <div><dt>Investment estimate</dt><dd>{e ? `${n0(e.capex_eur)} EUR` : <Bar w="10ch" />}</dd></div>
+        <div><dt>Investment estimate</dt><dd>{e ? `€${n0(e.capex_eur)}` : <Bar w="10ch" />}</dd></div>
         <div><dt>Payback</dt><dd>{e ? (e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`) : <Bar w="8ch" />}</dd></div>
       </dl>
       <p className="h-est">Prices are an estimate until the site visit.</p>
