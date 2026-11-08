@@ -52,6 +52,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   const cause = useRef<string | null>(null);
   // An edit puts the numbers in a pending state at once; they settle when the engine answers.
   const [pending, setPending] = useState<number | null>(null);
+  // A design call past about 3 s is a roof being fetched, not a failure: say so quietly instead of showing an error.
+  const [slow, setSlow] = useState(false);
   const [resIn, setResIn] = useState<HomeInputs | null>(null);   // the facts the design on screen was drawn from
   const [resCause, setResCause] = useState<string | null>(null);
   // The homeowner's lead when the stage was opened from a call: refinements write back to it.
@@ -191,6 +193,12 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       await new Promise((ok) => setTimeout(ok, 6000));
     }
   }
+
+  useEffect(() => {
+    if (!busy) { setSlow(false); return; }
+    const t = setTimeout(() => setSlow(true), 3000);
+    return () => clearTimeout(t);
+  }, [busy]);
 
   // Every design the card has seen, keyed by the facts and the fixed sizes (not the lead version: a kit write bumps the
   // version without changing any variant). A variant tab whose design is here switches at once, with no pending state.
@@ -406,6 +414,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
         canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
+      {slow && !roof?.pending && !err && <p className="s-roof" role="status">Measuring the roof</p>}
       {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
       {!res && <OpenSkeleton />}
       {res && <Chain res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={history.length > 0} onUndo={onUndo} answered={answer != null} redraft={moved}

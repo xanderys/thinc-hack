@@ -20,7 +20,7 @@ type Props = {
 
 type Kind = { f: keyof HomeInputs; label: string; show: (i: HomeInputs, roof?: RoofResult | null) => string; edit: "num" | "bool" | "heat"; unit?: string };
 const FACTS: Kind[] = [
-  { f: "annual_demand_kwh", label: "Annual use", show: (i) => `${n0(i.annual_demand_kwh)} kWh`, edit: "num", unit: "kWh" },
+  { f: "annual_demand_kwh", label: "Household use", show: (i) => `${n0(i.annual_demand_kwh)} kWh`, edit: "num", unit: "kWh" },
   { f: "heating_type", label: "Heating", show: (i) => HEATING_WORD[i.heating_type], edit: "heat" },
   { f: "electricity_price_ct_kwh", label: "Price", show: (i) => i.electricity_price_ct_kwh != null ? `${i.electricity_price_ct_kwh} ct/kWh` : "37 ct/kWh, assumed", edit: "num", unit: "ct/kWh" },
   { f: "has_ev", label: "Electric car", show: (i) => i.has_ev ? (i.ev_annual_km ? `${n0(i.ev_annual_km)} km a year` : "Yes") : "No", edit: "bool" },

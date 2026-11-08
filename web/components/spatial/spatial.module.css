@@ -154,3 +154,5 @@
 .zoom button:focus-visible, .host:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .toolsBare .zoom { align-self: flex-end; }
 @media (pointer: coarse) { .zoom button { width: 40px; height: 40px; } }
+/* Face chips: the panel count bold, the kWp lighter beside it. */
+.overlay :global(.sp-label.chip .sub) { font-size: inherit; font-weight: 400; color: inherit; opacity: 0.72; font-variant-numeric: tabular-nums; }
