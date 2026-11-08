@@ -1,3 +1,4 @@
+import json
 """Chained sizing model: PV, then battery given PV, then heat pump, then wallbox. Statistics plus physics, no LLM."""
 import math
 from dataclasses import dataclass, field
@@ -97,6 +98,28 @@ def fmt(x, unit):
         return "None"
     s = f"{x:,.1f}".rstrip("0").rstrip(".")
     return f"{s} {unit}"
+
+
+SIZES = ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")
+
+
+def proposal_hash(design: dict, variant: str, investment: float) -> str:
+    """sha256 over {"design": the five sizes, "variant": key, "investment_eur": capex}, keys sorted, compact JSON."""
+    import hashlib
+    body = json.dumps({"design": {k: design.get(k) for k in SIZES}, "variant": variant,
+                       "investment_eur": round(float(investment or 0), 2)}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def add_hashes(out: dict, top_key: str = "expert") -> dict:
+    """design_hash on the response and on every variant: what a planner sends back with PUT approve."""
+    try:
+        out["design_hash"] = proposal_hash(out["design"], top_key, (out.get("economics") or {}).get("capex_eur"))
+        for v in out.get("variants") or []:
+            v["design_hash"] = proposal_hash(v["design"], v["key"], (v.get("economics") or {}).get("capex_eur"))
+    except Exception:
+        pass
+    return out
 
 
 MIN_PV_FOR_BATTERY = 2.0  # kWp; below it a planner would not sign a battery (engine guard over the rules)
@@ -281,6 +304,7 @@ class Engine:
             out["same_run_id"] = L.run_id(inp, out["design"], lo["pv_planes"] if lo else None)
         except Exception:
             pass
+        add_hashes(out, "edit" if overrides else "expert")
         return out
 
     def rules_catalogue(self, inst: str, t: float) -> dict:

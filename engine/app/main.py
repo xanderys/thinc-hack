@@ -508,6 +508,32 @@ def project(project_id: str):
     return err(404, f"No project with id {project_id}")
 
 
+_TILE_IDX: dict = {}
+LARGE_FOOTPRINT_M2, LARGE_STOREYS, LARGE_HEIGHT_M = 300.0, 4, 12.0
+
+
+def _geometry(r: dict, building=None, tile=None) -> dict:
+    """The measured building (LoD2) the web trusts over a census class on conflict: footprint, storeys, height, and
+    large_building when the geometry alone says it is not a single-family house."""
+    fp, st, h = r.get("footprint_m2"), r.get("storeys"), None
+    if building and tile:
+        try:
+            if tile not in _TILE_IDX:
+                p = roofs.ROOT / "roof" / ".cache" / "lod2" / f"{tile}.v2.json"
+                _TILE_IDX[tile] = {x["id"]: x.get("height") for x in json.loads(p.read_text())} if p.exists() else {}
+            h = _TILE_IDX[tile].get(building)
+        except Exception:
+            h = None
+    if not fp:
+        return {"footprint_m2": None, "storeys": None, "height_m": None, "large_building": None, "source": None,
+                "note": "no measured building"}
+    large = bool(fp >= LARGE_FOOTPRINT_M2 or (st or 0) >= LARGE_STOREYS or (h or 0) >= LARGE_HEIGHT_M)
+    return {"footprint_m2": fp, "storeys": st, "height_m": round(h, 1) if h else None, "large_building": large,
+            "source": f"LoD2 building {building}" if building else (r.get("source") or "roof lookup"),
+            "note": (f"large_building when footprint >= {LARGE_FOOTPRINT_M2:g} m2, storeys >= {LARGE_STOREYS} or height >= "
+                     f"{LARGE_HEIGHT_M:g} m; measured geometry, so it outranks a census dwellings class")}
+
+
 def _imagery(lat, lon, building=None, tile=None) -> dict:
     try:
         return imagery.block(lat, lon, building, tile)
@@ -520,7 +546,8 @@ def roof(address: str = "", postcode: str = ""):
     if address.strip():
         r = roofs.lookup_or_pending(address)  # pending: true while a new 2 km tile downloads; poll again
         if isinstance(r, dict) and not r.get("pending"):
-            r = {**r, "imagery": _imagery(r.get("lat"), r.get("lon"), *imagery.from_notes(r.get("notes")))}
+            b, tile = imagery.from_notes(r.get("notes"))
+            r = {**r, "imagery": _imagery(r.get("lat"), r.get("lon"), b, tile), "geometry": _geometry(r, b, tile)}
         return r
     if postcode.strip():
         r = roofs.postcode_lookup(postcode)
@@ -862,10 +889,14 @@ def intake_step(req: StepReq, x_intake_secret: Optional[str] = Header(None)):
     prev_status = lead.get("status")
     lead.update(inputs=inp, unknown=unknown, draft=draft, next_question=nq, questions_asked=step, updated_at=t,
                 status="done" if (nq is None or was_done) else "in_call")
+    route = ((leads.REQUEST.get() or {}).get("client_route") or "").lower()
+    if lead["status"] == "in_call" and prev_status != "in_call" and ("sentence" in route or "hand" in route):
+        lead["status"] = prev_status or "draft"  # a planner's edit is not a call: only Rina's steps open "On a call"
     if prev_status in ("approved", "signed", "declined", "question") and not changed:
         lead["status"] = prev_status  # nothing moved: the approval and any decision stand
     elif prev_status in ("approved", "signed") and changed:
         lead["approved_at"] = None  # the design changed after the planner released it: release it again
+        lead.pop("approved", None)
     if not lead.get("customer_name") and meta.get("customer_name"):
         lead["customer_name"] = meta["customer_name"]
     if not lead.get("address_or_postcode") and (ans.get("address") or ans.get("postcode")):
@@ -921,6 +952,9 @@ def refresh_all_leads():
 
 def proposal_of(lead: dict, variant: Optional[str] = None) -> tuple[dict, str, float]:
     """(design, variant key, investment) of what the homeowner is offered: the approved variant, else the planners' design."""
+    ap = lead.get("approved")
+    if ap and variant in (None, ap.get("variant")):  # what the planner released, exactly as selected
+        return {k: ap["design"].get(k) for k in model_mod.SIZES}, ap["variant"], float(ap.get("investment_eur") or 0)
     key = variant or lead.get("approved_variant") or "expert"
     draft = lead.get("draft") or {}
     v = next((x for x in draft.get("variants") or [] if x.get("key") == key), None)
@@ -930,10 +964,7 @@ def proposal_of(lead: dict, variant: Optional[str] = None) -> tuple[dict, str, f
 
 
 def proposal_hash(design: dict, variant: str, investment: float) -> str:
-    """sha256 over {"design": the five sizes, "variant": key, "investment_eur": capex}, keys sorted, compact JSON."""
-    body = json.dumps({"design": design, "variant": variant, "investment_eur": round(float(investment), 2)},
-                      sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(body.encode()).hexdigest()
+    return model_mod.proposal_hash(design, variant, investment)
 
 
 def current_hash(lead: dict) -> str:
@@ -955,7 +986,7 @@ def _lead_out(lead: dict) -> dict:
         dec = {**dec, "matches_current": dec.get("proposal_hash") == current_hash(lead)}
     return {"lead_id": lead["lead_id"], "version": int(lead.get("version") or 0), "status": lead["status"],
             "customer_name": lead["customer_name"], "approved_at": lead.get("approved_at"), "approved_variant": lead.get("approved_variant"),
-            "proposal_hash": current_hash(lead), "decision": dec,
+            "proposal_hash": current_hash(lead), "decision": dec, "approved": lead.get("approved"),
             "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
             "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"], "pinned": bool(lead.get("pinned")),
             "created_at": lead["created_at"], "updated_at": lead["updated_at"]}
@@ -1019,7 +1050,7 @@ def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
     draft = eng.predict(dict(inp))
     unknown = [c for c in leads.CANDIDATES if c not in inp["_given"]]
     nq, spread = _question(eng, inp, unknown)
-    for k in ("decision", "approved_at", "approved_variant", "approved_hash"):
+    for k in ("decision", "approved_at", "approved_variant", "approved_hash", "approved"):
         lead.pop(k, None)
     (SIG_DIR / f"{lead['lead_id']}.png").unlink(missing_ok=True)
     lead.update(inputs=inp, draft=draft, unknown=unknown, next_question=nq, next_spread=spread, questions_asked=0, history=[],
@@ -1051,8 +1082,15 @@ def list_leads(limit: int = 20, include_test: bool = False, x_intake_secret: Opt
 
 
 class ApproveReq(BaseModel):
-    variant: Optional[Literal["expert", "value", "payback", "independence", "upfront"]] = None
+    variant: Optional[Literal["expert", "value", "payback", "independence", "upfront", "edit"]] = None
+    design_hash: Optional[str] = None     # the design_hash of the design the planner saw (draft, variant or refine)
+    overrides: Optional[dict] = None      # with variant "edit": the planner's own changes (as /api/refine)
+    design: Optional[dict] = None         # the design shown (the five sizes); a hand edit is approved exactly as this
     base_version: Optional[int] = None
+
+
+def _approve_conflict(lead: dict, msg: str) -> JSONResponse:
+    return JSONResponse(status_code=409, content=jsonable_encoder({"error": msg, "version": lead.get("version"), "lead": _lead_out(lead)}))
 
 
 @app.put("/api/leads/{lead_id}/approve")
@@ -1067,9 +1105,35 @@ def approve_lead(lead_id: str, req: Optional[ApproveReq] = None, x_intake_secret
     if stale is not None:
         return stale
     refresh_lead(lead)
-    variant = (req.variant if req else None) or "expert"
-    if variant != "expert" and not any(v.get("key") == variant for v in (lead.get("draft") or {}).get("variants") or []):
-        return err(422, f"This lead has no {variant} variant.")
+    if not req or not (req.design_hash or req.design):
+        return _approve_conflict(lead, "Approval needs the design you saw: its design_hash, or the design itself.")
+    variant, draft = req.variant or ("edit" if req.design else None), lead.get("draft") or {}
+    if not variant:
+        return _approve_conflict(lead, "Approval needs the selected variant.")
+    shown = {k: (req.design or {}).get(k) or None for k in model_mod.SIZES} if req.design else None
+    if variant == "edit":
+        ov = {k: v for k, v in (req.overrides or {}).items() if k in FIELDS}
+        if not ov and shown:  # the hand edit as shown: every size fixed, none re-sized
+            ov = {k: (shown[k] if shown[k] is not None else None) for k in model_mod.SIZES}
+        if not ov:
+            return _approve_conflict(lead, "An edited design needs the overrides it was made with.")
+        sel = engine().predict(dict(lead["inputs"]), ov)
+        sel = {"design": sel["design"], "economics": sel["economics"]}
+    elif variant == "expert":
+        sel = {"design": draft.get("design") or {}, "economics": draft.get("economics") or {}}
+    else:
+        sel = next((v for v in draft.get("variants") or [] if v.get("key") == variant), None)
+        if sel is None:
+            return _approve_conflict(lead, f"This lead has no {variant} variant.")
+    capex = (sel.get("economics") or {}).get("capex_eur") or 0.0
+    h = proposal_hash(sel["design"], variant, capex)
+    if shown is not None and {k: sel["design"].get(k) or None for k in model_mod.SIZES} != shown:
+        return _approve_conflict(lead, f"The {variant} design differs from the one on screen; nothing was approved. Reload and approve again.")
+    if req.design_hash and h != req.design_hash:
+        return _approve_conflict(lead, f"The {variant} design changed since you saw it; nothing was approved. Reload and approve again.")
+    lead["approved"] = {"variant": variant, "design": {k: sel["design"].get(k) for k in model_mod.SIZES},
+                        "economics": sel.get("economics"), "investment_eur": capex, "design_hash": h,
+                        **({"overrides": ov} if variant == "edit" else {})}
     lead.update(status="approved", approved_at=leads.now(), approved_variant=variant, updated_at=leads.now())
     lead["approved_hash"] = current_hash(lead)
     leads.save(lead)
