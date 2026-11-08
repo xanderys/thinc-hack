@@ -243,7 +243,8 @@ export class SpatialScene {
     el.addEventListener("pointerdown", this.onFlickDown);
     el.addEventListener("pointermove", this.onFlickMove);
     el.addEventListener("pointerup", this.onFlickUp);
-    window.addEventListener(SYSTEM_EVENT, this.onSystemPick); // a Systems chip tap, even on the chip already showing
+    window.addEventListener(SYSTEM_EVENT, this.onSystemPick);
+    exposeScene(this, true); // a Systems chip tap, even on the chip already showing
     this.shade.mount(overlay, this.renderer.domElement);
 
     this.ro = new ResizeObserver(() => this.resize());
@@ -1572,6 +1573,7 @@ export class SpatialScene {
     this.renderer.domElement.removeEventListener("pointermove", this.onFlickMove);
     this.renderer.domElement.removeEventListener("pointerup", this.onFlickUp);
     window.removeEventListener(SYSTEM_EVENT, this.onSystemPick);
+    exposeScene(this, false);
     this.labelEls.forEach((el) => el.remove());
     Object.values(this.flowPaths).forEach((el) => el.remove());
     this.planG?.remove();
@@ -1607,4 +1609,26 @@ function giveRenderer(r: THREE.WebGLRenderer) {
   c.removeAttribute("style");
   if (spare.length < 2 && !r.getContext().isContextLost()) spare.push(r);
   else { r.dispose(); r.forceContextLoss(); }
+}
+
+// The component-view strips (docs/briefs/component-views.md) drive the newest live scene: window.__marqueeScene has
+// setBatteryFill, setCarCharge and setXrayHour, and the window event "marquee:scene-day" { name, value } calls the same.
+// Off-screen scenes (thumbnails) come and go; the list keeps the hooks on the newest one still alive.
+type SceneHooks = { setBatteryFill: (v: number) => void; setCarCharge: (v: number) => void; setXrayHour: (h: number) => void };
+const liveScenes: SpatialScene[] = [];
+const hooksOf = (sc: SpatialScene): SceneHooks => ({ setBatteryFill: (v) => sc.setBatteryFill(v), setCarCharge: (v) => sc.setCarCharge(v), setXrayHour: (h) => sc.setXrayHour(h) });
+const onSceneDay = (e: Event) => {
+  const d = (e as CustomEvent<{ name?: unknown; value?: unknown }>).detail, sc = liveScenes[liveScenes.length - 1];
+  if (!sc || !d || typeof d.value !== "number" || !Number.isFinite(d.value)) return;
+  if (d.name === "setBatteryFill" || d.name === "setCarCharge" || d.name === "setXrayHour") hooksOf(sc)[d.name](d.value);
+};
+function exposeScene(sc: SpatialScene, on: boolean) {
+  if (typeof window === "undefined") return;
+  const i = liveScenes.indexOf(sc);
+  if (on && i < 0) liveScenes.push(sc);
+  if (!on && i >= 0) liveScenes.splice(i, 1);
+  const top = liveScenes[liveScenes.length - 1], w = window as unknown as { __marqueeScene?: SceneHooks };
+  if (top) w.__marqueeScene = hooksOf(top); else delete w.__marqueeScene;
+  window.removeEventListener("marquee:scene-day", onSceneDay);
+  if (top) window.addEventListener("marquee:scene-day", onSceneDay);
 }
