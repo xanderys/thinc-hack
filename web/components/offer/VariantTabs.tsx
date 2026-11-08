@@ -1,3 +1,8 @@
+// Event for other lanes (the 3D scene): every tab pick dispatches on window
+//   new CustomEvent("marquee:variant", { detail: { id, design } })
+//   id: "expert" | "independence" | "payback" | "upfront" | "edit"; design: the variant's Design (five sizes).
+// It fires before the card updates, so a listener can start its own transition in the same frame. Listen with
+//   addEventListener("marquee:variant", (e) => { const { id, design } = (e as CustomEvent).detail; ... })
 // The four offers a homeowner can choose between: glyph, name, one plain line, then the same figures in the same
 // order for each (price estimate, break-even, what differs from the planners' pick). Planners' pick first, then by price.
 // "Your edit" appears only when the design on screen matches none of the four.
@@ -76,7 +81,7 @@ export default function VariantTabs({ rows, onPick, pending }: { rows: Row[]; on
     <div className={s.vtabs} role="radiogroup" aria-label="Offers" data-pending={pending || undefined}>
       {rows.map((r) => (
         <button key={r.key} type="button" role="radio" aria-checked={r.selected} className={s.vtab} data-k={r.key}
-          onClick={() => { if (!r.selected && r.pick) onPick(r); }}>
+          onClick={() => { if (r.selected || !r.pick) return; dispatchEvent(new CustomEvent("marquee:variant", { detail: { id: r.key, design: r.design } })); onPick(r); }}>
           <span className={s.vtGlyph}><Glyph k={r.key} size={18} /></span>
           <span className={s.vtBody}>
             <span className={s.vtName}>{r.name}{r.approved && <span className={s.vtMark}>Approved</span>}</span>

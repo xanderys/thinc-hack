@@ -8,6 +8,7 @@
 // One parts list in the German Angebot order, drawn like a building-instruction sheet: quantity, part, the one spec.
 import type { ReactNode } from "react";
 import { eur, n1, type Part } from "./format";
+import Num from "./Num";
 import s from "./kitSheet.module.css";
 
 export type KitSheetKit = {
@@ -43,10 +44,10 @@ export default function KitSheet({ kit, total, note, edit, info, changed, flash 
         {rows.map((r) => (
           <li key={r.key} className={s.row} data-hot={r.part && hot.has(r.part) ? "" : undefined}>
             {r.part && hot.has(r.part) && <span key={flash} className={s.ring} aria-hidden="true" />}
-            <span className={s.qty}>{r.qty}×</span>
+            <span className={s.qty}><Num v={`${r.qty}×`} lit /></span>
             <span className={s.icon} aria-hidden="true">{r.icon}</span>
             <span className={s.label}>{(() => {
-              const content = <><b className={s.name}>{r.name}</b>{r.spec && <> <span className={s.spec}>{r.spec}</span></>}</>;
+              const content = <><b className={s.name}>{r.name}</b>{r.spec && <> <span className={s.spec}><Num v={r.spec} lit /></span></>}</>;
               return r.field && edit ? edit(r.field, r.spec ? `${r.name} ${r.spec}` : r.name, content) : content;
             })()}</span>
             {r.field && info?.[r.field] && <span className={s.rowInfo}>{info[r.field]}</span>}
@@ -54,7 +55,7 @@ export default function KitSheet({ kit, total, note, edit, info, changed, flash 
         ))}
       </ol>
       {total != null && rows.length > 0 && (
-        <p className={s.total}><span>Total</span><b>{eur(total)}</b><em>estimate</em></p>
+        <p className={s.total}><span>Total</span><b><Num v={eur(total)} /></b><em>estimate</em></p>
       )}
       {note && total != null && rows.length > 0 && <p className={s.note}>{note}</p>}
     </div>
