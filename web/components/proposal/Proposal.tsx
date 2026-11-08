@@ -130,18 +130,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
 
       <section className="pp-card" aria-label="Your system">
         <h2>Your system</h2>
-        <KitSlot design={design} />
-        <ul className="pp-parts">
-          {KEYS.filter((k) => !OPTIONAL.has(k) || design[FIELD[k]] != null).map((k) => {
-            const v = design[FIELD[k]];
-            return (
-              <li key={k} className={v == null ? "off" : undefined}>
-                <span className={`pp-dot ${k}`} aria-hidden />
-                <span className="pp-pname"><b>{NAME[k]}</b>{v == null && <span className="pp-size">Not included</span>}</span>
-              </li>
-            );
-          })}
-        </ul>
+        <KitSlot design={design} total={e.capex_eur} />
       </section>
 
       <Decision lead={lead} brand={brand} startedAt={startedAt} onDecided={onDecided} />
@@ -297,14 +286,6 @@ export function ProposalSkeleton() {
       <section className="pp-card" aria-hidden>
         <h2>Your system</h2>
         <KitSlot design={null} />
-        <ul className="pp-parts">
-          {KEYS.filter((k) => !OPTIONAL.has(k)).map((k) => (
-            <li key={k}>
-              <span className="pp-dot pp-skb" aria-hidden />
-              <span className="pp-pname"><b className="pp-skt">{NAME[k]}</b></span>
-            </li>
-          ))}
-        </ul>
       </section>
       <section className="pp-card pp-sign pp-signsk" aria-hidden><h2>Sign</h2></section>
     </article>
