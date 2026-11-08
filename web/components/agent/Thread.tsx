@@ -50,9 +50,14 @@ export default function Thread({ trailing, fieldTrailing, onLead }: { trailing?:
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const r = new MediaRecorder(stream); const chunks: Blob[] = [];
       r.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-      media.current = { r, chunks, stream }; r.start(250); setRec(true); setLive(stream);
-      t0.current = Date.now(); setElapsed(0);
-      tick.current = setInterval(() => setElapsed(Math.floor((Date.now() - t0.current) / 1000)), 250);
+      // The timer counts from the recorder's own start event, when audio is actually being captured, not from the press.
+      r.onstart = () => {
+        if (media.current?.r !== r) return;
+        t0.current = performance.now(); setElapsed(0);
+        if (tick.current) clearInterval(tick.current);
+        tick.current = setInterval(() => setElapsed(Math.floor((performance.now() - t0.current) / 1000)), 200);
+      };
+      setElapsed(0); media.current = { r, chunks, stream }; r.start(250); setRec(true); setLive(stream);
     } catch (e) { setMicErr(e instanceof DOMException && e.name === "NotAllowedError" ? "Microphone access is blocked in this browser." : "The microphone is not available."); }
     finally { starting.current = false; }
   }
