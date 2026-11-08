@@ -70,6 +70,8 @@ function useReduce() {
 }
 
 export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLayerChange, onAvailable, endpoints, response, view: stage, bare, homeowner, leadId, onLayers, tools, sunTint, children, system, onScene, edit }: Props) {
+  // A card can render a frame before its design is in: draw nothing of the design until it is.
+  design = design ?? ({ pv_kwp: 0, battery_kwh: 0, wallbox_kw: 0, heatpump_kw: 0, inverter_kw: 0 } as unknown as Design);
   const reduce = useReduce();
   const [own, setOwn] = useState(1);
   const layer = ctrl ?? own;

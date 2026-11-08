@@ -85,6 +85,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   // A change made from the Offer panel or Undo keeps the planner in the Offer: no stage or camera move on the re-run.
   const hold = useRef(0);
   const holdOffer = () => { hold.current = Date.now(); };
+  // An edit on the model keeps the chip it was made on: the redraft lights what changed but never moves the view.
+  const stayChip = useRef(0);
   // Draft first: the chain plays once, on the first open of a lead; after that the design is there at once and the
   // chain waits as a collapsed strip under the model.
   const [first] = useState(() => {
@@ -190,7 +192,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     // A refinement redrafts in place: the changed layers light up and the camera goes to the first; no replay.
     setMoved(m);
     // A variant switch stays on the Offer; the strip lights what changed, the view does not move.
-    if (!/^(Switched to|Undone)/.test(causeRef.current ?? "") && Date.now() - hold.current > 15000 && !(SYS && Math.min(...m) > 4)) setStage(Math.min(...m));
+    if (!/^(Switched to|Undone)/.test(causeRef.current ?? "") && Date.now() - hold.current > 15000 && Date.now() > stayChip.current && !(SYS && Math.min(...m) > 4)) setStage(Math.min(...m));
     setAuto(false);
     setUpdated(Date.now());
   }
@@ -531,7 +533,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         {address && spatial !== false ? (
           <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatLayer ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && panelHeat}
-            edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); dp.setOverride?.(f, v); }, setKit: setKit ? (p) => { holdOffer(); setKit(p); } : undefined,
+            edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); stayChip.current = Date.now() + 60000; dp.setOverride?.(f, v); }, setKit: setKit ? (p) => { holdOffer(); stayChip.current = Date.now() + 60000; setKit(p); } : undefined,
               slots: Array.isArray((ovNow as { layout_slots?: unknown }).layout_slots) ? (ovNow as { layout_slots: string[] }).layout_slots : null } : undefined}>
             {overlays}
           </SpatialDemo>

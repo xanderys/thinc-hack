@@ -59,6 +59,13 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet }
         el.style.visibility = show ? "visible" : "hidden";
         el.style.transform = `translate(${q.x.toFixed(1)}px, ${q.y.toFixed(1)}px)`;
       });
+      root.querySelectorAll<SVGPolygonElement>("polygon[data-c]").forEach((el) => {
+        const cs = JSON.parse(el.dataset.c!) as V3[], n = JSON.parse(el.dataset.n!) as V3, mid = JSON.parse(el.dataset.mid!) as V3;
+        const q = cs.map((v) => scene.screenOf(v));
+        const show = q.every((p) => p.ok) && scene.facing(n, mid);
+        el.style.display = show ? "" : "none";
+        if (show) el.setAttribute("points", q.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "));
+      });
       const u = root.querySelector<HTMLElement>("[data-unit]");
       if (u && unit) {
         const b = scene.unitBox(unit);
@@ -96,11 +103,20 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet }
 
   return (
     <div ref={box} className={s.layer} data-edit-layer="">
-      {slots.map((sl) => (
-        <button key={sl.id} type="button" className={sl.placed ? s.module : s.plus} data-at={JSON.stringify(sl.c)} data-n={JSON.stringify(sl.n)}
-          aria-label={sl.placed ? "Remove this module" : "Add a module here"} onClick={() => onToggle(sl.plane, sl.i)}>
-          <span aria-hidden="true">{sl.placed ? "" : "+"}</span>
-        </button>
+      {/* Each slot's target is its own footprint on screen (plus a 1.5 px margin), so neighbours never overlap and a tap
+          lands on the module or slot under the finger. The "+" marks only the empty ones and takes no taps. */}
+      {slots.length > 0 && (
+        <svg className={s.hits} aria-label="Module slots">
+          {slots.map((sl) => (
+            <polygon key={sl.id} data-c={JSON.stringify(sl.corners)} data-n={JSON.stringify(sl.n)} data-mid={JSON.stringify(sl.c)}
+              className={sl.placed ? s.hitMod : s.hitSlot} role="button" tabIndex={0} data-slot={sl.id}
+              aria-label={sl.placed ? "Remove this module" : "Add a module here"}
+              onClick={() => onToggle(sl.plane, sl.i)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(sl.plane, sl.i); } }} />
+          ))}
+        </svg>
+      )}
+      {slots.filter((sl) => !sl.placed).map((sl) => (
+        <span key={sl.id} className={s.mark} data-at={JSON.stringify(sl.c)} data-n={JSON.stringify(sl.n)} aria-hidden="true"><span>+</span></span>
       ))}
       {unit && (has ? (
         <button type="button" data-unit="" className={s.unit} aria-haspopup="dialog" aria-expanded={open} aria-label={`Change the ${NAME[unit]} size`} onClick={() => setOpen((x) => !x)}>
