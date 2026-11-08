@@ -5,10 +5,11 @@ import { n0 } from "@/lib/stage";
 import "./facts.css";
 
 type Field = keyof HomeInputs;
-type Glyph = "bolt" | "flame" | "tag" | "car" | "people" | "ruler" | "calendar";
+type Glyph = "phone" | "bolt" | "flame" | "tag" | "car" | "people" | "ruler" | "calendar";
 
 // One stroke weight, 20 by 20 grid, drawn here: no icon library.
 const PATHS: Record<Glyph, ReactNode> = {
+  phone: <path d="M6.5 2.5h2.2l1.2 3.6-1.7 1.2a9 9 0 0 0 4 4l1.2-1.7 3.6 1.2v2.2a1.8 1.8 0 0 1-1.9 1.8A12.5 12.5 0 0 1 4.7 4.4 1.8 1.8 0 0 1 6.5 2.5Z" />,
   bolt: <path d="M11 2.5 4.5 11H9.5L8.5 17.5 15.5 8.5H10.5Z" />,
   flame: <path d="M10 2.5c.5 3-3.5 4.6-3.5 8.5a3.5 3.5 0 0 0 7 0c0-1.3-.6-2.3-1.3-3.1-.2 1-.7 1.6-1.4 1.9.4-2.7-.3-5.3-.8-7.3Z" />,
   tag: <><path d="M3 3h6.5L17 10.5 10.5 17 3 9.5Z" /><circle cx="6.5" cy="6.5" r="1" /></>,
@@ -43,6 +44,27 @@ const SPECS: Spec[] = [
   { f: "house_built_year", label: "Built", glyph: "calendar", state: (i, r) => !i.house_built_year ? "missing" : builtEstimated(i, r) ? "estimated" : "stated", value: (i, r) => builtEstimated(i, r) ? `estimated, ${r!.build_year_class}` : String(i.house_built_year) },
 ];
 const builtEstimated = (i: HomeInputs, r?: RoofResult | null) => !!i.house_built_year && !!r?.build_year_class && r.build_year_estimate != null && Math.abs(i.house_built_year - r.build_year_estimate) < 0.5;
+
+// +6586936789 shown as +65 8693 6789: the country code, then groups of four.
+const E164 = /^\+[1-9]\d{7,14}$/;
+const CC = ["65", "44", "49", "61", "1", "33", "31", "41", "43", "39", "34", "91", "86", "81"];
+export function showPhone(e: string) {
+  const d = e.replace(/^\+/, ""), cc = CC.find((c) => d.startsWith(c) && d.length - c.length >= 6) ?? d.slice(0, 2);
+  return `+${cc} ${d.slice(cc.length).replace(/(\d{4})(?=\d)/g, "$1 ")}`;
+}
+
+function PhoneField({ value, onSet }: { value: string | null | undefined; onSet: (v: string) => void }) {
+  const [d, setD] = useState(value ?? "+");
+  const clean = d.replace(/[\s().-]/g, "");
+  const ok = E164.test(clean) && clean !== value;
+  return (
+    <form className="fc-phone" onSubmit={(e) => { e.preventDefault(); if (ok) onSet(clean); }}>
+      <input type="tel" inputMode="tel" autoComplete="tel" value={d} aria-label="Phone number" aria-invalid={d !== "+" && !E164.test(clean)} onChange={(e) => setD(e.target.value.replace(/[^\d+\s().-]/g, ""))} />
+      <span className="u">{d !== "+" && !E164.test(clean) ? "Country code first, like +65 8693 6789" : "International format"}</span>
+      <button type="submit" className="fc-set" disabled={!ok}>Set</button>
+    </form>
+  );
+}
 
 /** Numeric field with its unit fixed, and a range slider on the same value. Set writes it. */
 function NumRange({ value, min, max, step, unit, label, onSet }: { value: number | undefined; min: number; max: number; step: number; unit: string; label: string; onSet: (n: number) => void }) {
@@ -100,8 +122,8 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
 }
 
 /** The facts row. An explicit edit calls onFact (the existing intake-step path); opening a chip never writes. slot: room for a button at the row's end. */
-export default function Facts({ inputs, roof, onFact, hidden, slot, origin }: { origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
-  const [open, setOpen] = useState<Field | null>(null);
+export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phone, onPhone }: { phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
+  const [open, setOpen] = useState<Field | "phone" | null>(null);
   const specs = SPECS.filter((s) => s.f !== hidden);
   const cur = specs.find((s) => s.f === open);
   useEffect(() => {
@@ -120,8 +142,14 @@ export default function Facts({ inputs, roof, onFact, hidden, slot, origin }: { 
             </button>
           );
         })}
+        {onPhone && (
+          <button type="button" className="fc" data-state={phone ? "stated" : "missing"} aria-expanded={open === "phone"} aria-controls="fc-panel" onClick={() => setOpen((o) => o === "phone" ? null : "phone")}>
+            <Glyph g="phone" /><span className="k">Phone</span>{phone && <span className="v">{showPhone(phone)}</span>}
+          </button>
+        )}
         {slot != null && <span className="fc-slot">{slot}</span>}
       </div>
+      {open === "phone" && onPhone && <div className="fc-panel" id="fc-panel" role="group" aria-label="Phone" key="phone"><PhoneField value={phone} onSet={(v) => { onPhone(v); setOpen(null); }} /></div>}
       {cur && <div className="fc-panel" id="fc-panel" role="group" aria-label={cur.label} key={cur.f}><Panel spec={cur} i={inputs} roof={roof} onFact={(f, v, l) => { onFact(f, v, l); if (f !== "ev_annual_km" && !(f === "has_ev" && v === true)) setOpen(null); }} /></div>}
     </div>
   );
