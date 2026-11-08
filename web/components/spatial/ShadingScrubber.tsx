@@ -61,7 +61,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
               <button key={m} type="button" aria-pressed={!!at && at.m === i + 1} aria-label={m} onClick={() => { const [a, b] = span(i + 1); setShadeAt({ m: i + 1, h: Math.min(b, Math.max(a, at?.h ?? 13)) }); }}>{m[0]}</button>
             ))}
           </div>
-          <input type="range" min={lo + 0.5} max={hi + 0.5} step={1} value={hour + 0.5} aria-valuetext={hh(hour)} aria-label="Hour of the day" onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)) })} />
+          <input type="range" min={lo + 0.5} max={hi + 0.5} step={1} value={hour + 0.5} aria-valuetext={hh(hour)} aria-label="Hour of the day" onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)), moment: true })} />
         </div>
       )}
       {on && <span className={s.whenC}>{at ? `15 ${MONTHS[at.m - 1]}, ${hh(at.h)}${litShare != null ? `, ${Math.round(litShare * 100)} % in sun` : ", no direct sun"}` : "Solar access over the year"}</span>}
@@ -84,7 +84,7 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
           </div>
           <div className={s.hour}>
             <input type="range" min={lo + 0.5} max={hi + 0.5} step={1} value={hour + 0.5} aria-valuetext={hh(hour)} aria-label="Hour of the day"
-              onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)) })} />
+              onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)), moment: true })} />
             <span className={s.when}>{at ? `15 ${MONTHS[at.m - 1]}, ${hh(at.h)}${litShare != null ? `, ${Math.round(litShare * 100)} % in sun` : ", no direct sun"}` : "Solar access over the year"}</span>
           </div>
           <p className={s.src}>{data.source}</p>

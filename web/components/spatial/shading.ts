@@ -12,7 +12,7 @@ const NARROW = 520;   // px: phone width, smaller figures
 const PCT_CSS = "position:absolute;left:0;top:0;padding:0 2px;border:0;border-radius:3px;background:none;box-shadow:none;font:600 var(--sp-pct-size,10px)/1 var(--font-sans),sans-serif;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.55);white-space:nowrap;";
 const EDGE_CSS = "position:absolute;left:0;top:0;padding:0 3px;border:0;border-radius:3px;background:rgba(255,255,255,.82);box-shadow:none;font:500 9.5px/1.3 var(--font-sans),sans-serif;font-variant-numeric:tabular-nums;color:#0A0C14;white-space:nowrap;";
 
-type Mod = { key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; centre: THREE.Vector3; a: THREE.Vector3; b: THREE.Vector3; el: HTMLDivElement; has?: boolean; lit?: boolean }; // has: a figure for the period; lit: sun on it at the slider's hour
+type Mod = { key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; centre: THREE.Vector3; a: THREE.Vector3; b: THREE.Vector3; cs: THREE.Vector3[]; n: THREE.Vector3; el: HTMLDivElement; has?: boolean; lit?: boolean }; // has: a figure for the period; lit: sun on it at the slider's hour
 type Edge = { a: THREE.Vector3; b: THREE.Vector3; c: THREE.Vector3; el: HTMLDivElement; len: number; w?: number; h?: number };
 type Rect = { x0: number; x1: number; y0: number; y1: number };
 
@@ -29,6 +29,11 @@ export class ShadeLayer {
   private down = { x: 0, y: 0, t: 0 };
   private camera: THREE.Camera | null = null;
   private ray = new THREE.Raycaster();
+  // What can shade a module (the house and its neighbours at full height), from the scene; and the moment's fractions.
+  private occ: () => THREE.Object3D[] = () => [];
+  private frac = new Map<string, number>();
+  private fracKey = "";
+  setOccluders(f: () => THREE.Object3D[]) { this.occ = f; this.fracKey = ""; }
   // Tint strength 0..1: a critically damped spring (no bounce) towards on/off; a plain crossfade under Reduce Motion.
   private k = 0;
   private kv = 0;
@@ -64,7 +69,7 @@ export class ShadeLayer {
       el.style.cssText = PCT_CSS + "visibility:hidden;";
       this.overlay?.appendChild(el);
       const centre = cs.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(0.25);
-      this.mods.push({ key: `${u.plane}:${u.idx}`, mesh, mat, centre, a: cs[0], b: cs[1], el });
+      this.mods.push({ key: `${u.plane}:${u.idx}`, mesh, mat, centre, a: cs[0], b: cs[1], cs, n: u.n.clone(), el });
     });
     this.apply();
   }
@@ -76,24 +81,57 @@ export class ShadeLayer {
     this.apply();
   }
 
+  // A module's share of sun at the slider's moment, 0..1: the engine's value when it is a fraction; else nine rays from a
+  // 3 x 3 grid on the module towards the sun (15th of the month, h:30, Munich), against the house and its neighbours.
+  // null: the sun is down or behind the module. Cached per moment.
+  private momentShare(m: Mod, s: { hourly: (number | null)[][] }): number | null {
+    const at = this.at!, e = s.hourly[at.m - 1]?.[at.h];
+    if (e != null && e > 0.001 && e < 0.999) return e;
+    const key = `${at.m}:${at.h}`;
+    if (key !== this.fracKey) { this.frac.clear(); this.fracKey = key; }
+    if (this.frac.has(m.key)) { const f = this.frac.get(m.key)!; return f < 0 ? null : f; }
+    const sun = sunDir(at.m, at.h + 0.5);
+    let out: number | null;
+    if (!sun) out = e == null ? null : 0;
+    else {
+      m.mesh.updateWorldMatrix(true, false);
+      const W = m.mesh.matrixWorld, c = m.cs.map((q) => q.clone().applyMatrix4(W)), n = m.n.clone().transformDirection(W);
+      if (n.dot(sun) <= 0) out = 0;
+      else {
+        const occ = this.occ();
+        let lit = 0;
+        for (const u of [1 / 6, 0.5, 5 / 6]) for (const w of [1 / 6, 0.5, 5 / 6]) {
+          const p = c[0].clone().multiplyScalar((1 - u) * (1 - w)).addScaledVector(c[1], u * (1 - w)).addScaledVector(c[2], u * w).addScaledVector(c[3], (1 - u) * w).addScaledVector(n, 0.06);
+          this.ray.set(p, sun); this.ray.far = 250;
+          if (!occ.length || this.ray.intersectObjects(occ, false).length === 0) lit++;
+        }
+        out = lit / 9;
+      }
+    }
+    this.frac.set(m.key, out ?? -1);
+    return out;
+  }
+
   private apply() {
     const by = new Map((this.data?.modules ?? []).map((m) => [`${m.plane_id}:${m.index}`, m]));
     this.mods.forEach((m) => {
       if (!this.on && this.data) return;   // turning off: keep the last colours while the tint fades out in frame()
-      // The figure is the module's loss over the selected period (month or year), tinted on the same ramp; the module's
-      // own tint is the moment on the hour slider (sun or shade), or the year's share with no month picked.
-      const s = by.get(m.key), p = s && this.on ? periodShare(s, this.at) : null, v = s && this.on ? shareAt(s, this.at) : null;
+      // The figure is the module's loss over the selected period (month or year); once the hour slider moves, that
+      // moment's shade instead. The module's tint is the moment's sun share (continuous), or the year's with no month.
+      const s = by.get(m.key), p = s && this.on ? periodShare(s, this.at) : null;
+      const v = s && this.on ? (this.at ? this.momentShare(m, s) : shareAt(s, null)) : null;
       m.has = p != null; m.lit = v != null;
       m.mesh.visible = v != null && this.k > 0.002;
       if (v != null) {
         const [r, g, b] = shadeRgb(v);
         m.mat.color.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
       }
-      if (p != null) {
-        m.el.textContent = `${Math.round((1 - p) * 100)} %`;
-        const [r, g, b] = shadeRgb(p);
+      const show = this.at?.moment ? v : p;
+      if (show != null) {
+        m.el.textContent = `${Math.round((1 - show) * 100)} %`;
+        const [r, g, b] = shadeRgb(show);
         m.el.style.background = `rgba(${r},${g},${b},0.92)`;
-      }
+      } else if (this.at?.moment) m.el.textContent = "";
     });
   }
 
@@ -193,4 +231,19 @@ export class ShadeLayer {
     this.mods.forEach((m) => m.el.remove());
     this.edges.forEach((e) => e.el.remove());
   }
+}
+
+// The sun's direction (three: x east, y up, z south) on the 15th of month m at local clock hour h, in Munich
+// (48.14 N, 11.58 E; CET, CEST April to October); null below the horizon.
+const DOY = [15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349];
+export function sunDir(m: number, h: number): THREE.Vector3 | null {
+  const r = Math.PI / 180, lat = 48.14 * r, doy = DOY[m - 1] ?? 166;
+  const dec = 23.44 * r * Math.sin((2 * Math.PI * (284 + doy)) / 365);
+  const tz = m >= 4 && m <= 10 ? 2 : 1, solar = h + 11.58 / 15 - tz;
+  const H = (solar - 12) * 15 * r;
+  const sinEl = Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * Math.cos(dec) * Math.cos(H);
+  if (sinEl <= 0.01) return null;
+  const el = Math.asin(sinEl);
+  const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(lat) - Math.tan(dec) * Math.cos(lat)) + Math.PI; // from north, clockwise
+  return new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)).normalize();
 }

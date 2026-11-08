@@ -189,6 +189,27 @@ export class SpatialScene {
   private plan: Plan | null = null;
   private planG: SVGGElement | null = null;
   private shade = new ShadeLayer();
+  // What can shade a module, for the moment shading in shading.ts: the house's walls and roof and the neighbours at
+  // their full height (the drawn neighbours lie flat), as unseen meshes fixed where the model sits. Built once per glb.
+  private occCache: THREE.Mesh[] | null = null;
+  private rayOccluders = (): THREE.Mesh[] => {
+    if (this.occCache) return this.occCache;
+    const root = this.glbRoot;
+    if (!root) return [];
+    root.updateMatrixWorld(true);
+    const mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    const out: THREE.Mesh[] = [];
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !/^(roof|walls|context)/.test((m.name || m.parent?.name || "").toLowerCase())) return;
+      const g = (m.userData.fullGeo as THREE.BufferGeometry | undefined) ?? m.geometry;
+      const x = new THREE.Mesh(g, mat);
+      x.matrixAutoUpdate = false; x.matrix.copy(m.matrixWorld); x.matrixWorld.copy(m.matrixWorld);
+      out.push(x);
+    });
+    this.occCache = out;
+    return out;
+  };
   private ctxLines = new THREE.Group(); // neighbours' footprints on the white ground
   private xray = new Xray({ walls: () => this.wallMesh, box: this.box, planes: () => this.targets.map((t) => t.p), root: this.scene,
     overlay: () => this.overlay ?? null, project: (v) => this.project(v), camera: () => this.camera, reduce: () => !!this.opts?.reduce });
@@ -246,6 +267,7 @@ export class SpatialScene {
     window.addEventListener(SYSTEM_EVENT, this.onSystemPick);
     exposeScene(this, true); // a Systems chip tap, even on the chip already showing
     this.shade.mount(overlay, this.renderer.domElement);
+    this.shade.setOccluders(this.rayOccluders);
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
@@ -613,7 +635,7 @@ export class SpatialScene {
         else if (old && old.map) { m.material = new THREE.MeshLambertMaterial({ map: old.map, side: THREE.DoubleSide }); }
       });
       // The target footprint comes with the roof model; until it is in, flatten later.
-      this.glbRoot = gltf.scene; this.flattened = false;
+      this.glbRoot = gltf.scene; this.flattened = false; this.occCache = null;
       if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene);
       sharpen(gltf.scene, this.renderer);
       this.ctxOff.push(registerGlb(gltf.scene, this.ctxLines));
@@ -651,6 +673,7 @@ export class SpatialScene {
         for (let i = t; i < t + 3; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld); v.y = ground + 0.02; v.applyMatrix4(inv); pos.setXYZ(i, v.x, v.y, v.z); }
       }
       pos.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
+      if (!m.userData.fullGeo) m.userData.fullGeo = m.geometry; // full height, for the shading rays (rayOccluders)
       m.geometry = g;
     });
   }

@@ -8,8 +8,9 @@ export interface Shading {
   status: "ready"; address: string; modules: ShadeModule[]; planes: ShadePlane[];
   total: { shade_share: number; loss_kwh_year: number; modules?: number }; source: string;
 }
-// null: across the year; else the 15th of month m (1 to 12) at h:30.
-export type ShadeAt = { m: number; h: number } | null;
+// null: across the year; else the 15th of month m (1 to 12) at h:30. moment: the planner moved the hour slider, so the
+// module figures show that moment's shade instead of the month's loss.
+export type ShadeAt = { m: number; h: number; moment?: boolean } | null;
 
 type State = { data: Map<string, Shading | null>; on: boolean; at: ShadeAt };
 let state: State = { data: new Map(), on: false, at: null };
