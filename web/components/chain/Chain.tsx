@@ -232,7 +232,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   };
   const faces = bars[1] ? bars[1].segments.filter((g) => g.unit === "kWp").length : 0;
   const line2: Record<number, string | null> = {
-    1: a ? `About ${n0(a.pv_yield_kwh)} kWh a year${faces ? ` from ${faces} face${faces === 1 ? "" : "s"}` : ""}, for a home using ${n0((inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0))} kWh${layers?.ev ? " including the car" : ""}.` : null,
+    1: a ? `About ${n0(a.pv_yield_kwh)} kWh a year${faces ? ` from ${faces} face${faces === 1 ? "" : "s"}` : ""}, for a home using ${n0((inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0))} kWh${layers?.ev ? " including the car" : ""}.${res.roof?.stated_direction_conflict ? ` ${res.roof.note ?? res.explanation.find((x) => /^Roof measured from the building model/.test(x)) ?? "Roof measured from the building model; the stated direction was not found."}` : ""}` : null,
     2: d.battery_kwh ? plain(bars[2]?.sentence) ?? "Carries the midday surplus into the evening." : "No battery in this design.",
     3: d.wallbox_kw ? plain(bars[3]?.sentence) ?? `Charges the car at home, ${n0(layers?.ev?.annual_kwh ?? 0)} kWh a year.` : inputs.has_ev ? "No wallbox in this design." : "No electric car, so no wallbox.",
     4: d.heatpump_kw ? "Sized from the heating bill." : "Not asked for.",
@@ -245,6 +245,15 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   useEffect(() => { if (SYS) setSystem(systemOf(stage)); }, [stage]);
 
   const go = (n: number) => { setAuto(false); setStage(n); setWhy(null); setWhyStep(null); };
+  // Phone strip tap: the other cards fold first, then the tapped card lands right under the pinned house and strip
+  // (scroll-margin in the CSS); a second pass once the fold has settled corrects for the height it gave back.
+  const toStep = (n: number) => {
+    const el = () => rootRef.current?.querySelector<HTMLElement>(`[data-step="${n}"]`);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      el()?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+      setTimeout(() => el()?.scrollIntoView({ behavior: "auto", block: "start" }), reduce ? 0 : 450);
+    }));
+  };
 
   const tools = ({ view: v, setView, recentre, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
     <div className={s.toolbar} role="toolbar" aria-label="Model" data-cover>
@@ -363,7 +372,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         <div className={`${s.collapsed} ${narrow ? s.stripPhone : ""}`}>
           <div className={s.scrub} role="group" aria-label="Steps">
             {TITLES.map((t, i) => (
-              <button key={t} type="button" aria-pressed={stage === i + 1} className={moved.has(i + 1) ? s.hot : undefined} onClick={() => { go(i + 1); if (narrow && expanded) requestAnimationFrame(() => rootRef.current?.querySelector(`[data-step="${i + 1}"]`)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" })); }} style={FIVE ? stepStyle(i) : undefined}>
+              <button key={t} type="button" aria-pressed={stage === i + 1} className={moved.has(i + 1) ? s.hot : undefined} onClick={() => { go(i + 1); if (narrow && expanded) toStep(i + 1); }} style={FIVE ? stepStyle(i) : undefined}>
                 <span className={s.num}>{i + 1}</span>{t}
               </button>
             ))}

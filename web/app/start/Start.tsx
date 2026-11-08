@@ -36,6 +36,13 @@ function whatsNew(a: Lead["draft"]["design"], b: Lead["draft"]["design"]): strin
   if (a.battery_kwh !== b.battery_kwh && b.battery_kwh != null) return `now a ${b.battery_kwh.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWh battery`;
   return "with the latest details";
 }
+// The engine's own words: {error}, FastAPI's {detail} (a string or a list of {msg}).
+function errorText(b: { error?: unknown; detail?: unknown }): string | null {
+  if (typeof b.error === "string" && b.error) return b.error;
+  if (typeof b.detail === "string" && b.detail) return b.detail;
+  if (Array.isArray(b.detail)) return b.detail.map((d: { msg?: string }) => d?.msg ?? JSON.stringify(d)).join("; ");
+  return null;
+}
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 function Page({ agentId, installerId, test }: Props) {
@@ -44,6 +51,7 @@ function Page({ agentId, installerId, test }: Props) {
   const [a, setA] = useState<HomeAnswers>({ name: "", location: "" });
   const [miss, setMiss] = useState<"name" | "location" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [leadError, setLeadError] = useState<string | null>(null);
   const [since, setSince] = useState<number | null>(null);
   const [now, setNow] = useState(0);
   const [speaker, setSpeaker] = useState(true);
@@ -126,18 +134,25 @@ function Page({ agentId, installerId, test }: Props) {
     unlock();   // the submit tap allows every sound that follows
     setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false);
     setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null);
-    fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form", ...(test ? { test: true } : {}) }) })
-      .then(async (r) => { const b = await r.json().catch(() => ({})); if (r.ok && b.lead_id) setLeadId(b.lead_id); })
-      .catch(() => {});
-    // Look the address up while the phone rings, so the call starts with it.
+    setLeadError(null);
+    setStep("waiting");
+    // Look the address up while the lead is made, so the call starts with it.
     roof.current = undefined;
     const ctl = new AbortController(); setTimeout(() => ctl.abort(), 8000);
     fetch(`/start/roof?address=${encodeURIComponent(a.location)}`, { signal: ctl.signal })
       .then((r) => (r.ok ? r.json() : null)).catch(() => null).then((r: RoofInfo | null) => { roof.current = r; });
-    // The call back arrives a moment later, the way a phone call would.
-    ring.current = setTimeout(() => { setStep("ringing"); startRing(); try { navigator.vibrate?.([400, 200, 400]); } catch {} }, 1400);
-    setStep("waiting");
+    // The phone rings only once the engine holds the lead; on failure the form shows the engine's words and a retry.
+    const shown = Date.now();
+    fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ customer_name: a.name.trim(), address_or_postcode: a.location.trim(), installer_id: installerId, facts: homeFacts(a), source: "form", ...(test ? { test: true } : {}) }) })
+      .then(async (r) => {
+        const b = await r.json().catch(() => ({}));
+        if (!r.ok || !b.lead_id) throw new Error(errorText(b) ?? `The engine answered ${r.status} with no lead.`);
+        setLeadId(b.lead_id);
+        // The call back arrives a moment after Submit, the way a phone call would.
+        ring.current = setTimeout(() => { setStep("ringing"); startRing(); try { navigator.vibrate?.([400, 200, 400]); } catch {} }, Math.max(0, 1400 - (Date.now() - shown)));
+      })
+      .catch((e: Error) => { setStartedAt(null); setLeadError(e.message || "The request did not reach the engine."); setStep("form"); });
   };
 
   // Accept is the user gesture. iPhone plays call audio only if the microphone and an audio context are unlocked
@@ -261,7 +276,8 @@ function Page({ agentId, installerId, test }: Props) {
         {pick("ev", "Electric car")}
         {pick("bill_band", "Electricity bill", "EUR a month")}
         {pick("roof", "Roof faces")}
-        <button type="submit" className="h-go" disabled={step !== "form"}>Submit</button>
+        <button type="submit" className="h-go" disabled={step !== "form"}>{step === "waiting" ? "Sending" : "Submit"}</button>
+        {leadError && step === "form" && <p className="h-why" role="alert">{leadError} <button type="button" className="h-retry" onClick={submit}>Retry</button></p>}
         {error && <p className="h-why" role="alert">ElevenLabs said: {error}</p>}
       </form>
 
@@ -321,7 +337,7 @@ function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: L
     <div className={lead ? "h-design h-arrive" : "h-design h-sk"} aria-busy={!lead} aria-hidden={!lead || undefined}>
       <dl className="h-nums">
         <div><dt>Solar a year</dt><dd>{e ? (e.annual ? `${n0(e.annual.pv_yield_kwh)} kWh` : "None") : "10,000 kWh"}</dd></div>
-        <div><dt>Self-sufficiency</dt><dd>{e ? `${pct(e.autarky_share)} %` : "70 %"}</dd></div>
+        <div><dt>Supplied by your system</dt><dd>{e ? `${pct(e.autarky_share)} %` : "70 %"}</dd></div>
         <div><dt>Investment estimate</dt><dd>{e ? `${n0(e.capex_eur)} EUR` : "20,000 EUR"}</dd></div>
         <div><dt>Payback</dt><dd>{e ? (e.payback_years == null ? "None" : `${n2(Math.round(e.payback_years * 10) / 10)} years`) : "10.5 years"}</dd></div>
       </dl>
