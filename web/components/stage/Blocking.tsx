@@ -6,6 +6,11 @@ import { useDry } from "@/lib/dry";
 import { berlinTime } from "@/lib/time";
 
 const POLL_MS = 5000;
+const ASK: Record<string, string> = { has_solar: "Already has solar", has_ev: "Electric car", annual_demand_kwh: "Yearly use", heating_type: "Heating", house_size_sqm: "Floor area", house_built_year: "Year built", num_inhabitants: "People at home", electricity_price_ct_kwh: "Power price", has_wallbox: "Wallbox", has_storage: "Existing battery" };
+const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+const MOVES: Record<string, string> = { "PV size": "PV" };
+// "Already has solar? PV about €13k less": the fact as a short question, what it moves, the figure.
+const rowText = (b: LeadBlocker) => `${ASK[b.field] ?? cap(b.label)}? ${[b.moves ? MOVES[b.moves] ?? b.moves : "", eur(b.delta_eur)].filter(Boolean).join(" ")}`.trim();
 // The sign is words, never a bare minus.
 const eur = (n?: number | null) => { if (n == null) return ""; const a = Math.abs(n); return `about €${a >= 1000 ? `${Math.round(a / 1000)}k` : Math.round(a / 10) * 10} ${n < 0 ? "less" : "more"}`; };
 
@@ -58,7 +63,7 @@ export default function Blocking({ leadId }: { leadId: string }) {
       <ul className="bk-rows">
         {rows.map((b) => (
           <li key={b.field}>
-            <span className="bk-t">{b.label}{b.delta_text ? `: ${b.delta_text}` : ""}{b.delta_eur != null ? `, ${eur(b.delta_eur)}` : ""}</span>
+            <span className="bk-t">{rowText(b)}</span>
             {line(b) && <span className="bk-s">{line(b)}</span>}
           </li>
         ))}

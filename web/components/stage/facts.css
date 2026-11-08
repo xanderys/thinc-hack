@@ -107,3 +107,6 @@
 .b-open:has(.bk):has(.fq-wrap[data-open]) .b-open-h { border-radius: 0; }
 @media (max-width: 760px) { .bk { flex-wrap: wrap; } .bk-rows { flex-basis: 100%; } }
 .fq .mk { font-size: 11px; color: var(--ink-3); }
+
+/* No browser ring on the fact editors: keyboard focus tints the field's own border, no glow. */
+.fc-num input:focus, .fc-num input:focus-visible, .fc-phone input:focus, .fc-phone input:focus-visible, .fc-panel select:focus, .fc-panel select:focus-visible { outline: none; border-color: color-mix(in srgb, var(--accent) 40%, transparent); }

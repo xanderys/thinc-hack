@@ -37,7 +37,7 @@ type Spec = {
   value: (i: HomeInputs, roof?: RoofResult | null) => string;
 };
 // The second line under an estimated value: the word is the mark, the tone alone is not.
-const MARK: Partial<Record<Field, string>> = { electricity_price_ct_kwh: "assumed", house_size_sqm: "estimated from the building", house_built_year: "estimated" };
+const MARK: Partial<Record<Field, string>> = { electricity_price_ct_kwh: "assumed", house_size_sqm: "estimated", house_built_year: "estimated" };
 const SPECS: Spec[] = [
   { f: "annual_demand_kwh", label: "Household use", glyph: "bolt", state: () => "stated", value: (i) => `${n0(i.annual_demand_kwh)} kWh` },
   { f: "heating_type", label: "Heating", glyph: "flame", state: (i) => i.heating_type === "Unknown" ? "missing" : "stated", value: (i) => heatWord(i.heating_type) },
