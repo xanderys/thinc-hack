@@ -27,20 +27,22 @@ async function copyText(x: string): Promise<boolean> {
   } catch { return false; }
 }
 
-export function rinaMessage(name: string, brand: string, link: string) {
+// The engine's own wording (engine/app/whatsapp/conversation.py compose_proposal), so the preview is what WhatsApp sends.
+export function rinaMessage(name: string, link: string) {
   const first = name.trim().split(/\s+/)[0] || "there";
-  return `Hi ${first}, it's Rina from ${brand}. Your solar proposal is ready: ${link}\nIt shows the system, the price and when it pays for itself. You can sign it there, or reply here with any question.`;
+  return `Hi ${first}, Rina here from the installer. Your solar proposal is ready: ${link} You can go through it, ask me anything, and sign there when you are happy.`;
 }
 
-export default function SendSheet({ leadId, name, brand, link, version, onClose, onSent }: {
-  leadId: string; name: string; brand: string; link: string; version?: number | null; onClose: () => void; onSent: (version?: number) => void;
+export default function SendSheet({ leadId, name, link, version, onClose, onSent }: {
+  leadId: string; name: string; link: string; version?: number | null; onClose: () => void; onSent: (version?: number) => void;
 }) {
   const [ch, setCh] = useState<Channel>("whatsapp");
   const [state, setState] = useState<"idle" | "busy" | "sent" | "copied">("idle");
   const dry = useDry();   // ?dry=1: the engine composes and logs the message, sends nothing, the lead stays Complete
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  const msg = rinaMessage(name, brand, link);
+  const [stored, setStored] = useState<string | null>(null);   // the text the engine logged for the last send
+  const msg = stored ?? rinaMessage(name, link);
   // Esc closes the sheet first (capture phase), before the Proposed Design pass or the board hear it.
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key !== "Escape") return; e.stopImmediatePropagation(); e.preventDefault(); onClose(); };
@@ -57,8 +59,9 @@ export default function SendSheet({ leadId, name, brand, link, version, onClose,
     // The version as the lead holds it now (saving Complete moved it), so base_version never trails a fresh save.
     const cur = await call<{ version?: number }>(`/api/leads/${encodeURIComponent(leadId)}`);
     const base = cur.ok && cur.data.version != null ? cur.data.version : version;
-    const r = await send<{ version?: number; status?: string }>(`/api/leads/${encodeURIComponent(leadId)}/send`, { channel: ch, ...(base != null ? { base_version: base } : {}), ...(dry ? { dry: true } : {}) }, `send-${ch}`);
+    const r = await send<{ version?: number; status?: string; sent?: { text?: string } }>(`/api/leads/${encodeURIComponent(leadId)}/send`, { channel: ch, text: msg, ...(base != null ? { base_version: base } : {}), ...(dry ? { dry: true } : {}) }, `send-${ch}`);
     if (!r.ok) { setState("idle"); setErr(r.error); return; }
+    if (r.data?.sent?.text) setStored(r.data.sent.text);
     setState(ch === "copy" ? "copied" : "sent");
     if (!dry) onSent(r.data?.version);
   };
