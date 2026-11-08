@@ -481,7 +481,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         body: multi ? null : <>
           {shares.length > 0 && <SplitBar label="Heat loss" unit="" total={100} parts={shares.map((x) => ({ k: x.name, v: Math.round(x.share * 100), c: x.colour }))} />}
           {/* Sizing: the bill decides, the envelope is an upper bound (engine: components.heatpump.heat_load_upper_bound_kw). */}
-          {hp && hpBound != null ? <div className="fg-size"><p className="fg-fig"><b>Sized from the bill {n1(hp)} kW</b></p><p className="fg-fig fg-light">Envelope upper bound {n1(hpBound)} kW</p></div>
+          {hp && hpBound != null ? <div className="fg-size"><p className="fg-fig"><span>Sized from the bill</span> <b>{n1(hp)} kW</b></p><p className="fg-fig"><span>Envelope upper bound</span> <b className="fg-light">{n1(hpBound)} kW</b></p></div>
             : bars[4] && <Fig v={`${n1(bars[4].total)} kW`} u={designT ? `heat loss at ${designT} °C, an upper bound` : "heat loss, an upper bound"} />}
         </>,
         info: multi ? <p>The walls and roof are the whole building&rsquo;s, so no heat pump size for one flat.</p> : <>
