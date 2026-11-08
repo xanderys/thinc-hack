@@ -17,6 +17,8 @@ import GapChips from "./GapChips";
 import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
 import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
 import { pastLine } from "@/lib/past";
+import Blocking from "@/components/stage/Blocking";
+import { ClientChevron } from "@/components/stage/clientCard";
 import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
 
 // The facts count is the verdict chip's tooltip, never part of the line.
@@ -331,6 +333,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
 
   if (openId) return (
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
+      {seed && <Blocking leadId={openId} />}
       <div className={calling ? "b-open-h live" : "b-open-h"}>
         {calling && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
         <div className="b-open-lines">
@@ -345,12 +348,13 @@ export default function Board({ openId: initial }: { openId?: string }) {
             })()}
             <HeaderUndo id={openId} />
           </div>
-          <p className="b-l2">{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
+          <p className="b-l2" title={openCard?.place ?? ll?.address_or_postcode ?? undefined}>{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
           <p className={`${qs.head} b-l3`}><VerdictChip verdict={openCard?.q?.verdict ?? null} tip={openCard?.q ? `${reasonOf(openCard.q)} ${factsTip(openCard.q)}`.trim() : undefined} /></p>
           {shared && <p className="b-shared" title={shared.reason}>Large building, check the address</p>}
           {ll && ll.draft?.design && !shared && (ll.draft.roof as { capacity_source?: string } | null | undefined)?.capacity_source === "typical house" && <p className="b-shared">Roof from typical house</p>}
         </div>
         <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
+        {seed && <ClientChevron />}
       </div>
       {seedErr && <div className="error" role="alert"><span><span className="src">Engine said</span>{seedErr}</span><button className="btn ghost" onClick={() => { const id = openId; setOpenId(null); setTimeout(() => setOpenId(id), 0); }}>Retry</button></div>}
       {!seed && !seedErr && <OpenSkeleton />}
