@@ -34,6 +34,7 @@ export interface RoofResult {
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
   pending?: boolean;   // the LoD2 measurement is still running; ask again in a few seconds
   floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";   // v1.6.1, upper bound
+  geometry?: { footprint_m2?: number | null; storeys?: number | null; height_m?: number | null; large_building?: boolean | null; source?: string; note?: string } | null; // v2.11: LoD2, outranks dwellings_class
   build_year_class?: string | null; build_year_estimate?: number | null; heating_class?: string | null; zensus_confidence?: string; // heating_class is the system type, never the fuel
 }
 
@@ -94,6 +95,7 @@ export interface Variant {   // v1.7
 
 export interface DesignResponse {
   design: Design;
+  roof?: { stated_azimuth_deg?: number | null; measured_azimuths_deg?: number[]; stated_direction_conflict?: boolean; source?: string; note?: string | null } | null; // v2.12
   explanation: string[];
   components: { pv: ComponentDetail; battery: ComponentDetail; heatpump: ComponentDetail; wallbox: ComponentDetail };
   plausibility: Plausibility[];

@@ -832,3 +832,12 @@ input, select, textarea { border-radius: 8px; }
 .b-open-h { padding-right: 0; }
 /* Header cleanup at every width: no estimate disclaimer line and no Rina line under the verdict sentence. */
 .b-open-h .b-small, .b-open-h .b-rina { display: none; }
+/* Phone: fact chips and their edit box stay inside the screen (no sideways scroll); the box spans the chip row. */
+@media (max-width: 760px) {
+  .t-row { position: relative; }
+  .t-chip { position: static; max-width: 100%; min-width: 0; }
+  .t-chip summary { max-width: 100%; white-space: normal; }
+  .t-edit { left: 0; right: 0; white-space: normal; }
+  .t-edit form { flex-wrap: wrap; }
+  .t-edit input { flex: 1 1 110px; min-width: 0; }
+}

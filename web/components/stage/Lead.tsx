@@ -74,7 +74,7 @@ export default function Lead(p: Props) {
     addr,
     // Stated in the lead wins; otherwise the address estimate, labelled as one.
     read?.inputs.house_size_sqm ? `${n0(read.inputs.house_size_sqm)} m²` : p.roof?.floor_area_m2 ? `about ${n0(Math.round(p.roof.floor_area_m2 / 10) * 10)} m², estimated from the address, upper bound` : null,
-    read?.inputs.house_built_year ? `built ${read.inputs.house_built_year}` : p.roof?.build_year_estimate ? `built about ${p.roof.build_year_estimate}${p.roof.build_year_class ? ` (${p.roof.build_year_class.replace(/\s*[-–]\s*/, " to ")})` : ""}, estimated from the address` : null,
+    read?.inputs.house_built_year && !(p.roof?.build_year_class && p.roof.build_year_estimate != null && Math.abs(read.inputs.house_built_year - p.roof.build_year_estimate) < 0.5) ? `built ${read.inputs.house_built_year}` : p.roof?.build_year_estimate ? `built about ${p.roof.build_year_estimate}${p.roof.build_year_class ? ` (${p.roof.build_year_class.replace(/\s*[-–]\s*/, " to ")})` : ""}, estimated from the address` : null,
     i.has_solar ? `solar ${i.existing_solar_kwp ?? ""} kWp already` : "no solar",
     i.has_storage ? `battery ${i.existing_storage_kwh ?? ""} kWh already` : "no battery",
   ].filter(Boolean).join("; ");
