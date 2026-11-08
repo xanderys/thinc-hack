@@ -809,6 +809,14 @@ export class SpatialScene {
   private loop = () => {
     if (!this.alive) return;
     this.raf = requestAnimationFrame(this.loop);
+    this.tick();
+  };
+  // Safari stops animation frames while its window is hidden or covered; a timer keeps drawing the house there
+  // (about four frames a second), so a model that lands meanwhile is on the canvas the moment the window shows.
+  private lastTick = 0;
+  private wd = window.setInterval(() => { if (this.alive && performance.now() - this.lastTick > 250) this.tick(); }, 250);
+  private tick() {
+    this.lastTick = performance.now();
     const dt = Math.min(0.05, this.clock.getDelta());
     if (this.spin) this.stepSpin(dt);
     if (this.fly) {
@@ -943,6 +951,7 @@ export class SpatialScene {
   dispose() {
     this.alive = false;
     cancelAnimationFrame(this.raf);
+    clearInterval(this.wd);
     this.ro.disconnect();
     this.controls.dispose();
     this.controls2d.dispose();
