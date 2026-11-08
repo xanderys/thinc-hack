@@ -110,3 +110,12 @@
 
 /* No browser ring on the fact editors: keyboard focus tints the field's own border, no glow. */
 .fc-num input:focus, .fc-num input:focus-visible, .fc-phone input:focus, .fc-phone input:focus-visible, .fc-panel select:focus, .fc-panel select:focus-visible { outline: none; border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+/* A fact confirmed live (call or WhatsApp): one soft highlight, then rest. */
+@media (prefers-reduced-motion: no-preference) {
+  .fq[data-flash] { animation: fq-flash 1100ms var(--spring-snappy-350) both; }
+  @keyframes fq-flash { 0% { background: color-mix(in srgb, var(--accent) 22%, transparent); transform: scale(1.02); } 35% { transform: none; } 100% { background: transparent; } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fq[data-flash] { animation: fq-flash-r 900ms linear both; }
+  @keyframes fq-flash-r { 0% { background: color-mix(in srgb, var(--accent) 18%, transparent); } 100% { background: transparent; } }
+}

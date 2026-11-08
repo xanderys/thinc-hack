@@ -247,10 +247,11 @@ export default function Board({ openId: initial }: { openId?: string }) {
   }, [openId]);
 
   // While the call runs, the open card keeps converging: poll the lead every 2.5 s until it is done.
-  const calling = liveLead?.lead_id === openId && liveLead?.status === "in_call";
+  // A draft is polled too, so a call that starts after the page opened is followed from its first fact.
+  const calling = liveLead?.lead_id === openId && (liveLead?.status === "in_call" || liveLead?.status === "draft");
   useEffect(() => {
     if (!openId || !calling) return;
-    const t = setInterval(() => call<LeadT>(`/api/leads/${openId}`).then((r) => { if (r.ok) setLiveLead(r.data); }), 2500);
+    const t = setInterval(() => call<LeadT>(`/api/leads/${openId}`).then((r) => { if (r.ok) setLiveLead(r.data); }), 2000);
     return () => clearInterval(t);
   }, [openId, calling]);
   const liveFeed: Live | null = useMemo(() => !liveLead || liveLead.lead_id !== openId || !liveLead.history.length && liveLead.status !== "in_call" ? null : {
