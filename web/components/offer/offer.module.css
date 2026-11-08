@@ -9,7 +9,7 @@
 .panel > * { flex: none; }
 /* Desktop: beside the house, full height of the canvas, scrolling on its own. */
 .docked {
-  position: absolute; top: 12px; right: 12px; bottom: 64px; z-index: 4; width: 380px;
+  position: absolute; top: 12px; right: 12px; bottom: max(64px, calc(var(--say-h, 0px) + 42px)); z-index: 4; width: 380px;
   overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
 }
 /* Phone: docked under the model, in the page flow. */
