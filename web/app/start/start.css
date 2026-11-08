@@ -146,3 +146,14 @@ body:has(.start-root) main { max-width: none; padding: 0; }
 .ios-call .ios-keys { margin-top: 0; margin-bottom: 24px; gap: 14px 30px; }
 .ios-call .ios-key svg { width: 64px; height: 64px; padding: 18px; }
 .ios-call-top { margin-top: 0; }
+.ios-figs .ios-sk { height: auto; vertical-align: baseline; }
+.ios-heard { margin: 6px 0 0; min-height: 1.6em; text-align: center; font-size: 14px; }
+.ios-heard-t { display: inline-block; padding: 2px 10px; border-radius: 10px; color: #fff; }
+@media (prefers-reduced-motion: no-preference) {
+  .ios-heard-t { animation: ios-heard 1400ms var(--spring-snappy-350) both; }
+  @keyframes ios-heard { 0% { background: rgba(255, 255, 255, 0.28); transform: scale(1.04); } 30% { transform: none; } 100% { background: rgba(255, 255, 255, 0.08); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ios-heard-t { animation: ios-heard-r 900ms linear both; }
+  @keyframes ios-heard-r { from { background: rgba(255, 255, 255, 0.24); } to { background: rgba(255, 255, 255, 0.08); } }
+}

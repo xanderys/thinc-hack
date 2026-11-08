@@ -15,6 +15,22 @@ const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { 
 // record_fact (ElevenLabs client tool): the field names the engine takes; values arrive as strings.
 const FACT_FIELDS = new Set(["annual_demand_kwh", "num_inhabitants", "heating_type", "boiler_age_years", "has_ev", "ev_planned", "house_built_year", "has_solar", "heating_demand_kwh"]);
 const BOOL_FACTS = new Set(["has_ev", "ev_planned", "has_solar"]);
+// What the homeowner just said, in their words, shown at once on the call screen.
+function factLabel(f: string, v: unknown): string {
+  const n = typeof v === "number" ? v : Number(v);
+  switch (f) {
+    case "num_inhabitants": return `${v} ${n === 1 ? "person" : "people"}`;
+    case "heating_type": return ({ Gas: "Gas heating", Oil: "Oil heating", Heatpump: "Heat pump already", OtherNonRenewable: "Other heating", OtherRenewable: "Renewable heating" } as Record<string, string>)[String(v)] ?? `${v} heating`;
+    case "has_ev": return v ? "An electric car" : "No electric car";
+    case "ev_planned": return v ? "A car next year" : "No car planned";
+    case "has_solar": return v ? "Solar already" : "No solar yet";
+    case "annual_demand_kwh": return `${n0(n)} kWh a year`;
+    case "heating_demand_kwh": return `${n0(n)} kWh for heating`;
+    case "boiler_age_years": return `Boiler ${v} years old`;
+    case "house_built_year": return `Built ${v}`;
+    default: return String(v);
+  }
+}
 function factValue(field: string, v: unknown): unknown {
   if (BOOL_FACTS.has(field)) return v === true || /^(true|yes|ja|1)$/i.test(String(v).trim());
   if (field === "heating_type") return String(v).trim();
@@ -110,9 +126,13 @@ function Page({ agentId, installerId, test }: Props) {
   const recordFact = async (p: { field?: string; value?: unknown }) => {
     const id = leadIdRef.current, f = String(p?.field ?? "");
     if (!id || !FACT_FIELDS.has(f)) return "ignored";
+    const val = factValue(f, p.value);
+    setHeard((h) => ({ text: `${factLabel(f, val)}, from the call`, n: (h?.n ?? 0) + 1 }));
+    setRedesigns((x) => x + 1);
     const r = await fetch("/api/intake/step", { method: "POST", headers: { "content-type": "application/json", "X-Client-Route": "start-call-fact" },
-      body: JSON.stringify({ lead_id: id, facts_so_far: { [f]: factValue(f, p.value) }, source: "call" }) }).catch(() => null);
-    pull.current();
+      body: JSON.stringify({ lead_id: id, facts_so_far: { [f]: val }, source: "call" }) }).catch(() => null);
+    await pull.current().catch(() => {});
+    setRedesigns((x) => Math.max(0, x - 1));
     return r?.ok ? "ok" : `not saved (${r?.status ?? "offline"})`;
   };
   // Rina never waits on the engine (a step takes 0.3 to 4 s): the answer is "ok" at once and the scene catches up.
@@ -152,7 +172,10 @@ function Page({ agentId, installerId, test }: Props) {
   const seen = useRef(0);
   // The lead as it stands during the call: the scene and figures on the call screen follow it.
   const [callLead, setCallLead] = useState<Lead | null>(null);
-  const pull = useRef<() => void>(() => {});
+  const pull = useRef<() => Promise<void>>(async () => {});
+  // The last fact heard on the call, shown before the engine answers; the figures shimmer while a redesign is out.
+  const [heard, setHeard] = useState<{ text: string; n: number } | null>(null);
+  const [redesigns, setRedesigns] = useState(0);
   const leadSeen = useRef<Lead | null>(null);
   const updatedOnce = useRef(false);
   useEffect(() => {
@@ -174,7 +197,7 @@ function Page({ agentId, installerId, test }: Props) {
       if (!prev) { seen.current = steps(l); setDoneAt(Date.now()); return; }
       if (steps(l) > seen.current) { seen.current = steps(l); updatedOnce.current = true; setReady(null); if (!openRef.current) { setUpdate(whatsNew(prev.draft.design, l.draft.design)); setSummary(false); } }
     };
-    pull.current = () => { void tick(); };
+    pull.current = tick;
     void tick();
     const t = setInterval(tick, 2000);
     return () => clearInterval(t);
@@ -186,7 +209,7 @@ function Page({ agentId, installerId, test }: Props) {
     if (!phoneOk(a.phone ?? "")) { setMiss("phone"); phoneRef.current?.focus(); return; }
     setMiss(null); setError(null);
     unlock();   // the submit tap allows every sound that follows
-    setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false); setCallLead(null);
+    setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false); setCallLead(null); setHeard(null); setRedesigns(0);
     setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null); declinedRef.current = false;
     setLeadError(null);
     setStep("waiting");
@@ -359,7 +382,7 @@ function Page({ agentId, installerId, test }: Props) {
             <p className="ios-time" aria-live="polite">{live ? clock(secs) : <span className="ios-sk" style={{ width: "3.2ch" }}><span className="h-vh">Connecting</span></span>}</p>
             <p className="ios-mode">{live ? (conversation.isSpeaking ? "Rina is speaking" : "Listening") : <span className="ios-sk" style={{ width: "9ch" }} />}</p>
           </div>
-          <CallScene lead={callLead} />
+          <CallScene lead={callLead} heard={heard} busy={redesigns > 0} />
           {/* The iOS grid: mute, speaker and end work; keypad, add call, FaceTime and contacts are shown, not active. */}
           <div className="ios-keys">
             <button type="button" className={conversation.isMuted ? "ios-key on" : "ios-key"} aria-pressed={conversation.isMuted} onClick={() => conversation.setMuted(!conversation.isMuted)}>
@@ -449,10 +472,10 @@ function Speaker() {
 }
 
 // The homeowner's home in 3D on the call screen: there from Submit, redrawn in place as each fact lands.
-function CallScene({ lead }: { lead: Lead | null }) {
+function CallScene({ lead, heard, busy }: { lead: Lead | null; heard: { text: string; n: number } | null; busy: boolean }) {
   const d = lead?.draft?.design, address = lead?.address_or_postcode ?? "";
   const [ok, setOk] = useState<boolean | null>(null);
-  const figs = d ? [d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "No solar", d.battery_kwh ? `${n2(d.battery_kwh)} kWh battery` : "No battery", ...(d.heatpump_kw ? [`${n2(d.heatpump_kw)} kW heat pump`] : []), ...(d.wallbox_kw ? ["Wallbox"] : [])] : null;
+  const figs = d ? [d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "No solar", d.battery_kwh ? `${n2(d.battery_kwh)} kWh battery` : "No battery", ...(d.heatpump_kw ? [`${n2(d.heatpump_kw)} kW heat pump`] : []), ...(d.wallbox_kw ? ["Wallbox"] : []), ...(lead?.draft?.economics?.capex_eur != null ? [`€${n0(lead.draft.economics.capex_eur)}`] : [])] : null;
   return (
     <div className="ios-scene" aria-label="Your design">
       <div className={lead && d && ok !== false ? "ios-scene-3d" : "ios-scene-3d ios-sk"} aria-busy={!lead}>
@@ -460,7 +483,8 @@ function CallScene({ lead }: { lead: Lead | null }) {
           <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={d} address={address} response={lead.draft} bare homeowner system="panels" onAvailable={setOk} />
         )}
       </div>
-      <p className="ios-figs" aria-live="polite">{figs ? figs.map((f) => <span key={f}>{f}</span>) : <span className="ios-sk" style={{ width: "18ch" }} />}</p>
+      <p className="ios-figs" aria-live="polite" aria-busy={busy}>{figs ? figs.map((f) => <span key={f} className={busy ? "ios-sk" : undefined}>{f}</span>) : <span className="ios-sk" style={{ width: "18ch" }} />}</p>
+      <p className="ios-heard" aria-live="polite">{heard && <span key={heard.n} className="ios-heard-t">{heard.text}</span>}</p>
     </div>
   );
 }
