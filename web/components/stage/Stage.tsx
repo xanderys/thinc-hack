@@ -230,11 +230,22 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   // Each offer of the agent's draft is fetched once in the background after the draft lands, so a tab switch reads
   // from memory. Runs one request at a time and stops when the facts change.
+  // A lead that opens on stored kit edits starts from a refine, so the plain draft is fetched here first.
   useEffect(() => {
-    if (!ready || !drafted?.variants?.length) return;
+    if (!ready) return;
     const ctl = new AbortController(), i = inputs;
     const t = setTimeout(async () => {
-      for (const v of drafted.variants ?? []) {
+      let base: DesignResponse | null = drafted;
+      if (!base) {
+        const k0 = keyOf(i, {});
+        base = (designs.current.get(k0) as DesignResponse | undefined) ?? null;
+        if (!base) {
+          try { const r = await call<DesignResponse>("/api/design", { inputs: i }, ctl.signal); if (!r.ok) return; keep(k0, r.data); base = r.data; } catch { return; }
+        }
+        if (ctl.signal.aborted) return;
+        setDrafted(base);
+      }
+      for (const v of base.variants ?? []) {
         if (ctl.signal.aborted) return;
         const o: Overrides = v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw };
         const k = keyOf(i, o);
@@ -246,7 +257,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       }
     }, 300);   // after first paint
     return () => { clearTimeout(t); ctl.abort(); };
-  }, [ready, drafted, inputs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, drafted === null, inputs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One path for a design that arrived, from the engine or from memory.
   function land(r: { ok: true; data: DesignResponse | RefineResponse } | { ok: false; error: string; status?: number }, asked: HomeInputs, why: string | null, fixed: boolean, lid: string | null) {
