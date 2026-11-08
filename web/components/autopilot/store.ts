@@ -15,13 +15,18 @@ const subs = new Set<() => void>();
 const set = (p: Partial<Run>) => { run = { ...run, ...p }; subs.forEach((f) => f()); };
 export const useRun = () => useSyncExternalStore((f) => { subs.add(f); return () => subs.delete(f); }, () => run, () => run);
 export const closeLog = () => set({ open: false });
+export const openLog = () => { if (run.events.length || run.error) set({ open: true }); };
+let mock = false;
 
 // The board's rows follow the run: the lead is read again on draft, send and needs_you and handed to the board.
 const REFETCH = new Set(["draft", "send", "needs_you"]);
+// The board only updates the row's status from it; nothing opens a lead from the log. Mock ids are never fetched.
 async function refetch(id: string) {
+  if (mock || id.startsWith("mock-")) return;
   try {
     const r = await fetch(`/api/leads/${encodeURIComponent(id)}`, { cache: "no-store" });
-    if (r.ok) dispatchEvent(new CustomEvent(LEAD_LIVE, { detail: await r.json() }));
+    const l = r.ok ? await r.json() : null;
+    if (l?.lead_id === id) dispatchEvent(new CustomEvent(LEAD_LIVE, { detail: l }));
   } catch { /* the board's own poll picks it up */ }
 }
 
@@ -29,6 +34,7 @@ let ctl: AbortController | null = null;
 export async function startRun(body: { lead_ids?: string[]; dry?: boolean; mock?: boolean; wait_s?: number }) {
   if (run.phase === "running") return;
   ctl = new AbortController();
+  mock = body.mock === true;
   set({ phase: "running", events: [], error: null, open: true });
   try {
     const res = await fetch("/api/autopilot/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctl.signal });

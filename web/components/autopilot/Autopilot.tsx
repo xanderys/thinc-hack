@@ -2,7 +2,7 @@
 // The board's "Run autopilot" button and the agent log that slides up above the composer while a run streams.
 import { useEffect, useRef, useState } from "react";
 import { berlinTime } from "@/lib/time";
-import { closeLog, startRun, useRun, type ApEvent } from "./store";
+import { closeLog, openLog, startRun, useRun, type ApEvent } from "./store";
 import s from "./autopilot.module.css";
 
 // ?dry=1 runs without sending; ?mock=1 plays the scripted run (off production only); ?leads=a,b and ?wait=s narrow a check run.
@@ -15,6 +15,7 @@ export function RunButton() {
   const run = useRun();
   const [elsewhere, setElsewhere] = useState(false);
   useEffect(() => {
+    if (flags().mock) return;   // the mock run calls nothing real
     fetch("/api/autopilot/status", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((b) => setElsewhere(!!b?.running)).catch(() => {});
   }, [run.phase]);
   const busy = run.phase === "running";
@@ -27,6 +28,7 @@ export function RunButton() {
         title={elsewhere && !busy ? "A run is already going on the engine" : undefined}>
         Run autopilot
       </button>
+      {!run.open && run.phase !== "idle" && <button type="button" className={`btn ghost ${s.run}`} onClick={openLog}>Log</button>}
     </div>
   );
 }
@@ -51,7 +53,12 @@ function Glyph({ step, glyph, state }: { step: string; glyph?: string; state: Ap
 export function AgentLog() {
   const run = useRun();
   const list = useRef<HTMLOListElement>(null);
-  useEffect(() => { const el = list.current; if (el) el.scrollTop = el.scrollHeight; }, [run.events.length]);
+  useEffect(() => { const el = list.current; if (el) el.scrollTop = el.scrollHeight; }, [run.events.length, run.open]);
+  useEffect(() => {
+    if (!run.open || run.phase === "running") return;
+    const on = (e: KeyboardEvent) => { if (e.key === "Escape") closeLog(); };
+    addEventListener("keydown", on); return () => removeEventListener("keydown", on);
+  }, [run.open, run.phase]);
   if (!run.open) return null;
   const summary = run.events.find((e) => e.step === "summary");
   const lines = run.events.filter((e) => e.step !== "summary");
