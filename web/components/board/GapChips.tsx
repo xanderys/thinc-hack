@@ -48,7 +48,7 @@ function Field({ lead, f, onDone }: { lead: LeadLike; f: GapField; onDone: () =>
         <input aria-label={GAP_LABEL[f]} type={f === "address" ? "text" : "number"} inputMode={f === "address" ? "text" : "decimal"} min={f === "address" ? undefined : 1} value={v} autoFocus onChange={(e) => setV(e.target.value)} />
       )}
       <button type="submit" className={`gp-btn${busy === "set" ? " busy" : ""}`} disabled={!ok || !!busy}>Set</button>
-      <button type="button" className={`gp-btn${busy === "ask" ? " busy" : ""}`} disabled={!lead.phone || !!busy || asked} onClick={ask}>{asked ? "Asked" : "Ask"}</button>
+      <button type="button" className={`gp-btn${busy === "ask" ? " busy" : ""}`} disabled={!lead.phone || !!busy || asked} {...(!lead.phone ? { title: "No phone number on this lead", "aria-label": "No phone number on this lead" } : {})} onClick={ask}>{asked ? "Asked" : "Ask"}</button>
       {err && <span className="gp-err" role="alert">{err}</span>}
     </form>
   );
