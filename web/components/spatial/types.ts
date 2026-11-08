@@ -53,6 +53,12 @@ export interface FrontierPoint {
   payback_years: number | null; chosen: boolean; label?: string; on_frontier?: boolean;
 }
 
+// The engine's own check that the roof, the design and the economics came from one run.
+export interface Consistency {
+  modules_on_roof?: number; modules_in_design?: number; pv_yield_kwh_used?: number; layout_kwh_per_year?: number;
+  shaded?: boolean; battery_kwh_used?: number | null; heat_load_kw_used?: number | null; same_run_id?: string; design_economics_match?: boolean;
+}
+
 export interface Layers {
   planes: RoofModel | RoofPlane[];   // the engine sends the whole model object
   day: { date: string; hours: DayHour[] };
@@ -61,11 +67,21 @@ export interface Layers {
   chosen: Design;
   objective: { name: string; sentence: string; sources: string[] };
   sources: { key: string; citation: string; url?: string }[];
-  economics?: { capex_eur: number; annual_saving_eur: number; payback_years: number | null; self_consumption_share: number; autarky_share: number; annual?: { pv_yield_kwh: number; npv_20y_eur: number | null; [k: string]: unknown } };
+  consistency?: Consistency;
+  economics?: { capex_eur: number; annual_saving_eur: number; payback_years: number | null; self_consumption_share: number; autarky_share: number; break_even_year?: number | null; irr?: number | null; cashflow_cumulative_eur?: number[]; cashflow_yearly_eur?: number[]; annual?: { pv_yield_kwh: number; npv_20y_eur: number | null; [k: string]: unknown } };
+  bars?: Bar[];        // v2.6, in chain order
+  checks?: Check[];    // v2.6
+  ev?: { annual_km: number; annual_kwh: number; home_share: number; kwh_per_night_typical: number; kw_needed: number; km_per_hour_at_11kw: number; charging_window: string; note_22kw?: string } | null;
 }
 
+// v2.6 working-shown bars and checks.
+export type SourceTag = "lead" | "rina" | "address" | "default";
+export interface Bar { key: "roof" | "heat_loss" | "day" | "charging"; title: string; total: number; unit: string; segments: { name: string; value: number; unit: string; source_tag: SourceTag; citation?: string }[]; sentence: string; sources: string[] }
+// level (v2.7): "fail" is a real failure (red); "reference" is a published guide shown amber when outside; "info" is a tick with no verdict.
+export interface Check { name: string; value: number | string; unit: string; pass: boolean; band: string; level?: string; message?: string; inside_band?: boolean; informational?: boolean; class?: string }
+
 // The engine labels points with keys ("knee", "payback") or with words; show words.
-const LABEL: Record<string, string> = { knee: "Recommended", payback: "Best payback", independence: "Most independence", upfront: "Lowest upfront cost", value: "Best 20-year value", npv: "Best 20-year value", expert: "As planners design it" };
+const LABEL: Record<string, string> = { knee: "Recommended", payback: "Best payback", independence: "Most independence", upfront: "Lowest upfront cost", value: "Best 20-year value", npv: "Best 20-year value", expert: "As planners design it", chosen: "Recommended", recommended: "Recommended", best_value: "Best 20-year value", lowest_upfront: "Lowest upfront cost", best_payback: "Best payback", most_independence: "Most independence" };
 export const labelOf = (p: FrontierPoint) => (p.label ? LABEL[p.label] ?? p.label : p.chosen ? "Recommended" : "");
 
 export const planesOf = (x: RoofModel | RoofPlane[] | undefined | null): RoofPlane[] => (!x ? [] : Array.isArray(x) ? x : x.planes ?? []);

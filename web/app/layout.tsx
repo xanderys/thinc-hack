@@ -1,19 +1,12 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Geist, Geist_Mono, Noto_Serif } from "next/font/google";
 import Masthead from "@/components/Masthead";
 import "./globals.css";
 
-// All three families are SIL OFL; files copied from the Clase Labs repo.
-const sans = localFont({ variable: "--font-sans", display: "swap", src: [
-  { path: "../public/fonts/instrument-sans-400.woff2", weight: "400" },
-  { path: "../public/fonts/instrument-sans-500.woff2", weight: "500" },
-  { path: "../public/fonts/instrument-sans-600.woff2", weight: "600" },
-] });
-const serif = localFont({ variable: "--font-serif", display: "swap", src: [{ path: "../public/fonts/instrument-serif-400.woff2", weight: "400" }] });
-const mono = localFont({ variable: "--font-mono", display: "swap", src: [
-  { path: "../public/fonts/ibm-plex-mono-400.woff2", weight: "400" },
-  { path: "../public/fonts/ibm-plex-mono-500.woff2", weight: "500" },
-] });
+// Reonic's type: Geist for UI and headings, Geist Mono for figures, Noto Serif used sparingly (all SIL OFL).
+const sans = Geist({ variable: "--font-sans", subsets: ["latin"], display: "swap" });
+const mono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"], display: "swap" });
+const serif = Noto_Serif({ variable: "--font-serif", subsets: ["latin"], weight: ["400"], display: "swap" });
 
 export const metadata: Metadata = { title: "Planner", description: "System design from home facts" };
 

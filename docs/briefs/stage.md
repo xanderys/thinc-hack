@@ -61,10 +61,11 @@ Single column, moments stacked; design strip 2x2; proof tabs become one details 
 ## Domain context (research, pending: Reonic and installer ICP, sizing science, frontier products)
 To be appended when the three research agents return; feeds copy, Q&A and the deck, not the build order.
 
-## Canonical hero home (v5, production rules-4-readout, one pipeline, 7 Nov 18:40 Munich; variants being corrected, final note at 08:00)
-Inputs unchanged: installer 2a8ba8e2, "Katharinenstraße 5, 82008 Unterhaching", 5,000 kWh, FamilyOfFour, 4 inhabitants, 140 m2, 1985, gas about 2,400 EUR a year, no EV yet, 37 ct/kWh. The lead omits annual use; the one question asks it.
-- Base: 10.35 kWp (23 modules on the real planes by shaded yield), 8 kW inverter, 10 kWh, no heat pump, no wallbox. Capex 14,620 EUR, saves 1,420 a year, payback 10.3 years, autarky 76%, 20-year value 8,330 EUR, PV 9,580 kWh a year. Rule shown: "Installer A fits 10.35 kWp for homes using 3,550 to 9,100 kWh (142 of 337 within tolerance)"; battery "about 10 kWh above 7.2 kWp (162 of 363)".
-- After "The family buys an EV next year" (15,000 km): 10.35 / 8 / 10 plus an 11 kW wallbox. PV does NOT grow (7,700 kWh stays in the band); 15,820 EUR, 1,640 a year, 9.6 years, autarky 60%. The physics "Best value" variant beside it grows: the line on stage is "planners here keep 10.35 kWp; the maths says a larger array would earn more, see Best value".
-- After "and replace the gas boiler with a heat pump" (include): 10.5 kW from the bill, upper bound 21.2 kW from the fabric; 30,920 EUR, 2,100 a year, 14.7 years, 39%.
-- Consistency: 23 modules on the roof, 23 in the design, 9,580 kWh used in both, shaded, same run.
-- Scoreboard (fit half, 5-fold out-of-fold, 654 homes, all four within tolerance): readable rules 17.6%, black box 15.3%, textbook 6.4%; counting any offered variant 19.7%. Test-half and clean-126 table pending from the lab.
+## Canonical hero home (FINAL, production rules-4-readout, one pipeline, engine de476d0, 7 Nov 19:10 Munich)
+Inputs: installer 2a8ba8e2, "Katharinenstraße 5, 82008 Unterhaching", 5,000 kWh, FamilyOfFour, 4 inhabitants, 140 m2, 1985, gas about 2,400 EUR a year, no EV yet, no solar, 37 ct/kWh. The lead omits annual use; the one question asks it.
+- Design: 10.35 kWp (23 modules on the real planes by shaded yield), 8 kW inverter, 10 kWh battery, no heat pump, no wallbox. Capex 14,620 EUR, saves 1,420 a year, payback 10.3 years, autarky 76%, 20-year value 8,330 EUR, PV 9,580 kWh a year.
+- Variants (each simulated on its own layout): Best value = the planners' design itself ("The planners' design is already the best 20-year value on this roof"); Best payback 3.6 kWp + 5 kWh (7,090 EUR, 9.1 years, 46%); Most independence 21.6 + 15 (26,130 EUR, 13.5 years, 91%); Lowest upfront that still pays 1.8 kWp alone (3,920 EUR, 12.8 years, 18%).
+- After "The family buys an EV next year" (15,000 km): 10.35 / 8 / 10 plus an 11 kW wallbox; PV unchanged (installer A's band); 15,820 EUR, 1,640 a year, 9.6 years, autarky 60%, 20-year value 11,150 EUR.
+- After "and replace the gas boiler with a heat pump": 10.5 kW from the bill (upper bound 21.2 kW if the 1985 fabric is unrenovated); 30,920 EUR, 2,100 a year, 14.7 years, 39%.
+- Consistency: 23 modules on the roof, 23 in the design, 9,580 kWh in every number, shaded, same run.
+- Scoreboard (sealed test half 633 / clean 126, all four within tolerance): readable rules 18.6 / 23.0; black box 19.0 on the 126; textbook 6.8 / 6.3; pure physics 7.4 / 7.1; ties by paired test. Where the rules differ from the expert, our design earns more over 20 years on 327 homes vs 180 (median +430 EUR). Source: engine/lab/reports/final_test.md.

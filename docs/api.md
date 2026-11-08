@@ -1,4 +1,4 @@
-# Engine API contract (v2.3)
+# Engine API contract (v2.7)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -36,6 +36,7 @@ interface RoofResult {                  // v1.6, from GET /api/roof?address=... 
   segments: { azimuth: number; pitch: number; area_m2: number }[];
   max_panels: number | null; max_kwp: number | null;      // usable_area_m2 / 5.5
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
+  pending?: boolean;                    // v2.4: the LoD2 tile is still downloading; result returns immediately with the standard face; poll again in 3 s
   floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";          // v1.6.1: LoD2 footprint x storeys x 0.8, upper bound
   build_year_class?: string | null; build_year_estimate?: number | null; heating_class?: string | null; // v1.6.1: Zensus 2022 100 m cell; heating_class is the system type (central, district, floor, stoves), never the fuel
   zensus_confidence?: string;                                                                          // "estimated from address (Zensus 2022, 100 m cell)"
@@ -171,6 +172,44 @@ State lives in the engine (in-memory plus JSON under `engine/.cache/leads/`). Th
 ## v2.3: explanation layers for the spatial demonstration
 - `POST /api/explain/layers` body `{ inputs: HomeInputs, design?: Design }` → `{ planes: (as /api/roof/model, with chosen_panels for this design), day: { date: string; hours: { h: number; pv_kw: number; load_kw: number; battery_kw: number; grid_kw: number; soc_kwh: number }[] }, night: { evening_kwh: number; night_hours: number; battery_kwh: number; htw_cap_kwh: number }, frontier: { kwp: number; kwh: number; capex_eur: number; npv_20y_eur: number; autarky_share: number; payback_years: number | null; chosen: boolean; label?: string }[], chosen: Design, objective: { name: string; sentence: string; sources: string[] }, sources: { key: string; citation: string; url?: string }[] }`. Day = a representative spring weekday from the hourly year. Cached per inputs hash.
 
+## v2.5: homeowner decision (demo acceptance, not a qualified e-signature)
+- `PUT /api/leads/{lead_id}/approve` header `X-Intake-Secret`, body `{ variant?: Variant["key"] }` → `{ status: "approved", approved_at, approved_variant, proposal_hash }` (sha256 over `{design, variant, investment_eur}`, engine-owned; every lead read carries the current `proposal_hash`; a planner change after approval drops the lead to `done` and it must be approved again). Sign before approval returns 409.
+- `POST /api/leads/{lead_id}/decision` body `{ action: "sign" | "decline" | "question", name?: string, accepted?: boolean, signature_png?: string (data URL, under 200 KB), question?: string, proposal_hash: string }` → `{ ok, status, decided_at, proposal_hash }`. Open to the homeowner site (no secret), rate limited; the engine stores the signature image under `engine/.cache/leads/sig/<lead_id>.png`, never in the API response beyond `has_signature`. Lead status becomes `signed`, `declined` or `question`; `decision: { action, name, decided_at, proposal_hash, has_signature, matches_current, question? }` appears on GET /api/leads and /api/leads/{id}. `proposal_hash` = sha256 of the design, variant key and investment the homeowner saw; the planner's card shows a warning if the current draft's hash differs.
+
+## v2.6: working-shown bars
+- `POST /api/explain/layers` adds `bars: { key: "roof" | "heat_loss" | "day" | "charging"; title; total; unit; segments: { name; value; unit; source_tag: "lead" | "rina" | "address" | "default"; citation?: string }[]; sentence: string; sources: string[] }[]` in chain order and `checks: { name; value; unit; pass: boolean; band: string }[]` (payback, autarky band, DC/AC, roof fit). Additive read of existing fields; no grid or radiator check.
+
+## v2.7: comparison, cashflow, check bands
+- `rule_of_thumb_comparison: { reonic_kwp_per_mwh, planners_kwp_per_mwh, this_design_kwp_per_mwh }` lives at `components.pv.derivation.rule_of_thumb_comparison` and at `Eval.rule_of_thumb_comparison`.
+- `checks[]` entries carry `level: "ok" | "info" | "reference" | "fail"`, `pass`, and for banded checks `inside_band: boolean`.
+- `Economics.cashflow_cumulative_eur: number[]` (21 values from year 0) and `cashflow_yearly_eur: number[]`; `break_even_year`, `irr`.
+- Eval columns: `readout` (production), `band`, `calibrated`, `formula`, `blackbox`, `textbook` (generic), `reonic_rule` (Reonic's published rule of thumb), later `rules5`; labels in `recommenders_labels`.
+
 Natural-language refinement ("the family buys an EV next year") is handled in `web/` (`POST /api/interpret` → `{ changes: { field, from, to, note }[], inputs: HomeInputs }`) with the Claude API, then `web/` calls `/api/refine`. The engine has no LLM.
 
 Errors: non-2xx with `{ error: string }` in the source's own words.
+
+## v2.7 (engine 9acc4ca, additive): envelope elements for the heat pump step
+The envelope block on `/api/explain/layers` (`planes.envelope`) and `/api/roof/model` (`envelope`) gains:
+- `elements[]`: `{ element: "outer_wall" | "window" | "floor" | "ceiling" | "roof" | "ventilation" | "thermal_bridges" | "total", label, w, a_m2, u, dt_k, share, note? }`. Floor dT is the design difference times 0.5 (TABULA b_tr). `ceiling` is 0 W with a note (heated roof space, the roof is the boundary). `ventilation` carries `air_changes_per_h` and `volume_m3`. `total` carries `design_heat_load_kw`. The heat-loss bar and the x-ray tint both read `elements[].share`.
+- `faces[].window_share` and `faces[].window_share_source` on wall and window faces: window area over gross wall on that side. Currently 0.20 for every build-year class, as roof/model assumes.
+- `constants`: `{ bivalence_c: { value: -6, unit: "C", label, source }, hot_water_kw_per_person: { value: 0.5, unit: "kW per person", label, source } }`.
+- `estimated_from: "address"`.
+
+## v2.8 (engine 1510b93, additive): imagery vintage
+`RoofResult` (`/api/roof`) and the roof model (`/api/roof/model`) carry `imagery: { dop20_flown: "YYYY-MM-DD" | null, lod2_stand: "YYYY-MM-DD" | null, source_note: string }`. `dop20_flown` is the DOP20 date from the LDBV WMS info layer (`by_dop20_info`, field `ua`). `lod2_stand` is the matched building's LoD2 CityGML `creationDate`. A date missing from the source is null and `source_note` says why (postcode only, no building, or tile still being read). No date is ever estimated.
+
+## v2.9 (engine 47dd147, additive): test leads
+`POST /api/leads` accepts `test: boolean` (default false), stored on the lead. `GET /api/leads` leaves test leads out unless `include_test=1`, and its rows carry `test`. `GET /api/leads/{id}` serves test leads as usual. Agents create scratch leads with `test: true`. Every write to a pinned lead is logged server-side (route, client, user agent); nothing is blocked.
+
+## v2.10 (engine 2e9bc07, additive): lead versions and stale-write rejection
+Every lead carries `version`, an integer that only goes up. It is bumped on every write, engine background redrafts included, and returned on `GET /api/leads`, `GET /api/leads/{id}` and every lead write response (create, intake step, approve, decision, reset, pin). `POST /api/intake/step`, `PUT /api/leads/{id}/approve` and `POST /api/leads/{id}/decision` accept an optional `base_version`, as does `POST /api/refine` together with `lead_id` (refine never writes a lead; there the check only tests freshness). When `base_version` is below the stored version, the call answers `409 { error, version, lead }` and nothing is written. Without `base_version` the call is accepted as before. Clients send the version from their latest read or write response, never count it up, and on 409 adopt the lead in the body. The `X-Client-Route` request header is logged with each write to a pinned lead.
+
+## v2.11 (engine 50acec6): approval integrity, call status, building geometry
+- `DesignResponse`, `/api/refine` and every variant carry `design_hash`: sha256 over `{ design: the five sizes, variant, investment_eur }`, keys sorted, compact JSON, the same formula as `proposal_hash`. The top level uses `"expert"`, refine with overrides uses `"edit"`, each variant uses its key.
+- `PUT /api/leads/{id}/approve` body: `{ variant?: "expert" | "value" | "payback" | "independence" | "upfront" | "edit", design_hash?, design?, overrides?, base_version? }`. It needs `design_hash` or `design`; `variant` defaults to `"edit"` when only a design is sent. `"edit"` re-runs the lead's inputs with the overrides, or with every size fixed to the shown design, and that result is what gets approved. A missing selection, a differing `design_hash` or a differing design gives `409 { error, version, lead }` and approves nothing. On success the lead stores `approved { variant, design, economics, investment_eur, design_hash, overrides? }`; `GET /api/leads/{id}` returns it and `proposal_hash` is computed from it. A step that changes the design after approval, or a reset, drops `approved`.
+- `POST /api/intake/step` sets status `in_call` only for call steps; a request whose `X-Client-Route` contains `sentence` or `hand` keeps the previous status. The 10-minute expiry still ends calls.
+- `/api/roof` (address) carries `geometry { footprint_m2, storeys, height_m, large_building, source, note }` measured from LoD2; `large_building` is true at a footprint of 300 m² or more, 4 or more storeys, or a height of 12 m or more. The web ranks it above `dwellings_class` on conflict.
+
+## v2.12 (engine eb69e14, additive): stated roof direction versus the measured roof
+When the inputs state a roof direction (`roof_azimuth_deg`, or `roof_orientation` as a compass word) and the address has a LoD2 model, `DesignResponse` carries `roof { stated_azimuth_deg, measured_azimuths_deg, stated_direction_conflict, source, note? }`. The conflict is true when the stated direction is more than 45 degrees from every measured face. The design always follows the measured faces, and on conflict the explanation begins with "Roof measured from the building model; your stated <direction> face was not found." Without a building model there is no roof block, and the stated direction drives the yield.

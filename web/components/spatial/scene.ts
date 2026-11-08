@@ -7,20 +7,33 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { DayHour, Envelope, PanelRect, Plan, RoofModel, RoofPlane, V3 } from "./types";
 import { flowsOf, lerpHour, p2 } from "./types";
 import { facing } from "./facing";
+import { poseOffset, springStep, type Focus, type Pose } from "./camera";
+import { ShadeLayer } from "./shading";
+import { neighbourEdges, outlineMesh, registerGlb } from "./whiteContext";
+import { Xray } from "./xray";
+import { googleGround, sharpen } from "./satGround";
+import type { ShadeAt, Shading } from "@/lib/shading";
 
-const PAPER = new THREE.Color("#F4F1EA");
-const BLUE = new THREE.Color("#0D1BFE");
+const PAPER = new THREE.Color("#fdfdfb");
+const BLUE = new THREE.Color("#374be6");
 const SUN = new THREE.Color("#E8730C");
 const INK = "#0A0C14";
 const NEIGHBOUR = "#B4B1A9";
 const WALL = "#E2DED4";
+const WALL_MASS = "#F6F3EC";
 
 const toV = ([x, y, z]: V3) => new THREE.Vector3(x, z, -y);
 const OMEGA = (2 * Math.PI) / 0.5; // spring duration 0.5 s, bounce 0 (critically damped)
 const springOut = (t: number) => (t <= 0 ? 0 : 1 - (1 + OMEGA * t) * Math.exp(-OMEGA * t));
 const DAY_SECONDS = 12;
 
-export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string };
+// prio: when two labels come within 24 px the lesser hides. tap: a roof plane's label that shows only once that plane is tapped.
+export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string; prio?: number; tap?: string };
+const GAP = 24;
+// On-model chips: one line each, never more than four on screen; a chip that would overlap another tries below,
+// left and right of its anchor before it hides.
+const MAX_CHIPS = 4, CHIP_GAP = 6;
+const kwpS = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 2 });
 
 
 
@@ -29,7 +42,8 @@ const skipOf = (p: RoofPlane) => p.skip_reason || p.skip || p.shade_reason || nu
 function sunHtml(p: RoofPlane) {
   const loss = p.shade_loss_share;
   if (p.yield_shaded_kwh_per_kwp != null && loss != null && loss >= 0.005)
-    return `<b>${fmt0(p.yield_shaded_kwh_per_kwp)}</b> kWh/kWp<br/><span>${Math.round(loss * 100)}% lost to shade</span>`;
+    return `<b>${fmt0(p.yield_shaded_kwh_per_kwp)}</b> kWh/kWp after shade<br/><span>${Math.round(loss * 100)}% lost to shade</span>`;
+  if (p.yield_shaded_kwh_per_kwp != null) return `<b>${fmt0(p.yield_shaded_kwh_per_kwp)}</b> kWh/kWp after shade`;
   return `<b>${fmt0(p.yield_kwh_per_kwp)}</b> kWh/kWp`;
 }
 
@@ -70,7 +84,7 @@ function panelCorners(p: RoofPlane, r: PanelRect): THREE.Vector3[] {
   return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => c.clone().addScaledVector(u, (i * r.w) / 2).addScaledVector(v, (j * r.h) / 2));
 }
 
-export interface SceneOpts { reduce: boolean; onHour?: (h: number, playing: boolean) => void; compass?: HTMLElement | null }
+export interface SceneOpts { reduce: boolean; onHour?: (h: number, playing: boolean) => void; compass?: HTMLElement | null; onView?: (mode: "3d" | "2d") => void }
 
 export class SpatialScene {
   private renderer: THREE.WebGLRenderer;
@@ -80,6 +94,15 @@ export class SpatialScene {
   private camera: THREE.Camera = this.persp;
   private mode: "3d" | "2d" = "3d";
   private controls: OrbitControls;
+  private controls2d: OrbitControls;   // 2D plan: pan and pinch zoom, no rotation
+  private tap = { t: 0, x: 0, y: 0 };
+  private down = { x: 0, y: 0 };
+  private tapped: string | null = null;
+  private labelSize = new Map<string, { w: number; h: number }>();
+  private wallGeo: THREE.BufferGeometry | null = null;
+  private wallEdges: THREE.LineSegments | null = null;
+  private glbRoot: THREE.Object3D | null = null;
+  private flattened = false;
   private ro: ResizeObserver;
   private raf = 0;
   private alive = true;
@@ -96,6 +119,15 @@ export class SpatialScene {
   private centre = new THREE.Vector3();
   private span = 14;
   private anchors = { roof: new THREE.Vector3(), home: new THREE.Vector3(), batt: new THREE.Vector3(), grid: new THREE.Vector3() };
+  private focusPts: Record<Focus, THREE.Vector3> = { roof: new THREE.Vector3(), house: new THREE.Vector3(), drive: new THREE.Vector3(), battery: new THREE.Vector3(), wallbox: new THREE.Vector3(), west: new THREE.Vector3() };
+  private fitD = 40;
+  private wallbox: THREE.Mesh | null = null;
+  private fly: { pos: THREE.Vector3; tgt: THREE.Vector3; top: boolean } | null = null;
+  private pose: Pose | null = null;
+  private home: Pose | null = null;   // the current step's framing, kept when the planner drags away; Re-centre returns to it
+  private spin: { a: number; v: number; h: number; y: number } | null = null;   // compass turn to north
+  private vPos = new THREE.Vector3();
+  private vTgt = new THREE.Vector3();
   private batteryBox!: THREE.Mesh;
   private labels: Label[] = [];
   private labelEls = new Map<string, HTMLDivElement>();
@@ -116,9 +148,16 @@ export class SpatialScene {
   private heat: Envelope | null = null;
   private plan: Plan | null = null;
   private planG: SVGGElement | null = null;
+  private shade = new ShadeLayer();
+  private ctxLines = new THREE.Group(); // neighbours' footprints on the white ground
+  private xray = new Xray({ walls: () => this.wallMesh, box: this.box, planes: () => this.targets.map((t) => t.p), root: this.scene });
+  private ctxOff: (() => void)[] = [];   // the white-context and ground subscriptions of this glb
+  private groundOrigin: [number, number, number] | null = null; // wanted satellite ground, applied once the glb is in
+  private groundOff: (() => void) | null = null;
+  private groundKey = "";
 
   constructor(private host: HTMLElement, private overlay: HTMLElement, private svg: SVGSVGElement, private opts: SceneOpts) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
+    this.renderer = takeRenderer();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setClearColor(PAPER, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -128,15 +167,33 @@ export class SpatialScene {
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xd6d1c5, 1.9));
     this.sunLight.position.set(-20, 30, 25);
     this.scene.add(this.sunLight);
-    this.scene.add(this.placeholder, this.outlines, this.tints, this.panels, this.kit, this.sunGroup);
+    this.scene.add(this.ctxLines, this.placeholder, this.outlines, this.tints, this.panels, this.kit, this.sunGroup);
 
+    // Touch moves the model, never the page.
+    this.renderer.domElement.style.touchAction = "none";
     this.controls = new OrbitControls(this.persp, this.renderer.domElement);
-    this.controls.enablePan = false;
+    // One finger rotates, two fingers pan and pinch; right-drag or shift-drag pans with a mouse.
+    this.controls.enablePan = true;
+    this.controls.screenSpacePanning = true;
+    this.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     this.controls.enableDamping = !opts.reduce;
     this.controls.dampingFactor = 0.12;
     this.controls.maxPolarAngle = Math.PI * 0.46;
     this.controls.minPolarAngle = Math.PI * 0.08;
     this.controls.autoRotate = false;
+    // A drag takes the camera back from the reasoning chain at once.
+    this.controls.addEventListener("start", () => { this.fly = null; this.pose = null; this.spin = null; this.vPos.set(0, 0, 0); this.vTgt.set(0, 0, 0); this.controls.minPolarAngle = Math.PI * 0.08; });
+
+    this.ortho.up.set(0, 0, -1);
+    this.controls2d = new OrbitControls(this.ortho, this.renderer.domElement);
+    Object.assign(this.controls2d, { enableRotate: false, enablePan: true, screenSpacePanning: true, enableDamping: !opts.reduce, dampingFactor: 0.12, minZoom: 0.7, maxZoom: 5, enabled: false });
+    this.controls2d.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
+    this.controls2d.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    this.controls2d.addEventListener("start", () => { this.fly = null; this.pose = null; });
+    // Double tap or double click puts the house back in frame.
+    this.renderer.domElement.addEventListener("pointerup", this.onTap);
+    this.renderer.domElement.addEventListener("pointerdown", this.onDown);
+    this.shade.mount(overlay, this.renderer.domElement);
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
@@ -150,23 +207,50 @@ export class SpatialScene {
     this.renderer.domElement.style.width = "100%";
     this.renderer.domElement.style.height = "100%";
     this.persp.aspect = w / h;
+    // The house centres in the canvas area the overlays leave free: shift both cameras' principal point there.
+    const f = this.free();
+    this.persp.setViewOffset(w, h, w / 2 - f.cx, h / 2 - f.cy, w, h);
+    this.ortho.setViewOffset(w, h, w / 2 - f.cx, h / 2 - f.cy, w, h);
     this.persp.updateProjectionMatrix();
     this.setOrtho(w / h);
     this.svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
     this.fit(false);
   }
 
+  // Overlays on the model (the number card, the shading strip) in canvas pixels from each edge. The fit uses the
+  // rest: the house and its poses frame inside it with a margin, re-fitted whenever the stack changes.
+  private insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  setInsets(i: { top: number; right: number; bottom: number; left: number }) {
+    const r = (x: number) => Math.max(0, Math.round(x));
+    const n = { top: r(i.top), right: r(i.right), bottom: r(i.bottom), left: r(i.left) };
+    const o = this.insets;
+    if (n.top === o.top && n.right === o.right && n.bottom === o.bottom && n.left === o.left) return;
+    this.insets = n;
+    this.resize();
+  }
+  // The free area: never under 45% of the canvas either way, so a tall stack cannot squeeze the house to nothing.
+  private free() {
+    const W = this.host.clientWidth || 1, H = this.host.clientHeight || 1, { top, right, bottom, left } = this.insets;
+    const fw = Math.max(W * 0.45, W - left - right), fh = Math.max(H * 0.45, H - top - bottom);
+    const cx = Math.min(Math.max(left + fw / 2, fw / 2), W - fw / 2), cy = Math.min(Math.max(top + fh / 2, fh / 2), H - fh / 2);
+    return { W, H, fw, fh, cx, cy, kW: W / fw, kH: H / fh };
+  }
+
   private setOrtho(a: number) {
     // Top-down on the house itself with a margin of street around it.
     const c = this.box.isEmpty() ? this.centre : this.box.getCenter(new THREE.Vector3());
     const sz = this.box.isEmpty() ? new THREE.Vector3(this.span, 0, this.span) : this.box.getSize(new THREE.Vector3());
-    const half = this.plan ? Math.max(sz.x, sz.z) * 0.62 + 4 : Math.max(sz.x, sz.z) * 1.1 + 4;
-    const hh = a >= 1 ? half : half / a, hw = hh * a;
+    // Margin inside the free area: the overlays' room is added on top, so the street margin stays modest.
+    const half = this.plan ? Math.max(sz.x, sz.z) * 0.62 + 4 : Math.max(sz.x, sz.z) * 0.8 + 3;
+    const f = this.free();
+    const hh = Math.max(half * f.kH, (half * f.kW) / a), hw = hh * a; // the plan fits the free area, not the canvas
     Object.assign(this.ortho, { left: -hw, right: hw, top: hh, bottom: -hh });
     this.ortho.position.set(c.x, 120, c.z);
     this.ortho.up.set(0, 0, -1); // north up
     this.ortho.lookAt(c.x, 0, c.z);
+    this.ortho.zoom = 1;
     this.ortho.updateProjectionMatrix();
+    if (this.controls2d) { this.controls2d.target.set(c.x, 0, c.z); this.controls2d.update(); }
   }
 
   // 2D: straight down, north up, no rotation. 3D: drag to rotate.
@@ -174,13 +258,16 @@ export class SpatialScene {
     this.mode = mode;
     this.camera = mode === "2d" ? this.ortho : this.persp;
     this.controls.enabled = mode === "3d";
+    this.controls2d.enabled = mode === "2d";
     this.setOrtho(this.persp.aspect);
   }
 
   private fit(reset: boolean) {
     const a = this.persp.aspect, vfov = (this.persp.fov * Math.PI) / 180;
-    const half = this.span / 2, need = Math.max(half / Math.tan(vfov / 2), half / (Math.tan(vfov / 2) * a));
-    const d = need * 1.6;
+    const f = this.free(), t = Math.tan(vfov / 2);
+    const half = this.span / 2, need = Math.max((half * f.kH) / t, (half * f.kW) / (t * a));
+    // The mesh cap keeps the photo crisp; a tall free area, or one narrowed by overlays, still gets the room it needs.
+    const d = Math.min(need * 1.6, this.fitCap * Math.max(1, 1.3 / (f.fw / f.fh)) * Math.max(f.kW, f.kH));
     if (reset || !this.fitted) {
       const dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
       this.persp.position.copy(this.centre).addScaledVector(dir, d);
@@ -189,24 +276,65 @@ export class SpatialScene {
       const cur = this.persp.position.clone().sub(this.controls.target).normalize();
       this.persp.position.copy(this.centre).addScaledVector(cur, d);
     }
-    this.controls.target.copy(this.centre);
+    this.fitD = d;
+    if (!this.fly) this.controls.target.copy(this.centre);
     this.controls.minDistance = d * 0.55;
     this.controls.maxDistance = d * 1.8;
+    // A stage pose survives a resize or a new design: re-aim at it (no animation unless already flying).
+    if (this.pose && this.fitted) {
+      const g = this.goalOf(this.pose);
+      if (this.fly) { this.fly.pos.copy(g.pos); this.fly.tgt.copy(g.tgt); }
+      else { this.persp.position.copy(g.pos); this.controls.target.copy(g.tgt); }
+    }
     this.controls.update();
   }
+  private goalOf(p: Pose) {
+    const tgt = this.focusPts[p.focus].clone();
+    return { tgt, pos: tgt.clone().addScaledVector(poseOffset(p), this.fitD * p.dist) };
+  }
   private fitted = false;
+  // The photo mesh is only crisp up close: it caps the fitted distance (stage poses scale with it); null lifts it.
+  private fitCap = Infinity;
+  setFitCap(m: number | null) {
+    const cap = m ?? Infinity;
+    if (cap === this.fitCap) return;
+    this.fitCap = cap;
+    if (this.fitted) this.fit(false);
+  }
+
+  // Moves the camera to a stage's pose on one smooth spring (0.6 s, bounce 0) from wherever it is now, keeping
+  // its velocity if a new stage arrives mid-flight. A top-down pose ends in the 2D plan. Reduce Motion: a cut.
+  flyTo(p: Pose) {
+    this.pose = p; this.home = p; this.spin = null;
+    const { pos, tgt } = this.goalOf(p);
+    if (this.mode === "2d" && !p.topDown) { this.setView("3d"); this.opts.onView?.("3d"); }
+    this.controls.minPolarAngle = p.topDown ? 0 : Math.PI * 0.08;
+    if (this.opts.reduce) {
+      this.persp.position.copy(pos); this.controls.target.copy(tgt); this.controls.update();
+      this.fly = null;
+      if (p.topDown) { this.setView("2d"); this.opts.onView?.("2d"); }
+      return;
+    }
+    this.fly = { pos, tgt, top: !!p.topDown };
+  }
 
   setModel(model: RoofModel) {
     this.targets = [];
-    [this.placeholder, this.outlines, this.tints, this.kit, this.sunGroup].forEach((g) => g.clear());
+    [this.placeholder, this.outlines, this.tints, this.kit, this.sunGroup, this.ctxLines].forEach((g) => g.clear());
+    const nbr = neighbourEdges(model.planes);
+    this.ctxLines.add(outlineMesh(nbr));
+    this.ctxLines.userData.edges = nbr; // the mesh view paints the same edges in its shader (whiteContext.ts)
     const target = model.planes.filter((p) => p.is_target);
-    const ys = model.planes.map((p) => p.yield_kwh_per_kwp).filter((x) => x > 0);
+    this.shade.setPlanes(target);
+    const ys = model.planes.map((p) => p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp).filter((x) => x > 0);
     this.yieldScale = [Math.min(...ys), Math.max(...ys)];
 
     // Paper-grey placeholder of every roof plane until the glb arrives.
     const ph = new THREE.MeshLambertMaterial({ color: "#D6D1C5", side: THREE.DoubleSide });
     const pt = new THREE.MeshLambertMaterial({ color: "#C9C3B6", side: THREE.DoubleSide });
-    model.planes.forEach((p) => this.placeholder.add(planeMesh(p, 0, p.is_target ? pt : ph)));
+    // Neighbours are not raised: only the target's planes stand in until the glb arrives.
+    void ph;
+    target.forEach((p) => this.placeholder.add(planeMesh(p, 0, pt)));
 
     const box = new THREE.Box3();
     target.forEach((p) => {
@@ -225,6 +353,7 @@ export class SpatialScene {
     if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(0, 4, 0), new THREE.Vector3(12, 8, 12));
     box.expandByPoint(new THREE.Vector3(box.min.x, 0, box.min.z));
     this.box.copy(box);
+    if (this.glbRoot && !this.box.isEmpty()) this.flattenNeighbours(this.glbRoot);
     const size = box.getSize(new THREE.Vector3());
     // Battery: a block beside the house on the east side; grid: a pole at the edge of the plot.
     const bx = box.min.x + 1.2, bz = box.max.z + 1.1; // in front of the south-west corner, where the camera sees it
@@ -246,6 +375,21 @@ export class SpatialScene {
     this.anchors.home.set((box.min.x + box.max.x) / 2, Math.max(1.6, box.min.y * 0.4), box.max.z);
     this.anchors.batt.set(bx, 1.5, bz);
     this.anchors.grid.set(gx, 7.1, gz);
+    const bc = box.getCenter(new THREE.Vector3()), midZ = (box.min.z + box.max.z) / 2;
+    this.focusPts.roof.copy(this.anchors.roof);
+    this.focusPts.house.set(bc.x, size.y * 0.4, bc.z);
+    // Close-up foci sit at mid-height, so the house stays in frame while the camera looks at its base.
+    const fy = size.y * 0.45;
+    this.focusPts.battery.set((bx + bc.x) / 2, fy, bz - 1);
+    this.focusPts.drive.set(box.max.x + 1.5, fy, box.max.z);
+    this.focusPts.wallbox.set(box.max.x, fy, box.max.z - 1.5);
+    this.focusPts.west.set(box.min.x, fy, midZ);
+    // Wallbox: a small EV-blue box on the wall by the drive, shown only when the design has one.
+    this.wallbox = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 0.2), new THREE.MeshLambertMaterial({ color: "#1c71ef" }));
+    this.wallbox.position.set(box.max.x + 0.12, 1.3, box.max.z - 1.5);
+    this.wallbox.add(new THREE.LineSegments(new THREE.EdgesGeometry(this.wallbox.geometry), new THREE.LineBasicMaterial({ color: INK })));
+    this.wallbox.visible = false;
+    this.kit.add(this.wallbox);
 
     // Sun path for the day layer.
     const path: THREE.Vector3[] = [];
@@ -277,15 +421,75 @@ export class SpatialScene {
         if (!m.isMesh) return;
         const name = (m.name || m.parent?.name || "").toLowerCase();
         const old = m.material as THREE.MeshStandardMaterial;
-        if (name.startsWith("context")) m.material = new THREE.MeshLambertMaterial({ color: NEIGHBOUR, side: THREE.DoubleSide });
+        if (name.startsWith("context")) m.material = new THREE.MeshLambertMaterial({ color: NEIGHBOUR, side: THREE.DoubleSide, transparent: true, opacity: 0.35, depthWrite: false });
         else if (name.startsWith("walls")) { m.material = new THREE.MeshLambertMaterial({ color: WALL, side: THREE.DoubleSide }); this.wallMesh = m; this.wallMat = m.material; }
-        else if (old && old.map) { old.map.anisotropy = 4; m.material = new THREE.MeshLambertMaterial({ map: old.map, side: THREE.DoubleSide }); }
+        else if (old && old.map) { m.material = new THREE.MeshLambertMaterial({ map: old.map, side: THREE.DoubleSide }); }
       });
+      // The target footprint comes with the roof model; until it is in, flatten later.
+      this.glbRoot = gltf.scene; this.flattened = false;
+      if (!this.box.isEmpty()) this.flattenNeighbours(gltf.scene);
+      sharpen(gltf.scene, this.renderer);
+      this.ctxOff.push(registerGlb(gltf.scene, this.ctxLines));
       this.scene.add(gltf.scene);
       this.placeholder.visible = false;
       if (this.heat) this.setHeat(this.heat);
+      this.applyGround();
       onDone(null);
     }, undefined, (e) => onDone((e as Error)?.message || "The house model did not load."));
+  }
+
+  // Only the house we explain stands up. Neighbours' roofs and walls drop to a 0.4 m slab on the ground, so the
+  // street still reads and nothing hides the facade; their shade is already in the engine's numbers.
+  private flattenNeighbours(root: THREE.Object3D) {
+    if (this.flattened) return;
+    this.flattened = true;
+    root.updateMatrixWorld(true);
+    let ground = 0;
+    root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && (m.name || "").toLowerCase().startsWith("ground")) ground = new THREE.Box3().setFromObject(m).max.y; });
+    const own = this.box.isEmpty() ? null : this.box.clone().expandByVector(new THREE.Vector3(1, 0, 1));
+    const v = new THREE.Vector3(), inv = new THREE.Matrix4();
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const name = (m.name || m.parent?.name || "").toLowerCase(), ctx = name.startsWith("context"), walls = name.startsWith("walls");
+      if (!ctx && !walls) return;
+      const g = m.geometry.clone(), pos = g.attributes.position as THREE.BufferAttribute;
+      inv.copy(m.matrixWorld).invert();
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+        const mine = own && v.x >= own.min.x && v.x <= own.max.x && v.z >= own.min.z && v.z <= own.max.z;
+        if (ctx || !mine) { v.y = Math.min(v.y, ground + 0.4); v.applyMatrix4(inv); pos.setXYZ(i, v.x, v.y, v.z); }
+      }
+      pos.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
+      m.geometry = g;
+    });
+  }
+
+  // The walls as an architectural massing model: off-white, one flat shade per face, darker towards the ground
+  // (baked ambient occlusion per vertex) and thin edge lines. No invented windows.
+  private massing() {
+    const wm = this.wallMesh;
+    if (!wm) return;
+    const g = wm.geometry.index ? wm.geometry.toNonIndexed() : wm.geometry.clone();
+    g.computeVertexNormals();
+    wm.updateWorldMatrix(true, false);
+    const pos = g.getAttribute("position") as THREE.BufferAttribute, v = new THREE.Vector3();
+    let ground = Infinity;
+    for (let i = 0; i < pos.count; i++) ground = Math.min(ground, v.fromBufferAttribute(pos, i).applyMatrix4(wm.matrixWorld).y);
+    const base = new THREE.Color(WALL_MASS), col = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const h = v.fromBufferAttribute(pos, i).applyMatrix4(wm.matrixWorld).y - ground;
+      const s = Math.min(1, Math.max(0, h / 2.5)), ao = 0.66 + 0.34 * s * s * (3 - 2 * s);
+      col.set([base.r * ao, base.g * ao, base.b * ao], i * 3);
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    wm.geometry = g;
+    this.wallGeo = g;
+    this.wallMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true });
+    if (!this.heat) wm.material = this.wallMat;
+    if (this.wallEdges) { this.wallEdges.removeFromParent(); this.wallEdges.geometry.dispose(); }
+    this.wallEdges = new THREE.LineSegments(new THREE.EdgesGeometry(g, 25), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.32 }));
+    wm.add(this.wallEdges);
   }
 
   setPanels(list: { p: RoofPlane; r: PanelRect }[], animate: boolean) {
@@ -293,6 +497,7 @@ export class SpatialScene {
     this.panelAnim = [];
     const fill = new THREE.MeshBasicMaterial({ color: "#151826", side: THREE.DoubleSide });
     const edge = new THREE.LineBasicMaterial({ color: "#F4F1EA", transparent: true, opacity: 0.85 });
+    const per: Record<string, number> = {};
     list.forEach(({ p, r }, i) => {
       const f = planeFrame(p);
       const cs = panelCorners(p, r).map((q) => q.addScaledVector(f.n, 0.09));
@@ -304,6 +509,7 @@ export class SpatialScene {
       quad.renderOrder = 3;
       const ln = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(cs), mats[1]);
       grp.add(quad, ln);
+      grp.userData = { plane: p.id, idx: (per[p.id] = (per[p.id] ?? -1) + 1), cs, n: f.n }; // shading.ts reads these
       this.panels.add(grp);
       if (animate) {
         mats.forEach((m) => { m.transparent = true; m.opacity = 0; });
@@ -313,7 +519,12 @@ export class SpatialScene {
       }
     });
     this.panelT = animate ? 0 : -1;
+    this.shade.setPanels(this.panels);
   }
+
+  setShading(d: Shading | null, on: boolean, at: ShadeAt) { this.shade.set(d, on, at); }
+  // Heat pump step: envelope x-ray (xray.ts); null fades it out.
+  setXray(env: Envelope | null): Label[] { return this.xray.set(env); }
 
   setTint(mode: "off" | "yield" | "sun") {
     this.tintMode = mode;
@@ -329,12 +540,31 @@ export class SpatialScene {
     });
   }
 
+  // The Google satellite ground at the engine origin (UTM 32N E, N, Z) (satGround.ts). Callable at any time:
+  // before the glb is in it is remembered and starts the moment the glb lands; a changed origin replaces it.
+  groundFor(origin: [number, number, number]) {
+    this.groundOrigin = origin;
+    this.applyGround();
+  }
+
+  private applyGround() {
+    const o = this.groundOrigin;
+    if (!o || !this.glbRoot || !this.alive) return;
+    const key = o.join(",");
+    if (this.groundOff && this.groundKey === key) return;
+    this.groundOff?.();
+    this.groundKey = key;
+    this.groundOff = googleGround(this.glbRoot, this.renderer, o);
+  }
+
+  setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on; }
+
   show(o: { outlines: boolean; panels: boolean; kit: boolean; sun: boolean; battery: "plain" | "lit" }) {
     this.outlines.visible = o.outlines;
     this.panels.visible = o.panels;
     this.kit.visible = o.kit;
     this.sunGroup.visible = o.sun;
-    if (this.batteryBox) (this.batteryBox.material as THREE.MeshLambertMaterial).color.set(o.battery === "lit" ? "#0D1BFE" : "#FAF8F3");
+    if (this.batteryBox) (this.batteryBox.material as THREE.MeshLambertMaterial).color.set(o.battery === "lit" ? "#24a148" : "#FAF8F3");
     if (!o.sun) this.setFlows(null);
   }
 
@@ -344,7 +574,7 @@ export class SpatialScene {
     this.heat = env;
     const wm = this.wallMesh;
     if (!env) {
-      if (wm && this.wallMat) wm.material = this.wallMat;
+      if (wm && this.wallMat) { if (this.wallGeo) wm.geometry = this.wallGeo; wm.material = this.wallMat; }
       this.targets.forEach(({ tint }) => ((tint.material as THREE.MeshBasicMaterial).opacity = 0));
       return [] as Label[];
     }
@@ -446,7 +676,7 @@ export class SpatialScene {
       const C = pr(at), E = pr([at[0] + r, at[1]]);
       out.push(`<circle class="pl-clear" cx="${f(C.x)}" cy="${f(C.y)}" r="${f(Math.hypot(E.x - C.x, E.y - C.y))}"/>`);
     });
-    const placed: { x: number; y: number }[] = [];
+    const placed: { x0: number; x1: number; y: number }[] = [];
     const cxAll = pts.length ? pts.reduce((a, q) => a + q[0], 0) / pts.length : 0, cyAll = pts.length ? pts.reduce((a, q) => a + q[1], 0) / pts.length : 0;
     [...(plan.equipment ?? []), ...(plan.markers ?? [])].forEach((m) => {
       const at = p2(m.at ?? m.position ?? (m.x != null && m.y != null ? [m.x, m.y] : null));
@@ -457,10 +687,12 @@ export class SpatialScene {
       // Labels only on the drawing (notes go in the caption); markers close together stack their labels.
       // Markers on the east half label to the left, so labels stay over the house and off the dimension lines.
       const C = pr([cxAll, cyAll]), left = P.x > C.x, lx = left ? P.x - 9 : P.x + 9;
+      const full = m.label ?? m.kind ?? "", text = this.host.clientWidth < 520 ? full.split(" ").slice(0, 2).join(" ") : full, w = text.length * 6.6 + 4;
+      const x0 = left ? lx - w : lx, x1 = left ? lx : lx + w;
       let ly = P.y + 4;
-      while (placed.some((q) => Math.abs(q.y - ly) < 14 && Math.abs(q.x - lx) < 90)) ly += 14;
-      placed.push({ x: lx, y: ly });
-      out.push(`<text class="pl-label" x="${f(lx)}" y="${f(ly)}" text-anchor="${left ? "end" : "start"}">${esc(m.label ?? m.kind ?? "")}</text>`);
+      while (placed.some((q) => Math.abs(q.y - ly) < 14 && q.x0 < x1 && x0 < q.x1)) ly += 14;
+      placed.push({ x0, x1, y: ly });
+      out.push(`<text class="pl-label" x="${f(lx)}" y="${f(ly)}" text-anchor="${left ? "end" : "start"}">${esc(text)}</text>`);
     });
     const html = out.join("");
     if (g.innerHTML !== html) g.innerHTML = html;
@@ -474,23 +706,44 @@ export class SpatialScene {
       let el = this.labelEls.get(x.key);
       if (!el) { el = document.createElement("div"); this.overlay.appendChild(el); this.labelEls.set(x.key, el); }
       el.className = `sp-label ${x.cls ?? ""}`;
-      el.innerHTML = x.html;
+      if (el.innerHTML !== x.html) { el.innerHTML = x.html; this.labelSize.delete(x.key); }
     });
   }
 
-  planeLabels(kind: "roof" | "sun" | "panels", counts?: Record<string, number>): Label[] {
+  // Only the faces that carry modules are labelled; any other face shows its label when tapped.
+  planeLabels(kind: "roof" | "sun" | "panels", counts?: Record<string, number>, kwpPerModule?: number): Label[] {
+    const own: Record<string, number> = {};
+    this.panels.children.forEach((g) => { const id = g.userData?.plane; if (id) own[id] = (own[id] ?? 0) + 1; });
+    const cnt = (id: string) => counts?.[id] ?? own[id] ?? 0;
+    // With modules on more than one face each chip carries the total, so "20 modules" never stands against 23 alone.
+    const used = this.targets.filter(({ p }) => cnt(p.id) > 0), total = used.reduce((a, { p }) => a + cnt(p.id), 0);
+    const of = used.length > 1 ? ` of ${total}` : "";
     return this.targets.map(({ p, c, n }) => {
-      const at = c.clone().addScaledVector(n, 0.4);
+      const at = c.clone().addScaledVector(n, 0.4), k = cnt(p.id);
+      const face = p.pitch < 3 ? "flat roof" : `${facing(p.azimuth)} face, ${Math.round(p.pitch)}° pitch`;
       const html = kind === "roof"
-        ? `<b>${facing(p.pitch < 3 ? null : p.azimuth)}, ${Math.round(p.pitch)}°</b><br/><span>azimuth ${p.azimuth == null ? "none" : `${Math.round(p.azimuth)}°`}</span>`
+        ? `<b>${face}</b>`
         : kind === "sun"
           ? sunHtml(p)
-          : (counts?.[p.id] ?? 0) > 0 || !skipOf(p) ? `<b>${counts?.[p.id] ?? 0}</b> modules` : `No modules<br/><span>${skipOf(p)}</span>`;
-      return { key: `${kind}-${p.id}`, at, html };
+          : (() => {
+            // Panels: one chip per face, "East face · 9 kWp · 20 modules"; an empty face shows its chip on tap.
+            const name = p.pitch < 3 ? "Flat roof" : `${facing(p.azimuth).replace(/^./, (x) => x.toUpperCase())} face`;
+            if (k > 0) return `${name} · ${kwpPerModule ? `<b>${kwpS(k * kwpPerModule)} kWp</b> · ` : ""}${k}${of} modules`;
+            return skipOf(p) ? `${name} · no modules, ${skipOf(p)}` : `${name} · no modules`;
+          })();
+      return { key: `${kind}-${p.id}`, at, html, cls: kind === "panels" ? `chip ${k > 0 ? "c-pv" : ""}` : undefined, prio: k * 1000 + p.area_m2, ...(k > 0 ? {} : { tap: p.id }) };
     });
   }
 
   nodeLabel(key: "roof" | "home" | "batt" | "grid", html: string) { this.nodeLabels[key] = html; }
+
+  // Battery and wallbox steps: the marker on the house carries its size ("10 kWh", "11 kW").
+  kitLabels(batt: string | null, wb: string | null): Label[] {
+    const out: Label[] = [];
+    if (batt) out.push({ key: "kit-batt", at: this.anchors.batt.clone().setY(1.65), html: `<b>${batt}</b>`, cls: "chip c-bat", prio: 5e6 });
+    if (wb && this.wallbox) out.push({ key: "kit-wb", at: this.wallbox.position.clone().add(new THREE.Vector3(0, 0.45, 0)), html: `<b>${wb}</b>`, cls: "chip c-ev", prio: 5e6 });
+    return out;
+  }
 
   // Day layer: hours of one representative day, played over 12 s.
   setDay(hours: DayHour[] | null, play: boolean) {
@@ -521,11 +774,85 @@ export class SpatialScene {
     return { x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h, ok: p.z < 1 };
   }
 
+  private onDown = (e: PointerEvent) => { this.down = { x: e.clientX, y: e.clientY }; };
+  private onTap = (e: PointerEvent) => {
+    const now = performance.now(), near = Math.hypot(e.clientX - this.tap.x, e.clientY - this.tap.y) < 30;
+    if (now - this.tap.t < 320 && near) { this.tap.t = 0; this.refit(); return; }
+    this.tap = { t: now, x: e.clientX, y: e.clientY };
+    // A tap (not a drag) on a roof face shows that face's label; a tap elsewhere hides it.
+    if (Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 6) return;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+    const hit = ray.intersectObjects(this.targets.map((x) => x.tint), false)[0];
+    const id = hit ? this.targets.find((x) => x.tint === hit.object)?.p.id ?? null : null;
+    this.tapped = id && id !== this.tapped ? id : null;
+  };
+
+  // Back to the stage's pose, or the opening view, on the same spring; the plan resets its pan and zoom.
+  refit() {
+    if (this.mode === "2d") { this.setOrtho(this.persp.aspect); return; }
+    if (this.home) { this.flyTo(this.home); return; }
+    const d = this.fitD, dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
+    const pos = this.centre.clone().addScaledVector(dir, d), tgt = this.centre.clone();
+    if (this.opts.reduce) { this.persp.position.copy(pos); this.controls.target.copy(tgt); this.controls.update(); return; }
+    this.fly = { pos, tgt, top: false };
+  }
+
+  // Compass: turn the camera to face north (it sits south of the target, north at the top of the screen), keeping
+  // the tilt, the distance and the target; the shorter way round, one spring (0.5 s, bounce 0); Reduce Motion cuts.
+  // The 2D plan is always north up.
+  faceNorth() {
+    if (this.mode === "2d") return;
+    this.fly = null; this.pose = null;
+    const o = this.persp.position.clone().sub(this.controls.target);
+    const h = Math.hypot(o.x, o.z), a = Math.atan2(o.x, o.z);
+    if (h < 1e-3) return;
+    this.spin = { a: this.opts.reduce ? 0 : a, v: 0, h, y: o.y };
+    if (this.opts.reduce) this.stepSpin(0);
+  }
+  private stepSpin(dt: number) {
+    const s = this.spin!;
+    if (dt > 0) { const k = Math.exp(-OMEGA * dt), c = s.v + OMEGA * s.a, e = s.a + c * dt; s.v = (c - OMEGA * e) * k; s.a = e * k; }
+    const done = Math.abs(s.a) < 1e-3 && Math.abs(s.v) < 1e-3;
+    if (done) s.a = 0;
+    const t = this.controls.target;
+    this.persp.position.set(t.x + s.h * Math.sin(s.a), t.y + s.y, t.z + s.h * Math.cos(s.a));
+    if (done) this.spin = null;
+  }
+
   private loop = () => {
     if (!this.alive) return;
     this.raf = requestAnimationFrame(this.loop);
+    this.tick();
+  };
+  // Safari stops animation frames while its window is hidden or covered; a timer keeps drawing the house there
+  // (about four frames a second), so a model that lands meanwhile is on the canvas the moment the window shows.
+  private lastTick = 0;
+  private wd = window.setInterval(() => { if (this.alive && performance.now() - this.lastTick > 250) this.tick(); }, 250);
+  private tick() {
+    this.lastTick = performance.now();
     const dt = Math.min(0.05, this.clock.getDelta());
+    if (this.spin) this.stepSpin(dt);
+    if (this.fly) {
+      const a = springStep(this.persp.position, this.vPos, this.fly.pos, dt);
+      const b = springStep(this.controls.target, this.vTgt, this.fly.tgt, dt);
+      if (a && b) {
+        const top = this.fly.top;
+        this.fly = null;
+        if (top && this.mode !== "2d") { this.setView("2d"); this.opts.onView?.("2d"); }
+      }
+    }
     this.controls.update();
+    if (this.mode === "2d") this.controls2d.update();
+    // Panning cannot lose the house: the target stays within one house span of it.
+    const off = this.controls.target.clone().sub(this.centre), lim = this.span * 0.9;
+    if (!this.fly && off.length() > lim) { const back = off.setLength(lim).add(this.centre), d = back.clone().sub(this.controls.target); this.controls.target.add(d); this.persp.position.add(d); }
+    if (this.mode === "2d") {
+      const c = this.box.isEmpty() ? this.centre : this.box.getCenter(new THREE.Vector3());
+      const o2 = this.controls2d.target.clone().sub(c); o2.y = 0;
+      if (o2.length() > lim) { const d = o2.setLength(lim).add(c).sub(this.controls2d.target); d.y = 0; this.controls2d.target.add(d); this.ortho.position.add(d); }
+    }
 
     if (this.panelT >= 0) {
       this.panelT += dt;
@@ -594,16 +921,39 @@ export class SpatialScene {
     } else {
       this.labelEls.forEach((el, k) => { if (k.startsWith("node-")) { el.remove(); this.labelEls.delete(k); } });
     }
-    all.forEach((x) => {
-      const el = this.labelEls.get(x.key);
-      if (!el) return;
-      if (x.key.startsWith("node-") && el.innerHTML !== x.html) el.innerHTML = x.html;
-      const p = this.project(x.at);
-      el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) ${x.key === "node-batt" ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
-      el.style.visibility = p.ok ? "visible" : "hidden";
-    });
+    // Never two labels within 24 px: the tapped face first, then by priority (modules, then area); the lesser hides.
+    const NODE: Record<string, number> = { "node-roof": 4e6, "node-home": 3e6, "node-batt": 2e6, "node-grid": 1e6 };
+    const shown: { x0: number; y0: number; x1: number; y1: number; chip: boolean }[] = [];
+    const VW = this.host.clientWidth, VH = this.host.clientHeight;
+    let chips = 0;
+    all.map((x) => ({ x, pr: x.tap && x.tap === this.tapped ? 1e9 : NODE[x.key] ?? x.prio ?? 0 }))
+      .sort((a, b) => b.pr - a.pr)
+      .forEach(({ x }) => {
+        const el = this.labelEls.get(x.key);
+        if (!el) return;
+        if (x.key.startsWith("node-") && el.innerHTML !== x.html) { el.innerHTML = x.html; this.labelSize.delete(x.key); }
+        const p = this.project(x.at);
+        const batt = x.key === "node-batt", chip = !!x.cls?.includes("chip");
+        let ok = p.ok && (!x.tap || x.tap === this.tapped) && (!chip || chips < MAX_CHIPS);
+        let dx = 0, dy = 0;
+        if (ok) {
+          let sz = this.labelSize.get(x.key);
+          if (!sz || !sz.w) { sz = { w: el.offsetWidth, h: el.offsetHeight }; this.labelSize.set(x.key, sz); }
+          const base = { x0: p.x - sz.w / 2, x1: p.x + sz.w / 2, y0: batt ? p.y + 10 : p.y - sz.h, y1: batt ? p.y + 10 + sz.h : p.y };
+          const tries: [number, number][] = chip ? [[0, 0], [0, sz.h + 10], [-(sz.w / 2 + 10), sz.h / 2], [sz.w / 2 + 10, sz.h / 2], [0, -(sz.h + 6)]] : [[0, 0]];
+          const hit = (r: typeof base, c: boolean) => shown.some((q) => { const g = c && q.chip ? CHIP_GAP : GAP; return r.x0 < q.x1 + g && q.x0 < r.x1 + g && r.y0 < q.y1 + g && q.y0 < r.y1 + g; });
+          const at = tries.map(([ox, oy]) => ({ ox, oy, r: { x0: base.x0 + ox, x1: base.x1 + ox, y0: base.y0 + oy, y1: base.y1 + oy } }))
+            .find(({ r }) => !hit(r, chip) && (!chip || (r.x0 >= 2 && r.x1 <= VW - 2 && r.y0 >= 2 && r.y1 <= VH - 2)));
+          if (!at) ok = false;
+          else { dx = at.ox; dy = at.oy; shown.push({ ...at.r, chip }); if (chip) chips++; }
+        }
+        el.style.transform = `translate(${(p.x + dx).toFixed(1)}px, ${(p.y + dy).toFixed(1)}px) ${batt ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
+        el.style.visibility = ok ? "visible" : "hidden";
+      });
 
     if (this.plan) this.drawPlan();
+    this.shade.frame(this.camera, this.mode, (v) => this.project(v), this.host.clientWidth);
+    this.xray.frame(dt);
     if (this.opts.compass) {
       // Screen direction of north (local -z in three).
       const a = this.project(this.centre), b = this.project(this.centre.clone().add(new THREE.Vector3(0, 0, -5)));
@@ -616,18 +966,45 @@ export class SpatialScene {
   dispose() {
     this.alive = false;
     cancelAnimationFrame(this.raf);
+    clearInterval(this.wd);
     this.ro.disconnect();
     this.controls.dispose();
+    this.controls2d.dispose();
+    this.renderer.domElement.removeEventListener("pointerup", this.onTap);
+    this.renderer.domElement.removeEventListener("pointerdown", this.onDown);
     this.labelEls.forEach((el) => el.remove());
     Object.values(this.flowPaths).forEach((el) => el.remove());
     this.planG?.remove();
+    this.shade.dispose();
+    this.xray.dispose();
+    this.groundOff?.(); this.groundOff = null;
+    this.ctxOff.forEach((f) => f());
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();
       const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
       mats.forEach((x) => { (x as THREE.MeshLambertMaterial).map?.dispose(); x.dispose(); });
     });
-    this.renderer.dispose();
-    this.renderer.domElement.remove();
+    giveRenderer(this.renderer);
   }
+}
+
+// One WebGL context per live view for the life of the page. Safari caps live contexts and a context that is
+// thrown away is not freed at once, so a view rebuilt on a data reload drew into a context that never painted
+// (blank white canvas). A disposed view hands its renderer back here and the next view takes the same canvas.
+const spare: THREE.WebGLRenderer[] = [];
+function takeRenderer(): THREE.WebGLRenderer {
+  const r = spare.pop();
+  if (r && !r.getContext().isContextLost()) return r;
+  r?.dispose();
+  return new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
+}
+function giveRenderer(r: THREE.WebGLRenderer) {
+  r.setRenderTarget(null);
+  r.renderLists.dispose();
+  const c = r.domElement;
+  c.remove();
+  c.removeAttribute("style");
+  if (spare.length < 2 && !r.getContext().isContextLost()) spare.push(r);
+  else { r.dispose(); r.forceContextLoss(); }
 }

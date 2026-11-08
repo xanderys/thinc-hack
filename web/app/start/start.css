@@ -1,34 +1,36 @@
 /* Installer enquiry page (homeowner site). Scoped with :has so it never touches the planner pages. */
-body:has(.start-root) { background: #F4F2EC; }
+body:has(.start-root) { background: #fdfdfb; }
 body:has(.start-root) .masthead { display: none; }
 body:has(.start-root) main { max-width: none; padding: 0; }
 
 .start-root {
-  --h-ground: #F4F2EC; --h-card: #FBFAF6; --h-ink: #17201A; --h-ink-2: #5A625C; --h-rule: #DAD7CD;
-  --h-brand: #1E5B3A; --h-brand-soft: #E3ECE5;
+  /* Reonic's system: off-white ground, white hairline cards, carbon text, electric blue actions. */
+  --h-ground: #fdfdfb; --h-card: #fff; --h-ink: #1b1d20; --h-ink-2: #5f6168; --h-rule: #e4e4e7;
+  --h-brand: #374be6; --h-brand-soft: #eceefd; --h-navy: #071b71;
   min-height: 100dvh; background: var(--h-ground); color: var(--h-ink); font-family: var(--font-sans), system-ui, sans-serif;
 }
 .h-page { max-width: 480px; margin: 0 auto; padding: 0 16px 40px; }
 .h-top { display: flex; align-items: center; gap: 12px; padding: 18px 0 16px; border-bottom: 1px solid var(--h-rule); margin-bottom: 20px; }
-.h-mark { width: 36px; height: 36px; border-radius: 8px; background: var(--h-brand); color: var(--h-card); display: grid; place-items: center; font-weight: 600; font-size: 17px; }
+.h-mark { width: 36px; height: 36px; border-radius: 8px; background: var(--h-navy); color: var(--h-card); display: grid; place-items: center; font-weight: 600; font-size: 17px; }
 .h-top b { display: block; font-size: 16px; font-weight: 600; }
 .h-top small { display: block; font-size: 13px; color: var(--h-ink-2); }
 
 .h-card { background: var(--h-card); border: 1px solid var(--h-rule); border-radius: 12px; padding: 20px 18px 22px; }
-.h-card h1 { font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 18px; }
+.h-card h1 { font-family: var(--font-sans), system-ui, sans-serif; color: inherit; font-size: 26px; line-height: 1.1; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 18px; }
 .h-q { border: 0; margin: 0 0 16px; padding: 0; min-width: 0; }
 .h-q legend, .h-q label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; padding: 0; }
 .h-hint { font-weight: 400; color: var(--h-ink-2); }
-.h-input { width: 100%; min-height: 48px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--h-rule); background: #FFFEFB; font: inherit; font-size: 16px; color: var(--h-ink); }
+.h-input { width: 100%; min-height: 48px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--h-rule); background: #fff; font: inherit; font-size: 16px; color: var(--h-ink); }
 .h-input::placeholder { color: #A3A79F; }
 .h-input[aria-invalid="true"] { border-color: #B3261E; }
-.h-why { font-size: 13.5px; color: #B3261E; margin: 6px 0 0; }
+.h-why { font-size: 13.5px; color: #B3261E; margin: 6px 0 0; overflow-wrap: anywhere; }
+.h-retry { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--h-brand); text-decoration: underline; cursor: pointer; min-height: 24px; }
 .h-opt { font-size: 13.5px; color: var(--h-ink-2); margin: 22px 0 14px; padding-top: 16px; border-top: 1px solid var(--h-rule); }
 .h-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .h-chip { min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--h-rule); background: transparent; color: var(--h-ink); font: inherit; font-size: 15px; cursor: pointer; }
 .h-chip.dk { color: var(--h-ink-2); }
 .h-chip[aria-pressed="true"] { border-color: var(--h-brand); background: var(--h-brand-soft); color: var(--h-brand); font-weight: 600; }
-.h-go { width: 100%; min-height: 54px; margin-top: 8px; border: 0; border-radius: 10px; background: var(--h-brand); color: #FBFAF6; font: inherit; font-size: 17px; font-weight: 600; cursor: pointer; }
+.h-go { width: 100%; min-height: 54px; margin-top: 8px; border: 0; border-radius: 27px; background: var(--h-brand); color: #fff; font: inherit; font-size: 17px; font-weight: 600; cursor: pointer; }
 .h-go:disabled { opacity: 0.7; cursor: default; }
 .h-input:focus-visible, .h-chip:focus-visible, .h-go:focus-visible { outline: 2px solid var(--h-brand); outline-offset: 2px; }
 .h-card[aria-hidden="true"] { visibility: hidden; }
@@ -76,7 +78,7 @@ body:has(.start-root) main { max-width: none; padding: 0; }
   @keyframes ios-open { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
 }
 @media (prefers-reduced-motion: reduce) {
-  .h-in, .ios-banner, .ios-call { animation: h-fade 200ms linear both; }
+  .ios-banner { animation: h-fade 200ms linear both; }
   @keyframes h-fade { from { opacity: 0; } to { opacity: 1; } }
 }
 @media (hover: hover) { .h-chip:hover { border-color: var(--h-ink-2); } }
@@ -85,7 +87,7 @@ body:has(.start-root) main { max-width: none; padding: 0; }
 
 /* v1.9: design-ready notification and the one-page summary. */
 .ios-note { border: 0; text-align: left; cursor: pointer; font: inherit; font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; }
-.ios-app { width: 38px; height: 38px; border-radius: 9px; flex: none; display: grid; place-items: center; background: var(--h-brand); color: #fff; font-weight: 600; font-size: 17px; }
+.ios-app { width: 38px; height: 38px; border-radius: 9px; flex: none; display: grid; place-items: center; background: var(--h-navy); color: #fff; font-weight: 600; font-size: 17px; }
 .ios-note-t { flex: 1; min-width: 0; font-size: 15px; line-height: 1.3; }
 .ios-note-t small { display: flex; justify-content: space-between; font-size: 13px; color: rgba(255, 255, 255, 0.62); margin-bottom: 1px; }
 .ios-note-t small b { color: #fff; font-weight: 600; }
@@ -94,11 +96,42 @@ body:has(.start-root) main { max-width: none; padding: 0; }
 .h-nums { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; margin: 0 0 18px; }
 .h-nums div { border-top: 1px solid var(--h-rule); padding-top: 8px; }
 .h-nums dt { font-size: 13px; color: var(--h-ink-2); }
-.h-nums dd { margin: 2px 0 0; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.h-nums dd { margin: 2px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .h-parts { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 8px; font-size: 15px; line-height: 1.4; }
 .h-pref { font-size: 15px; margin: 0 0 16px; padding: 10px 12px; border-radius: 8px; background: var(--h-brand-soft); }
 .h-pref b { display: block; font-size: 13px; color: var(--h-brand); }
-.h-times { display: grid; gap: 4px; margin: 0 0 14px; padding-top: 14px; border-top: 1px solid var(--h-rule); font-variant-numeric: tabular-nums; }
-.h-times span:first-child { font-size: 17px; font-weight: 600; color: var(--h-brand); }
-.h-times span:last-child { font-size: 14px; color: var(--h-ink-2); }
+.h-times { display: grid; gap: 6px; margin: 0 0 14px; padding-top: 14px; border-top: 1px solid var(--h-rule); font-variant-numeric: tabular-nums; }
+.h-times div { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
+.h-times dt { color: var(--h-ink-2); }
+.h-times dd { margin: 0; font-weight: 600; }
+.h-times p { margin: 2px 0 0; font-size: 13.5px; color: var(--h-ink-2); }
+/* v2.5: the proposal takes the whole page, phone first. */
+.h-prop { min-height: 100dvh; background: var(--h-ground); }
 .h-send { margin: 0; font-size: 15px; }
+
+/* Skeletons at final size: the placeholder text keeps the real box, only its ink is hidden. */
+.h-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.h-sk dt, .h-sk dd, .h-sk li, .h-sk .h-est, .h-sk .h-pref, .h-sk .h-times p, .h-sk .h-send, .ios-sk {
+  color: transparent !important; border-radius: 6px;
+  background: linear-gradient(90deg, #eef0f3 0%, #f7f8fa 50%, #eef0f3 100%) 0 0 / 200% 100%;
+}
+.h-sk .h-pref b { color: transparent; }
+.h-sk dt, .h-sk dd, .h-sk .h-times p, .h-sk .h-est { width: fit-content; }
+.ios-sk { display: inline-block; height: 1em; vertical-align: -0.12em; background-image: linear-gradient(90deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.26) 50%, rgba(255,255,255,0.14) 100%); }
+.ios-call .ios-mode { min-height: 1.4em; }
+/* Every part line holds two lines, so a one-line answer never pulls the card up. */
+.h-parts li { min-height: 2.8em; }
+.h-est { margin: -8px 0 16px; font-size: 13.5px; color: var(--h-ink-2); }
+.h-send { min-height: 54px; margin-top: 8px; display: flex; align-items: center; }
+.h-design { margin-top: 18px; }
+.h-sum .h-design { margin-top: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .h-sk dt, .h-sk dd, .h-sk li, .h-sk .h-est, .h-sk .h-pref, .h-sk .h-times p, .h-sk .h-send, .ios-sk { animation: h-shimmer 1.4s linear infinite; }
+  @keyframes h-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+  .h-arrive { animation: h-fade-in 350ms var(--spring-smooth) both; }
+  @keyframes h-fade-in { from { opacity: 0; } to { opacity: 1; } }
+}
+
+/* Blank skeleton bars (no placeholder text): the shimmer comes from the .h-sk parent rules above. */
+.h-bar { display: inline-block; max-width: 100%; }
+.h-roofnote { margin: 2px 0 0; font-size: 13px; color: var(--h-ink-2); }

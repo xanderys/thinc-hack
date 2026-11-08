@@ -25,8 +25,11 @@
 .err button, .ctl button { appearance: none; border: 1px solid var(--ink); background: var(--paper); border-radius: 0; padding: 4px 10px; cursor: pointer; font-size: 13px; }
 .err button { margin-left: 10px; }
 
+.nwrap { position: absolute; top: 10px; left: 10px; display: grid; gap: 4px; justify-items: start; max-width: calc(100% - 130px); pointer-events: none; }
+.check { margin: 0; font-size: 11px; line-height: 1.3; color: var(--ink-2); background: var(--paper); border: 1px solid var(--rule-strong); padding: 3px 8px; }
+.check.bad { color: var(--paper); background: var(--ink); border-color: var(--ink); font-weight: 600; }
 .numbers {
-  position: absolute; top: 10px; left: 10px; display: grid; grid-template-columns: repeat(2, auto); gap: 0;
+  display: grid; grid-template-columns: repeat(2, auto); gap: 0;
   background: var(--paper); border: 1px solid var(--ink); pointer-events: none;
 }
 .numbers div { padding: 6px 10px 5px; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); min-width: 92px; }
@@ -41,8 +44,9 @@
 .toggle { display: flex; border: 1px solid var(--ink); background: var(--paper); }
 .toggle button { appearance: none; border: 0; background: transparent; border-radius: 0; padding: 4px 9px; font-size: 12.5px; font-family: var(--font-mono), monospace; cursor: pointer; }
 .toggle button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
-.compass { width: 34px; height: 34px; border: 1px solid var(--ink); background: var(--paper); display: grid; place-items: center; }
-.needle { display: grid; justify-items: center; font-family: var(--font-mono), monospace; font-size: 10px; line-height: 1; transform-origin: 50% 50%; }
+.compass { width: 34px; height: 34px; border: 1px solid var(--ink); background: var(--paper); display: grid; place-items: center; padding: 0; color: var(--ink); cursor: pointer; font: inherit; }
+.compass:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.needle { display: grid; justify-items: center; font-family: var(--font-sans), sans-serif; font-weight: 600; font-size: 10px; line-height: 1; transform-origin: 50% 50%; }
 .needle i { display: block; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 9px solid var(--accent); }
 
 .clock { position: absolute; right: 10px; bottom: 10px; font-family: var(--font-mono), monospace; font-size: 22px; background: var(--paper); border: 1px solid var(--ink); padding: 2px 8px; font-variant-numeric: tabular-nums; pointer-events: none; }
@@ -50,7 +54,7 @@
 .side { position: absolute; right: 10px; bottom: 10px; width: 360px; background: var(--paper); border: 1px solid var(--ink); padding: 6px 6px 2px; }
 .legend { position: absolute; left: 10px; bottom: 10px; display: grid; gap: 3px; font-size: 11px; color: var(--ink-2); background: var(--paper); border: 1px solid var(--ink); padding: 6px 8px; pointer-events: none; }
 .legend .bar { width: 140px; height: 8px; }
-.legend .ends { display: flex; justify-content: space-between; font-family: var(--font-mono), monospace; }
+.legend .ends { display: flex; gap: 12px; justify-content: space-between; font-family: var(--font-mono), monospace; }
 
 .caption { border: 1.5px solid var(--ink); border-top: 0; padding: 14px 16px 12px; display: grid; gap: 8px; background: var(--paper); }
 .sentence { font-family: var(--font-serif), serif; font-size: 22px; line-height: 1.2; margin: 0; letter-spacing: -0.01em; }
@@ -109,3 +113,30 @@
   .overlay :global(.sp-label) { font-size: 10.5px; }
   .clock { font-size: 18px; }
 }
+
+/* Bare: the reasoning chain's hero. The canvas fills its parent; callouts in Reonic's labelled style. */
+.wrap:has(.bareView) { height: 100%; grid-template-rows: minmax(0, 1fr) auto; }
+.bareView { aspect-ratio: auto; height: 100%; border: 0; background: var(--paper); }
+.toolsBare { top: auto; bottom: 12px; right: 12px; }
+.licenceBare { position: absolute; left: 12px; bottom: 6px; z-index: 2; font-size: 10px; background: rgba(253, 253, 251, 0.8); padding: 1px 6px; border-radius: 6px; pointer-events: none; }
+.wrap:has(.bareView) { position: relative; }
+.bareView ~ .licenceBare { }
+.overlay :global(.sp-label) { border-radius: 8px; border-color: var(--rule-strong); background: #fff; box-shadow: var(--shadow); padding: 4px 8px; }
+.massTag { position: absolute; left: 12px; bottom: 40px; z-index: 2; margin: 0; font-size: 11px; color: var(--ink-2); background: rgba(253, 253, 251, 0.88); border: 1px solid var(--rule); border-radius: 6px; padding: 1px 7px; pointer-events: none; }
+.layersBtn { appearance: none; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); padding: 4px 6px; display: inline-flex; align-items: center; cursor: pointer; }
+.layersBtn[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+/* The house skeleton sits where the house will appear: the centre of the area the overlays leave free. */
+.houseSkel { position: absolute; left: calc(var(--free-l, 0px) + var(--free-w, 100%) / 2); top: calc(var(--free-t, 0px) + var(--free-h, 100%) / 2); width: min(40%, 280px); height: auto; transform: translate(-50%, -50%); }
+
+/* On-model chips: one line, Geist 12.5 px, Reonic component colours. */
+.overlay :global(.sp-label.chip) { font-family: var(--font-sans), sans-serif; font-size: 12.5px; line-height: 1.2; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--rule-strong); background: #fff; color: var(--ink); box-shadow: none; transition: visibility 0s; }
+.overlay :global(.sp-label.chip b) { font-family: var(--font-sans), sans-serif; font-weight: 600; font-variant-numeric: tabular-nums; }
+.overlay :global(.sp-label.chip.c-pv) { background: #fff4dc; border-color: #f2d79a; color: #6b4500; }
+.overlay :global(.sp-label.chip.c-bat) { background: #e3f5e9; border-color: #a9dcb9; color: #13602c; }
+.overlay :global(.sp-label.chip.c-ev) { background: #e5effe; border-color: #a9c6f7; color: #1557c0; }
+.overlay :global(.sp-label.chip.c-el i) { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+@media (max-width: 700px) { .overlay :global(.sp-label.chip) { font-size: 12px; padding: 3px 8px; } }
+@media (prefers-reduced-motion: reduce) { .houseSkel animate { display: none; } }
+
+/* The homeowner's proposal: everything in the sans. */
+.homeowner, .homeowner * { font-family: var(--font-sans), sans-serif; }

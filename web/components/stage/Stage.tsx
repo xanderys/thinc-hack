@@ -6,9 +6,13 @@ import type { CallLead } from "@/components/stage/Calls";
 const Calls = dynamic(() => import("@/components/stage/Calls"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 import Plan, { type Variant } from "@/components/stage/Plan";
+import Chain from "@/components/chain/Chain";
 import Refine, { type Moved } from "@/components/stage/Refine";
-import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
-import { call } from "@/lib/client";
+import TopBar, { Decide } from "@/components/stage/TopBar";
+import OpenSkeleton from "@/components/stage/Skeleton";
+import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
+import { call, send } from "@/lib/client";
+import { approveLead, matches, offerOf } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
 import { buildFacts, DEFAULTS, KEYS, NAME, pickFlag, variantName } from "@/lib/stage";
 import { COMPONENT_DESIGN_FIELD } from "@/lib/api";
@@ -20,15 +24,18 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const COMPONENT_FIELD_SET: Record<string, true> = { pv_kwp: true, inverter_kw: true, battery_kwh: true, heatpump_kw: true, wallbox_kw: true };
 
 // A house opened from the board: the lead's id (refinements write back to it) and what was read.
-export type Seed = { leadId: string; read: ReadResponse; text?: string };
+export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null };   // draft: shown at once, before the first design call returns
+// While Rina's call runs: the lead's facts so far, the step count, what the last answer changed and what she is asking.
+export type Live = { version?: number | null; step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null };
 
-export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: (id: string) => void }) {
+export default function Stage({ seed, onApproved, live }: { seed?: Seed; onApproved?: (id: string) => void; live?: Live | null }) {
   const [lead, setLead] = useState(HERO_LEAD);
   const [read, setRead] = useState<ReadResponse | null>(null);
   const [readBusy, setReadBusy] = useState(false);
   const [readErr, setReadErr] = useState<string | null>(null);
   const [installer, setInstaller] = useState<InstallerId>("2a8ba8e2");
   const [roof, setRoof] = useState<RoofResult | null>(null);
+  const roofGen = useRef(0);
   const [question, setQuestion] = useState<AskQuestion | null | undefined>(undefined); // undefined while asking
   const [askErr, setAskErr] = useState<string | null>(null);
   const [answer, setAnswer] = useState<unknown>(undefined);
@@ -46,6 +53,10 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
   const [pref, setPref] = useState<Pref>("expert");
   const last = useRef<DesignResponse | null>(null);
   const cause = useRef<string | null>(null);
+  // An edit puts the numbers in a pending state at once; they settle when the engine answers.
+  const [pending, setPending] = useState<number | null>(null);
+  const [resIn, setResIn] = useState<HomeInputs | null>(null);   // the facts the design on screen was drawn from
+  const [resCause, setResCause] = useState<string | null>(null);
   // The homeowner's lead when the stage was opened from a call: refinements write back to it.
   const leadRef = useRef<string | null>(null);
   const [moved, setMoved] = useState<Moved | null>(null);
@@ -61,16 +72,32 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
     const base: HomeInputs = { ...DEFAULTS, ...(read?.inputs ?? {}), installer_id: installer };
     if (question && answer !== undefined) (base as unknown as Record<string, unknown>)[question.field] = answer;
     const out: HomeInputs = { ...base, ...changed };
-    // One roof lookup per lead; later calls carry the result instead of the address.
-    if (roof && roof.source !== "none") { out.roof = roof; delete out.address; }
+    // With a street address every call carries it, so design, variants and layers come from the same engine run as
+    // the lead's own draft (the roof result alone drops the module layout and its variants). Postcode only: the roof result.
+    if (!out.address && roof && roof.source !== "none" && !roof.pending) out.roof = roof;
     return out;
   }, [read, installer, question, answer, changed, roof]);
-  const ready = !!read && question !== undefined && (question === null || answer !== undefined);
-  // The planner's answer to the one question goes back to the lead, so its card shows the same design.
-  useEffect(() => {
-    if (!leadRef.current || !question || answer === undefined) return;
-    call("/api/intake/step", { lead_id: leadRef.current, facts_so_far: { [question.field]: answer } });
-  }, [question, answer]);
+  // The open card designs at once: an unanswered question uses the engine's default for that fact, so a hand change
+  // never waits on it (it used to: edits on a card with an open question only moved the layers numbers).
+  const ready = !!read && question !== undefined && (!!seed || question === null || answer !== undefined);
+  // Writes to the lead happen only on an explicit action (an answer tap, Apply, a fact chip, Listening, Approve), never
+  // from an effect or a view change. Each carries the lead version the card was showing; a 409 means the lead changed
+  // elsewhere, and the board reloads it.
+  const baseVersion = useRef<number | null>(seed?.version ?? null);
+  async function writeLead(route: string, facts: Partial<HomeInputs>): Promise<{ ok: boolean; error?: string }> {
+    const id = leadRef.current;
+    if (!id) return { ok: true };
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return { ok: false, error: "The tab is hidden; nothing was sent." };
+    const r = await send<{ version?: number }>("/api/intake/step", { lead_id: id, facts_so_far: facts, ...(baseVersion.current != null ? { base_version: baseVersion.current } : {}) }, route);
+    if (r.status === 409) { stale(id); return { ok: false }; }
+    if (r.ok && r.data?.version != null) baseVersion.current = r.data.version;
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  }
+  const stale = (id: string) => window.dispatchEvent(new CustomEvent("marquee:lead-stale", { detail: id }));
+  const onAnswer = (v: unknown) => {
+    setAnswer(v);
+    if (question && v !== undefined) void writeLead("question-answer", { [question.field]: v } as Partial<HomeInputs>);
+  };
 
   // Shortcut d loads the hero lead.
   useEffect(() => {
@@ -107,17 +134,43 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
     if (!seed) return;
     if (seed.read.inputs.installer_id) setInstaller(seed.read.inputs.installer_id as InstallerId);
     setLead(seed.text ?? "");
-    begin(seed.read, seed.leadId);
+    begin(seed.read, seed.leadId, seed.draft ?? null);
   }, [seed?.leadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function begin(data: ReadResponse, leadId?: string) {
+  // Each answer from the call: the facts move, the design reruns, and what moved carries the engine's why.
+  const liveWhy = useRef<{ component: string; why: string }[] | null>(null);
+  const liveSeen = useRef(false);
+  useEffect(() => {
+    if (!live || !read) return;
+    // A call that already ended is part of the lead as it opens: its facts apply quietly (no redraft stamp, no
+    // moved stages, the card still lands on Offer). Only answers arriving while the card is open redraft in place.
+    const replay = !liveSeen.current && live.asking == null;
+    liveSeen.current = true;
+    if (live.version != null) baseVersion.current = live.version;
+    const { installer_id: _i, ...facts } = live.facts as Partial<HomeInputs> & { installer_id?: string }; void _i;
+    if (Object.entries(facts).every(([k, v]) => JSON.stringify((read.inputs as Record<string, unknown>)[k]) === JSON.stringify(v))) return;
+    cause.current = replay ? null : "From the call:"; liveWhy.current = replay ? null : live.changed;
+    setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts } });
+  }, [live?.step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
     const r = { data };
-    setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(null); setPrev(null); last.current = null;
+    setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(draft); setPrev(null); last.current = draft;
     setChips([]); setOvChips([]); setHistory([]); setMoved(null); setApprovedAt(null);
     setRead(r.data); setRoof(null);
     const where = r.data.inputs.address ? `address=${encodeURIComponent(r.data.inputs.address)}` : r.data.postcode ? `postcode=${r.data.postcode}` : null;
-    if (where) call<RoofResult>(`/api/roof?${where}`).then((x) => setRoof(x.ok ? x.data : null));
+    // A pending roof means the 3D measurement is still running: design on the standard face, ask again every 3 s.
+    const gen = ++roofGen.current;
+    const look = async (k: number): Promise<void> => {
+      const x = await call<RoofResult>(`/api/roof?${where}`);
+      if (gen !== roofGen.current) return;
+      if (!x.ok) { setRoof(null); return; }
+      if (x.data.pending && k >= 40) { setRoof({ ...x.data, pending: false, source: "none" }); return; }
+      setRoof(x.data);
+      if (x.data.pending) setTimeout(() => { void look(k + 1); }, 3000);
+    };
+    if (where) void look(0);
     const base: HomeInputs = { ...DEFAULTS, ...r.data.inputs, installer_id: (r.data.inputs.installer_id as InstallerId) ?? installer };
     // A restarting engine answers 502 for about 35 s: wait and ask again rather than skip the question.
     for (let k = 0; ; k++) {
@@ -134,11 +187,14 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
   useEffect(() => {
     if (!ready) return;
     const ctl = new AbortController();
+    if (cause.current) setPending((p) => p ?? Date.now());
+    const asked = inputs, why = cause.current;
     const t = setTimeout(async () => {
       setBusy(true);
       try {
         const fixed = Object.keys(overrides).length > 0;
-        const r = fixed ? await call<RefineResponse>("/api/refine", { inputs, overrides }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
+        const lid = leadRef.current;
+        const r = fixed ? await call<RefineResponse>("/api/refine", { inputs, overrides, ...(lid && baseVersion.current != null ? { lead_id: lid, base_version: baseVersion.current } : {}) }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
         if (r.ok) {
           const before = last.current;
           if (before && cause.current) {
@@ -147,18 +203,18 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
               .filter((f) => before.design[f] !== r.data.design[f])
               .map((f) => {
                 const key = f === "inverter_kw" ? "inverter" : KEYS.find((k) => COMPONENT_DESIGN_FIELD[k] === f)!;
-                const why = engineWhy.find((d) => d.component === key)?.why;
+                const why = engineWhy.find((d) => d.component === key)?.why ?? liveWhy.current?.find((d) => d.component === key)?.why;
                 return { name: key === "inverter" ? "Inverter" : NAME[key], from: before.design[f], to: r.data.design[f], unit: UNIT[f], why: why && why !== "Set by the planner." ? why : undefined };
               });
             setMoved({ cause: cause.current, lines });
           }
-          cause.current = null;
-          setPrev(before); last.current = r.data; setRes(r.data); setErr(null);
+          cause.current = null; liveWhy.current = null;
+          setPrev(before); last.current = r.data; setRes(r.data); setResIn(asked); setResCause(why); setErr(null); setPending(null);
           if (!fixed) setDrafted(r.data);
-        } else setErr(r.error);
+        } else if (r.status === 409 && lid && fixed) stale(lid); else { setErr(r.error); setPending(null); }
         setBusy(false);
       } catch { /* superseded */ }
-    }, 150);
+    }, why?.startsWith("Changed by hand") ? 250 : 0);   // typed sizes wait 250 ms for the next key; taps go at once
     return () => { clearTimeout(t); ctl.abort(); };
   }, [ready, inputs, overrides, retry]);
 
@@ -193,15 +249,27 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
   const variants: Variant[] = useMemo(() => {
     if (!res) return [];
     // Engine v1.7: four offers the homeowner can choose between; the preference only reorders them.
-    const ev = (Object.keys(overrides).length ? drafted?.variants : null) ?? res.variants ?? drafted?.variants;
+    // The variants of the design on screen: refine returns them for the current facts and overrides (an EV sentence's
+    // wallbox included), so the agent's earlier draft is only the fallback for an engine that sends none.
+    const ev = res.variants ?? drafted?.variants;
     if (ev?.length) {
       const order = [...ev].sort((a, b) => (b.key === pref ? 1 : 0) - (a.key === pref ? 1 : 0));
-      return order.map((v, n) => {
+      // After a sentence or a hand change the design on screen may match none of the offers: list it first as Current.
+      const cur: Variant[] = order.some((v) => same(v.design, res.design)) ? [] : [{ name: "Current", tag: "Current", design: res.design, e: res.economics, note: "", current: true, overrides: null }];
+      // An offer identical to an earlier row (Best value is often the planners' design) folds into that row as a tag.
+      const rows: Variant[] = [...cur, ...order.map((v, n) => {
         const [name, how] = v.label.split(" (");
         return { name, tag: n === 0 ? "Preferred" : v.key === "expert" ? (how ? how.replace(/\)$/, "").replace(/^./, (c) => c.toUpperCase()).replace(" here ", " ") : "As planners design it") : "",
           design: v.design, e: v.economics, note: v.key === "expert" ? "" : v.note, current: same(v.design, res.design),
           overrides: v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw } };
+      })];
+      const out: Variant[] = [];
+      rows.forEach((v) => {
+        const twin = out.find((w) => same(w.design, v.design));
+        if (twin) twin.also = [...(twin.also ?? []), v.name];
+        else out.push({ ...v });
       });
+      return out;
     }
     const fixed = Object.keys(overrides).length > 0;
     const out: Variant[] = [{ name: variantName(res.design), tag: fixed ? "Chosen" : "", design: res.design, e: res.economics, overrides: null, current: true }];
@@ -217,7 +285,7 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
   const snap = (): Snap => ({ changed, overrides, chips, ovChips });
   const remember = (why: string) => { setHistory((h) => [...h, snap()]); cause.current = why; setApprovedAt(null); };
 
-  async function onSay(sentence: string, quiet = false): Promise<boolean> {
+  async function onSay(sentence: string, quiet = false, route = "sentence-apply"): Promise<boolean> {
     if (!res) return false;
     setSayBusy(true); setSayErr(null);
     const typical = Object.fromEntries(KEYS.map((k) => [COMPONENT_DESIGN_FIELD[k], res.components[k].neighbours.median_size]));
@@ -233,9 +301,18 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
     setChips((c) => [...c.filter((x) => !r.data.changes.some((y) => y.field === x.field)), ...r.data.changes]);
     setOvChips((c) => [...c.filter((x) => !ovs.some((y) => y.field === x.field)), ...ovs]);
     if (ovs.length) setOverrides((o) => { const n = { ...o }; for (const v of ovs) n[v.field] = v.to; return n; });
+    // In the open card the offer variants are the second beat: bring them into view once the new design lands.
+    if (seed) setTimeout(() => document.querySelector(".s-variants")?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" }), 1400);
     // Tell the homeowner's lead, so their phone shows the updated design.
-    if (leadRef.current && r.data.changes.length) call("/api/intake/step", { lead_id: leadRef.current, facts_so_far: add }).then((x) => { if (!x.ok) setSayErr(`Applied here; the homeowner's copy did not update: ${x.error}`); });
+    if (leadRef.current && r.data.changes.length) writeLead(route, add).then((x) => { if (!x.ok && x.error) setSayErr(`Applied here; the homeowner's copy did not update: ${x.error}`); });
     return true;
+  }
+
+  // A fact chip changed in the open card: same path as a sentence, and the lead hears it.
+  function onFact(f: keyof HomeInputs, v: unknown, label: string) {
+    remember(`${label} changed:`);
+    setChanged((c) => ({ ...c, [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) }));
+    void writeLead("hand-change", { [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) } as Partial<HomeInputs>);
   }
 
   function onUnchip(c: InterpretChange | InterpretOverride) {
@@ -261,14 +338,44 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
     if (!h) return;
     setHistory(history.slice(0, -1)); cause.current = "Undone:"; setApprovedAt(null);
     setChanged(h.changed); setOverrides(h.overrides); setChips(h.chips); setOvChips(h.ovChips);
+    // The lead hears the undo too, so a reload shows what the screen shows: each fact the undone step moved goes back
+    // to its earlier value (the earlier change, else the lead's own fact or the default).
+    const base: Record<string, unknown> = { ...DEFAULTS, ...(read?.inputs ?? {}) };
+    if (question && answer !== undefined) base[question.field] = answer;
+    const now = changed as Record<string, unknown>, was = h.changed as Record<string, unknown>, back: Record<string, unknown> = {};
+    for (const k of new Set([...Object.keys(now), ...Object.keys(was)])) {
+      if (now[k] === was[k]) continue;
+      const v = k in was ? was[k] : base[k];
+      if (v !== undefined && v !== null) back[k] = v;
+    }
+    if (leadRef.current && Object.keys(back).length) void writeLead("undo", back as Partial<HomeInputs>).then((x) => { if (!x.ok && x.error) setSayErr(`Undone here; the lead did not update: ${x.error}`); });
   }
 
-  function onApprove() {
-    if (!res) return;
+  // Approve releases exactly the design on screen (engine v2.11). A marked offer goes as its key with the lead's own
+  // design_hash for it; anything else goes as "edit" with the design and the overrides, which the engine re-runs and
+  // stores. The lead is read again afterwards and Approved shows only when the stored approval equals the screen.
+  const MISMATCH = "Approval did not match the design on screen, try again";
+  async function onApprove(want?: unknown): Promise<string | null> {
+    if (!res) return null;
     const at = new Date();
     try { sessionStorage.setItem("marquee.approved", JSON.stringify({ inputs: pref === "expert" ? inputs : { ...inputs, preference: pref }, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
-    setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
-    if (leadRef.current) onApproved?.(leadRef.current);
+    const done = () => { setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })); if (leadRef.current) onApproved?.(leadRef.current); };
+    const id = leadRef.current;
+    if (!id) { done(); return null; }
+    const screen = { design: res.design, capex: res.economics.capex_eur };
+    const before = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
+    if (!before.ok) return before.error;
+    const offer = offerOf(before.data, screen, typeof want === "string" ? want : null);
+    const body = offer ? { variant: offer.key, design_hash: offer.hash } : { variant: "edit" as const, design: res.design, overrides };
+    const r = await approveLead(id, body, before.data.version ?? baseVersion.current);
+    if (!r.ok) { if (r.status === 409) stale(id); return r.status === 409 ? `${MISMATCH} (${r.error})` : r.error; }
+    const v = (r.data as { version?: number }).version; if (v != null) baseVersion.current = v;
+    const after = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
+    if (!after.ok) return after.error;
+    if (after.data.version != null) baseVersion.current = after.data.version;
+    const got = after.data.approved;
+    if (after.data.status !== "approved" || !got || !matches({ design: got.design, capex: got.investment_eur }, screen)) return MISMATCH;
+    setErr(null); done(); return null;
   }
 
   const onVariant = useCallback((v: Variant) => {
@@ -276,18 +383,43 @@ export default function Stage({ seed, onApproved }: { seed?: Seed; onApproved?: 
     setHistory((h) => [...h, { changed, overrides, chips, ovChips }]); cause.current = `Switched to ${v.name}:`; setApprovedAt(null);
     setOverrides(v.overrides);
   }, [changed, overrides, chips, ovChips]);
+  // Desktop: the model toolbar rides just above the docked sentence bar, whatever the bar's height (chips, Listening lines).
+  const openRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = openRef.current, bar = el?.querySelector<HTMLElement>('[class*="chain_say__"]');
+    if (!el || !bar) return;
+    const ro = new ResizeObserver(() => el.style.setProperty("--say-h", `${Math.round(bar.getBoundingClientRect().height)}px`));
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [!!res]); // eslint-disable-line react-hooks/exhaustive-deps
   const flag = res ? pickFlag(res) : null;
+
+  if (seed && read) return (
+    <div className="st st-open b-card-in" ref={openRef}>
+      <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} setInstaller={setInstaller}
+        question={question ?? null} answer={answer} onAnswer={onAnswer} askError={askErr} asking={question === undefined} liveAsking={live?.asking ?? null}
+        pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
+        canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
+      {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
+      {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
+      {!res && <OpenSkeleton />}
+      {res && <Chain res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={history.length > 0} onUndo={onUndo} answered={answer != null} redraft={moved}
+        decide={<Decide slim pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />}
+        refine={<Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
+          moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} bare />} />}
+    </div>
+  );
 
   return (
     <div className="st">
       <div className="s-stage">
         <Lead lead={lead} setLead={setLead} read={read} busy={readBusy} error={readErr} onRead={doRead} onEdit={() => setRead(null)}
           inputs={inputs} changed={changed} setInstaller={setInstaller} roof={roof}
-          question={question ?? null} answer={answer} onAnswer={setAnswer} askError={askErr} pref={pref} setPref={setPref} asking={!!read && question === undefined}
+          question={question ?? null} answer={answer} onAnswer={onAnswer} askError={askErr} pref={pref} setPref={setPref} asking={!!read && question === undefined}
           call={VOICE && !read && !seed ? <Calls installer={installer} onLead={onCall} /> : null} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-          {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} />}
+          {res && <Plan res={res} prev={prev} inputs={inputs} write={write} writeBusy={writeBusy} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? "Measuring the roof from Bavarian 3D data, about 10 s" : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} />}
           {res && <Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
             moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} />}
         </div>

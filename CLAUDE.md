@@ -65,4 +65,4 @@ Before any change, ask which minimum, stretch goal or demo step it makes better 
 
 ## Gotchas
 - Installer `2a8ba8e2` has almost no `Module` rows; PV size must be derived (mounting area in SquareMeter rows, inverter kW, package names). Say how you derived it in `engine/README.md`.
-- About a third of projects have no parts at all; exclude them from training and say so.
+- 26 of 1,619 projects have no parts at all; a further 312 have parts but no PV in the expert design (battery or wallbox add-ons). Both are excluded from the new-system scoreboard and the README says so (engine/README.md, lines 85 to 88 and the sizes table).

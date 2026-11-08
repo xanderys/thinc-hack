@@ -343,6 +343,34 @@ def _npv(capex, energy_saving, income, opex):
     return float((flows / (1 + DISCOUNT) ** t).sum() - capex)
 
 
+def _flows_by_year(energy_saving, income, opex):
+    t = np.arange(1, YEARS + 1)
+    deg = (1 - DEGRADATION) ** (t - 1)
+    return energy_saving * (1 + PRICE_RISE) ** (t - 1) * deg + income * deg - opex
+
+
+def break_even_year(capex, energy_saving, income, opex):
+    """Reonic's convention: the first year cumulative savings exceed the investment, undiscounted; None beyond 20 years."""
+    if not capex:
+        return None
+    cum = np.cumsum(_flows_by_year(energy_saving, income, opex))
+    hit = np.where(cum >= capex)[0]
+    return int(hit[0] + 1) if len(hit) else None
+
+
+def irr(capex, energy_saving, income, opex):
+    """Internal rate of return of the 20-year flows (bisection); None when the flows never repay the investment."""
+    f = _flows_by_year(energy_saving, income, opex)
+    if not capex or f.sum() <= capex:
+        return None
+    t = np.arange(1, YEARS + 1)
+    lo, hi = 0.0, 1.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if (f / (1 + mid) ** t).sum() > capex else (lo, mid)
+    return round(lo, 4)
+
+
 def simulate(inputs: dict, design: dict, location="Munich", year=None) -> SimResult:
     """year None: one typical year (PVGIS TMY), the pinned economics. year "2025": real 2025 weather and negative prices."""
     after = _flows(inputs, design, location, year)
@@ -414,6 +442,10 @@ def economics(inputs, design, after, before, location="Munich", year=None) -> di
         "capex_eur": float(round(capex, -1)), "annual_saving_eur": float(round(saving, -1)),
         "payback_years": float(round(capex / saving, 1)) if saving > 0 and capex else None,
         "self_consumption_share": round(float(sc), 3), "autarky_share": round(float(aut), 3),
+        # Reonic's display conventions beside ours: break-even undiscounted (first year cumulative savings exceed the
+        # investment, battery replacement not counted, capped at 20 years) and the IRR of the same flows
+        "break_even_year": break_even_year(capex, imp_b + fuel - imp_a, income - inc_b, opex),
+        "irr": irr(capex, imp_b + fuel - imp_a, income - inc_b, opex),
         "assumptions": a, "method": "hourly-simulation",
         "annual": {
             "pv_yield_kwh": round(float(pv_y)), "load_kwh": round(float(load)), "self_consumed_kwh": round(float(sc_kwh)),

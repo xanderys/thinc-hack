@@ -99,6 +99,43 @@ def fmt(x, unit):
     return f"{s} {unit}"
 
 
+MIN_PV_FOR_BATTERY = 2.0  # kWp; below it a planner would not sign a battery (engine guard over the rules)
+
+R5_DESIGN = {"pv": ("pv_kwp", "kWp"), "battery": ("battery_kwh", "kWh"), "bat_kwp": ("battery_kwh", "kWh"),
+             "bat_day": ("battery_kwh", "kWh"), "inv": ("inverter_kw", "kW"), "hp": ("heatpump_kw", "kW"), "wb": ("wallbox_kw", "kW"),
+             "cap": ("pv_kwp", "kWp")}
+
+
+R5_COMP = {"pv": "pv", "battery": "battery", "inv": "inverter", "hp": "heatpump", "wb": "wallbox"}
+
+
+def rules5_rows(R5, eng, inp, out):
+    """Rules block while production is rules-4: per row Reonic's textbook line with its source, the rules-4 rule that
+    produced this number, the planners' overall figure (PV), and the design value. rules-5's per-group constants are
+    kept out of the block (they go to rules_applied_rules5 for the Check page)."""
+    table = R5.rules_table(inp["installer_id"])
+    design, comps = out.get("design") or {}, out.get("components") or {}
+    rows = []
+    for r in table:
+        name = r.get("name")
+        row = {"name": name, "textbook": r.get("textbook")}
+        tb = r.get("textbook") or {}
+        row["sentence"] = f"Reonic textbook: {tb.get('source')}." if tb.get("source") else r.get("sentence")
+        c = comps.get(R5_COMP.get(name, ""), {}) if isinstance(comps, dict) else {}
+        if c.get("reason"):
+            row["rule"] = {"engine": "rules-4", "text": c["reason"]}
+        if name == "pv":
+            row["planners"] = eng.rule_of_thumb_comparison(inp, design)
+        if name == "inv" and design.get("inverter_kw") and design.get("pv_kwp"):
+            row["rule"] = {"engine": "rules-4", "text": f"{design['inverter_kw']:g} kW: the stocked size for {design['pv_kwp']:g} kWp, "
+                                                        f"DC/AC {design['pv_kwp'] / design['inverter_kw']:.2f}."}
+        key, unit = R5_DESIGN.get(name, (None, None))
+        if key:
+            row["design"] = {"value": design.get(key) or 0, "unit": unit}
+        rows.append(row)
+    return rows, table
+
+
 @dataclass
 class Engine:
     df: pd.DataFrame
@@ -227,11 +264,24 @@ class Engine:
     def predict(self, inp: dict, overrides: dict | None = None, full: bool = True, extras: bool = True) -> dict:
         """The live recommender: the transparent rules (v2.0) when RECOMMENDER=rules, else the learned chain."""
         mode = RECOMMENDER["mode"]
-        if mode in ("rules", "calibrated", "band", "readout"):
+        if mode in ("rules", "calibrated", "band", "readout", "rules5"):
             out = self.predict_rules(inp, overrides, full, extras, engine=mode)
         else:
             out = self.predict_ml(inp, overrides, full, extras)
-        return with_heat_bound(inp, out)
+        out = with_heat_bound(inp, out)
+        try:
+            dv = out["components"]["pv"].get("derivation")
+            if isinstance(dv, dict):
+                dv["rule_of_thumb_comparison"] = self.rule_of_thumb_comparison(inp, out["design"])
+        except Exception:
+            pass
+        try:  # the same id /api/explain/layers reports, so a stored draft and the layers can be compared
+            from . import layout as L
+            lo = L.layout(inp, out["design"].get("pv_kwp")) if inp.get("address") else None
+            out["same_run_id"] = L.run_id(inp, out["design"], lo["pv_planes"] if lo else None)
+        except Exception:
+            pass
+        return out
 
     def rules_catalogue(self, inst: str, t: float) -> dict:
         cat = self.catalogue[inst]
@@ -251,6 +301,9 @@ class Engine:
         rec_in = self.rules_inputs(inp)
         fn = {"calibrated": planner_rules.calibrated.recommend, "band": planner_rules.rules3.recommend,
               "readout": planner_rules.rules4.recommend}.get(engine, planner_rules.recommend)
+        if engine == "rules5":
+            from .planner_rules import rules5 as R5
+            fn = R5.recommend
         r = rules_cached(fn, rec_in, self.rules_catalogue(inst, t), ov)
         design = {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
         nb = self.neighbours(inp, inst)
@@ -264,26 +317,46 @@ class Engine:
             if rc.get("derivation"):
                 d["derivation"] = rc["derivation"]
             comps[c] = d
+        if (design.get("battery_kwh") and (design.get("pv_kwp") or 0) < MIN_PV_FOR_BATTERY and "battery_kwh" not in ov):
+            was = design["battery_kwh"]
+            design["battery_kwh"] = None
+            comps["battery"].update(decision="none", size=None, confidence=1.0,
+                                    reason=f"No battery: {design.get('pv_kwp') or 0:g} kWp is under {MIN_PV_FOR_BATTERY:g} kWp, too little "
+                                           f"PV to fill one (the rule gave {was:g} kWh; only 6 of 1,256 signed designs are under "
+                                           f"{MIN_PV_FOR_BATTERY:g} kWp). The planner can still add one.")
         phys_inp = {**inp, **(r.get("sim_inputs") or {})}  # the planes and yields rules-2 swept, so economics match its pick
         econ, plaus, opt = self._physics(phys_inp, design, inst, t, full, extras)
         out = {"design": design, "explanation": list(r.get("explanation") or [])[:6], "components": comps, "plausibility": plaus,
                "economics": econ,
                "model_version": {"calibrated": "rules-1-calibrated"}.get(engine) or r.get("version") or planner_rules.RULES_VERSION,
                "rules": r.get("rules", [])}
+        if engine == "readout":  # rules-5's wording (textbook, planners, design per rule) reads best: serve it when it exists
+            try:
+                from .planner_rules import rules5 as R5
+                if hasattr(R5, "rules_table"):
+                    out["rules_applied"] = out["rules"]
+                    out["rules"], out["rules_applied_rules5"] = rules5_rows(R5, self, inp, out)
+            except ImportError:
+                pass
+            except Exception as e:
+                log.warning("rules-5 wording unavailable: %s", e)
         if engine == "calibrated":  # the Rules block reads as rules-4's rule list; the sizes and derivations stay rules-1's
             try:
                 out["rules_applied"] = out["rules"]
                 out["rules"] = planner_rules.rules4.rules_table(inst)
             except Exception as e:
                 log.warning("rules-4 wording unavailable: %s", e)
-        if r.get("objective"):
+        if engine in ("calibrated", "band", "readout", "rules5"):
+            from . import layout as L
+            out["objective"] = L.OBJECTIVE  # the variants' yardstick; the design itself is the rule list
+        elif r.get("objective"):
             out["objective"] = r["objective"]
         if opt:
             out["optimum"] = opt
         if full and extras and design.get("pv_kwp"):
             try:
                 out["variants"] = (self.variants_physics(inp, design, econ, rec_in, self.rules_catalogue(inst, t))
-                                   if engine in ("calibrated", "band", "readout") else self.variants(phys_inp, design, econ))
+                                   if engine in ("calibrated", "band", "readout", "rules5") else self.variants(phys_inp, design, econ))
             except Exception as e:
                 log.warning("variants failed: %s", e)
         return out
@@ -291,24 +364,27 @@ class Engine:
     VARIANT_FROM_FRONTIER = (("value", "knee", "Best value"), ("payback", "payback", "Best payback"),
                              ("independence", "independence", "Most independence"), ("upfront", "upfront", "Lowest upfront cost"))
 
+    VARIANT_LABEL_V = {"value": "Best value", "payback": "Best payback", "independence": "Most independence",
+                       "upfront": "Lowest upfront cost"}
+
     def variants_physics(self, inp, design, econ, rec_in, cat) -> list:
-        """Calibrated design first, then rules-2-physics's own frontier points (knee, payback, independence, upfront), each
-        simulated on rules-2's planes so the numbers match its sweep. Preference only reorders."""
-        from . import planner_rules
-        r2 = rules_cached(planner_rules.recommend, rec_in, cat, None)
-        fr = rules_cached(_frontier, rec_in, cat, None)
-        sim_in = {**roof_to_sim({k: v for k, v in inp.items() if not k.startswith("_")}), **(r2.get("sim_inputs") or {})}
-        keep = {k: r2["design"].get(k) for k in ("heatpump_kw", "wallbox_kw")}
+        """The design first, then the best 20-year value, best payback, most independence and lowest upfront cost among every
+        PV size and package, each laid out on this roof and simulated on its own planes (one pipeline). Preference reorders."""
+        from . import layout as L
+        rows = L.value_frontier(self, inp, design)
         out = [{"key": "expert", "label": self.VARIANT_LABEL["expert"], "design": design, "economics": econ,
                 "note": "The design planners at this installer fit to homes like this one."}]
-        for key, lab, label in self.VARIANT_FROM_FRONTIER:
-            row = next((x for x in fr if x.get("label") == lab), None)
-            if not row:
+        for key in ("value", "payback", "independence", "upfront"):
+            r = next((x for x in rows if key in (x.get("labels") or [])), None)
+            if r is None:
                 continue
-            d = {"pv_kwp": row["kwp"] or None, "inverter_kw": rules.inverter_kw(row["kwp"]) if row["kwp"] else None,
-                 "battery_kwh": row["kwh"] or None, **keep}
-            e = hourly.simulate(sim_in, d).economics
-            out.append({"key": key, "label": label, "design": d, "economics": e, "note": variant_note(d, e, design, econ)})
+            same = r["chosen"]
+            note = ({"value": "The planners' design is already the best 20-year value on this roof.",
+                     "payback": "The planners' design already pays back soonest.",
+                     "independence": "The planners' design already gives the most independence.",
+                     "upfront": "The planners' design is already the cheapest with PV."}[key] if same
+                    else variant_note(r["_design"], r["_econ"], design, econ))
+            out.append({"key": key, "label": self.VARIANT_LABEL_V[key], "design": r["_design"], "economics": r["_econ"], "note": note})
         pref = inp.get("preference")
         if pref in ("independence", "payback", "upfront"):
             out.sort(key=lambda v: v["key"] != pref)
@@ -324,6 +400,12 @@ class Engine:
             if m:
                 rec_in["roof_model"] = m
         return rec_in
+
+    def predict_rules5(self, inp: dict) -> dict:
+        from .planner_rules import rules5
+        t = base_features(inp, inp["installer_id"])["t"]
+        r = rules5.recommend(self.rules_inputs(inp), self.rules_catalogue(inp["installer_id"], t), None)
+        return {k: (r["design"].get(k) or None) for k in ("pv_kwp", "inverter_kw", "battery_kwh", "heatpump_kw", "wallbox_kw")}
 
     def predict_band(self, inp: dict) -> dict:
         from .planner_rules import rules3
@@ -450,7 +532,7 @@ class Engine:
             return []
         if GREYBOX["mode"]:  # lab only: the grey-box path goes through predict()
             return [self.predict(i, full=False)["design"] for i in inps]
-        if RECOMMENDER["mode"] in ("rules", "calibrated", "band", "readout"):  # questions ranked on the calibrated rules (under 1 ms a home)
+        if RECOMMENDER["mode"] in ("rules", "calibrated", "band", "readout", "rules5"):  # questions ranked on the calibrated rules
             return [self.predict_calibrated(i) for i in inps]
         F = [base_features(i, i["installer_id"]) for i in inps]
         X = pd.DataFrame(F)[self.cols]
@@ -762,6 +844,9 @@ class Engine:
         return {"axiom": axiom, "equation": eq, "inputs": ins, "axiom_result": ax, "adjustment": adj, "final": final}
 
     def _physics(self, inp, design, inst, t, full, extras=True):
+        from . import layout as L
+        if design.get("pv_kwp") and inp.get("address"):  # the hourly year runs on the modules laid out on the real planes
+            inp = L.sim_inputs({k: v for k, v in inp.items() if k != "pv_planes"}, design)
         """Hourly simulation (app/hourly) when it runs; the annual ratio model otherwise. Economics.method says which."""
         lookup = rules.economics(inp, design)
         lookup["method"] = "annual-lookup"
@@ -771,6 +856,8 @@ class Engine:
         try:
             sim = hourly.simulate(clean, design)
             econ = sim.economics
+            from . import cashflow
+            cashflow.add(clean, design, econ)
             phys = hourly.validate_physics(clean, design, sim=sim)
             rep, why = hourly.replay_2025(clean, design)  # additive: the typical-year economics above stay as they are
             if rep:
@@ -815,7 +902,8 @@ class Engine:
         for pv in sorted({float(x) for x in cand} | ({float(design["pv_kwp"])} if design.get("pv_kwp") else set())):
             for bat in bats:
                 d = {"pv_kwp": pv, "inverter_kw": rules.inverter_kw(pv), "battery_kwh": bat or None, **keep}
-                runs.append((d, hourly.simulate(clean, d).economics))
+                from . import cashflow
+                runs.append((d, cashflow.add(clean, d, hourly.simulate(clean, d).economics)))
         if not runs:
             return []
         best_aut = max(e["autarky_share"] for _, e in runs)
@@ -963,6 +1051,40 @@ class Engine:
     # ---------- eval ----------
     BASELINES = {"textbook": "1.3 kWp per MWh plus 2.5 kWp with an EV (docs/domain.md rule 1)",
                  "floor_slope": "6.5 kWp plus 0.58 kWp per MWh (median fit, docs/data-insights.md)"}
+
+    def reonic_rule(self, inp: dict) -> dict:
+        """Reonic's published rules of thumb (docs and blog): 1 kWp and 1.25 kWh storage per 1,000 kWh annual use incl. EV,
+        snapped to the installer's sizes; no heat pump unless asked (no published rule); 11 kW wallbox with an EV
+        (grid connection / 1.5, 35 A default); EV default 20,000 km."""
+        inst = inp["installer_id"]
+        cat = self.catalogue[inst]
+        ev = (inp.get("ev_annual_km") or 20000) * 0.18 if inp.get("has_ev") else 0.0
+        mwh = ((inp.get("annual_demand_kwh") or 0) + ev) / 1000
+        t = base_features(inp, inst)["t"]
+        return {"pv_kwp": snap(mwh * 1.0, cat["pv"]), "battery_kwh": snap(1.25 * mwh, self.battery_catalogue(inst, t)),
+                "heatpump_kw": 0.0, "wallbox_kw": 11.0 if inp.get("has_ev") else 0.0}
+
+    def planners_kwp_per_mwh(self, inst: str | None = None) -> float:
+        """Median kWp per MWh of annual use incl. EV that the planners fitted in signed designs: the rules' fit half, homes
+        with real use (untouched 4,500 kWh defaults left out). inst None = both installers."""
+        k = f"_pk_{inst}"
+        if not hasattr(self, k):
+            from .planner_rules import test_ids
+            tid = set(test_ids())
+            t = self.df[~self.df.project_id.isin(tid) & (self.df.pv_kwp > 0) & ~self.df.annual_demand_kwh.isin([0, 4500])]
+            if inst:
+                t = t[t.installer_id == inst]
+            use = t.annual_demand_kwh + [rules.ev_kwh(r) for r in t.to_dict("records")]
+            setattr(self, k, round(float((t.pv_kwp / (use / 1000)).median()), 2) if len(t) else None)
+        return getattr(self, k)
+
+    def rule_of_thumb_comparison(self, inp: dict, design: dict) -> dict:
+        ev = rules.ev_kwh(inp)
+        mwh = ((inp.get("annual_demand_kwh") or 0) + ev) / 1000
+        pv = design.get("pv_kwp") or 0
+        return {"reonic_kwp_per_mwh": 1.0, "planners_kwp_per_mwh": self.planners_kwp_per_mwh(inp["installer_id"]),
+                "this_design_kwp_per_mwh": round(pv / mwh, 2) if mwh else None,
+                "note": "Reonic's rule of thumb is about 1 kWp per 1,000 kWh; this installer's planners fit the median shown (signed designs)."}
 
     def baseline(self, inp: dict, kind: str = "textbook") -> dict:
         cat = self.catalogue[inp["installer_id"]]

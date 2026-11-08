@@ -1,0 +1,41 @@
+.wrap { margin-top: 8px; display: grid; gap: 6px; pointer-events: auto; }
+.float { position: absolute; top: 58px; right: 12px; z-index: 3; width: 290px; margin: 0; background: #fff; border: 1px solid var(--rule); border-radius: 12px; padding: 8px; }
+.chip { all: unset; box-sizing: border-box; cursor: pointer; justify-self: start; font-size: 12.5px; font-weight: 600; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--rule-2, var(--rule)); color: var(--ink-2); background: #fff; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip:focus-visible, .months button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card { background: var(--sheet-2); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; animation: open 767ms var(--spring-smooth) both; }
+.head { margin: 0; font-size: 13.5px; }
+.head b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.scale { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 10.5px; color: var(--ink-3); }
+.scale i { grid-column: 1 / -1; height: 6px; border-radius: 3px; }
+.scale span:last-child { text-align: right; }
+.months { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2px; }
+.months button { all: unset; box-sizing: border-box; cursor: pointer; text-align: center; font-size: 11.5px; font-weight: 600; padding: 4px 0; border-radius: 5px; color: var(--ink-2); }
+.months .year { grid-column: 1 / -1; justify-self: start; padding: 4px 8px; font-weight: 500; }
+.months button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.hour { display: grid; gap: 2px; }
+.hour input { width: 100%; margin: 0; accent-color: var(--accent); touch-action: none; }
+.when { font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.src { margin: 0; font-size: 10.5px; color: var(--ink-3); }
+@keyframes open { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .card { animation: none; } }
+@media (max-width: 760px) {
+  .wrap { margin-top: 4px; gap: 4px; }
+  .card { padding: 6px 8px; gap: 4px; }
+  .head { font-size: 12.5px; }
+  .scale { display: none; }
+  .float { top: auto; bottom: 8px; left: 8px; right: 8px; width: auto; }
+}
+/* Phone strip under the model. */
+.strip { display: grid; gap: 4px; background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 6px 8px; }
+.stripHead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.stripHead .head { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }
+.stripHead .chip { padding: 4px 10px; min-height: 32px; }
+.srcBtn { all: unset; cursor: pointer; font-size: 11.5px; color: var(--accent); padding: 6px 2px; }
+.stripRow { display: grid; grid-template-columns: auto minmax(70px, 1fr); align-items: center; gap: 6px; }
+.monthsC { display: flex; gap: 1px; }
+.monthsC button { all: unset; box-sizing: border-box; cursor: pointer; min-width: 17px; height: 30px; display: grid; place-items: center; font-size: 11px; font-weight: 600; border-radius: 5px; color: var(--ink-2); }
+.monthsC button:first-child { padding: 0 5px; font-weight: 500; }
+.monthsC button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.stripRow input { width: 100%; margin: 0; accent-color: var(--accent); touch-action: none; }
+.whenC { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }

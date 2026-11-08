@@ -2,23 +2,49 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import dynamic from "next/dynamic";
-import type { Design, Lead as LeadT, LeadRow, ReadResponse } from "@/lib/api";
+import type { Design, DesignResponse, Health, Lead as LeadT, LeadRow, ReadResponse } from "@/lib/api";
 import { call } from "@/lib/client";
 import { HERO_LEAD } from "@/lib/demo";
 import House from "@/components/stage/House";
-import type { Seed } from "@/components/stage/Stage";
+import OpenSkeleton from "@/components/stage/Skeleton";
+import type { Live, Seed } from "@/components/stage/Stage";
 import AddSheet from "./AddSheet";
+import HousePhoto from "./HousePhoto";
+import ModelThumb from "./ModelThumb";
+import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
+import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
+import { reasonOf, VerdictChip, VerdictLine } from "@/components/qualify/Verdict";
+
+// The facts count is the verdict chip's tooltip, never part of the line.
+const factsTip = (q: { facts?: { stated: number; total: number }; confidence_line?: string }) => q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : q.confidence_line?.split(",")[0];
+import qs from "@/components/qualify/qualify.module.css";
 
 const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 
-type Card = { id: string; name: string; place: string; status: LeadT["status"]; updated: string; design?: Design; line: string };
+type Kept = NonNullable<ReturnType<typeof recallVerdict>>;
+type Card = { id: string; name: string; place: string; status: LeadT["status"]; updated: string; design?: Design; line: string; created?: string; decision?: LeadRow["decision"]; q: Kept | null };
+type Got = { at: string; d: Design; lead?: LeadT; res?: DesignResponse };
+const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+const isPc = (x?: string | null) => !x || /^\s*\d{5}\s*$/.test(x);
 type LiveRow = { lead_id?: string | null; status: string; started_at: number | null; customer_name?: string | null; address_or_postcode?: string | null };
 
-const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "First design ready", approved: "Approved" };
+const STATUS: Record<string, string> = { draft: "Draft", in_call: "On a call", done: "Draft", approved: "Approved", signed: "Signed", declined: "Declined", question: "Question" };
+const DECIDED = new Set(["signed", "declined", "question"]);
+const hm = (iso?: string | null) => iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
+// Enquiry to decision, in the largest unit that reads well.
+function span(from?: string | null, to?: string | null) {
+  if (!from || !to) return "";
+  const m = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 60000));
+  return m < 60 ? `${m} min` : m < 2880 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.round(m / 1440)} days`;
+}
 const lineOf = (d?: Design, title?: string) => d
   ? [d.pv_kwp != null && `${d.pv_kwp.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWp`, d.battery_kwh != null && `${d.battery_kwh.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWh`, d.heatpump_kw != null && `${d.heatpump_kw} kW heat pump`, d.wallbox_kw != null && "wallbox"].filter(Boolean).join(" + ") || "Nothing to fit"
   : title?.split(": ").slice(1).join(": ") ?? "";
+
+// The engine's current version, asked once per page.
+let healthP: Promise<(Health & { rules_version?: string | null }) | null> | null = null;
+const health = () => (healthP ??= call<Health & { rules_version?: string | null }>("/api/health").then((r) => r.ok ? r.data : null));
 
 const APPROVED = "marquee.approved.ids";
 const readApproved = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(APPROVED) ?? "{}"); } catch { return {}; } };
@@ -33,26 +59,31 @@ function transition(fn: () => void) {
 function seedOf(l: LeadT): Seed {
   let stored: { read: ReadResponse; text: string } | null = null;
   try { stored = JSON.parse(sessionStorage.getItem(`marquee.read.${l.lead_id}`) ?? "null"); } catch { /* storage blocked */ }
-  if (stored) return { leadId: l.lead_id, read: stored.read, text: stored.text };
+  // The lead's own facts win over the read stored at creation: they carry every change made since.
+  if (stored) return { leadId: l.lead_id, read: { ...stored.read, inputs: { ...stored.read.inputs, ...l.facts } }, text: stored.text, draft: l.draft, version: l.version ?? null };
   const place = l.address_or_postcode, pc = /^\d{5}$/.test(place.trim()) ? place.trim() : undefined;
   const inputs = { ...l.facts, ...(pc ? {} : { address: l.facts.address ?? place }) };
   const unknown = l.status === "draft" && l.next_question ? [l.next_question.field as keyof LeadT["facts"]] : [];
-  return { leadId: l.lead_id, read: { inputs, found: [], unknown, postcode: pc, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
+  return { leadId: l.lead_id, draft: l.draft, version: l.version ?? null, read: { inputs, found: [], unknown, postcode: pc, ...(l.status === "draft" ? {} : { source: "call" as const }) } };
 }
 
 export default function Board({ openId: initial }: { openId?: string }) {
   const [rows, setRows] = useState<LeadRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const [designs, setDesigns] = useState<Record<string, { at: string; d: Design }>>({});
+  const [designs, setDesigns] = useState<Record<string, Got>>({});
   const [live, setLive] = useState<Record<string, LiveRow>>({});
   const [approved, setApproved] = useState<Record<string, string>>({});
   const [openId, setOpenId] = useState<string | null>(initial ?? null);
   const [seed, setSeed] = useState<Seed | null>(null);
   const [seedErr, setSeedErr] = useState<string | null>(null);
+  const [liveLead, setLiveLead] = useState<LeadT | null>(null);
+  const [reload, setReload] = useState(0);
+  const [staleNote, setStaleNote] = useState(false);
   const [adding, setAdding] = useState(false);
   const fetching = useRef(new Set<string>());
-  const designsRef = useRef<Record<string, { at: string; d: Design }>>({});
+  const designsRef = useRef<Record<string, Got>>({});
+  const [kept, setKept] = useState<Record<string, Kept>>({});
 
   useEffect(() => { setApproved(readApproved()); }, []);
 
@@ -68,9 +99,18 @@ export default function Board({ openId: initial }: { openId?: string }) {
         const at = (row as LeadRow & { updated_at?: string }).updated_at ?? row.created_at ?? "";
         if (fetching.current.has(row.lead_id) || designsRef.current[row.lead_id]?.at === at) continue;
         fetching.current.add(row.lead_id);
-        call<LeadT>(`/api/leads/${row.lead_id}`).then((g) => {
+        call<LeadT>(`/api/leads/${row.lead_id}`).then(async (g) => {
+          if (!g.ok) { fetching.current.delete(row.lead_id); return; }
+          // A draft stored by an earlier engine: show a fresh design for the lead's facts until the lead refreshes.
+          let d = g.data.draft.design, res = g.data.draft;
+          const h = await health();
+          const dv = g.data.draft as DesignResponse & { rules_version?: string | null };
+          if (h && (dv.model_version !== h.model_version || (dv.rules_version != null && dv.rules_version !== h.rules_version))) {
+            const f = await call<DesignResponse>("/api/design", { inputs: g.data.facts });
+            if (f.ok) { d = f.data.design; res = f.data; }
+          }
           fetching.current.delete(row.lead_id);
-          if (g.ok) setDesigns((x) => { const n = { ...x, [row.lead_id]: { at, d: g.data.draft.design } }; designsRef.current = n; return n; });
+          setDesigns((x) => { const n = { ...x, [row.lead_id]: { at, d, lead: g.data, res } }; designsRef.current = n; return n; });
         });
       }
     };
@@ -91,24 +131,59 @@ export default function Board({ openId: initial }: { openId?: string }) {
     return () => { stop = true; clearInterval(t); };
   }, []);
 
+  // Verdicts: the roof per street address (4 in flight), the last verdict per lead kept for the session so a reopen does not flicker.
+  const roofs = useRoofs((rows ?? []).map((r) => isPc(r.address_or_postcode) ? null : r.address_or_postcode));
+  useEffect(() => { setKept(Object.fromEntries((rows ?? []).map((r) => [r.lead_id, recallVerdict(r.lead_id)]).filter(([, v]) => v)) as Record<string, Kept>); }, [rows?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const verdicts = useMemo(() => {
+    const out: Record<string, Kept> = {};
+    for (const r of rows ?? []) {
+      const g = designs[r.lead_id];
+      if (!g?.lead) continue;
+      const pc = isPc(r.address_or_postcode), roof = pc ? null : roofs[r.address_or_postcode!];
+      if (!pc && roof === undefined) continue;
+      out[r.lead_id] = qualify({ ...g.lead, status: r.status, decision: r.decision ?? g.lead.decision }, g.res, roof);
+    }
+    return out;
+  }, [rows, designs, roofs]);
+  useEffect(() => { for (const [id, q] of Object.entries(verdicts)) keepVerdict(id, q); }, [verdicts]);
+
   const cards: Card[] = useMemo(() => {
     const out = (rows ?? []).map((r) => {
       const ext = r as LeadRow & { updated_at?: string };
       const d = designs[r.lead_id]?.d;
-      return { id: r.lead_id, name: r.customer_name ?? r.title.split(",")[0], place: r.address_or_postcode ?? "", status: r.status, updated: ext.updated_at ?? r.created_at ?? "", design: d, line: lineOf(d, r.title) };
+      return { id: r.lead_id, name: r.customer_name ?? r.title.split(",")[0], place: r.address_or_postcode ?? "", status: r.status, updated: ext.updated_at ?? r.created_at ?? "", design: d, line: lineOf(d, r.title), created: r.created_at, decision: r.decision, q: verdicts[r.lead_id] ?? kept[r.lead_id] ?? null };
     });
     const isLive = (c: Card) => !!live[c.id] || c.status === "in_call";
     return [...out.filter(isLive), ...out.filter((c) => !isLive(c))];
-  }, [rows, designs, live]);
+  }, [rows, designs, live, verdicts, kept]);
 
   // Opening a card loads its lead and seeds the planner view.
   useEffect(() => {
     setSeed(null); setSeedErr(null);
     if (!openId) return;
     let stop = false;
-    call<LeadT>(`/api/leads/${openId}`).then((r) => { if (stop) return; if (r.ok) setSeed(seedOf(r.data)); else setSeedErr(r.error); });
+    call<LeadT>(`/api/leads/${openId}`).then((r) => { if (stop) return; if (r.ok) { setSeed(seedOf(r.data)); setLiveLead(r.data); } else setSeedErr(r.error); });
     return () => { stop = true; };
+  }, [openId, reload]);
+
+  // A write answered 409: the lead changed elsewhere. Reload it into the card and say so.
+  useEffect(() => {
+    const on = (e: Event) => { if ((e as CustomEvent).detail === openId) { setReload((n) => n + 1); setStaleNote(true); } };
+    addEventListener("marquee:lead-stale", on); return () => removeEventListener("marquee:lead-stale", on);
   }, [openId]);
+  useEffect(() => { if (!staleNote) return; const t = setTimeout(() => setStaleNote(false), 8000); return () => clearTimeout(t); }, [staleNote]);
+
+  // While the call runs, the open card keeps converging: poll the lead every 2.5 s until it is done.
+  const calling = liveLead?.lead_id === openId && liveLead?.status === "in_call";
+  useEffect(() => {
+    if (!openId || !calling) return;
+    const t = setInterval(() => call<LeadT>(`/api/leads/${openId}`).then((r) => { if (r.ok) setLiveLead(r.data); }), 2500);
+    return () => clearInterval(t);
+  }, [openId, calling]);
+  const liveFeed: Live | null = useMemo(() => !liveLead || liveLead.lead_id !== openId || !liveLead.history.length && liveLead.status !== "in_call" ? null : {
+    version: liveLead.version ?? null, step: liveLead.history.length, facts: liveLead.facts, changed: liveLead.history.at(-1)?.changed ?? [],
+    asking: liveLead.status === "in_call" ? liveLead.next_question?.question ?? null : null,
+  }, [liveLead, openId]);
 
   const open = useCallback((id: string) => {
     history.pushState({ h: id }, "", `/h/${id}`);
@@ -118,6 +193,11 @@ export default function Board({ openId: initial }: { openId?: string }) {
     history.pushState({}, "", "/");
     transition(() => setOpenId(null));
   }, []);
+  // The banner's back arrow (Masthead) closes the card the same way, with the card's transition.
+  useEffect(() => {
+    const on = (e: Event) => { e.preventDefault(); close(); };
+    addEventListener("marquee:back", on); return () => removeEventListener("marquee:back", on);
+  }, [close]);
   useEffect(() => {
     const on = () => { const m = location.pathname.match(/^\/h\/([^/]+)/); transition(() => setOpenId(m ? decodeURIComponent(m[1]) : null)); };
     addEventListener("popstate", on); return () => removeEventListener("popstate", on);
@@ -134,53 +214,100 @@ export default function Board({ openId: initial }: { openId?: string }) {
     setApproved(a);
   }, []);
 
+  // The open card's chain reports when the building is an apartment block (lib/building.ts).
+  const [shared, setShared] = useState<{ id: string | null; reason: string } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => { const d = (e as CustomEvent<{ leadId: string | null; multi: boolean; reason: string }>).detail; setShared(d.multi ? { id: d.leadId, reason: d.reason } : null); };
+    addEventListener("marquee:building", on); return () => removeEventListener("marquee:building", on);
+  }, []);
+  useEffect(() => { setShared(null); }, [openId]);
+
   const openCard = cards.find((c) => c.id === openId);
+  const ll = liveLead?.lead_id === openId ? liveLead : null;   // test leads and old leads are not on the board list
 
   if (openId) return (
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
-      <div className="b-open-h">
-        <button type="button" className="b-close" onClick={close} aria-label="Close, back to the board">Close</button>
-        <div>
-          <h1>{openCard?.name ?? seed?.read.inputs.address ?? "House"}</h1>
-          <p>{[openCard?.place, openCard && (approved[openCard.id] ? STATUS.approved : STATUS[openCard.status])].filter(Boolean).join(" · ")}</p>
+      <div className={calling ? "b-open-h live" : "b-open-h"}>
+        {calling && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
+        <div className="b-open-lines">
+          {/* Line one: the name, status chip right-aligned on desktop. Line two: the address. Line three: verdict and offer. */}
+          <div className="b-l1">
+            <h1>{openCard?.name ?? ll?.customer_name ?? seed?.read.inputs.address ?? "House"}</h1>
+            {(() => {
+              if (!openCard && !calling && !ll) return null;
+              const base = openCard?.status ?? ll?.status ?? "draft";
+              const st = calling ? "in_call" : DECIDED.has(base) || base === "approved" ? base : approved[openId] ? "approved" : base;
+              return <span className={`b-st b-chip ${st}`}>{STATUS[st]}{openCard && DECIDED.has(openCard.status) ? ` ${hm(openCard.decision?.decided_at)}` : ""}</span>;
+            })()}
+          </div>
+          <p className="b-l2">{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
+          <p className={`${qs.head} b-l3`}>{openCard?.q
+            ? <span className="b-verdict"><VerdictChip verdict={openCard.q.verdict} tip={factsTip(openCard.q)} /><span className="b-offer">{reasonOf(openCard.q)}</span></span>
+            : <VerdictLine q={null} />}</p>
+          {openCard?.q && <p className="b-small">Every number is an estimate until the site visit.</p>}
+          {openCard?.q && !calling && liveLead?.lead_id === openId && liveLead.history.length > 0 && (
+            <p className={`${qs.rina} b-rina`}>Rina, after the call: {liveLead.history.length} {liveLead.history.length === 1 ? "answer" : "answers"}. {reasonOf(openCard.q)}{openCard.q.verdict === "call_first" && openCard.q.expected_offer_eur != null ? ` Expected offer about €${Math.round(openCard.q.expected_offer_eur).toLocaleString("en-GB")}.` : ""}</p>
+          )}
+          {shared && <p className="b-shared" title={shared.reason}>Shared roof, apartment building: single-family design does not apply</p>}
         </div>
+        <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
       </div>
       {seedErr && <div className="error" role="alert"><span><span className="src">Engine said</span>{seedErr}</span><button className="btn ghost" onClick={() => { const id = openId; setOpenId(null); setTimeout(() => setOpenId(id), 0); }}>Retry</button></div>}
-      {!seed && !seedErr && <p className="s-quiet s-wait">Opening the house</p>}
-      {seed && <Stage key={seed.leadId} seed={seed} onApproved={onApproved} />}
+      {!seed && !seedErr && <OpenSkeleton />}
+      {staleNote && <p className="b-shared" role="status">This lead changed elsewhere, reloaded.</p>}
+      {seed && <Stage key={`${seed.leadId}:${reload}`} seed={seed} onApproved={onApproved} live={liveFeed} />}
     </div>
   );
 
   return (
     <div className="b-board">
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setTick((t) => t + 1)}>Retry</button></div>}
-      <ul className="b-grid">
+      <ul className={`b-grid ${qs.addRow}`}>
         <li>
           <button type="button" className="b-card b-add" onClick={() => setAdding(true)} aria-label="Add a house">
             <span className="b-plus" aria-hidden>+</span><span>Add a house</span>
           </button>
         </li>
-        {cards.map((c) => {
+        {rows && rows.length === 0 && <li className="s-quiet b-empty">No houses yet.</li>}
+        {!rows && !err && <li className="s-quiet s-wait b-empty">Loading houses</li>}
+      </ul>
+      {([...VERDICT_ORDER, null] as (Verdict | null)[]).map((v) => {
+        const group = cards.filter((c) => (c.q?.verdict ?? null) === v);
+        if (!group.length) return null;
+        return (
+          <section key={v ?? "checking"} className={qs.group} aria-label={v ? VERDICT_WORD[v] : "Checking"}>
+            <h2 className={qs.gH}>{v ? VERDICT_WORD[v] : "Checking"} <span className={qs.count}>{group.length}</span></h2>
+            <ul className="b-grid">
+        {group.map((c) => {
           const lv = live[c.id] || c.status === "in_call";
-          const st = approved[c.id] ? "approved" : lv ? "in_call" : c.status;
+          const st = lv ? "in_call" : DECIDED.has(c.status) || c.status === "approved" ? c.status : approved[c.id] ? "approved" : c.status;
+          const dec = DECIDED.has(c.status) ? c.decision : null;
           return (
             <li key={c.id}>
               <button type="button" className={lv ? "b-card live" : "b-card"} style={{ viewTransitionName: `card-${c.id}` }} onClick={() => open(c.id)}>
                 {lv && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
-                <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{STATUS[st]}</span></span>
+                <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{STATUS[st]}</span>{c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
                 <span className="b-name">{c.name}</span>
                 <span className="b-place">{c.place}</span>
-                {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /></span>}
-                <span className="b-line num">{c.line}</span>
+                {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><ModelThumb lead={designs[c.id]?.lead} design={c.design} /></span>}
+                {!c.design && !lv && <span className="b-house b-skel b-skel-house" aria-hidden />}
+                {c.design || lv ? <span className="b-line num">{c.line}</span> : <span className="b-skel b-skel-line" aria-hidden />}
+                {c.q ? <span className={`${qs.cardValue} num`}>{offerEur(c.q.expected_offer_eur)}</span> : !lv && <span className="b-skel b-skel-line short" aria-hidden />}
+                {c.q && c.q.verdict !== "visit" && <span className={qs.cardWhy}>{reasonOf(c.q)}</span>}
+                {dec && <span className={`b-dec ${c.status}`}>{STATUS[c.status]} {hm(dec.decided_at)}{c.status === "signed" && span(c.created, dec.decided_at) ? `, ${span(c.created, dec.decided_at)} from enquiry` : ""}</span>}
+                {dec && c.status === "signed" && <span className="b-today">Today: 8 days to an offer, 29 more to a signature</span>}
+                {dec && dec.matches_current === false && <span className="b-warn">Signed a different version than the one on file</span>}
               </button>
             </li>
           );
         })}
-        {rows && rows.length === 0 && <li className="s-quiet b-empty">No houses yet.</li>}
-        {!rows && !err && <li className="s-quiet s-wait b-empty">Loading houses</li>}
-      </ul>
+            </ul>
+          </section>
+        );
+      })}
       {adding && <AddSheet onClose={() => setAdding(false)} sample={HERO_LEAD} voice={VOICE}
         onCreated={(id) => { setAdding(false); setTick((t) => t + 1); open(id); }} />}
     </div>
   );
 }
+

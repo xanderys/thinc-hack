@@ -1,0 +1,340 @@
+{
+ "_meta": {
+  "fitted_on": "fit half (seed 42, same ids as engine/lab/split), 654 new-system jobs",
+  "rule": "ratio of signed design to Reonic's textbook per group, kept only where 5-fold CV improves"
+ },
+ "pv_dims": [
+  "installer",
+  "band"
+ ],
+ "bat_dims": [
+  "installer",
+  "era"
+ ],
+ "bat_base": "pv_pred",
+ "log": [
+  {
+   "step": "start: textbook x one ratio per installer",
+   "pv": 0.402,
+   "battery": 0.422,
+   "all_four": 0.122
+  },
+  {
+   "step": "pv: add band",
+   "pv": 0.419,
+   "battery": 0.422,
+   "all_four": 0.135,
+   "kept": true
+  },
+  {
+   "step": "pv: add ev",
+   "pv": 0.402,
+   "battery": 0.422,
+   "all_four": 0.122,
+   "kept": false
+  },
+  {
+   "step": "pv: add heating",
+   "pv": 0.364,
+   "battery": 0.422,
+   "all_four": 0.112,
+   "kept": false
+  },
+  {
+   "step": "pv: add era",
+   "pv": 0.388,
+   "battery": 0.422,
+   "all_four": 0.129,
+   "kept": false
+  },
+  {
+   "step": "pv: add profile",
+   "pv": 0.365,
+   "battery": 0.422,
+   "all_four": 0.116,
+   "kept": false
+  },
+  {
+   "step": "pv: add price",
+   "pv": 0.361,
+   "battery": 0.422,
+   "all_four": 0.116,
+   "kept": false
+  },
+  {
+   "step": "pv: add people",
+   "pv": 0.402,
+   "battery": 0.422,
+   "all_four": 0.122,
+   "kept": false
+  },
+  {
+   "step": "pv: add ev",
+   "pv": 0.416,
+   "battery": 0.422,
+   "all_four": 0.133,
+   "kept": false
+  },
+  {
+   "step": "pv: add heating",
+   "pv": 0.418,
+   "battery": 0.422,
+   "all_four": 0.136,
+   "kept": false
+  },
+  {
+   "step": "pv: add era",
+   "pv": 0.411,
+   "battery": 0.422,
+   "all_four": 0.129,
+   "kept": false
+  },
+  {
+   "step": "pv: add profile",
+   "pv": 0.413,
+   "battery": 0.422,
+   "all_four": 0.133,
+   "kept": false
+  },
+  {
+   "step": "pv: add price",
+   "pv": 0.407,
+   "battery": 0.422,
+   "all_four": 0.135,
+   "kept": false
+  },
+  {
+   "step": "pv: add people",
+   "pv": 0.419,
+   "battery": 0.422,
+   "all_four": 0.133,
+   "kept": false
+  },
+  {
+   "step": "battery as kWh per kWp of the signed PV instead of from use",
+   "pv": 0.419,
+   "battery": 0.432,
+   "all_four": 0.151,
+   "kept": true
+  },
+  {
+   "step": "battery as kWh per kWp of this design's PV instead of from use",
+   "pv": 0.419,
+   "battery": 0.454,
+   "all_four": 0.167,
+   "kept": true
+  },
+  {
+   "step": "battery: add band",
+   "pv": 0.419,
+   "battery": 0.483,
+   "all_four": 0.164,
+   "kept": false
+  },
+  {
+   "step": "battery: add ev",
+   "pv": 0.419,
+   "battery": 0.454,
+   "all_four": 0.167,
+   "kept": false
+  },
+  {
+   "step": "battery: add heating",
+   "pv": 0.419,
+   "battery": 0.454,
+   "all_four": 0.159,
+   "kept": false
+  },
+  {
+   "step": "battery: add era",
+   "pv": 0.419,
+   "battery": 0.509,
+   "all_four": 0.179,
+   "kept": true
+  },
+  {
+   "step": "battery: add profile",
+   "pv": 0.419,
+   "battery": 0.463,
+   "all_four": 0.171,
+   "kept": false
+  },
+  {
+   "step": "battery: add price",
+   "pv": 0.419,
+   "battery": 0.45,
+   "all_four": 0.162,
+   "kept": false
+  },
+  {
+   "step": "battery: add people",
+   "pv": 0.419,
+   "battery": 0.457,
+   "all_four": 0.165,
+   "kept": false
+  },
+  {
+   "step": "battery: add band",
+   "pv": 0.419,
+   "battery": 0.489,
+   "all_four": 0.159,
+   "kept": false
+  },
+  {
+   "step": "battery: add ev",
+   "pv": 0.419,
+   "battery": 0.509,
+   "all_four": 0.179,
+   "kept": false
+  },
+  {
+   "step": "battery: add heating",
+   "pv": 0.419,
+   "battery": 0.486,
+   "all_four": 0.171,
+   "kept": false
+  },
+  {
+   "step": "battery: add profile",
+   "pv": 0.419,
+   "battery": 0.509,
+   "all_four": 0.18,
+   "kept": false
+  },
+  {
+   "step": "battery: add price",
+   "pv": 0.419,
+   "battery": 0.503,
+   "all_four": 0.177,
+   "kept": false
+  },
+  {
+   "step": "battery: add people",
+   "pv": 0.419,
+   "battery": 0.509,
+   "all_four": 0.179,
+   "kept": false
+  }
+ ],
+ "packages": {
+  "2a8ba8e2": [
+   4.6,
+   5.0,
+   7.0,
+   9.2,
+   10.0,
+   14.0,
+   15.0,
+   20.0,
+   21.0
+  ],
+  "23c108b7": [
+   5.0,
+   6.0,
+   9.0,
+   9.84,
+   10.0,
+   12.0,
+   15.0,
+   18.0
+  ]
+ },
+ "pv": {
+  "23c108b7": [
+   -11.9,
+   82,
+   163
+  ],
+  "2a8ba8e2": [
+   -10.35,
+   179,
+   488
+  ],
+  "2a8ba8e2|4": [
+   1.675,
+   29,
+   77
+  ],
+  "2a8ba8e2|7": [
+   1.425,
+   25,
+   65
+  ],
+  "23c108b7|2": [
+   3.65,
+   13,
+   32
+  ],
+  "2a8ba8e2|6": [
+   -10.35,
+   31,
+   57
+  ],
+  "2a8ba8e2|3": [
+   2.3,
+   46,
+   105
+  ],
+  "23c108b7|4": [
+   2.55,
+   14,
+   29
+  ],
+  "2a8ba8e2|2": [
+   2.375,
+   32,
+   69
+  ],
+  "2a8ba8e2|8": [
+   1.175,
+   22,
+   44
+  ],
+  "23c108b7|3": [
+   2.575,
+   14,
+   28
+  ],
+  "2a8ba8e2|5": [
+   1.7,
+   17,
+   44
+  ],
+  "2a8ba8e2|1": [
+   -6.75,
+   13,
+   27
+  ]
+ },
+ "bat": {
+  "23c108b7": [
+   0.85,
+   102,
+   161
+  ],
+  "2a8ba8e2": [
+   0.8,
+   213,
+   459
+  ],
+  "23c108b7|2025 on": [
+   0.85,
+   102,
+   161
+  ],
+  "2a8ba8e2|2025 on": [
+   1.075,
+   161,
+   336
+  ],
+  "2a8ba8e2|before 2025": [
+   0.8,
+   72,
+   123
+  ]
+ },
+ "bat_share": {
+  "2a8ba8e2": 0.941,
+  "23c108b7": 0.988
+ }
+}
