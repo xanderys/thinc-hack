@@ -95,9 +95,9 @@ footer: Marquee
 
 <p class="label">Offer to signature</p>
 
-## Approve releases the chosen design to the homeowner, who signs or declines.
+## Complete sends the chosen design to the homeowner, who signs or declines.
 
-<div class="data">variants: planners’ pick, best payback, most independence, lowest upfront<br>the homeowner page shows the approved one and nothing else<br>the signature or the decline comes back to the board</div>
+<div class="data">variants: planners’ pick, best payback, most independence, lowest upfront<br>Complete opens Send the proposal: WhatsApp, or a link to copy<br>the homeowner page shows the completed design and nothing else<br>the signature or the decline comes back to the board</div>
 
 <p>Reonic’s chat sizes from the catalogue when asked, and the planner picks by hand. Marquee proposes unprompted, explains its rules, publishes its expert match, and hands the chosen design over to sign.</p>
 

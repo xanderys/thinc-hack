@@ -29,7 +29,7 @@ If Reonic's AI chat comes up: "Your chat sizes from the catalogue when the plann
 "Where we differ from the expert, three things the record does not hold explain most of it: roof size and budget are not recorded, one home in six carries a default instead of a bill, and a quarter of wallboxes went to homes with no car on record. With an address, Marquee adds the measured roof the record lacks."
 
 ## 3:20 to 3:40, slide 8, Jamon
-"The planner picks a variant and approves. The homeowner page shows exactly that design and nothing else, and the signature or the decline comes back to the board."
+"The planner picks a variant and presses Complete, then sends the proposal on WhatsApp or as a link. The homeowner page shows exactly that design and nothing else, and the signature or the decline comes back to the board."
 If the homeowner page is on screen, its header reads Isarwerk Solar: our fictional demo installer, never a real company. Installer A and B on slide 5 are the two anonymised installers in the data pack.
 
 ## 3:40 to 3:55, slide 9, Jamon
@@ -40,4 +40,4 @@ If the homeowner page is on screen, its header reads Isarwerk Solar: our fiction
 
 ## OPTIONAL beat, slide 8, Jamon: only if THINC HACK MASTER confirms the WhatsApp copilot and Complete are live
 "Two facts were missing. Marquee asked the homeowner on WhatsApp, the reply filled the chips, and the planner never typed them. The planner presses Complete and sends the proposal, on WhatsApp or as a link. The signature or the decline comes back to the board."
-If it is live, say Complete, never Approve, on slide 8, and build the deck with the optional slide (deck/slides-optional.md) in place of slide 8.
+Complete and the send sheet are live (planner c8c3254) and already on slide 8; only the WhatsApp copilot beat is held. If it goes live, build the deck with the optional slide (deck/slides-optional.md) in place of slide 8.

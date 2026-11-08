@@ -31,8 +31,8 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
 9. **What happens with incomplete or unsuitable data?**
    The board says so instead of guessing: Call first when the roof is not measured or the use is the default, Decline when the roof fits under 3 kWp or nothing pays back in 20 years. Facts the engine estimated from the address are labelled estimates, apart from stated ones.
 
-10. **Can the homeowner trust that this is the design the planner approved?**
-    Approve stores the chosen variant and its design, and the homeowner page renders that record only. The red team found a mismatch early on 8 Nov; the fix is in planner production and the acceptance check is: pick Lowest upfront, approve, reload both pages, same components and price.
+10. **Can the homeowner trust that this is the design the planner completed?**
+    Complete stores the chosen variant and its design, and the homeowner page renders that record only; the send sheet (WhatsApp or a copied link) carries that one record. The red team found a mismatch early on 8 Nov; the fix is in planner production and the acceptance check is: pick Lowest upfront, press Complete, reload both pages, same components and price.
 
 ## More
 

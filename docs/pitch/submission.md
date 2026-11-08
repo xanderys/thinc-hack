@@ -1,8 +1,8 @@
 # Submission
 
-**One sentence:** Marquee drafts a home's panels, battery, wallbox and heat pump with the rules it used, reports how often the experts agreed on homes it never saw, and hands the approved design to the homeowner to sign.
+**One sentence:** Marquee drafts a home's panels, battery, wallbox and heat pump with the rules it used, reports how often the experts agreed on homes it never saw, and hands the completed design to the homeowner to sign.
 
-**What it does:** A lead arrives by form, pasted email or a call with the installer's voice agent, and lands on the planner's board with a verdict (Priority, Call first, Decline) and the reason. The planner opens the real house, from Bavarian LoD2 data with the aerial photo and shade per panel, and sees four decisions in a chain plus the offer, each with its rule. One changed fact, an electric car next year, runs the chain again and adds the wallbox. Approve releases exactly the chosen variant to the homeowner's page, where they sign or decline.
+**What it does:** A lead arrives by form, pasted email or a call with the installer's voice agent, and lands on the planner's board with a verdict (Priority, Call first, Decline) and the reason. The planner opens the real house, from Bavarian LoD2 data with the aerial photo and shade per panel, and sees four decisions in a chain plus the offer, each with its rule. One changed fact, an electric car next year, runs the chain again and adds the wallbox. Complete sends exactly the chosen variant to the homeowner's page, on WhatsApp or as a link, where they sign or decline.
 
 **For whom:** Planners and sales staff at installers on Reonic, and their homeowners.
 
