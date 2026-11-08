@@ -81,13 +81,27 @@ function Page({ agentId, installerId, test }: Props) {
   const [tickNow, setTickNow] = useState(0);
   const noted = useRef(false);
   const declinedRef = useRef(false);
+  // Tell the engine the call is over so the lead stops reading "On a call"; once per call, beacon-safe on pagehide.
+  const leadIdRef = useRef<string | null>(null); leadIdRef.current = leadId;
+  const ended = useRef(false);
+  const endCall = () => {
+    const id = leadIdRef.current;
+    if (!id || ended.current) return;
+    ended.current = true;
+    const url = `/api/leads/${encodeURIComponent(id)}/call/end`;
+    try { if (!navigator.sendBeacon?.(url, new Blob(["{}"], { type: "application/json" }))) fetch(url, { method: "POST", body: "{}", keepalive: true }).catch(() => {}); } catch { /* page is going away */ }
+  };
+  useEffect(() => {
+    const on = () => { if (connected.current) endCall(); };
+    addEventListener("pagehide", on); return () => removeEventListener("pagehide", on);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const conversation = useConversation({
     onConnect: ({ conversationId }) => {
-      connected.current = true; setSince(Date.now());
+      connected.current = true; ended.current = false; setSince(Date.now());
       // The planner preview embeds this page; it opens the lead when the call ends.
       try { window.parent?.postMessage({ type: "marquee:lead", conversation_id: conversationId }, location.origin); } catch {}
     },
-    onDisconnect: () => { if (connected.current) { endTone(); setStep("thanks"); } },
+    onDisconnect: () => { if (connected.current) { endTone(); setStep("thanks"); endCall(); } },
     onError: (m) => setError(String(m)),   // stays on the call screen with the words and a retry
   });
   // The enquiry note goes in once the call is up, with the address lookup if it has arrived.
