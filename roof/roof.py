@@ -106,12 +106,31 @@ def geocode(address: str) -> dict:
         r.raise_for_status()
         return {"results": r.json()}
     hits = _cached_json("nominatim", address.strip().lower(), fetch)["results"]
+    pc = re.search(r"\b\d{5}\b", address)
+    if pc and (not hits or pc.group() not in hits[0].get("display_name", "")):
+        # the free-text hit is outside the postcode (e.g. "Haar" matching Haarbach): ask again bound to the postcode
+        street = address[:pc.start()].strip(" ,")
+        def fetch_pc():
+            global _last_nominatim
+            with _lock:
+                wait = 1.0 - (time.time() - _last_nominatim)
+                if wait > 0:
+                    time.sleep(wait)
+                r = httpx.get("https://nominatim.openstreetmap.org/search",
+                              params={"street": street, "postalcode": pc.group(), "country": "de", "format": "jsonv2",
+                                      "limit": 1, "polygon_geojson": 1}, headers={"User-Agent": UA}, timeout=10)
+                _last_nominatim = time.time()
+            r.raise_for_status()
+            return {"results": r.json()}
+        bound = _cached_json("nominatim", f"pc|{pc.group()}|{street.lower()}", fetch_pc)["results"]
+        if bound and pc.group() in bound[0].get("display_name", ""):
+            hits = bound
+        else:
+            near = f" (the nearest match, '{hits[0].get('display_name')}', is outside it)" if hits else ""
+            raise NotFound(f"Nominatim: no '{street}' found in postcode {pc.group()}{near}")
     if not hits:
         raise NotFound(f"Nominatim: no results for '{address}'")
     h = hits[0]
-    pc = re.search(r"\b\d{5}\b", address)
-    if pc and pc.group() not in h.get("display_name", ""):
-        raise NotFound(f"Nominatim: best match '{h.get('display_name')}' is not in postcode {pc.group()}")
     if h.get("place_rank", 30) < 26:
         raise NotFound(f"Nominatim: only matched '{h.get('display_name')}', not a house")
     return h
