@@ -48,7 +48,7 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
 
 **What does the Check page replay show?** Drawn from unseen homes with no match-first order: 3 of 20 match the expert on all four decisions at once, 15%, in line with the sealed 18.6% on 633; by part, panels sit within tolerance on 41% and the battery on 50%. All four at once is the strict test; the sealed figure is the one to quote.
 
-Never quote a heat-loss kW figure for the hero; the envelope rerun is pending.
+[HELD until THINC HACK MASTER confirms ENGINE restart C is live; until then quote no heat-loss kW.] **How big is the hero's heat load?** Upper bound from the building envelope, 17.2 kW; sized from the bill, 8.7 kW. The envelope figure is 39,000 kWh a year on 188 m² heated over two storeys, 92 W/m², inside the 60 to 99 W/m² tables for a 1984 to 1994 home. Heat-loss kW stays off the slides.
 
 **Where is the AI?** No language model sizes anything. The engine is readable rules fitted on the data plus hourly physics. Claude only reads a pasted enquiry into facts in the web layer, and ElevenLabs carries Rina's voice.
 
