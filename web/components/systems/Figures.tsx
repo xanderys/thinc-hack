@@ -35,12 +35,14 @@ export function PairBars({ roof, parts, share }: { roof: number; parts: { k: str
 }
 
 // A stacked bar of parts of one total, each part labelled under it with its value.
-export function SplitBar({ parts, unit, colours = SPLIT, label }: { parts: { k: string; v: number; c?: string }[]; unit: string; colours?: string[]; label: string }) {
-  const shown = parts.filter((p) => p.v > 0), sum = shown.reduce((a, p) => a + p.v, 0) || 1;
+// total: the whole the parts belong to. Each part is drawn as its own share of it; parts that do not add up leave a visible gap
+// at the end and are never stretched to fill the bar. Without a total the parts are the whole.
+export function SplitBar({ parts, unit, colours = SPLIT, label, total }: { parts: { k: string; v: number; c?: string }[]; unit: string; colours?: string[]; label: string; total?: number }) {
+  const shown = parts.filter((p) => p.v > 0), sum = shown.reduce((a, p) => a + p.v, 0), whole = total && total > 0 ? Math.max(total, sum) : sum || 1;
   const fmt = (v: number) => (v >= 100 ? n0(v) : (Math.round(v * 10) / 10).toLocaleString("en-GB"));
   return (
     <div className="fg-split" role="img" aria-label={`${label}: ${shown.map((p) => `${p.k} ${fmt(p.v)} ${unit}`).join(", ")}`}>
-      <span className="fg-bar">{shown.map((p, i) => <i key={p.k} style={{ flexGrow: p.v / sum, background: p.c ?? colours[i % colours.length] }} />)}</span>
+      <span className="fg-bar">{shown.map((p, i) => <i key={p.k} style={{ flexGrow: p.v / whole, background: p.c ?? colours[i % colours.length] }} />)}{whole - sum > whole * 0.015 && <i className="fg-gap" style={{ flexGrow: (whole - sum) / whole }} aria-hidden="true" />}</span>
       <ul className="fg-legend">{shown.map((p, i) => <li key={p.k}><i style={{ background: p.c ?? colours[i % colours.length] }} />{p.k} <b>{fmt(p.v)}</b>{unit ? ` ${unit}` : ""}</li>)}</ul>
     </div>
   );

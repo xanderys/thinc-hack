@@ -26,7 +26,7 @@ export const MIN_KWP = 3;                 // under this the roof cannot carry a 
 export const MAX_PAYBACK_YEARS = 20;
 const MODULE_KWP = 0.45;                  // the engine's standard module (450 W)
 
-type LeadLike = Pick<Lead, "status" | "facts" | "address_or_postcode"> & Partial<Pick<Lead, "history" | "decision">>;
+type LeadLike = Pick<Lead, "status" | "facts" | "address_or_postcode"> & Partial<Pick<Lead, "history" | "decision" | "sources">>;
 
 const n2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("en-GB");
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-GB");
@@ -46,16 +46,18 @@ export function qualify(lead: LeadLike, design: DesignResponse | null | undefine
   const fromBill = asked.has("monthly_bill_eur");
   const useStated = f.annual_demand_kwh !== DEFAULT_ANNUAL_KWH || asked.has("annual_demand_kwh") || fromBill;
 
+  // The engine says per fact whether it was stated or estimated (lead.sources); only a fact without an entry falls back to the guess from the facts.
+  const from = (key: string, guess: boolean): FactSource => { const x = lead.sources?.[key]; return x ? (x === "estimated" ? "estimated" : "stated") : guess ? "stated" : "estimated"; };
   const list: Qualification["facts"]["list"] = [
-    { field: "address", source: hasStreet ? "stated" : "estimated" },
-    { field: "annual_use", source: useStated ? "stated" : "estimated" },
-    { field: "people", source: f.num_inhabitants ? "stated" : "estimated" },
-    { field: "floor_area", source: f.house_size_sqm ? "stated" : "estimated" },
-    { field: "build_year", source: f.house_built_year ? "stated" : "estimated" },
-    { field: "heating_type", source: f.heating_type && f.heating_type !== "Unknown" ? "stated" : "estimated" },
-    { field: "heating_bill", source: f.heating_cost_per_year_eur != null ? "stated" : "estimated" },
-    { field: "ev", source: f.has_ev || f.ev_annual_km != null || asked.has("ev") || asked.has("has_ev") ? "stated" : "estimated" },
-    { field: "preference", source: f.preference || asked.has("preference") ? "stated" : "estimated" },
+    { field: "address", source: from("address", hasStreet) },
+    { field: "annual_use", source: from("annual_demand_kwh", useStated) },
+    { field: "people", source: from("num_inhabitants", !!f.num_inhabitants) },
+    { field: "floor_area", source: from("house_size_sqm", !!f.house_size_sqm) },
+    { field: "build_year", source: from("house_built_year", !!f.house_built_year) },
+    { field: "heating_type", source: from("heating_type", !!f.heating_type && f.heating_type !== "Unknown") },
+    { field: "heating_bill", source: from("heating_cost_per_year_eur", f.heating_cost_per_year_eur != null) },
+    { field: "ev", source: from("has_ev", !!f.has_ev || f.ev_annual_km != null || asked.has("ev") || asked.has("has_ev")) },
+    { field: "preference", source: from("preference", !!f.preference || asked.has("preference")) },
   ];
   const stated = list.filter((x) => x.source === "stated").length, total = list.length;
   list.push({ field: "roof", source: measuredRoof(roof) && roof.confidence === "measured" ? "measured" : "estimated" });
