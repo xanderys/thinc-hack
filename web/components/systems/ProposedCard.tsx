@@ -99,13 +99,22 @@ export default function ProposedCard({ kwp, kwh, price, pending, children, id }:
     return () => { ro.disconnect(); document.documentElement.style.removeProperty("--pc-peek"); };
   }, [side, paint]);
   useEffect(() => () => cancelAnimationFrame(st.current.raf), []);
+  // Esc, capture phase on window from mount: an open pass tucks; a tucked pass swallows it, so Esc never closes the lead
+  // (the chevron is the way back). A kit chooser registers its own capture handler earlier and closes first.
+  const openNow = useRef(open); openNow.current = open;
+  const toRef = useRef(to); toRef.current = to;
   useEffect(() => {
-    if (!open) return;
-    // Capture phase on window: Esc tucks the pass and stops there, so the board's Esc (close the lead) never runs.
-    const esc = (e: KeyboardEvent) => { if (e.key !== "Escape") return; e.stopPropagation(); e.preventDefault(); to(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key !== "Escape") return; e.stopPropagation(); e.preventDefault(); if (openNow.current) toRef.current(false); };
     addEventListener("keydown", esc, true);
     return () => removeEventListener("keydown", esc, true);
-  }, [open, to]);
+  }, []);
+  // The page stays still under an open pass (no scroll behind it on iOS); a tucked pass leaves the page alone.
+  useEffect(() => {
+    if (!open) return;
+    const b = document.body.style, was = b.overflow;
+    b.overflow = "hidden";
+    return () => { b.overflow = was; };
+  }, [open]);
 
   // Drag on the pass: 1:1 after 10 px, then the release velocity projects where it lands (Apple's 0.998 rate).
   const drag = useRef<{ x: number; y: number; p0: number; on: boolean; hist: { t: number; p: number }[]; id: number } | null>(null);
@@ -161,7 +170,7 @@ export default function ProposedCard({ kwp, kwh, price, pending, children, id }:
             <path d="M5 12.5l5-5 5 5" />
           </svg>
         </button>
-        <div className="pc-body" inert={!open}>
+        <div className="pc-body" inert={!open} aria-hidden={!open || undefined}>
           {children}
         </div>
       </div></div>

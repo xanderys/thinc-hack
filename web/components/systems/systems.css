@@ -39,6 +39,8 @@
 .pc-chev { grid-area: chev; color: var(--ink-3); transition: transform 300ms var(--spring-smooth); }
 .pc-open .pc-chev { transform: rotate(180deg); }
 .pc-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* Tucked: the hidden body neither scrolls nor catches a rubber-band. */
+.pc:not(.pc-open) .pc-body { overflow: hidden; }
 .pc-body > aside { border: 0; border-radius: 0; margin: 0; padding-top: 4px; padding-bottom: 0; }
 /* Approve stays at the bottom of the open card; the rest scrolls under it. */
 .pc-body [class*="offer_approve__"] { position: sticky; bottom: 0; z-index: 2; background: #fff; margin: 0 -12px; padding: 8px 12px 10px; border-top: 1px solid var(--rule); }
