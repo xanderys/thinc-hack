@@ -26,7 +26,7 @@ export default function TopBar(p: Props) {
   const i = p.inputs;
   return (
     <section className="t-bar" aria-label="Inputs and decisions">
-      {p.liveAsking && <p className="t-asking" aria-live="polite"><span className="dot" aria-hidden />Asking: {p.liveAsking}</p>}
+      {p.liveAsking && <p className="t-asking" aria-live="polite"><span className="dot" aria-hidden /><span className="q" title={p.liveAsking}>{p.liveAsking}</span></p>}
       {p.question && (
         <div className="t-ask s-in">
           <span>{QUESTION[p.question.field] ?? `What is ${String(p.question.field)}?`}</span>

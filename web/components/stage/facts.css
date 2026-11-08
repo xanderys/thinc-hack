@@ -47,3 +47,6 @@
 .fc-phone input[aria-invalid="true"] { border-color: var(--bad); }
 .fc-phone .u { font-size: 13px; color: var(--ink-3); }
 .fc-phone .u.err { color: var(--bad); }
+
+/* No browser ring on the fact editors: keyboard focus tints the field's own border, no glow. */
+.fc-num input:focus, .fc-num input:focus-visible, .fc-phone input:focus, .fc-phone input:focus-visible, .fc-panel select:focus, .fc-panel select:focus-visible { outline: none; border-color: color-mix(in srgb, var(--accent) 40%, transparent); }

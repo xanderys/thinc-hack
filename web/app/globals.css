@@ -657,7 +657,10 @@ table.data td.tol { font-size: 12.5px; color: var(--ink-2); max-width: 220px; }
 .b-open-h.live p { color: rgba(244, 241, 234, 0.85); }
 .b-open-h.live .b-close { border-color: var(--paper); color: var(--paper); }
 .t-asking { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 15px; padding: 10px 12px; background: var(--sheet-2); border: 1px solid var(--accent); }
-.t-asking .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.t-asking .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+/* The question wraps to two lines and ends in an ellipsis, never cut to its first word. */
+.t-asking { min-width: 0; }
+.t-asking .q { flex: 1 1 auto; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: break-word; }
 @media (prefers-reduced-motion: no-preference) { .t-asking .dot { animation: s-pulse 1.6s ease-in-out infinite; } }
 
 /* Reonic grammar (8 Nov 2026): rounded panels, pill chips, white cards on off-white, one compact top bar. */
