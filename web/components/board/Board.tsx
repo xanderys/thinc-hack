@@ -341,7 +341,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
             <li key={c.id}>
               <button type="button" className={lv ? "b-card live" : "b-card"} style={{ viewTransitionName: `card-${c.id}` }} onClick={() => open(c.id)}>
                 {lv && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
-                <span className="b-top"><span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{st === c.status && c.label ? c.label : STATUS[st]}</span>{c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
+                <span className="b-top">{!dec && <span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{st === c.status && c.label ? c.label : STATUS[st]}</span>}{c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
                 <span className="b-name">{c.name}</span>
                 <span className="b-place">{c.place}</span>
                 {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><ModelThumb lead={designs[c.id]?.lead} design={c.design} /></span>}
