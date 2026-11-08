@@ -20,9 +20,9 @@ import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
 const BLUE = new THREE.Color("#374be6");
-// Sun heatmap: one muted ramp from the roof that gets least sun (blue-grey) to the most (soft orange).
-const HEAT_LO = new THREE.Color("#7f97b5");
-const HEAT_HI = new THREE.Color("#e2a066");
+// Sun heatmap: one muted ramp, least sun to most, through a light sand middle so no face reads as grey-pink.
+const HEAT = [new THREE.Color("#4f7cb3"), new THREE.Color("#ece2c6"), new THREE.Color("#dd8a3e")];
+const heatColour = (out: THREE.Color, s: number) => (s < 0.5 ? out.copy(HEAT[0]).lerp(HEAT[1], s * 2) : out.copy(HEAT[1]).lerp(HEAT[2], (s - 0.5) * 2));
 const SUN = new THREE.Color("#E8730C");
 const INK = "#0A0C14";
 const NEIGHBOUR = "#B4B1A9";
@@ -757,8 +757,8 @@ export class SpatialScene {
       if (mode === "yield") {
         const y = p.yield_shaded_kwh_per_kwp ?? p.yield_kwh_per_kwp;
         const s = Math.max(0, Math.min(1, (y - 650) / 500));
-        m.color.copy(HEAT_LO).lerp(HEAT_HI, s);
-        m.userData.goal = 0.78;
+        heatColour(m.color, s);
+        m.userData.goal = 0.88;
       } else if (mode === "off") m.userData.goal = 0;
     });
   }

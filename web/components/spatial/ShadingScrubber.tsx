@@ -6,6 +6,19 @@ import { dayHours, SHADE_GRADIENT, setShadeAt, setShadeOn, useShadeView, useShad
 import s from "./ShadingScrubber.module.css";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// Sunrise to sunset on the 15th of month m as the hours h whose h:30 has the sun up, at Munich (48.14 N, 11.58 E),
+// German clock time (summer time April to October). Declination and equation of time from the NOAA approximations,
+// within a few minutes: enough for whole half-past slots. Hours outside the engine's data read "no direct sun".
+const DOY = [15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349];
+function sunHours(m: number): [number, number] {
+  const n = DOY[m - 1], rad = Math.PI / 180, lat = 48.14, lon = 11.58;
+  const dec = 23.44 * Math.sin((2 * Math.PI * (284 + n)) / 365);
+  const w0 = Math.acos(Math.max(-1, Math.min(1, -Math.tan(lat * rad) * Math.tan(dec * rad)))) / rad;
+  const B = (2 * Math.PI * (n - 81)) / 364, eot = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+  const noon = 12 - lon / 15 + (m >= 4 && m <= 10 ? 2 : 1) - eot / 60, half = w0 / 15;
+  return [Math.ceil(noon - half - 0.5), Math.floor(noon + half - 0.5)];
+}
+const hh = (h: number) => `${String(h).padStart(2, "0")}:30`;
 const pct1 = (x: number) => `${(Math.round(x * 1000) / 10).toLocaleString("en-GB")} %`;
 const n0 = (x: number) => Math.round(x).toLocaleString("en-GB");
 
@@ -26,7 +39,9 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
   if (!data || !data.modules.length) return null;
 
   const month = at?.m ?? 6;
-  const [lo, hi] = dayHours(data, month);
+  // A month's slider runs sunrise to sunset, and wider if the engine has sun on a module outside it.
+  const span = (m: number): [number, number] => { const [a, b] = dayHours(data, m), [c, d] = sunHours(m); return [Math.min(a, c), Math.max(b, d)]; };
+  const [lo, hi] = span(month);
   const hour = at ? Math.min(hi, Math.max(lo, at.h)) : Math.round((lo + hi) / 2);
   const lit = at ? data.modules.map((m) => m.hourly[at.m - 1]?.[at.h]).filter((v): v is number => v != null) : [];
   const litShare = lit.length ? lit.reduce((a, b) => a + b, 0) / lit.length : null;
@@ -43,13 +58,13 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
           <div className={s.monthsC} role="group" aria-label="Month">
             <button type="button" aria-pressed={!at} onClick={() => setShadeAt(null)}>Year</button>
             {MONTHS.map((m, i) => (
-              <button key={m} type="button" aria-pressed={!!at && at.m === i + 1} aria-label={m} onClick={() => { const [a, b] = dayHours(data, i + 1); setShadeAt({ m: i + 1, h: Math.min(b, Math.max(a, at?.h ?? 13)) }); }}>{m[0]}</button>
+              <button key={m} type="button" aria-pressed={!!at && at.m === i + 1} aria-label={m} onClick={() => { const [a, b] = span(i + 1); setShadeAt({ m: i + 1, h: Math.min(b, Math.max(a, at?.h ?? 13)) }); }}>{m[0]}</button>
             ))}
           </div>
-          <input type="range" min={lo} max={hi} step={1} value={hour} aria-label="Hour of the day" onChange={(e) => setShadeAt({ m: month, h: Number(e.target.value) })} />
+          <input type="range" min={lo + 0.5} max={hi + 0.5} step={1} value={hour + 0.5} aria-valuetext={hh(hour)} aria-label="Hour of the day" onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)) })} />
         </div>
       )}
-      {on && <span className={s.whenC}>{at ? `15 ${MONTHS[at.m - 1]}, ${String(at.h).padStart(2, "0")}:30${litShare != null ? `, ${Math.round(litShare * 100)} % in sun` : ", no direct sun"}` : "Solar access over the year"}</span>}
+      {on && <span className={s.whenC}>{at ? `15 ${MONTHS[at.m - 1]}, ${hh(at.h)}${litShare != null ? `, ${Math.round(litShare * 100)} % in sun` : ", no direct sun"}` : "Solar access over the year"}</span>}
       {src && <p className={s.src}>{data.source}</p>}
     </div>
   );
@@ -64,13 +79,13 @@ export default function ShadingPanel({ address, kwp, solarStage, float, compact,
           <div className={s.months} role="group" aria-label="Month">
             <button type="button" className={s.year} aria-pressed={!at} onClick={() => setShadeAt(null)}>Across the year</button>
             {MONTHS.map((m, i) => (
-              <button key={m} type="button" aria-pressed={!!at && at.m === i + 1} aria-label={m} onClick={() => { const [a, b] = dayHours(data, i + 1); setShadeAt({ m: i + 1, h: Math.min(b, Math.max(a, at?.h ?? 13)) }); }}>{m[0]}</button>
+              <button key={m} type="button" aria-pressed={!!at && at.m === i + 1} aria-label={m} onClick={() => { const [a, b] = span(i + 1); setShadeAt({ m: i + 1, h: Math.min(b, Math.max(a, at?.h ?? 13)) }); }}>{m[0]}</button>
             ))}
           </div>
           <div className={s.hour}>
-            <input type="range" min={lo} max={hi} step={1} value={hour} aria-label="Hour of the day"
-              onChange={(e) => setShadeAt({ m: month, h: Number(e.target.value) })} />
-            <span className={s.when}>{at ? `15 ${MONTHS[at.m - 1]}, ${String(at.h).padStart(2, "0")}:30${litShare != null ? `, ${Math.round(litShare * 100)} % in sun` : ", no direct sun"}` : "Solar access over the year"}</span>
+            <input type="range" min={lo + 0.5} max={hi + 0.5} step={1} value={hour + 0.5} aria-valuetext={hh(hour)} aria-label="Hour of the day"
+              onChange={(e) => setShadeAt({ m: month, h: Math.floor(Number(e.target.value)) })} />
+            <span className={s.when}>{at ? `15 ${MONTHS[at.m - 1]}, ${hh(at.h)}${litShare != null ? `, ${Math.round(litShare * 100)} % in sun` : ", no direct sun"}` : "Solar access over the year"}</span>
           </div>
           <p className={s.src}>{data.source}</p>
         </div>
