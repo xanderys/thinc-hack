@@ -41,7 +41,7 @@ export default function InlineOverride({ field, text, unit, sizes, current, set,
       <button type="button" className={s.lineBtn} aria-expanded={open} onClick={() => setOpen((x) => !x)}>
         {glyph && <Glyph k={glyph} size={15} />}
         <span className={s.lineText}>{text}</span>
-        {locked && <span className={s.set}><Glyph k="lock" size={12} />set by you</span>}
+        {locked && <span className={s.set}><Glyph k="lock" size={12} />Set by you</span>}
       </button>
       {open && (
         <div className={s.chooser} role="menu" aria-label={text}>
