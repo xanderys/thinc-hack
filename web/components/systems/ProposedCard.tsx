@@ -14,6 +14,7 @@ type Props = {
   title?: string; figs?: Fig[]; lift?: number;   // the homeowner page reuses the pass for its sign card, stacked above the safe area by lift px
   none?: string | null;   // no design applies to this building: no figures, this line, and Approve disabled
   undo?: { can: boolean; run: () => void };   // open card: Undo in the header row, one edit at a time
+  labels?: Partial<Record<Fig["k"], string>>;   // tile labels other than Solar, Battery, Investment (a shared building)
 };
 
 const n = (x: number, d: number) => (Math.round(x * 10 ** d) / 10 ** d).toLocaleString("en-GB");
@@ -25,7 +26,7 @@ function useReduce() {
   return r;
 }
 
-export default function ProposedCard({ kwp, kwh, price = 0, pending, children, id, none: noneIn, title = "Proposed Design", figs: figsIn, lift = 0, undo }: Props) {
+export default function ProposedCard({ kwp, kwh, price = 0, pending, children, id, none: noneIn, title = "Proposed Design", figs: figsIn, lift = 0, undo, labels }: Props) {
   // A drafted design always shows; the "no design" line is only for a lead with nothing drafted.
   const none = kwp || kwh ? null : noneIn;
   const side = "bottom" as const;
@@ -153,9 +154,9 @@ export default function ProposedCard({ kwp, kwh, price = 0, pending, children, i
   // The standard three (solar, battery, investment) show as the card's first tile row, tucked and open alike; any
   // other figures (the homeowner's sign card) stay one inline line.
   const TILE: Record<Fig["k"], string> = { kwp: "Solar", kwh: "Battery", price: "Investment" };
-  const tiles = figs.length === 3 && figs.every((f, i) => f.k === (["kwp", "kwh", "price"] as const)[i]);
+  const tiles = labels ? figs.length > 0 : figs.length === 3 && figs.every((f, i) => f.k === (["kwp", "kwh", "price"] as const)[i]);
   const tile = (f: Fig) => (
-    <span key={f.k} className="pc-tile"><span className="pc-tl">{TILE[f.k]}</span>
+    <span key={f.k} className="pc-tile"><span className="pc-tl">{labels?.[f.k] ?? TILE[f.k]}</span>
       {pending ? <b className="pc-skel" aria-hidden="true">{f.v}</b> : <b><Num v={f.v} lit /></b>}</span>
   );
   const figure = (f: Fig) => pending

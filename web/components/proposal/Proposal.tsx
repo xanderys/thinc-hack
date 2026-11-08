@@ -10,6 +10,8 @@ import KitSlot from "@/components/home/KitSlot";
 import HomeSystems from "@/components/home/HomeSystems";
 import SystemsChips from "@/components/systems/SystemsChips";
 import ProposedCard from "@/components/systems/ProposedCard";
+import SharedBuilding, { SHARED_TILE_LABELS, sharedFigs } from "@/components/systems/SharedBuilding";
+import { designKind, sharedOf } from "@/lib/building";
 import Tiles from "@/components/offer/Tiles";
 import type { SystemName } from "@/components/systems/system";
 import type { Layers } from "@/components/spatial/types";
@@ -63,6 +65,7 @@ type Props = {
 
 export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const { key, design, economics: e } = offered(lead);
+  if (designKind(lead.draft as Parameters<typeof designKind>[0]) === "shared_building") return <SharedProposal lead={lead} brand={brand} startedAt={startedAt} onDecided={onDecided} />;
   if (!design || !e) return <ProposalSkeleton />;   // a lead whose design is not in yet
   const variants = lead.draft.variants ?? [];
   const address = lead.address_or_postcode ?? "";
@@ -252,4 +255,44 @@ export function ProposalSkeleton() {
 // A blank shimmer bar of a fixed width: no placeholder text, so nothing readable if the shimmer style is missing.
 function Bar({ w }: { w: string }) {
   return <span className="pp-skt" style={{ width: w }}>{"\u00a0"}</span>;
+}
+
+// A shared building: the building as drawn, the whole roof for the owners, a balcony system for this flat, the
+// wallbox if any; no flat-level kit and no price the engine did not send.
+function SharedProposal({ lead, brand, startedAt, onDecided }: Props) {
+  const [sys, setSys] = useState<SystemName>("panels");
+  const address = lead.address_or_postcode ?? "";
+  const design = lead.draft.design;
+  const sh = sharedOf(lead.draft as Parameters<typeof sharedOf>[0]);
+  const comp = (k: string) => (lead.draft.components as unknown as Record<string, { none_reason?: string | null; note?: string | null } | undefined> | undefined)?.[k];
+  const v = (lead.draft as { verdict?: { label?: string | null; next_action?: string | null } | null }).verdict ?? null;
+  const name = lead.customer_name?.trim();
+  const mark = lead.status === "signed" ? "Signed" : lead.status === "declined" ? "Declined" : null;
+  const decided = lead.status === "signed" ? "Signed" : lead.status === "declined" ? "Declined" : lead.status === "question" ? "Question sent" : "Sign";
+  return (
+    <article className="pp pp-dock" aria-label="Your proposal">
+      <header className="pp-top">
+        <p className="pp-brand">{brand}</p>
+        {mark && <p className="pp-mark">{mark}</p>}
+      </header>
+      <SystemsChips active={sys} onPick={setSys} />
+      <section className="pp-stage" aria-label="Your home">
+        {hasStreet(address) && design ? (
+          <div className="pp-spatial">
+            <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={design} address={address} response={lead.draft} bare homeowner endpoints={{ layers: `/start/proposal/${encodeURIComponent(lead.lead_id)}/layers`, layersGet: true }} system={sys} />
+          </div>
+        ) : <div className="pp-skb" style={{ height: "100%", borderRadius: 20 }} aria-hidden />}
+      </section>
+      <ProposedCard title="Proposed Design" figs={sharedFigs(sh.roof, sh.balcony, design?.wallbox_kw)} labels={SHARED_TILE_LABELS} pending={false} lift={76}>
+        <div className="pp-open">
+          <section className="pp-card" aria-label="Your system">
+            <SharedBuilding roof={sh.roof} balcony={sh.balcony} wallboxKw={design?.wallbox_kw} noteWallbox={comp("wallbox")?.note} noneBattery={comp("battery")?.none_reason} noneHeatpump={comp("heatpump")?.none_reason} verdict={v} />
+          </section>
+        </div>
+      </ProposedCard>
+      <ProposedCard title={decided} figs={name ? [{ k: "kwp", v: name }] : []} pending={false}>
+        <Decision lead={lead} brand={brand} startedAt={startedAt} onDecided={onDecided} />
+      </ProposedCard>
+    </article>
+  );
 }

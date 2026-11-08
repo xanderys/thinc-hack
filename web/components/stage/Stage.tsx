@@ -494,7 +494,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const done = () => { setApprovedAt(berlinTime(at.toISOString())); if (leadRef.current) onApproved?.(leadRef.current); };
     const id = leadRef.current;
     if (!id) { done(); return null; }
-    const screen = { design: res.design, capex: res.economics.capex_eur };
+    const screen = { design: res.design, capex: res.economics?.capex_eur ?? 0 };
     // The draft the card holds carries every offer's design_hash: no read of the lead before saving (read only when it is missing).
     let held: { lead: LeadT; version: number | null } | null = drafted?.variants?.some((v) => v.design_hash) ? { lead: { draft: drafted } as unknown as LeadT, version: baseVersion.current } : null;
     if (!held) { const before = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`); if (!before.ok) return before.error; held = { lead: before.data, version: before.data.version ?? baseVersion.current }; }

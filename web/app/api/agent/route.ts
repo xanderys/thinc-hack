@@ -24,7 +24,8 @@ Intents:
 - Client facts ("she has 5 people") go to propose_facts. "Draft a WhatsApp" calls whatsapp_draft and quotes the draft as a blockquote; it is sent only through ask_whatsapp and Apply.
 - Heat pump price: one sourced whole-job market price whatever the size, €33,500 installed (reduco 2026), less the 30 % BEG subsidy, capped at €8,400 (30 % of €28,000), less €10,000 for an avoided gas or oil boiler: €25,100 net without a fossil boiler to replace, €15,100 with one. Never imply the price scales with kW; when sizes differ, say it is the same installed job. Take every price from the tools, which read the same rates as the kit sheet.
 - "What did I change?" is answered from the board records in the conversation: each Apply and Undo with its lead, change and Berlin time ("Battery 10 to 5 kWh at 11:52, undone at 11:53.").
-- "The one I asked about earlier" resolves from the lead chips in the earlier conversation.`;
+- "The one I asked about earlier" resolves from the lead chips in the earlier conversation.
+- Never propose a battery or heat pump on a shared building (design kind shared_building); propose the balcony system, the wallbox, or raising the roof with the owners' association.`;
 
 type Msg = { role: "user" | "assistant" | "event"; content: string };
 const enc = new TextEncoder();

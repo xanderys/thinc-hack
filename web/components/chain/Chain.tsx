@@ -10,7 +10,8 @@ import { COMPONENT_DESIGN_FIELD, INSTALLER_NAME } from "@/lib/api";
 import type { Layers, Bar, Check, RoofModel } from "@/components/spatial/types";
 import LayersMenu from "@/components/spatial/LayersMenu";
 import { findRot, rotLine } from "@/lib/rot";
-import { isMultiUnit } from "@/lib/building";
+import { designKind, isMultiUnit, sharedOf } from "@/lib/building";
+import SharedBuilding, { SHARED_LINES, SHARED_TILE_LABELS, sharedFigs } from "@/components/systems/SharedBuilding";
 import { setShadeOn, useShading } from "@/lib/shading";
 import { POSES, type StageView } from "@/components/spatial/camera";
 import type { Variant } from "@/components/stage/Plan";
@@ -89,7 +90,10 @@ function useReduce() {
   return r;
 }
 
-export default function Chain({ res, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, decide, redraft, setKit }: Props) {
+export default function Chain({ res: res0, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, decide, redraft, setKit }: Props) {
+  // A shared building's draft has no economics and no variants (engine, kind shared_building): zeros keep the shared
+  // code paths running, and nothing on a shared building shows a figure from them.
+  const res = useMemo(() => res0.economics ? res0 : { ...res0, economics: { capex_eur: 0, annual: { pv_yield_kwh: 0, fed_in_kwh: 0, grid_import_kwh: 0 }, assumptions: [] } as unknown as DesignResponse["economics"], variants: res0.variants ?? [] }, [res0]);
   const reduce = useReduce();
   const causeRef = useRef(cause); causeRef.current = cause;
   // A change made from the Offer panel or Undo keeps the planner in the Offer: no stage or camera move on the re-run.
@@ -209,12 +213,17 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   const model: RoofModel | null = layers ? (Array.isArray(layers.planes) ? null : layers.planes) : null;
   // A flat in an apartment block: the roof and the envelope are the building's, not the household's.
-  const building = model ? isMultiUnit(model, inputs) : null, multi = !!building?.multi;
+  const building = model ? isMultiUnit(model, inputs) : null;
+  const shared = designKind(res as Parameters<typeof designKind>[0], model, inputs) === "shared_building", multi = shared || !!building?.multi;
+  const sh = sharedOf(res as Parameters<typeof sharedOf>[0]);
+  const comp = (k: string) => (res.components as unknown as Record<string, { none_reason?: string | null; note?: string | null } | undefined>)?.[k];
   const hasEnv = !multi && !!model?.envelope?.faces?.length;
+  const verdictOf = (res as { verdict?: { label?: string | null; next_action?: string | null } | null }).verdict ?? null;
   useEffect(() => {
-    if (!building) return;
-    dispatchEvent(new CustomEvent("marquee:building", { detail: { leadId: leadId ?? null, multi: building.multi, reason: building.reason } }));
-  }, [building?.multi, building?.reason, leadId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!building && !shared) return;
+    dispatchEvent(new CustomEvent("marquee:building", { detail: { leadId: leadId ?? null, multi: shared || !!building?.multi, reason: building?.reason ?? "", shared,
+      verdict: shared ? verdictOf?.label ?? SHARED_LINES.verdict : null, next: shared ? verdictOf?.next_action ?? SHARED_LINES.next : null } }));
+  }, [building?.multi, building?.reason, leadId, shared, verdictOf?.label, verdictOf?.next_action]); // eslint-disable-line react-hooks/exhaustive-deps
   // Per-panel shading lives on Panels only: it turns on there and fades out when the planner moves on.
   const shading = useShading(address, res.design.pv_kwp);
   const onPanels = FIVE && stage === 1;
@@ -587,6 +596,17 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       };
     })(),
   };
+  if (shared) {
+    // A shared building: the whole roof for the owners, a balcony system for this flat, the wallbox if any; battery and heat pump withheld.
+    const wbKw = d.wallbox_kw, kwp = sh.roof?.kwp;
+    const line = (t: string) => <p>{t}</p>;
+    sysBody.panels = { head: <Head main={kwp ? `${n2(kwp)} kWp` : "Whole roof"} sub="whole roof" />, label: kwp ? `Whole roof ${n2(kwp)} kWp` : "Whole roof",
+      body: <SharedBuilding roof={sh.roof} balcony={sh.balcony} part="panels" />, info: line(SHARED_LINES.model) };
+    sysBody.battery = { head: <Head main="No battery" />, label: "No battery", body: line(comp("battery")?.none_reason ?? SHARED_LINES.battery), info: null };
+    sysBody.heatpump = { head: <Head main="No heat pump" />, label: "No heat pump", body: line(comp("heatpump")?.none_reason ?? SHARED_LINES.heatpump), info: null };
+    sysBody.wallbox = wbKw ? { head: <Head main={`Wallbox ${n1(wbKw)} kW`} />, label: `${n1(wbKw)} kW wallbox`, body: line(comp("wallbox")?.note ?? SHARED_LINES.wallbox), info: null }
+      : { head: <Head main="No wallbox" />, label: "No wallbox", body: line(SHARED_LINES.wallbox), info: null };
+  }
   const cardNow = sysNow ? sysBody[sysNow] : null;
   const sysCard = sysNow && cardNow && (
     <SystemCard sys={sysNow} head={cardNow.head} label={cardNow.label} info={cardNow.info} pending={waiting}
@@ -595,7 +615,11 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     </SystemCard>
   );
   // A flat in an apartment block: the engine's single-family design does not apply, so the pass shows none and Approve waits.
-  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={investmentOf(res as Parameters<typeof investmentOf>[0])} pending={waiting} none={multi ? "No design for this building yet" : null}>{offer(false, true)}</ProposedCard>;
+  const card = shared ? (
+    <ProposedCard side="bottom" id={leadId} pending={waiting} figs={sharedFigs(sh.roof, sh.balcony, d.wallbox_kw)} labels={SHARED_TILE_LABELS}>
+      <SharedBuilding roof={sh.roof} balcony={sh.balcony} wallboxKw={d.wallbox_kw} noteWallbox={comp("wallbox")?.note} noneBattery={comp("battery")?.none_reason} noneHeatpump={comp("heatpump")?.none_reason} verdict={verdictOf} />
+    </ProposedCard>
+  ) : <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={investmentOf(res as Parameters<typeof investmentOf>[0])} pending={waiting} none={multi ? "No design for this building yet" : null}>{offer(false, true)}</ProposedCard>;
   const overlays = (
     <>
       {!SYS && address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}

@@ -19,6 +19,8 @@ import { pastLine } from "@/lib/past";
 import Blocking from "@/components/stage/Blocking";
 import { ClientChevron } from "@/components/stage/clientCard";
 import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
+import { designKind, sharedOf } from "@/lib/building";
+import { SHARED_LINES } from "@/components/systems/SharedBuilding";
 
 // The facts count is the verdict chip's tooltip, never part of the line.
 const factsTip = (q: { facts?: { stated: number; total: number }; confidence_line?: string }) => `${q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : q.confidence_line?.split(",")[0] ?? ""}. Estimates until the site visit.`.replace(/^\. /, "");
@@ -37,7 +39,7 @@ const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 
 type Kept = NonNullable<ReturnType<typeof recallVerdict>>;
-type Card = { id: string; name: string; place: string; status: LeadT["status"]; label?: string; updated: string; design?: Design; edited?: boolean; line: string; created?: string; decision?: LeadRow["decision"]; q: Kept | null };
+type Card = { id: string; name: string; place: string; status: LeadT["status"]; label?: string; updated: string; design?: Design; edited?: boolean; line: string; created?: string; decision?: LeadRow["decision"]; q: Kept | null; sh?: { label: string; next: string; line: string } | null };
 /** What the lead stands on: the approved design and its economics once approved or signed, else the stored draft. */
 const standing = (l: LeadT): DesignResponse => l.approved?.design ? { ...l.draft, design: l.approved.design, economics: l.approved.economics ?? l.draft.economics } : l.draft;
 
@@ -55,6 +57,13 @@ function span(from?: string | null, to?: string | null) {
   const m = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 60000));
   return m < 60 ? `${m} min` : m < 2880 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.round(m / 1440)} days`;
 }
+// A shared building (engine kind shared_building): the verdict, the next action and a line with no flat-kit figures.
+const sharedCard = (res?: DesignResponse | null) => {
+  if (!res || designKind(res as Parameters<typeof designKind>[0]) !== "shared_building") return null;
+  const v = (res as { verdict?: { label?: string | null; next_action?: string | null } | null }).verdict, { roof, balcony } = sharedOf(res as Parameters<typeof sharedOf>[0]);
+  const line = [roof?.kwp ? `Whole roof ${roof.kwp.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWp` : "Whole roof", balcony ? "balcony" : null, res.design?.wallbox_kw ? "wallbox" : null].filter(Boolean).join(" + ");
+  return { label: v?.label ?? SHARED_LINES.verdict, next: v?.next_action ?? SHARED_LINES.next, line };
+};
 const lineOf = (d?: Design, title?: string) => d
   ? [d.pv_kwp != null && `${d.pv_kwp.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWp`, d.battery_kwh != null && `${d.battery_kwh.toLocaleString("en-GB", { maximumFractionDigits: 2 })} kWh`, d.heatpump_kw != null && `${d.heatpump_kw} kW heat pump`, d.wallbox_kw != null && "wallbox"].filter(Boolean).join(" + ") || "Nothing to fit"
   : title?.split(": ").slice(1).join(": ") ?? "";
@@ -204,8 +213,8 @@ export default function Board({ openId: initial }: { openId?: string }) {
   const cards: Card[] = useMemo(() => {
     const out = (rows ?? []).map((r) => {
       const ext = r as LeadRow & { updated_at?: string };
-      const d = designs[r.lead_id]?.d;
-      return { id: r.lead_id, name: r.customer_name ?? r.title.split(",")[0], place: r.address_or_postcode ?? "", status: r.status, label: r.status_label, updated: ext.updated_at ?? r.created_at ?? "", design: d, edited: designs[r.lead_id]?.edited, line: lineOf(d, r.title), created: r.created_at, decision: r.decision, q: verdicts[r.lead_id] ?? kept[r.lead_id] ?? null };
+      const d = designs[r.lead_id]?.d, sh = sharedCard(designs[r.lead_id]?.res);
+      return { sh, id: r.lead_id, name: r.customer_name ?? r.title.split(",")[0], place: r.address_or_postcode ?? "", status: r.status, label: r.status_label, updated: ext.updated_at ?? r.created_at ?? "", design: d, edited: designs[r.lead_id]?.edited, line: sh ? sh.line : lineOf(d, r.title), created: r.created_at, decision: r.decision, q: verdicts[r.lead_id] ?? kept[r.lead_id] ?? null };
     });
     const isLive = (c: Card) => !!live[c.id] || c.status === "in_call";
     return [...out.filter(isLive), ...out.filter((c) => !isLive(c))];
@@ -289,9 +298,9 @@ export default function Board({ openId: initial }: { openId?: string }) {
   }, []);
 
   // The open card's chain reports when the building is an apartment block (lib/building.ts).
-  const [shared, setShared] = useState<{ id: string | null; reason: string } | null>(null);
+  const [shared, setShared] = useState<{ id: string | null; reason: string; verdict?: string | null; next?: string | null } | null>(null);
   useEffect(() => {
-    const on = (e: Event) => { const d = (e as CustomEvent<{ leadId: string | null; multi: boolean; reason: string }>).detail; setShared(d.multi ? { id: d.leadId, reason: d.reason } : null); };
+    const on = (e: Event) => { const d = (e as CustomEvent<{ leadId: string | null; multi: boolean; reason: string; verdict?: string | null; next?: string | null }>).detail; setShared(d.multi ? { id: d.leadId, reason: d.reason, verdict: d.verdict, next: d.next } : null); };
     addEventListener("marquee:building", on); return () => removeEventListener("marquee:building", on);
   }, []);
   useEffect(() => { setShared(null); }, [openId]);
@@ -348,8 +357,8 @@ export default function Board({ openId: initial }: { openId?: string }) {
             <HeaderUndo id={openId} />
           </div>
           <p className="b-l2" title={openCard?.place ?? ll?.address_or_postcode ?? undefined}>{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
-          <p className={`${qs.head} b-l3`}><VerdictChip verdict={openCard?.q?.verdict ?? null} tip={openCard?.q ? `${reasonOf(openCard.q)} ${factsTip(openCard.q)}`.trim() : undefined} /></p>
-          {shared && <p className="b-shared" title={shared.reason}>Large building, check the address</p>}
+          <p className={`${qs.head} b-l3`}>{shared?.verdict ? <><span className={`${qs.chip} ${qs.call_first}`}>{shared.verdict}</span> <span className={qs.cardWhy}>{shared.next}</span></> : <VerdictChip verdict={openCard?.q?.verdict ?? null} tip={openCard?.q ? `${reasonOf(openCard.q)} ${factsTip(openCard.q)}`.trim() : undefined} />}</p>
+          {shared && !shared.verdict && <p className="b-shared" title={shared.reason}>Large building, check the address</p>}
           {ll && ll.draft?.design && !shared && (ll.draft.roof as { capacity_source?: string } | null | undefined)?.capacity_source === "typical house" && <p className="b-shared">Roof from typical house</p>}
         </div>
         <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />
@@ -390,15 +399,15 @@ export default function Board({ openId: initial }: { openId?: string }) {
             <li key={c.id} className="b-wrapcard">
               <button type="button" className={lv ? "b-card live" : "b-card"} style={{ viewTransitionName: `card-${c.id}` }} onClick={() => open(c.id)}>
                 {lv && <span className="s-live-mesh" aria-hidden><i /><i /><i /></span>}
-                <span className="b-top">{!dec && <span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{st === c.status && c.label ? c.label : STATUS[st]}</span>}{c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
+                <span className="b-top">{!dec && <span className={`b-st ${st}`}>{lv && <span className="dot" aria-hidden />}{st === c.status && c.label ? c.label : STATUS[st]}</span>}{c.sh ? <span className={`${qs.chip} ${qs.call_first}`}>{c.sh.label}</span> : c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : !lv && <span className="b-skel b-skel-chip" aria-hidden />}</span>
                 <span className="b-name">{c.name}</span>
                 <span className="b-place">{c.place}</span>
                 {c.design && !lv && <span className="b-house" aria-hidden><ModelThumb lead={designs[c.id]?.lead} design={c.design} /></span>}
                 {!c.design && !lv && <span className="b-house b-skel b-skel-house" aria-hidden />}
                 {c.edited && <span className="b-edited">Edited</span>}
                 {c.design || lv ? <span className="b-line num">{c.line}</span> : <span className="b-skel b-skel-line" aria-hidden />}
-                {c.q ? <span className={`${qs.cardValue} num`}>{offerEur(c.q.expected_offer_eur)}</span> : !lv && <span className="b-skel b-skel-line short" aria-hidden />}
-                {c.q && c.q.verdict !== "visit" && !dec && <span className={qs.cardWhy}>{reasonOf(c.q)}</span>}
+                {c.sh ? <span className={qs.cardWhy}>{c.sh.next}</span> : c.q ? <span className={`${qs.cardValue} num`}>{offerEur(c.q.expected_offer_eur)}</span> : !lv && <span className="b-skel b-skel-line short" aria-hidden />}
+                {!c.sh && c.q && c.q.verdict !== "visit" && !dec && <span className={qs.cardWhy}>{reasonOf(c.q)}</span>}
                 {dec && <span className={`b-dec ${c.status}`}>{STATUS[c.status]} {berlinStamp(dec.decided_at)}{c.status === "signed" && span(c.created, dec.decided_at) ? `, ${span(c.created, dec.decided_at)} from enquiry` : ""}</span>}
                 {dec && c.status === "signed" && pastLine(designs[c.id]?.lead?.facts.installer_id) && <span className="b-today">{pastLine(designs[c.id]?.lead?.facts.installer_id)}</span>}
                 {dec && dec.matches_current === false && <span className="b-warn">Signed a different version than the one on file</span>}
@@ -414,7 +423,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
                   <button type="button" className="b-rowmain" style={{ viewTransitionName: `card-${c.id}` }} onClick={() => open(c.id)}>
                     <span className="b-rname">{c.name}</span>
                     <span className="b-rplace">{c.place}</span>
-                    {c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : <span className="b-skel b-skel-chip" aria-hidden />}
+                    {c.sh ? <span className={`${qs.chip} ${qs.call_first}`}>{c.sh.label}</span> : c.q ? <VerdictChip verdict={c.q.verdict} tip={factsTip(c.q)} /> : <span className="b-skel b-skel-chip" aria-hidden />}
                   </button>
                   <GapChips lead={designs[c.id]?.lead} address={c.place} onChanged={() => setTick((t) => t + 1)} />
                 </li>
