@@ -16,6 +16,7 @@ import { usePhoto } from "./PhotoView";
 import { snapKey } from "./snapshot";
 import LayersMenu from "./LayersMenu";
 import { isOrigin } from "@/lib/tilesGeo";
+import { isMultiUnit } from "@/lib/building";
 import { setImagery, useViewOpts, type Imagery } from "./whiteMode";
 import s from "./spatial.module.css";
 import ShadingPanel from "./ShadingScrubber";
@@ -154,7 +155,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const planes: RoofPlane[] = model?.planes ?? [];
   const panelList = useMemo(() => planes.filter((p) => p.is_target).flatMap((p) => p.chosen_panels.map((r: PanelRect) => ({ p, r }))), [planes]);
   const counts = useMemo(() => Object.fromEntries(planes.filter((p) => p.is_target).map((p) => [p.id, p.chosen_panels.length])), [planes]);
-  const envelope: Envelope | null = (model?.envelope && model.envelope.faces?.length ? model.envelope : null);
+  // Flats: the heat load is not estimated (the chain says so), so there is no envelope to draw, no x-ray and no legend.
+  const flat = !!model && isMultiUnit(model, inputs).multi;
+  const envelope: Envelope | null = (!flat && model?.envelope && model.envelope.faces?.length ? model.envelope : null);
   const plan = model?.plan && model.plan.outline?.length ? model.plan : null;
   const ids = [1, 2, 3, 4, 5, 6, ...(envelope ? [7] : []), ...(plan ? [8] : [])];
   const nSteps = ids.length;
@@ -236,6 +239,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     sc.show({ outlines: L <= 3, panels: L >= 3 && L !== 7, kit: L >= 4 && L <= 6, sun: L === 4, battery: L === 5 && !!design.battery_kwh ? "lit" : "plain" });
     sc.setTint(L === 2 || (sunTint && L === 3) ? "yield" : "off");
     sc.setWallbox(!!design.wallbox_kw);
+    sc.setUnits({ inverter: !!design.inverter_kw, heatpump: !!design.heatpump_kw, layer: L >= 4 && L <= 7 });
     if (L === 3 && prev !== 3 && prev < 3) sc.setPanels(panelList, !reduce);
     if (L === 4 && layers) sc.setDay(layers.day.hours, !reduce); else sc.setDay(null, false);
     if (L === 1) sc.setLabels(sc.planeLabels("roof"));
@@ -251,7 +255,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     }
     else sc.setLabels([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, design.battery_kwh, stage, sunTint]);
+  }, [L, ready, layers, panelKey, glbOk, !!envelope, modelGen, design.wallbox_kw, design.battery_kwh, design.inverter_kw, design.heatpump_kw, stage, sunTint]);
 
   // The plan layer is always top-down; the other layers keep the planner's choice.
   useEffect(() => { scene.current?.setView(L === 8 ? "2d" : view); scene.current?.setPlan(L === 8 ? plan : null); }, [view, ready, L, plan]);

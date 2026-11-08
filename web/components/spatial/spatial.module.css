@@ -140,3 +140,8 @@
 
 /* The homeowner's proposal: everything in the sans. */
 .homeowner, .homeowner * { font-family: var(--font-sans), sans-serif; }
+/* Phone: the model toolbar holds the bottom of the canvas, so the model tag and the attribution move to the top left. */
+@media (max-width: 700px) {
+  .massTag { top: 8px; bottom: auto; left: 8px; }
+  .licenceBare { top: 32px; bottom: auto; left: 8px; max-width: calc(100% - 16px); font-size: 9.5px; line-height: 1.3; }
+}

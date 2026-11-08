@@ -13,6 +13,7 @@ import { neighbourEdges, outlineMesh, registerGlb } from "./whiteContext";
 import { Xray } from "./xray";
 import { Systems, type System } from "./systems";
 import { googleGround, sharpen } from "./satGround";
+import { HEATPUMP, INVERTER, battery, heatPump, inverter, wallbox, withEdges } from "./kitMeshes";
 import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
@@ -113,6 +114,7 @@ export class SpatialScene {
   private tints = new THREE.Group();
   private panels = new THREE.Group();
   private kit = new THREE.Group();
+  private hpGroup = new THREE.Group(); // the heat pump unit: outside the kit layers, so the heat pump step shows it too
   private sunGroup = new THREE.Group();
   private sunDot!: THREE.Mesh;
   private sunLight = new THREE.DirectionalLight(0xffffff, 1.6);
@@ -123,6 +125,8 @@ export class SpatialScene {
   private focusPts: Record<Focus, THREE.Vector3> = { roof: new THREE.Vector3(), house: new THREE.Vector3(), drive: new THREE.Vector3(), battery: new THREE.Vector3(), wallbox: new THREE.Vector3(), west: new THREE.Vector3() };
   private fitD = 40;
   private wallbox: THREE.Mesh | null = null;
+  private inverterUnit: THREE.Object3D | null = null;
+  private hpUnit: THREE.Object3D | null = null;
   private fly: { pos: THREE.Vector3; tgt: THREE.Vector3; top: boolean } | null = null;
   private pose: Pose | null = null;
   private home: Pose | null = null;   // the current step's framing, kept when the planner drags away; Re-centre returns to it
@@ -151,7 +155,8 @@ export class SpatialScene {
   private planG: SVGGElement | null = null;
   private shade = new ShadeLayer();
   private ctxLines = new THREE.Group(); // neighbours' footprints on the white ground
-  private xray = new Xray({ walls: () => this.wallMesh, box: this.box, planes: () => this.targets.map((t) => t.p), root: this.scene });
+  private xray = new Xray({ walls: () => this.wallMesh, box: this.box, planes: () => this.targets.map((t) => t.p), root: this.scene,
+    overlay: () => this.overlay ?? null, project: (v) => this.project(v), camera: () => this.camera, reduce: () => !!this.opts?.reduce });
   // Per-system layers (systems.ts); it reads this scene's anchors, kit and sun lazily, so it can be made here.
   private systems = new Systems(this as unknown as ConstructorParameters<typeof Systems>[0]);
   private ctxOff: (() => void)[] = [];   // the white-context and ground subscriptions of this glb
@@ -170,7 +175,7 @@ export class SpatialScene {
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xd6d1c5, 1.9));
     this.sunLight.position.set(-20, 30, 25);
     this.scene.add(this.sunLight);
-    this.scene.add(this.ctxLines, this.placeholder, this.outlines, this.tints, this.panels, this.kit, this.sunGroup);
+    this.scene.add(this.ctxLines, this.placeholder, this.outlines, this.tints, this.panels, this.kit, this.hpGroup, this.sunGroup);
 
     // Touch moves the model, never the page.
     this.renderer.domElement.style.touchAction = "none";
@@ -323,7 +328,7 @@ export class SpatialScene {
 
   setModel(model: RoofModel) {
     this.targets = [];
-    [this.placeholder, this.outlines, this.tints, this.kit, this.sunGroup, this.ctxLines].forEach((g) => g.clear());
+    [this.placeholder, this.outlines, this.tints, this.kit, this.hpGroup, this.sunGroup, this.ctxLines].forEach((g) => g.clear());
     const nbr = neighbourEdges(model.planes);
     this.ctxLines.add(outlineMesh(nbr));
     this.ctxLines.userData.edges = nbr; // the mesh view paints the same edges in its shader (whiteContext.ts)
@@ -360,10 +365,9 @@ export class SpatialScene {
     const size = box.getSize(new THREE.Vector3());
     // Battery: a block beside the house on the east side; grid: a pole at the edge of the plot.
     const bx = box.min.x + 1.2, bz = box.max.z + 1.1; // in front of the south-west corner, where the camera sees it
-    this.batteryBox = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.6), new THREE.MeshLambertMaterial({ color: "#FAF8F3" }));
+    // The parts come from kitMeshes.ts, the same objects the parts list shows as icons.
+    this.batteryBox = withEdges(battery() as THREE.Mesh, INK);
     this.batteryBox.position.set(bx, 0.75, bz);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(this.batteryBox.geometry), new THREE.LineBasicMaterial({ color: INK }));
-    this.batteryBox.add(edges);
     const gx = box.max.x + 5, gz = box.min.z + 3;
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 7.5, 8), new THREE.MeshLambertMaterial({ color: "#4A4C55" }));
     pole.position.set(gx, 3.75, gz);
@@ -388,11 +392,23 @@ export class SpatialScene {
     this.focusPts.wallbox.set(box.max.x, fy, box.max.z - 1.5);
     this.focusPts.west.set(box.min.x, fy, midZ);
     // Wallbox: a small EV-blue box on the wall by the drive, shown only when the design has one.
-    this.wallbox = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 0.2), new THREE.MeshLambertMaterial({ color: "#1c71ef" }));
+    this.wallbox = withEdges(wallbox(), INK);
     this.wallbox.position.set(box.max.x + 0.12, 1.3, box.max.z - 1.5);
-    this.wallbox.add(new THREE.LineSegments(new THREE.EdgesGeometry(this.wallbox.geometry), new THREE.LineBasicMaterial({ color: INK })));
     this.wallbox.visible = false;
     this.kit.add(this.wallbox);
+    // Inverter: on the south wall beside the battery, at head height. Heat pump: the outdoor unit on the
+    // ground by the west wall, its fan facing out. Each shows only when the design has one (setUnits).
+    this.inverterUnit = withEdges(inverter(), INK);
+    this.inverterUnit.position.set(bx + 1.1, 1.0, box.max.z + 0.1);
+    this.inverterUnit.visible = false;
+    this.kit.add(this.inverterUnit);
+    const hp = withEdges(heatPump(), INK);
+    hp.position.set(box.min.x - 0.45, 0, box.max.z - 2.2);
+    hp.rotation.y = -Math.PI / 2;
+    this.hpGroup.add(hp);
+    this.hpGroup.visible = false;
+    this.hpUnit = hp;
+    this.snapUnits();
 
     // Sun path for the day layer.
     const path: THREE.Vector3[] = [];
@@ -437,6 +453,7 @@ export class SpatialScene {
       this.ctxOff.push(registerGlb(gltf.scene, this.ctxLines));
       this.scene.add(gltf.scene);
       this.placeholder.visible = false;
+      this.snapUnits();
       if (this.heat) this.setHeat(this.heat);
       this.applyGround();
       onDone(null);
@@ -538,6 +555,7 @@ export class SpatialScene {
   setSystem(s: System | null) {
     this.systems.set(s);
     if (!s) this.show(this.lastShow);
+    this.applyUnits();
   }
   // The envelope for the Heat pump system's x-ray, kept whatever layer is showing.
   setEnvelope(env: Envelope | null) { this.systems.setEnvelope(env); }
@@ -575,6 +593,36 @@ export class SpatialScene {
   }
 
   setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on || this.systems.sys === "wallbox"; }
+  // The roof box includes the eaves, so a unit placed from it floats in front of the wall: once the building
+  // model is in, move the inverter back onto the south wall and the heat pump to a hand's width from the west wall.
+  private snapUnits() {
+    const w = this.wallMesh;
+    if (!w) return;
+    w.updateWorldMatrix(true, false);
+    const ray = new THREE.Raycaster();
+    const inv = this.inverterUnit;
+    if (inv) {
+      ray.set(new THREE.Vector3(inv.position.x, inv.position.y + INVERTER.h / 2, this.box.max.z + 10), new THREE.Vector3(0, 0, -1));
+      const hit = ray.intersectObject(w, false)[0];
+      if (hit && hit.point.z <= this.box.max.z + 0.5) inv.position.z = hit.point.z + INVERTER.d / 2 + 0.02;
+    }
+    const hp = this.hpUnit;
+    if (hp) {
+      ray.set(new THREE.Vector3(this.box.min.x - 10, 0.5, hp.position.z), new THREE.Vector3(1, 0, 0));
+      const hit = ray.intersectObject(w, false)[0];
+      if (hit && hit.point.x >= this.box.min.x - 0.5) hp.position.x = hit.point.x - HEATPUMP.d / 2 - 0.25;
+    }
+  }
+
+  // inverter, heatpump: the design has one. layer: the stepper's layer shows the kit. In a System view the heat pump
+  // unit stands with the Heat pump and Battery systems instead.
+  private units = { inverter: false, heatpump: false, layer: false };
+  setUnits(o: { inverter: boolean; heatpump: boolean; layer: boolean }) { this.units = o; this.applyUnits(); }
+  private applyUnits() {
+    const u = this.units, sys = this.systems.sys;
+    if (this.inverterUnit) this.inverterUnit.visible = u.inverter;
+    this.hpGroup.visible = u.heatpump && (sys ? sys === "heatpump" || sys === "battery" : u.layer);
+  }
 
   show(o: { outlines: boolean; panels: boolean; kit: boolean; sun: boolean; battery: "plain" | "lit" }) {
     this.outlines.visible = o.outlines;
