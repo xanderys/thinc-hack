@@ -14,6 +14,7 @@ import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, OverrideValue, Overrides, ReadResponse, RefineResponse } from "@/lib/api";
 import { call, send } from "@/lib/client";
 import { serialWrite } from "@/lib/leadQueue";
+import { pushEdit, registerUndo, undoLast, useCanUndo } from "@/lib/edits";
 import { breakEvenNote } from "@/lib/notes";
 import { approveLead, matches, offerOf } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
@@ -379,15 +380,37 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     void writeLead("hand-change", { [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) } as Partial<HomeInputs>);
   }
 
+  // Several kit fields as one edit (one history step, one lead write): the on-model layout sends pv_kwp with
+  // layout_slots, the chosen slot ids the engine stores as they are.
+  const setKit = useCallback((patch: Record<string, OverrideValue | string[] | undefined>) => {
+    if (leadRef.current) pushEdit(leadRef.current, overrides as Record<string, unknown>);
+    cause.current = "Changed by hand:"; setApprovedAt(null);
+    const n: Record<string, unknown> = { ...overrides };
+    Object.entries(patch).forEach(([k, v]) => { if (v === undefined) delete n[k]; else n[k] = v; });
+    setOverrides(n as Overrides); void writeKit("kit-edit", n as Overrides);
+  }, [changed, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
   const setOverride = useCallback((f: keyof Design, v: OverrideValue | undefined) => {
-    setHistory((h) => [...h, { changed, overrides }]); cause.current = "Changed by hand:"; setApprovedAt(null);
+    if (leadRef.current) pushEdit(leadRef.current, overrides as Record<string, unknown>);
+    cause.current = "Changed by hand:"; setApprovedAt(null);
     const n = { ...overrides }; if (v === undefined) delete n[f]; else n[f] = v;
     setOverrides(n); void writeKit("kit-edit", n);
   }, [changed, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // One edit at a time: this session's history, else a single stored kit edit (several stored ones are never undone at once).
-  const canUndo = history.length > 0 || Object.keys(overrides).length === 1;
+  // Kit edits (on-model, chooser, offer tabs) undo one at a time from the lead's edit stack (lib/edits.ts); fact
+  // changes (answers, chips) keep their own history below.
+  const editsCan = useCanUndo(leadRef.current ?? seed?.leadId ?? null);
+  useEffect(() => {
+    const id = leadRef.current ?? seed?.leadId;
+    if (!id) return;
+    return registerUndo(id, (prev) => {
+      cause.current = "Undone:"; setApprovedAt(null); setOverrides(prev as Overrides);
+      if (JSON.stringify(prev) !== JSON.stringify(persisted.current)) void writeKit("kit-undo", prev as Overrides);
+    });
+  }, [seed?.leadId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Else this session's fact history, else a single stored kit edit (several stored ones are never undone at once).
+  const canUndo = editsCan || history.length > 0 || Object.keys(overrides).length === 1;
   function onUndo() {
+    if (leadRef.current && undoLast(leadRef.current)) return;
     const h = history[history.length - 1];
     // Opened on stored kit edits with nothing undone yet in this session: Undo reverts the stored edit.
     if (!h) {
@@ -454,7 +477,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   const onVariant = useCallback((v: Variant) => {
     if (!v.overrides) return;
-    setHistory((h) => [...h, { changed, overrides }]); cause.current = `Switched to ${v.name}:`; setApprovedAt(null);
+    if (leadRef.current) pushEdit(leadRef.current, overrides as Record<string, unknown>);
+    cause.current = `Switched to ${v.name}:`; setApprovedAt(null);
     setOverrides(v.overrides);   // a tab is a view: nothing is written to the lead (the chooser, Undo and Approve write)
   }, [changed, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
   const openRef = useRef<HTMLDivElement>(null);
@@ -471,7 +495,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
       {slow && !roof?.pending && !err && <p className="s-roof" role="status">Measuring the roof</p>}
       {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
       {!res && <OpenSkeleton />}
-      {res && <Chain res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={canUndo} onUndo={onUndo} answered={answer != null} redraft={moved}
+      {res?.design && <Chain setKit={setKit} res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={canUndo} onUndo={onUndo} answered={answer != null} redraft={moved}
         decide={<Decide slim pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />} />}
     </div>
   );
@@ -485,7 +509,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
           call={VOICE && !read && !seed ? <Calls installer={installer} onLead={onCall} /> : null} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-          {res && <Plan res={res} prev={prev} inputs={inputs} write={null} writeBusy={false} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? "Measuring the roof from Bavarian 3D data, about 10 s" : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} />}
+          {res?.design && <Plan res={res} prev={prev} inputs={inputs} write={null} writeBusy={false} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? "Measuring the roof from Bavarian 3D data, about 10 s" : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} />}
           {res && <Refine res={res} moved={moved} canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} />}
         </div>
       </div>
