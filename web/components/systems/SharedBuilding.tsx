@@ -12,9 +12,9 @@ export const SHARED_LINES = {
   next: "Ask about parking and the owners' association",
   roof: "Whole roof: needs the owners' association vote (WEG)",
   model: "Building-wide supply shared between flats (§42b EnWG)",
-  balcony: "Balcony system, up to 800 W",
+  balcony: "Balcony system, up to 800 W inverter output",
   battery: "A home battery needs its own roof system behind the meter.",
-  wallbox: "Right to a wallbox at your own parking space: §20 WEG (2020)",
+  wallbox: "Right to an EV charging point: §20 (2) WEG (2020)",   // the statute names charging, not a parking space; overrides the engine's note
   heatpump: "Heating is shared: a heat pump is sized for the whole building with the owners.",
 };
 
@@ -23,12 +23,12 @@ export const SHARED_TILE_LABELS = { kwp: "Whole roof", kwh: "Balcony", price: "W
 export function sharedFigs(roof: RoofPotential | null, balcony: Balcony | null, wallboxKw?: number | null) {
   const f: { k: "kwp" | "kwh" | "price"; v: string }[] = [];
   f.push({ k: "kwp", v: roof?.kwp ? `${n2(roof.kwp)} kWp` : "Owners' vote" });
-  f.push({ k: "kwh", v: balcony?.kwh_year ? `${n0(balcony.kwh_year)} kWh a year` : "up to 800 W" });
+  f.push({ k: "kwh", v: balcony?.kwh_year ? `${n0(balcony.kwh_year)} kWh a year` : "up to 800 W inverter output" });
   if (wallboxKw) f.push({ k: "price", v: `${n1(wallboxKw)} kW` });
   return f;
 }
 
-export default function SharedBuilding({ roof, balcony, wallboxKw, part, noteWallbox, noneBattery, noneHeatpump, verdict }: {
+export default function SharedBuilding({ roof, balcony, wallboxKw, part, noneBattery, noneHeatpump, verdict }: {
   roof: RoofPotential | null; balcony: Balcony | null; wallboxKw?: number | null; part?: "panels" | "battery" | "wallbox" | "heatpump";
   noteWallbox?: string | null; noneBattery?: string | null; noneHeatpump?: string | null; verdict?: { label?: string | null; next_action?: string | null } | null;
 }) {
@@ -44,7 +44,7 @@ export default function SharedBuilding({ roof, balcony, wallboxKw, part, noteWal
       </div>
     ),
     battery: <p key="b" className="sb-row"><b>No battery</b><span>{noneBattery ?? L.battery}</span></p>,
-    wallbox: wallboxKw ? <div key="w" className="sb-row"><b>Wallbox {n1(wallboxKw)} kW</b><span>{noteWallbox ?? L.wallbox}</span></div> : null,
+    wallbox: wallboxKw ? <div key="w" className="sb-row"><b>Wallbox {n1(wallboxKw)} kW</b><span>{L.wallbox}</span></div> : null,
     heatpump: <p key="h" className="sb-row"><b>No heat pump</b><span>{noneHeatpump ?? L.heatpump}</span></p>,
   };
   if (part) return <div className="sb">{rows[part]}</div>;
