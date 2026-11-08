@@ -23,9 +23,9 @@ type Snap = { changed: Partial<HomeInputs>; overrides: Overrides };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 // A house opened from the board: the lead's id (refinements write back to it) and what was read.
-export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null; approved?: LeadT["approved"]; overrides?: Overrides | null };   // draft: shown at once, before the first design call returns
+export type Seed = { leadId: string; read: ReadResponse; text?: string; draft?: DesignResponse | null; version?: number | null; approved?: LeadT["approved"]; overrides?: Overrides | null; phone?: string | null };   // draft: shown at once, before the first design call returns
 // While Rina's call runs: the lead's facts so far, the step count, what the last answer changed and what she is asking.
-export type Live = { version?: number | null; step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null };
+export type Live = { version?: number | null; step: number; facts: Partial<HomeInputs>; changed: { component: string; why: string }[]; asking: string | null; via?: string; origin?: Record<string, "whatsapp"> };
 
 export default function Stage({ seed, onApproved, live }: { seed?: Seed; onApproved?: (id: string) => void; live?: Live | null }) {
   const [lead, setLead] = useState(HERO_LEAD);
@@ -51,6 +51,14 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   const last = useRef<DesignResponse | null>(null);
   const cause = useRef<string | null>(null);
   // An edit puts the numbers in a pending state at once; they settle when the engine answers.
+  // The lead's phone (E.164): not a design input, so it never joins the facts the design runs on.
+  const [phone, setPhone] = useState<string | null>(seed?.phone ?? null);
+  useEffect(() => { setPhone(seed?.phone ?? null); }, [seed?.leadId, seed?.phone]);
+  async function onPhone(v: string) {
+    const was = phone; setPhone(v);
+    const x = await writeLead("phone-edit", { phone: v } as unknown as Partial<HomeInputs>);
+    if (!x.ok) { setPhone(was); if (x.error) setAskErr(`The phone number was not saved: ${x.error}`); }
+  }
   const [pending, setPending] = useState<number | null>(null);
   // A design call past about 3 s is a roof being fetched, not a failure: say so quietly instead of showing an error.
   const [slow, setSlow] = useState(false);
@@ -152,9 +160,14 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     liveSeen.current = true;
     if (live.version != null) baseVersion.current = live.version;
     const { installer_id: _i, ...facts } = live.facts as Partial<HomeInputs> & { installer_id?: string }; void _i;
-    if (Object.entries(facts).every(([k, v]) => JSON.stringify((read.inputs as Record<string, unknown>)[k]) === JSON.stringify(v))) return;
-    cause.current = replay ? null : "From the call:"; liveWhy.current = replay ? null : live.changed;
-    setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts } });
+    // Facts a WhatsApp reply stated carry that origin, so their chips can say so.
+    const tagged = Object.entries(live.origin ?? {}).filter(([k, v]) => read.origin?.[k] !== v);
+    if (Object.entries(facts).every(([k, v]) => JSON.stringify((read.inputs as Record<string, unknown>)[k]) === JSON.stringify(v))) {
+      if (tagged.length) setRead((r) => r && { ...r, origin: { ...r.origin, ...live.origin } });
+      return;
+    }
+    cause.current = replay ? null : live.via ?? "From the call:"; liveWhy.current = replay ? null : live.changed;
+    setRead((r) => r && { ...r, inputs: { ...r.inputs, ...facts }, ...(tagged.length ? { origin: { ...r.origin, ...live.origin } } : {}) });
   }, [live?.step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null, approved: LeadT["approved"] = null, kit: Overrides | null = null) {
@@ -420,7 +433,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   if (seed && read) return (
     <div className="st st-open b-card-in" ref={openRef}>
-      <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} setInstaller={setInstaller}
+      <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} phone={phone} onPhone={seed ? onPhone : undefined} setInstaller={setInstaller}
         question={question ?? null} answer={answer} onAnswer={onAnswer} askError={askErr} asking={question === undefined} liveAsking={live?.asking ?? null}
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
         canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
