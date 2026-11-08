@@ -88,3 +88,6 @@
 .card { opacity: 0; transition: opacity 0s linear 767ms, visibility 0s linear 767ms; }
 .shell[data-open] .card { opacity: 1; transition: opacity 0s, visibility 0s; }
 @media (prefers-reduced-motion: reduce) { .card { transition: opacity 0s linear 200ms, visibility 0s linear 200ms; } }
+
+/* The board dock only opens the card and never takes text itself: no caret bar in it. */
+.dockWrap textarea { caret-color: transparent; }
