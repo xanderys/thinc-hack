@@ -23,7 +23,7 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
    Only under our simulator's assumptions. Where the designs differ, 514 of the 633, ours scores higher on modelled 20-year value on 327 homes, the expert's on 180, median gain about 430 EUR. That is modelled with the same hourly simulation and the same market-rate price card for both, not measured installation performance.
 
 7. **Is the physics validated?**
-   Compared against HTW Berlin's household solar and storage tables, within about 2 to 5 percentage points on homes without a heat pump or car. EV and heat pump loads have no equivalent reference yet. A reference comparison, not an independent validation.
+   An hourly simulation with pvlib on Munich's real 2025 weather and day-ahead prices, the same for every design. The hero's whole chain (investment, yield, autarky, saving, break-even, NPV) reproduces from the code end to end, checked on 8 Nov. No independent validation yet; a pilot would compare meter data from installed systems.
 
 8. **How much time or money does an installer save?**
    Not measured. The pack has no planner time or price data, so we show the steps the draft removes, not hours or euros. A pilot would measure planner handling time per offer and the share of drafts that survive without edits.
@@ -44,7 +44,7 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
 
 **Why does the Check page say 17.1% on 258 homes?** That was the earlier board population. The Check page now shows the sealed figure, 18.6% on 633, and nothing else.
 
-**Would the verdict turn away real customers?** Replayed on 258 held-out signed sales: 82% Priority, 17% Call first, 1% Decline. Every one was sold, so each Decline is a miss: 2 of 258, both homes where the rules propose no panels. Call first fires almost only where the use was never recorded. The pack holds signed sales only, so this shows the rule is not trigger-happy; it cannot show that it catches bad leads.
+**Would the verdict turn away real customers?** Every lead in the pack was sold, so each Decline in a replay is a miss, and Decline fires only where the rules propose no panels. Call first fires almost only where the use was never recorded. The pack holds signed sales only, so a replay shows the rule is not trigger-happy; it cannot show that it catches bad leads. [HELD: the replay percentages, until THINC HACK MASTER sends the final numbers after the engine restart; audit figure if cleared: 80% Priority, 18% Call first, 2% Decline on the 126 unseen homes.]
 
 **Does anyone feed installed-system data back into design?** We found no public product that does. 1KOMMA5° Heartbeat connects tens of thousands of systems to trade power, not to size new ones (press release, 14 Nov 2025). Reonic holds both the offer and the installed system, so it can close that loop.
 

@@ -9,7 +9,8 @@ Speakers: Zi Yuan opens and closes, Xander runs the demo and the exam, Jamon the
 "Tuesday morning. A planner has six new enquiries and two site visits. Frau Huber writes: family of four, detached house, want solar, maybe a battery, bill attached. Panels, battery, wallbox, heat pump: each size depends on the others, and every step from enquiry to signature is done by hand. Marquee drafts each step. The planner approves."
 
 ## 0:40 to 1:00, slide 3, Zi Yuan
-"Every lead arrives on the board with a verdict and the reason a planner would give. Priority: the roof fits ten kilowatt peak and pays back in ten years. Call first: the roof is not measured, ask for the address. Decline: the roof fits one module. Replayed on 258 signed sales the rules never saw, 82 percent came out Priority, 17 Call first, 1 percent Decline."
+"Every lead arrives on the board with a verdict and the reason a planner would give. Priority: the roof fits ten kilowatt peak and pays back in ten years. Call first: the roof is not measured, ask for the address. Decline: the roof fits one module."
+HELD until THINC HACK MASTER sends the final numbers after the engine restart: the backtest line. Audit figure, if cleared: "Replayed on 126 signed sales the rules never saw, 80 percent came out Priority, 18 Call first, 2 percent Decline."
 
 ## 1:00 to 2:00, slide 4 and the live product, Xander
 1. "I open Frau Huber's card. Her real house, from Bavarian 3D data with the aerial photo, no site visit. Shade per panel."

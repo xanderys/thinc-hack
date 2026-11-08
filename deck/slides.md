@@ -34,7 +34,7 @@ footer: Marquee
 
 ![h:300](img/board-verdicts.png)
 
-<div class="data">replayed on <b>258</b> held-out signed sales: Priority <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b></div>
+<div class="data">Call first when the roof is not measured or the use is the default; Decline when the roof fits under <b>3 kWp</b> or nothing pays back in <b>20 years</b></div>
 
 <p class="brief">Estimates until the site visit. Offer values come from stated cost assumptions, not quotes.</p>
 
@@ -47,7 +47,7 @@ footer: Marquee
 <div class="cols">
 <div>
 
-# The family plans an electric car, and the chain runs again.
+# The real house, four decisions in a chain, then the offer.
 
 <div class="data">the real house: Bavarian LoD2 roof, aerial photo, shade per panel<br>four decisions in a chain, then the offer<br>one chip changes a fact and the chain runs again: the wallbox appears<br>intake by form, pasted email, or a call with Rina</div>
 
