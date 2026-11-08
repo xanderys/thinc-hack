@@ -13,6 +13,7 @@ type Props = {
   pending: boolean; side?: "bottom"; children: ReactNode; id?: string | null;
   title?: string; figs?: Fig[]; lift?: number;   // the homeowner page reuses the pass for its sign card, stacked above the safe area by lift px
   none?: string | null;   // no design applies to this building: no figures, this line, and Approve disabled
+  undo?: { can: boolean; run: () => void };   // open card: Undo in the header row, one edit at a time
 };
 
 const n = (x: number, d: number) => (Math.round(x * 10 ** d) / 10 ** d).toLocaleString("en-GB");
@@ -24,7 +25,7 @@ function useReduce() {
   return r;
 }
 
-export default function ProposedCard({ kwp, kwh, price = 0, pending, children, id, none, title = "Proposed Design", figs: figsIn, lift = 0 }: Props) {
+export default function ProposedCard({ kwp, kwh, price = 0, pending, children, id, none, title = "Proposed Design", figs: figsIn, lift = 0, undo }: Props) {
   const side = "bottom" as const;
   const reduce = useReduce();
   const [open, setOpen] = useState(false);
@@ -166,6 +167,7 @@ export default function ProposedCard({ kwp, kwh, price = 0, pending, children, i
             <path d="M5 12.5l5-5 5 5" />
           </svg>
         </button>
+        {undo && open && <button type="button" className="pc-undo" disabled={!undo.can} onClick={undo.run} title="Revert the last edit">Undo</button>}
         <div className="pc-body" inert={!open} aria-hidden={!open || undefined}>
           {none ? (
             <div className="pc-nobody">

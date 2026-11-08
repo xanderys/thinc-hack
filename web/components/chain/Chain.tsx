@@ -497,7 +497,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     </SystemCard>
   );
   // A flat in an apartment block: the engine's single-family design does not apply, so the pass shows none and Approve waits.
-  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending} none={multi ? "No design for this building yet" : null}>{offer(false)}</ProposedCard>;
+  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending} none={multi ? "No design for this building yet" : null} undo={{ can: canUndo, run: () => { holdOffer(); onUndo(); } }}>{offer(false)}</ProposedCard>;
   const overlays = (
     <>
       {!SYS && address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}
