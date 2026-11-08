@@ -33,9 +33,14 @@
   .cc-chev svg, .b-open:has(.fq-wrap) .b-open-h { transition: none; }
 }
 @media (min-width: 761px) {
-  /* Under the Systems layout the facts bar shared the header's row; the card stacks them. */
-  .b-open:has(.sys-on) > .b-open-h:has(~ .st-open .fq-wrap), .b-open:has(.sys-on) > .b-open-h { grid-column: 1 / -1; }
-  .b-open:has(.sys-on) .st-open > .t-bar:has(.fq-wrap) { grid-column: 1 / -1; grid-row: 2; }
+  /* Under the Systems layout the facts bar shared the header's row; the card stacks them in plain flow, and the chain
+     measures the root again as the card opens (its own observer), so the model gains or gives back the height. */
+  .b-open:has(.sys-on):has(.fq-wrap) { display: block; }
+  .b-open:has(.sys-on):has(.fq-wrap) > .st-open { display: block; }
+  .b-open:has(.sys-on):has(.fq-wrap) .b-open-lines { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; }
+  .b-open:has(.sys-on):has(.fq-wrap) .b-l1 { grid-column: 1 / -1; }
+  .b-open:has(.sys-on):has(.fq-wrap) .b-l3 { grid-column: 2; grid-row: 2; }
+  .b-open:has(.sys-on):has(.fq-wrap) .b-open-h { padding-bottom: 10px; }
 }
 .fc-panel { margin-top: 8px; padding: 12px 14px; background: var(--paper); border: 1px solid var(--rule-2); border-radius: 12px; display: grid; gap: 12px; max-width: 520px; }
 .fc-panel .fc-h { font-size: 12.5px; color: var(--ink-3); }
