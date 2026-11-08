@@ -11,6 +11,7 @@ import { eur, n1, type Part } from "./format";
 import Num from "./Num";
 import RateCard from "./RateCard";
 import s from "./kitSheet.module.css";
+import { batteryModules, moduleLayers } from "@/components/spatial/kitBands";
 
 export type KitSheetKit = {
   modules?: number | null; pv_kwp: number | null; inverter_kw: number | null;
@@ -69,9 +70,9 @@ export default function KitSheet({ kit, total, assumptions, note, edit, info, ch
 // so the list needs no WebGL context of its own (Safari caps them) and the homeowner page loads no three.js.
 const Img = ({ name }: { name: string }) => <img src={`/kit/${name}.png`} width={36} height={36} alt="" draggable={false} />;
 // A stack of modules: one more layer per band of eight, up to five.
-const Modules = ({ n }: { n: number }) => <Img name={`modules-${n <= 8 ? 1 : n <= 16 ? 2 : n <= 24 ? 3 : n <= 32 ? 4 : 5}`} />;
+const Modules = ({ n }: { n: number }) => <Img name={`modules-${moduleLayers(n)}`} />;
 // The battery tower: one module per 3 kWh, one to six, under a cap.
-const Battery = ({ kwh }: { kwh: number }) => <Img name={`battery-${Math.min(6, Math.max(1, Math.ceil(kwh / 3)))}`} />;
+const Battery = ({ kwh }: { kwh: number }) => <Img name={`battery-${batteryModules(kwh)}`} />; // the same tower as on the house
 const Inverter = () => <Img name="inverter" />;
 const Wallbox = () => <Img name="wallbox" />;
 const HeatPump = () => <Img name="heatpump" />;

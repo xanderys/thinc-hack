@@ -25,7 +25,7 @@ const DOT_R = 0.32;      // metres: about 6 px at the storage pose
 type V = THREE.Vector3;
 type Host = {
   scene: THREE.Scene; box: THREE.Box3; anchors: { roof: V; home: V; batt: V; grid: V };
-  sunGroup: THREE.Group; sunDot: THREE.Mesh; kit: THREE.Group; batteryBox: THREE.Mesh; wallbox: THREE.Object3D | null; wbOn: boolean;
+  sunGroup: THREE.Group; sunDot: THREE.Mesh; kit: THREE.Group; batteryBox: THREE.Object3D; wallbox: THREE.Object3D | null; wbOn: boolean;
   panels: THREE.Group; opts: { reduce?: boolean }; shade: { at?: ShadeAt };
   sunPos: (h: number) => V; flyTo: (p: Pose) => void; xray: { set: (e: Envelope | null) => unknown };
   setLabels: (l: unknown[]) => void;
@@ -62,15 +62,6 @@ class Pipe {
   dispose() { this.line.geometry.dispose(); (this.line.material as THREE.Material).dispose(); this.dots.geometry.dispose(); (this.dots.material as THREE.Material).dispose(); }
 }
 
-// Down from the roof anchor to eave height on the nearest wall, then along the ground to the target.
-function route(a: V, b: V, box: THREE.Box3, lift = 0.35): THREE.CurvePath<V> {
-  const eave = Math.max(box.min.y + 2.5, a.y - 2);
-  const wallX = b.x > (box.min.x + box.max.x) / 2 ? box.max.x + 0.15 : box.min.x - 0.15;
-  const p = new THREE.CurvePath<V>();
-  const pts = [a.clone(), new THREE.Vector3(wallX, eave, a.z), new THREE.Vector3(wallX, lift, (a.z + b.z) / 2), new THREE.Vector3(b.x, lift, b.z), b.clone()];
-  for (let i = 0; i < pts.length - 1; i++) if (pts[i].distanceTo(pts[i + 1]) > 1e-3) p.add(new THREE.LineCurve3(pts[i], pts[i + 1]));
-  return p;
-}
 function straight(a: V, b: V, y = 0.35): THREE.CurvePath<V> {
   const p = new THREE.CurvePath<V>();
   const pts = [a.clone(), new THREE.Vector3(a.x, y, a.z), new THREE.Vector3(b.x, y, b.z), b.clone()];
@@ -109,9 +100,17 @@ export class Systems {
     if (box.isEmpty()) return;
     const home = A.home.clone().setY(0.6);
     const mk = (k: keyof Systems["pipes"], c: THREE.Curve<V>, col: THREE.Color, into: THREE.Group, r = DOT_R) => { const p = new Pipe(c, col, r); this.pipes[k] = p; into.add(p.line, p.dots); return p; };
-    mk("pvHome", route(A.roof, home, box), SOLAR, this.battery);
-    mk("pvBatt", route(A.roof, A.batt.clone().setY(1.2), box, 0.55), SOLAR, this.battery);
-    mk("battHome", straight(A.batt.clone().setY(1.2), home, 0.75), BATT, this.battery);
+    // Inside the glass: the battery stands against the inner face of the south wall, so the flows run down inside
+    // the house at the battery's depth, beside it, and into the top of its tower; nothing runs outside at ground level.
+    const bb = this.host.batteryBox ? new THREE.Box3().setFromObject(this.host.batteryBox) : null;
+    const top = bb && !bb.isEmpty() ? bb.max.y : 1.5, zIn = A.batt.z, bx = A.batt.x;
+    const eave = Math.max(box.min.y + 2.5, A.roof.y - 2), side = bx - 0.75; // left of the tower: the inverter hangs on its right
+    const line = (pts: V[]) => { const c = new THREE.CurvePath<V>(); for (let i = 0; i < pts.length - 1; i++) if (pts[i].distanceTo(pts[i + 1]) > 1e-3) c.add(new THREE.LineCurve3(pts[i], pts[i + 1])); return c; };
+    const Q = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    const homeIn = Q(home.x, 0.6, zIn);
+    mk("pvHome", line([A.roof.clone(), Q(home.x, eave, zIn), homeIn]), SOLAR, this.battery);
+    mk("pvBatt", line([A.roof.clone(), Q(side, eave, zIn), Q(side, top + 0.45, zIn), Q(bx, top + 0.45, zIn), Q(bx, top + 0.1, zIn)]), SOLAR, this.battery);
+    mk("battHome", line([Q(side, 0.75, zIn), homeIn.clone().setY(0.75), homeIn]), BATT, this.battery);
 
     // The car (kitMeshes.ts): a low-poly hatchback parked on the drive beside the wallbox, nose to the north, its
     // charging flap level with the wall unit. The cable runs from the unit down the wall and across to the flap.

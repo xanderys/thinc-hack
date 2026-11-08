@@ -15,7 +15,8 @@ import { neighbourEdges, outlineMesh, registerGlb } from "./whiteContext";
 import { Xray } from "./xray";
 import { Systems, type System } from "./systems";
 import { googleGround, sharpen } from "./satGround";
-import { BATTERY, HEATPUMP, INVERTER, WALLBOX, battery, heatPump, inverter, wallbox, withEdges } from "./kitMeshes";
+import { BATTERY, HEATPUMP, INVERTER, WALLBOX, battery, batteryHeight, heatPump, inverter, wallbox } from "./kitMeshes";
+import { batteryModules } from "./kitBands";
 import type { ShadeAt, Shading } from "@/lib/shading";
 
 const PAPER = new THREE.Color("#fdfdfb");
@@ -51,7 +52,7 @@ export type Label = { key: string; at: THREE.Vector3; html: string; cls?: string
 const GAP = 24;
 // On-model chips: one line each, never more than four on screen; a chip that would overlap another tries below,
 // left and right of its anchor before it hides.
-const MAX_CHIPS = 4, CHIP_GAP = 6;
+const MAX_CHIPS = 4, CHIP_GAP = 6, STUB = 10; // STUB: px of leader between a unit and its pill
 const kwpS = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 2 });
 
 
@@ -156,7 +157,8 @@ export class SpatialScene {
   private spin: { a: number; v: number; h: number; y: number } | null = null;   // compass turn to north
   private vPos = new THREE.Vector3();
   private vTgt = new THREE.Vector3();
-  private batteryBox!: THREE.Mesh;
+  private batteryBox!: THREE.Object3D;
+  private battN = 3; // battery modules on the model, one per band of kWh (kitBands.ts)
   private labels: Label[] = [];
   private labelEls = new Map<string, HTMLDivElement>();
   private panelAnim: { g: THREE.Object3D; from: THREE.Vector3; delay: number; mats: THREE.Material[] }[] = [];
@@ -491,8 +493,8 @@ export class SpatialScene {
     // face once the building model is in); grid: a pole at the edge of the plot, only with the day flow.
     const bx = box.min.x + 1.6, bz = box.max.z - 1.2;
     // The parts come from kitMeshes.ts, the same objects the parts list shows as icons.
-    this.batteryBox = withEdges(battery() as THREE.Mesh, INK);
-    this.batteryBox.position.set(bx, 0.75, bz);
+    this.batteryBox = battery(this.battN);
+    this.batteryBox.position.set(bx, 0, bz);
     const gx = box.max.x + 5, gz = box.min.z + 3;
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 7.5, 8), new THREE.MeshLambertMaterial({ color: "#4A4C55" }));
     pole.position.set(gx, 3.75, gz);
@@ -527,11 +529,11 @@ export class SpatialScene {
     this.kit.add(this.wallbox);
     // Inverter: indoors on the south wall beside the battery, at head height. Heat pump: the outdoor unit on the
     // ground by the west wall, its fan facing out. Each shows only when the design has one (setUnits).
-    this.inverterUnit = withEdges(inverter(), INK);
+    this.inverterUnit = inverter();
     this.inverterUnit.position.set(bx + BATTERY.w / 2 + 0.2 + INVERTER.w / 2, 1.0, bz);
     this.inverterUnit.visible = false;
     this.kit.add(this.inverterUnit);
-    const hp = withEdges(heatPump(), INK);
+    const hp = heatPump();
     hp.position.set(box.min.x - 0.45, 0, box.max.z - 2.2);
     hp.rotation.y = -Math.PI / 2;
     this.hpGroup.add(hp);
@@ -818,6 +820,23 @@ export class SpatialScene {
   }
 
   setBattery(on: boolean) { this.battOn = on; this.fadeTo(this.batteryBox ?? null, on); }
+  // The battery tower grows with the design's kWh, one module per band, the same tower as its parts-list icon.
+  setBatteryKwh(kwh: number | null) {
+    const n = batteryModules(kwh && kwh > 0 ? kwh : 9);
+    if (n === this.battN || !this.batteryBox) { this.battN = n; return; }
+    this.battN = n;
+    const old = this.batteryBox, next = battery(n);
+    next.position.copy(old.position); next.rotation.copy(old.rotation);
+    const parent = old.parent;
+    parent?.remove(old);
+    parent?.add(next);
+    old.traverse((x) => { const m = x as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } });
+    this.fades.delete(old);
+    this.batteryBox = next;
+    this.fadeTo(next, this.battOn);
+    this.pillAnchors();
+    this.systems.rebuild(); // the flow into the battery ends on the tower's new top
+  }
 
   setShading(d: Shading | null, on: boolean, at: ShadeAt) { this.shade.set(d, on, at); }
   // Heat pump step: envelope x-ray (xray.ts); null fades it out.
@@ -941,7 +960,6 @@ export class SpatialScene {
     this.panels.visible = o.panels;
     this.kit.visible = o.kit;
     this.sunGroup.visible = o.sun;
-    if (this.batteryBox) (this.batteryBox.material as THREE.MeshLambertMaterial).color.set(o.battery === "lit" ? "#24a148" : "#FAF8F3");
     if (!o.sun) this.setFlows(null);
     this.lastShow = o;
     this.systems.override();
@@ -1126,7 +1144,7 @@ export class SpatialScene {
     this.pillAnchors();
     const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
     if (batt) out.push({ key: "kit-batt", at: this.battAt, html: `<b>${batt}</b>`, cls: "chip c-bat", prio: 5e6,
-      unit: this.batteryBox ? { obj: this.batteryBox, top: V(0, BATTERY.h / 2, 0), mid: V(0, 0, 0) } : undefined });
+      unit: this.batteryBox ? { obj: this.batteryBox, top: V(0, batteryHeight(this.battN), 0), mid: V(0, batteryHeight(this.battN) / 2, 0) } : undefined });
     if (wb && this.wallbox) out.push({ key: "kit-wb", at: this.wbAt, html: `<b>${wb}</b>`, cls: "chip c-ev", prio: 5e6,
       unit: { obj: this.wallbox, top: V(0, WALLBOX.h, 0), mid: V(0, WALLBOX.h / 2, 0) } });
     return out;
@@ -1157,6 +1175,15 @@ export class SpatialScene {
 
   // The roof or a wall stands between the camera and this point, more than 0.6 m in front of it (so the glass wall a
   // part is mounted on, or stands behind, does not count). 3D only: the plan view looks straight down.
+  // The unit's box on screen (its eight corners projected), for placing its pill beside it.
+  private screenRect(o: THREE.Object3D) {
+    const b = new THREE.Box3().setFromObject(o), r = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
+    for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
+      const q = this.project(new THREE.Vector3(x, y, z));
+      r.x0 = Math.min(r.x0, q.x); r.x1 = Math.max(r.x1, q.x); r.y0 = Math.min(r.y0, q.y); r.y1 = Math.max(r.y1, q.y);
+    }
+    return r;
+  }
   private behindHouse(pt: THREE.Vector3) {
     // What is drawn for the house: the roof model's planes and the glass shell (the glb's own roof and walls do not
     // take the ray here).
@@ -1419,21 +1446,29 @@ export class SpatialScene {
         if (!el) return;
         if (x.key.startsWith("node-") && el.innerHTML !== x.html) { el.innerHTML = x.html; this.labelSize.delete(x.key); }
         const p = this.project(x.unit ? x.unit.obj.localToWorld(x.unit.top.clone()) : x.at);
+        // A unit's pill stands beside the unit, never over it: right of its screen box if that is free, else left,
+        // centred on its height, with a short leader stub (data-side, CSS) back to the unit.
+        const ur = x.unit ? this.screenRect(x.unit.obj) : null;
+        let ux = 0, uy = 0, side = "";
         const batt = x.key === "node-batt", chip = !!x.cls?.includes("chip");
         let ok = p.ok && (!x.tap || x.tap === this.tapped) && (!chip || chips < MAX_CHIPS) && (!x.unit || (x.unit.obj.visible && !this.behindHouse(x.unit.obj.localToWorld(x.unit.mid.clone()))));
         let dx = 0, dy = 0;
         if (ok) {
           let sz = this.labelSize.get(x.key);
           if (!sz || !sz.w) { sz = { w: el.offsetWidth, h: el.offsetHeight }; this.labelSize.set(x.key, sz); }
-          const base = { x0: p.x - sz.w / 2, x1: p.x + sz.w / 2, y0: batt ? p.y + 10 : p.y - sz.h, y1: batt ? p.y + 10 + sz.h : p.y };
-          const tries: [number, number][] = chip ? [[0, 0], [0, sz.h + 10], [-(sz.w / 2 + 10), sz.h / 2], [sz.w / 2 + 10, sz.h / 2], [0, -(sz.h + 6)]] : [[0, 0]];
+          const my = ur ? (ur.y0 + ur.y1) / 2 : 0;
+          const base = ur ? { x0: ur.x1 + STUB, x1: ur.x1 + STUB + sz.w, y0: my - sz.h / 2, y1: my + sz.h / 2 }
+            : { x0: p.x - sz.w / 2, x1: p.x + sz.w / 2, y0: batt ? p.y + 10 : p.y - sz.h, y1: batt ? p.y + 10 + sz.h : p.y };
+          const tries: [number, number][] = ur ? [[0, 0], [-(ur.x1 - ur.x0) - 2 * STUB - sz.w, 0]]
+            : chip ? [[0, 0], [0, sz.h + 10], [-(sz.w / 2 + 10), sz.h / 2], [sz.w / 2 + 10, sz.h / 2], [0, -(sz.h + 6)]] : [[0, 0]];
           const hit = (r: typeof base, c: boolean) => shown.some((q) => { const g = c && q.chip ? CHIP_GAP : GAP; return r.x0 < q.x1 + g && q.x0 < r.x1 + g && r.y0 < q.y1 + g && q.y0 < r.y1 + g; });
           const at = tries.map(([ox, oy]) => ({ ox, oy, r: { x0: base.x0 + ox, x1: base.x1 + ox, y0: base.y0 + oy, y1: base.y1 + oy } }))
             .find(({ r }) => !hit(r, chip) && (!chip || (r.x0 >= 2 && r.x1 <= VW - 2 && r.y0 >= 2 && r.y1 <= VH - 2)));
           if (!at) ok = false;
-          else { dx = at.ox; dy = at.oy; shown.push({ ...at.r, chip }); if (chip) chips++; }
+          else { dx = at.ox; dy = at.oy; shown.push({ ...at.r, chip }); if (chip) chips++; if (ur) { ux = at.r.x0; uy = at.r.y0; side = at.ox === 0 ? "r" : "l"; } }
         }
-        el.style.transform = `translate(${(p.x + dx).toFixed(1)}px, ${(p.y + dy).toFixed(1)}px) ${batt ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
+        if (ur) { el.style.transform = `translate(${ux.toFixed(1)}px, ${uy.toFixed(1)}px)`; if (el.dataset.side !== side) el.dataset.side = side; }
+        else el.style.transform = `translate(${(p.x + dx).toFixed(1)}px, ${(p.y + dy).toFixed(1)}px) ${batt ? "translate(-50%, 10px)" : "translate(-50%, -100%)"}`;
         el.style.visibility = ok ? "visible" : "hidden";
       });
 

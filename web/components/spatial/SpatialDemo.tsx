@@ -279,6 +279,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     sc.setTint(L === 2 || (sunTint && L === 3) ? "yield" : "off");
     sc.setWallbox(!!design.wallbox_kw);
     sc.setBattery(!!design.battery_kwh);
+    sc.setBatteryKwh(design.battery_kwh);
     sc.setUnits({ inverter: !!design.inverter_kw, heatpump: !!design.heatpump_kw, layer: L >= 4 && L <= 7 });
     if (L === 3 && prev !== 3 && prev < 3) sc.setPanels(panelList, !reduce);
     if (L === 4 && layers) sc.setDay(layers.day.hours, !reduce); else sc.setDay(null, false);

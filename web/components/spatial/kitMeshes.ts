@@ -4,6 +4,7 @@
 // front face towards +z. Lambert boxes in the scene's paper colours, the modules' dark fill as on the roof.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { batteryModules } from "./kitBands";
 
 export const KIT = {
   paper: "#FAF8F3", // battery housing (the scene's battery colour)
@@ -39,12 +40,12 @@ export function moduleStack(layers: number): THREE.Group {
   return g;
 }
 
-// The battery as it stands beside the house: the scene's 0.9 by 0.6 m footprint. modules = 0 gives the scene's
-// single 1.5 m box (its colour changes when the battery step lights it); 1 to 6 gives a tower of 0.25 m modules
-// under a cap (the parts list's bands, KitSheet.tsx).
+// The battery: a tower of 0.25 m modules on the scene's 0.9 by 0.6 m footprint, one module per band of kWh
+// (kitBands.ts), on a plinth under a cap, standing on y = 0. The scene and the parts-list icon both build it here.
 export const BATTERY = { w: 0.9, h: 1.5, d: 0.6 };
-export function battery(modules = 0): THREE.Mesh | THREE.Group {
-  if (!modules) return box(BATTERY.w, BATTERY.h, BATTERY.d, lam(KIT.paper));
+export const batteryHeight = (modules: number) => 0.04 + modules * (0.25 + 0.018) + 0.08;
+export const batteryFor = (kwh: number) => battery(batteryModules(kwh));
+export function battery(modules: number): THREE.Group {
   const g = new THREE.Group(), body = lam(KIT.paper), seam = lam(KIT.seam), mh = 0.25, sh = 0.018;
   let y = 0.04;
   g.add(box(BATTERY.w - 0.06, 0.04, BATTERY.d - 0.06, seam, 0, 0.02)); // plinth
