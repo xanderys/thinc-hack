@@ -143,7 +143,7 @@ export default function CopilotShell() {
       <div ref={wrap} className={s.shell} data-lead={asCircle ? "1" : undefined} data-open={open ? "1" : undefined} data-off={off}>
         <div className={s.dockWrap}>
           <div aria-hidden style={{ height: "var(--composer-h, 96px)" }} />
-          <ComposerField value="" onChange={noop} onSend={noop} onAttach={() => setOpen(true)} onMicStart={noop} onMicStop={noop} onActivate={() => setOpen(true)} />
+          <ComposerField value="" onChange={noop} onSend={noop} onAttach={() => setOpen(true)} onMicStart={() => setOpen(true)} onMicStop={noop} onActivate={() => setOpen(true)} />
         </div>
         <div className={s.scrim} onClick={close} aria-hidden />
         <section ref={cardEl} className={s.card} data-copilot-card aria-hidden={!open} aria-label="Copilot">

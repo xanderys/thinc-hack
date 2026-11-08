@@ -47,8 +47,8 @@ export default function ComposerField({ value, onChange, onSend, onAttach, onMic
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onSend(); } }} />
         {trailing}
         {recording && <span className={s.secs} aria-live="off">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}</span>}
-        <button type="button" className={`${s.glyph} ${recording ? s.on : ""}`} aria-label="Hold to talk" aria-pressed={!!recording} disabled={busy}
-          onPointerDown={(e) => { onMicStart(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ } }} onPointerUp={onMicStop} onPointerCancel={onMicStop} onMouseDown={onMicStart} onMouseUp={onMicStop} onTouchStart={onMicStart} onTouchEnd={(e) => { e.preventDefault(); onMicStop(); }} onTouchCancel={onMicStop} onContextMenu={(e) => e.preventDefault()}>
+        <button type="button" className={`${s.glyph} ${recording ? s.on : ""}`} aria-label={recording ? "Stop recording" : "Record"} aria-pressed={!!recording} disabled={busy && !recording}
+          onClick={() => (recording ? onMicStop() : onMicStart())} onContextMenu={(e) => e.preventDefault()}>
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="7.25" y="2.75" width="5.5" height="9.5" rx="2.75" /><path d="M4.75 9.75a5.25 5.25 0 0 0 10.5 0M10 15v2.25" /></svg>
         </button>
         <button type="submit" className={s.go} aria-label="Send" disabled={!value.trim() || busy}>
