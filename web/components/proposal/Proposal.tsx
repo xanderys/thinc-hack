@@ -19,6 +19,7 @@ export const TODAY_LINE = `Today: ${TODAY_OFFER_DAYS} days to an offer, ${TODAY_
 
 const NAME: Record<ComponentKey, string> = { pv: "Solar panels", battery: "Battery", heatpump: "Heat pump", wallbox: "Wallbox" };
 const FIELD: Record<ComponentKey, keyof Design> = { pv: "pv_kwp", battery: "battery_kwh", heatpump: "heatpump_kw", wallbox: "wallbox_kw" };
+const OPTIONAL = new Set<ComponentKey>(["heatpump", "wallbox"]); // shown only when included
 const UNIT: Record<ComponentKey, string> = { pv: "kWp", battery: "kWh", heatpump: "kW", wallbox: "kW" };
 
 const eur = (x: number) => `€${n0(x)}`;
@@ -36,10 +37,8 @@ export function offered(lead: Lead): { key: Variant["key"]; design: Design; econ
 
 const writes = new Map<string, WriteResponse | "failed">();
 
-// Planner checks (battery cycles, DC/AC ratio, payback sanity band, roof area) stay out of the homeowner's lines.
+// Planner checks (battery cycles, DC/AC ratio, payback sanity band, roof area) stay out of the facts sent; /api/write in homeowner mode drops the rest.
 const TECH = /full cycles|DC\/AC|sanity band|usable roof|clipped/i;
-const CYCLES = String.raw`\s*(?:running|doing|with|at|for)?\s*(?:about\s+)?[\d,]+ full cycles a year`;
-const homely = (line: string) => line.replace(new RegExp(`,${CYCLES},`, "gi"), "").replace(new RegExp(`,?${CYCLES}`, "gi"), "").replace(/\s+\./g, ".");
 
 // The planner's four offers, in the planner's order and names (web/components/offer/VariantTabs.tsx). Best value is not offered here.
 const ROWS: { key: Variant["key"]; name: string }[] = [
@@ -107,7 +106,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
         <div className="pp-housebox">
           {street && spatial !== false && (
             <div className="pp-spatial">
-              <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={design} address={address} response={lead.draft} layer={layer} onLayerChange={setLayer} onAvailable={setSpatial} />
+              <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={design} address={address} response={lead.draft} layer={layer} onLayerChange={setLayer} onAvailable={setSpatial} homeowner />
             </div>
           )}
           {(!street || spatial === false) && <div className="pp-drawing"><House design={design} /></div>}
@@ -140,13 +139,13 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
         <h2>Your system</h2>
         <KitSlot design={design} />
         <ul className="pp-parts">
-          {KEYS.map((k) => {
+          {KEYS.filter((k) => !OPTIONAL.has(k) || design[FIELD[k]] != null).map((k) => {
             const v = design[FIELD[k]];
             return (
               <li key={k} className={v == null ? "off" : undefined}>
                 <span className={`pp-dot ${k}`} aria-hidden />
                 <span className="pp-pname"><b>{NAME[k]}</b><span className="pp-size">{v == null ? "Not included" : `${n2(v)} ${UNIT[k]}`}</span></span>
-                {lines?.[k] && <p>{homely(lines[k]!)}</p>}
+                {lines?.[k] && <p>{lines[k]}</p>}
                 {!write && <span className="pp-wait" aria-hidden />}
               </li>
             );
@@ -308,7 +307,7 @@ export function ProposalSkeleton() {
         <h2>Your system</h2>
         <KitSlot design={null} />
         <ul className="pp-parts">
-          {KEYS.map((k) => (
+          {KEYS.filter((k) => !OPTIONAL.has(k)).map((k) => (
             <li key={k}>
               <span className="pp-dot pp-skb" aria-hidden />
               <span className="pp-pname"><b className="pp-skt">{NAME[k]}</b><span className="pp-size pp-skt">10.24 {UNIT[k]}</span></span>
