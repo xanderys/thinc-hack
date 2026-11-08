@@ -100,11 +100,12 @@ export default function ProposedCard({ kwp, kwh, price, pending, children, id }:
   }, [side, paint]);
   useEffect(() => () => cancelAnimationFrame(st.current.raf), []);
   // Esc, capture phase on window from mount: an open pass tucks; a tucked pass swallows it, so Esc never closes the lead
-  // (the chevron is the way back). A kit chooser registers its own capture handler earlier and closes first.
+  // (the chevron is the way back). A kit chooser registers its own capture handler earlier and closes first; an open
+  // menu marked data-esc-first (Layers) gets the Esc instead.
   const openNow = useRef(open); openNow.current = open;
   const toRef = useRef(to); toRef.current = to;
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key !== "Escape") return; e.stopPropagation(); e.preventDefault(); if (openNow.current) toRef.current(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key !== "Escape" || document.querySelector("[data-esc-first]")) return; e.stopPropagation(); e.preventDefault(); if (openNow.current) toRef.current(false); };
     addEventListener("keydown", esc, true);
     return () => removeEventListener("keydown", esc, true);
   }, []);
