@@ -1,7 +1,7 @@
 // One component line of the offer. Tapping it opens a small chooser: let the engine decide, none, or one of the
 // installer's package sizes. A choice re-runs the design through the same path as a sentence (overrides on
 // /api/refine with base_version); a line the planner set carries a lock and "set by you".
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Design, OverrideValue } from "@/lib/api";
 import { n1, n2 } from "./format";
 import Glyph from "./Glyph";
@@ -9,8 +9,9 @@ import s from "./offer.module.css";
 
 export type LineField = Exclude<keyof Design, never>;
 
-export default function InlineOverride({ field, text, unit, sizes, current, set, fixed, canNone, onChoose, glyph }: {
-  field: LineField; text: string; unit: string; sizes: number[]; current: number | null;
+export default function InlineOverride({ field, text, content, unit, sizes, current, set, fixed, canNone, onChoose, glyph }: {
+  // content: what the line shows (else text); text names the menu.
+  field: LineField; text: string; content?: ReactNode; unit: string; sizes: number[]; current: number | null;
   set: OverrideValue | undefined;   // what the planner chose here by hand (lock and "set by you")
   fixed: boolean;                   // any override on this field, a variant's included
   canNone: boolean; glyph?: string;   // omitted inside the kit sheet, where the row already shows the part
@@ -40,7 +41,7 @@ export default function InlineOverride({ field, text, unit, sizes, current, set,
     <div className={s.line} ref={ref} data-open={open || undefined}>
       <button type="button" className={s.lineBtn} aria-expanded={open} onClick={() => setOpen((x) => !x)}>
         {glyph && <Glyph k={glyph} size={15} />}
-        <span className={s.lineText}>{text}</span>
+        <span className={s.lineText}>{content ?? text}</span>
         {locked && <span className={s.set}><Glyph k="lock" size={12} />Set by you</span>}
       </button>
       {open && (
