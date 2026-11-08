@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   const lead = await callEngine("GET", `/api/leads/${id}`, new URLSearchParams());
   if (lead.status !== 200) return NextResponse.json(lead.body, { status: lead.status });
   const l = lead.body as { status?: string; version?: number; facts?: Record<string, unknown>; address_or_postcode?: string; approved?: { design?: unknown }; draft?: { design?: unknown } };
-  if (!["approved", "signed", "declined", "question"].includes(l.status ?? "")) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!["approved", "sent", "signed", "declined", "question"].includes(l.status ?? "")) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const design = l.approved?.design ?? l.draft?.design;
   const key = `${id}:${l.version ?? 0}:${JSON.stringify(design)}`;
   const hit = cache.get(key);
