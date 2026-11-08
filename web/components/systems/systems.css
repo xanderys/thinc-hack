@@ -177,3 +177,9 @@
   .sc-pop { animation: sc-fade 200ms ease-out both; }
 }
 @keyframes sc-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* Heat pump: the x-ray's shares live in the card (one block), so its floating legend and leaders stay hidden here. */
+.sys-on .xr-card, .sys-on svg:has(+ .xr-card) { display: none !important; }
+.sc-shares i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 5px 0 1px; vertical-align: 0; }
+/* The scrubber in the Panels card is labelled once, by its Shading chip; its source sits behind the card's i. */
+.sc-extra [class*="ShadingScrubber_srcBtn__"] { display: none; }

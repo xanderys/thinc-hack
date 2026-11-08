@@ -86,7 +86,7 @@ function panelCorners(p: RoofPlane, r: PanelRect): THREE.Vector3[] {
   return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => c.clone().addScaledVector(u, (i * r.w) / 2).addScaledVector(v, (j * r.h) / 2));
 }
 
-export interface SceneOpts { reduce: boolean; onHour?: (h: number, playing: boolean) => void; compass?: HTMLElement | null; onView?: (mode: "3d" | "2d") => void }
+export interface SceneOpts { reduce: boolean; onZoom?: (can: { in: boolean; out: boolean }) => void; onHour?: (h: number, playing: boolean) => void; compass?: HTMLElement | null; onView?: (mode: "3d" | "2d") => void }
 
 export class SpatialScene {
   private renderer: THREE.WebGLRenderer;
@@ -197,7 +197,7 @@ export class SpatialScene {
     Object.assign(this.controls2d, { enableRotate: false, enablePan: true, screenSpacePanning: true, enableDamping: !opts.reduce, dampingFactor: 0.12, minZoom: 0.7, maxZoom: 5, enabled: false });
     this.controls2d.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
     this.controls2d.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
-    this.controls2d.addEventListener("start", () => { this.fly = null; this.pose = null; });
+    this.controls2d.addEventListener("start", () => { this.fly = null; this.pose = null; this.zoom2 = null; this.zoom2V = 0; });
     // Double tap or double click puts the house back in frame.
     this.renderer.domElement.addEventListener("pointerup", this.onTap);
     this.renderer.domElement.addEventListener("pointerdown", this.onDown);
@@ -878,6 +878,42 @@ export class SpatialScene {
     this.spin = { a: this.opts.reduce ? 0 : a, v: 0, h, y: o.y };
     if (this.opts.reduce) this.stepSpin(0);
   }
+  // Zoom buttons and keys: one step is 20 % of the camera distance (dir 1 in, -1 out), clamped to the limits pinch and
+  // wheel already use (the controls' min/max distance, the plan's min/max zoom). The 3D step rides the same fly spring
+  // as a stage change (0.6 s, bounce 0, velocity kept); a drag or a wheel cancels it. Reduce Motion: a cut.
+  zoomBy(dir: 1 | -1) {
+    if (this.mode === "2d") {
+      const c = this.controls2d, z = THREE.MathUtils.clamp((this.zoom2 ?? this.ortho.zoom) * (dir > 0 ? 1.25 : 0.8), c.minZoom, c.maxZoom);
+      this.zoom2 = z;
+      if (this.opts.reduce) { this.ortho.zoom = z; this.ortho.updateProjectionMatrix(); this.zoom2 = null; }
+      return;
+    }
+    this.spin = null; this.pose = null;
+    const tgt = this.fly?.tgt.clone() ?? this.controls.target.clone();
+    const from = (this.fly?.pos ?? this.persp.position).clone().sub(tgt);
+    const d = THREE.MathUtils.clamp(from.length() * (dir > 0 ? 0.8 : 1.25), this.controls.minDistance, this.controls.maxDistance);
+    const pos = tgt.clone().addScaledVector(from.normalize(), d);
+    if (this.opts.reduce) { this.persp.position.copy(pos); this.controls.target.copy(tgt); this.controls.update(); this.fly = null; return; }
+    this.fly = { pos, tgt, top: false };
+  }
+  private zoom2: number | null = null; private zoom2V = 0;
+  // Whether another step in or out is possible, for the buttons' disabled state (reported on change).
+  private zoomState = "";
+  private reportZoom() {
+    let cin: boolean, cout: boolean;
+    if (this.mode === "2d") { const z = this.zoom2 ?? this.ortho.zoom, c = this.controls2d; cin = z < c.maxZoom - 1e-3; cout = z > c.minZoom + 1e-3; }
+    else { const d = (this.fly?.pos ?? this.persp.position).distanceTo(this.fly?.tgt ?? this.controls.target); cin = d > this.controls.minDistance + 1e-2; cout = d < this.controls.maxDistance - 1e-2; }
+    const s = `${cin}${cout}`;
+    if (s !== this.zoomState) { this.zoomState = s; this.opts.onZoom?.({ in: cin, out: cout }); }
+  }
+  private stepZoom2(dt: number) {
+    if (this.zoom2 == null) return;
+    const g = this.zoom2, e0 = this.ortho.zoom - g, k = Math.exp(-OMEGA * dt), c = this.zoom2V + OMEGA * e0, et = e0 + c * dt;
+    this.zoom2V = (c - OMEGA * et) * k; this.ortho.zoom = g + et * k;
+    if (Math.abs(this.ortho.zoom - g) < 1e-3 && Math.abs(this.zoom2V) < 1e-3) { this.ortho.zoom = g; this.zoom2 = null; this.zoom2V = 0; }
+    this.ortho.updateProjectionMatrix();
+  }
+
   private stepSpin(dt: number) {
     const s = this.spin!;
     if (dt > 0) { const k = Math.exp(-OMEGA * dt), c = s.v + OMEGA * s.a, e = s.a + c * dt; s.v = (c - OMEGA * e) * k; s.a = e * k; }
@@ -901,6 +937,8 @@ export class SpatialScene {
     this.lastTick = performance.now();
     const dt = Math.min(0.05, this.clock.getDelta());
     if (this.spin) this.stepSpin(dt);
+    if (this.zoom2 != null) this.stepZoom2(dt);
+    this.reportZoom();
     if (this.fly) {
       const a = springStep(this.persp.position, this.vPos, this.fly.pos, dt);
       const b = springStep(this.controls.target, this.vTgt, this.fly.tgt, dt);
