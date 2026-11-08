@@ -22,7 +22,7 @@ interface HomeInputs {
   heating_type: HeatingType;
   heating_cost_per_year_eur?: number;
   heating_demand_kwh?: number;
-  electricity_price_ct_kwh?: number;    // default 32
+  electricity_price_ct_kwh?: number;    // default 37 (BDEW Aug 2026; the hourly economics); the rough ratio fallback in rules.py still uses 32
   has_solar: boolean;  existing_solar_kwp?: number;
   has_storage: boolean; existing_storage_kwh?: number;
   address?: string;                     // v1.6: street address; the engine looks the roof up itself (roof/ package)
@@ -255,3 +255,7 @@ v2.14 additions (engine, restart B: figure audit and WhatsApp polish)
 - `boiler_age_years` joins the facts the engine can ask about.
 - WhatsApp: one template set for ask and send, "Rina here from Isarwerk Solar" (the lead's `meta.installer_name` when set). First name from the lead name, "Hi there" for a test label or a non-name. Ask and send take `origin` (the web's request origin) and the link is built on it (`<origin>/start/proposal/{id}`; default https://marquee-home.vercel.app). `GET /api/leads/{id}/whatsapp/preview?kind=ask|send&origin=` returns `{kind, text, link?, open_facts?, asking?}`: exactly what would be sent, nothing logged. Dry runs return `text` too. `POST /api/leads/{id}/send` takes `text?` and sends exactly that. The preview route is pure. A dry run keeps at most one "dry" entry per kind (question, proposal), and the real ask or send replaces its dry entry. Real messages are never removed.
 - `POST /api/leads` checks `phone` before anything is saved: a 422 leaves no lead behind. `POST /api/leads/hide-unpinned` marks every unpinned, non-test lead `test: true` (hidden from the board, still reachable by URL; no deletes) → `{hidden: {lead_id, customer_name}[], count}`.
+
+v2.14 additions (engine, restart C: heat loss on the heated rooms)
+- The envelope is corrected engine-side (`envelope_view.correct`, applied to every envelope the engine returns or sizes from): windows are 20 % of the heated floor area (footprint x storeys below the eaves x 0.72), not 20 % of every LoD2 wall including the gables. Ventilation runs on that floor area x 2.5 m, not the gross LoD2 volume with the roof space. Walls, roof, floor, U-values and thermal bridges are unchanged. `envelope.heated_area_m2`, `envelope.corrected: true`, `envelope.uncorrected` (the cached figures), `design.volume_m3` is the heated volume. Hero: 17.2 kW design heat load (was 21.2), 92 W/m² on 188 m², and 39,000 kWh a year (was 48,900). The heat pump is still sized from the bill when there is one (hero 8.7 kW); the envelope stays the upper bound.
+- `RoofResult.floor_area_m2` and `storeys` come from the 3D model's eave height when the model is built (hero 188.5 m², 2 storeys, not 282.6 m² from the ridge), with `floor_area_note`.
