@@ -25,7 +25,9 @@ function useReduce() {
   return r;
 }
 
-export default function ProposedCard({ kwp, kwh, price = 0, pending, children, id, none, title = "Proposed Design", figs: figsIn, lift = 0, undo }: Props) {
+export default function ProposedCard({ kwp, kwh, price = 0, pending, children, id, none: noneIn, title = "Proposed Design", figs: figsIn, lift = 0, undo }: Props) {
+  // A drafted design always shows; the "no design" line is only for a lead with nothing drafted.
+  const none = kwp || kwh ? null : noneIn;
   const side = "bottom" as const;
   const reduce = useReduce();
   const [open, setOpen] = useState(false);
@@ -148,12 +150,20 @@ export default function ProposedCard({ kwp, kwh, price = 0, pending, children, i
     void e;
   };
 
+  // The standard three (solar, battery, investment) show as the card's first tile row, tucked and open alike; any
+  // other figures (the homeowner's sign card) stay one inline line.
+  const TILE: Record<Fig["k"], string> = { kwp: "Solar", kwh: "Battery", price: "Investment" };
+  const tiles = figs.length === 3 && figs.every((f, i) => f.k === (["kwp", "kwh", "price"] as const)[i]);
+  const tile = (f: Fig) => (
+    <span key={f.k} className="pc-tile"><span className="pc-tl">{TILE[f.k]}</span>
+      {pending ? <b className="pc-skel" aria-hidden="true">{f.v}</b> : <b><Num v={f.v} lit /></b>}</span>
+  );
   const figure = (f: Fig) => pending
     ? <span key={f.k} className="pc-fig pc-skel" aria-hidden="true">{f.v}</span>
     : <span key={f.k} className="pc-fig"><Num v={f.v} lit /></span>;   // springs to the new figure and lights briefly
 
   return (
-    <div ref={root} className={`pc pc-${side}${open ? " pc-open" : ""}${reduce ? " pc-reduce" : ""}`} style={lift ? ({ ["--pc-lift" as string]: `${lift}px` }) : undefined}>
+    <div ref={root} className={`pc pc-${side}${open ? " pc-open" : ""}${reduce ? " pc-reduce" : ""}${tiles && !none ? " pc-has-tiles" : ""}`} style={lift ? ({ ["--pc-lift" as string]: `${lift}px` }) : undefined}>
       {<div ref={scrim} className="pc-scrim" onClick={() => to(false)} aria-hidden="true" />}
       {/* The tucked pass's footprint on the model, fixed whether the pass is open or not: the house frames above it. */}
       <div className="pc-cover" data-cover aria-hidden="true" />
@@ -162,7 +172,9 @@ export default function ProposedCard({ kwp, kwh, price = 0, pending, children, i
           onClick={() => { if (moved.current) { moved.current = false; return; } to(!open); }}>
           <span className="pc-grip" aria-hidden="true" />
           <span className="pc-h">{title}</span>
-          {none ? <span className="pc-none">{none}</span> : <span className="pc-figs" aria-live="polite" aria-busy={pending}>{figs.map(figure)}</span>}
+          {none ? <span className="pc-none">{none}</span> : tiles
+            ? <span className="pc-figs pc-tiles" aria-live="polite" aria-busy={pending}>{figs.map(tile)}</span>
+            : <span className="pc-figs" aria-live="polite" aria-busy={pending}>{figs.map(figure)}</span>}
           <svg className="pc-chev" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M5 12.5l5-5 5 5" />
           </svg>

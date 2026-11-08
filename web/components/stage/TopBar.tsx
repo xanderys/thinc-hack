@@ -1,4 +1,5 @@
 "use client";
+import { useRef } from "react";
 import type { AskQuestion, Design, DesignResponse, HomeInputs, InstallerId, Overrides, OverrideValue, ReadResponse, RoofResult } from "@/lib/api";
 import { COMPONENT_DESIGN_FIELD } from "@/lib/api";
 import { Fix } from "@/components/DesignSheet";
@@ -26,23 +27,11 @@ export default function TopBar(p: Props) {
   const i = p.inputs;
   return (
     <section className="t-bar" aria-label="Inputs and decisions">
-      {p.liveAsking && <p className="t-asking" aria-live="polite"><span className="dot" aria-hidden />Asking: {p.liveAsking}</p>}
-      {p.question && (
-        <div className="t-ask s-in">
-          <span>{QUESTION[p.question.field] ?? `What is ${String(p.question.field)}?`}</span>
-          <span className="seg" role="group" aria-label="Answer">
-            {askOptions(p.question).map((o) => (
-              <button key={String(o.value)} type="button" className={typeof o.value === "number" ? "num" : undefined} aria-pressed={p.answer === o.value} onClick={() => p.onAnswer(o.value)}>
-                {optionLabel(p.question!.field, o.value)}
-              </button>
-            ))}
-          </span>
-          {p.question.field.endsWith("_kwh") && <span className="s-quiet">kWh</span>}
-        </div>
-      )}
-      {p.asking && <p className="s-quiet s-wait">Finding the one question that matters</p>}
+      {p.liveAsking && <p className="t-asking" aria-live="polite"><span className="dot" aria-hidden /><span className="q" title={p.liveAsking}>{p.liveAsking}</span></p>}
+      <NextQuestion {...p} />
+      {p.asking && <span className="b-skel b-skel-line" aria-hidden="true" style={{ width: "min(320px, 70%)", height: 14 }} />}
       {p.askError && <p className="s-quiet" role="status"><span className="src">Engine said </span>{p.askError}</p>}
-      <Facts sources={p.sources} phone={p.phone} onPhone={p.onPhone} origin={p.read.origin} inputs={i} roof={p.roof} onFact={p.onFact} hidden={p.question && p.answer === undefined ? p.question.field : null} slot={p.factsSlot} />
+      <Facts sources={p.sources} phone={p.phone} onPhone={p.onPhone} origin={p.read.origin} inputs={i} roof={p.roof} onFact={p.onFact} hidden={p.question && p.answer === undefined ? p.question.field : null} flash={p.question && p.answer !== undefined ? p.question.field : null} slot={p.factsSlot} />
       {!p.noDecide && <Decide {...p} />}
       {(p.lead || p.read.found.length > 0) && (
         <details className="t-mail"><summary>{p.read.source === "call" ? "From the call" : "The enquiry"}</summary>
@@ -50,6 +39,32 @@ export default function TopBar(p: Props) {
         </details>
       )}
     </section>
+  );
+}
+
+// The one question: facts-style pills, and once answered the card folds away (the answer lands in its fact row).
+function NextQuestion(p: Pick<Props, "question" | "answer" | "onAnswer">) {
+  const kept = useRef<AskQuestion | null>(null);
+  if (p.question) kept.current = p.question;
+  const q = p.question ?? kept.current;
+  const gone = !p.question || p.answer !== undefined;
+  if (!q) return null;
+  return (
+    <div className="tq" data-gone={gone ? "" : undefined} aria-hidden={gone}>
+      <div className="tq-in" inert={gone}>
+        <div className="t-ask">
+          <span>{QUESTION[q.field] ?? `What is ${String(q.field)}?`}</span>
+          <span className="seg" role="group" aria-label="Answer">
+            {askOptions(q).map((o) => (
+              <button key={String(o.value)} type="button" aria-pressed={p.answer === o.value} onClick={() => p.onAnswer(o.value)}>
+                {optionLabel(q.field, o.value)}
+              </button>
+            ))}
+          </span>
+          {q.field.endsWith("_kwh") && <span className="s-quiet">kWh</span>}
+        </div>
+      </div>
+    </div>
   );
 }
 

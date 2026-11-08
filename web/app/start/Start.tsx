@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ConversationProvider, useConversation } from "@elevenlabs/react";
+import { ConversationProvider, useConversation, useConversationClientTool } from "@elevenlabs/react";
+import dynamic from "next/dynamic";
 import { endTone, startRing, stopRing, tick, unlock } from "./sounds";
 import type { Lead } from "@/lib/api";
 import { designLine, n0, n2, pct } from "@/lib/stage";
@@ -10,6 +11,61 @@ import RoofNote from "@/components/home/RoofNote";
 import { HOME_FORM, homeFacts, INSTALLER_BRAND, homeFirstMessage, homeNote, homeVariables, type HomeAnswers, type InstallerId, type RoofInfo } from "./intake";
 
 type Props = { agentId: string; installerId: InstallerId; test?: boolean };
+const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
+// record_fact (ElevenLabs client tool): the field names the engine takes; values arrive as strings.
+const FACT_FIELDS = new Set(["annual_demand_kwh", "num_inhabitants", "heating_type", "boiler_age_years", "has_ev", "ev_planned", "house_built_year", "has_solar", "heating_demand_kwh", "has_wallbox", "heating_cost_per_year_eur", "electricity_price_ct_kwh"]);
+const BOOL_FACTS = new Set(["has_ev", "ev_planned", "has_solar", "has_wallbox"]);
+// Names the agent may use for a field, mapped to the engine's.
+const FIELD_ALIAS: Record<string, string> = { people: "num_inhabitants", persons: "num_inhabitants", household: "num_inhabitants", household_size: "num_inhabitants", inhabitants: "num_inhabitants",
+  ev: "has_ev", electric_car: "has_ev", car: "has_ev", solar: "has_solar", pv: "has_solar", wallbox: "has_wallbox", boiler_age: "boiler_age_years", heating_age: "boiler_age_years",
+  heating: "heating_type", annual_demand: "annual_demand_kwh", electricity_use: "annual_demand_kwh", built_year: "house_built_year", year_built: "house_built_year", heating_cost: "heating_cost_per_year_eur", price_ct_kwh: "electricity_price_ct_kwh" };
+const THIS_YEAR = 2026;
+// What the homeowner just said, in their words, shown at once on the call screen.
+function factLabel(f: string, v: unknown): string {
+  const n = typeof v === "number" ? v : Number(v);
+  switch (f) {
+    case "num_inhabitants": return `${v} ${n === 1 ? "person" : "people"}`;
+    case "heating_type": return ({ gas: "Gas heating", oil: "Oil heating", "heat pump": "Heat pump already", district: "District heating", electric: "Electric heating", OtherRenewable: "Wood or pellet heating" } as Record<string, string>)[String(v)] ?? `${v} heating`;
+    case "has_wallbox": return v ? "A wallbox already" : "No wallbox yet";
+    case "heating_cost_per_year_eur": return `€${n0(n)} a year on heating`;
+    case "electricity_price_ct_kwh": return `${v} ct per kWh`;
+    case "has_ev": return v ? "An electric car" : "No electric car";
+    case "ev_planned": return v ? "A car next year" : "No car planned";
+    case "has_solar": return v ? "Solar already" : "No solar yet";
+    case "annual_demand_kwh": return `${n0(n)} kWh a year`;
+    case "heating_demand_kwh": return `${n0(n)} kWh for heating`;
+    case "boiler_age_years": return `Boiler ${v} years old`;
+    case "house_built_year": return `Built ${v}`;
+    default: return String(v);
+  }
+}
+// A value the engine can take, or undefined when there is nothing usable (Rina then asks again).
+function factValue(field: string, v: unknown): unknown {
+  const t = String(v ?? "").trim().toLowerCase();
+  if (v == null || t === "") return undefined;
+  if (BOOL_FACTS.has(field)) {
+    if (v === true || /^(true|yes|ja|y|1|now|planned)$/.test(t)) return true;
+    if (v === false || /^(false|no|nein|n|0|none)$/.test(t)) return false;
+    return undefined;
+  }
+  if (field === "heating_type") {
+    if (/heat ?pump|w[äa]rmepumpe/.test(t)) return "heat pump";
+    if (/gas/.test(t)) return "gas";
+    if (/\boil\b|\böl|heizöl/.test(t)) return "oil";
+    if (/district|fernw/.test(t)) return "district";
+    if (/electric|strom|night ?storage|nachtspeicher|othernonrenewable/.test(t)) return "electric";
+    if (/wood|pellet|holz|biomass|otherrenewable/.test(t)) return "OtherRenewable";
+    return undefined;
+  }
+  const m = t.replace(/(\d)[,.](\d{3})\b/g, "$1$2").match(/\d+(\.\d+)?/);
+  if (!m) return undefined;
+  let n = Number(m[0]);
+  if (/\bk\b|thousand|tausend/.test(t) && n < 100) n *= 1000;
+  // A year, or "the 80s", given for the boiler: the engine takes an age.
+  if (field === "boiler_age_years" && n > 60) { const year = n >= 1900 ? n : 1900 + n; n = Math.max(0, THIS_YEAR - year); }
+  if (field === "house_built_year" && n < 100) n = 1900 + n;
+  return Number.isFinite(n) ? n : undefined;
+}
 
 export default function Start(props: Props) {
   return (
@@ -34,6 +90,7 @@ const CALLING = new Set(["draft", "in_call"]);
 const steps = (l: Lead) => l.history.filter((h) => h.step != null).length;
 // "now with a wallbox", "now 13.05 kWp of solar": the biggest news first.
 function whatsNew(a: Lead["draft"]["design"], b: Lead["draft"]["design"]): string {
+  if (!a || !b) return "";   // a draft still without its design
   const add: [keyof typeof a, string][] = [["wallbox_kw", "a wallbox"], ["heatpump_kw", "a heat pump"], ["battery_kwh", "a battery"]];
   for (const [f, w] of add) if (a[f] == null && b[f] != null) return `now with ${w}`;
   for (const [f, w] of add) if (a[f] != null && b[f] == null) return `now without ${w}`;
@@ -80,13 +137,120 @@ function Page({ agentId, installerId, test }: Props) {
   const [tickNow, setTickNow] = useState(0);
   const noted = useRef(false);
   const declinedRef = useRef(false);
+  // Tell the engine the call is over so the lead stops reading "On a call"; once per call, beacon-safe on pagehide.
+  const leadIdRef = useRef<string | null>(null); leadIdRef.current = leadId;
+  const ended = useRef(false);
+  const endCall = () => {
+    const id = leadIdRef.current;
+    if (!id || ended.current) return;
+    ended.current = true;
+    const url = `/api/leads/${encodeURIComponent(id)}/call/end`;
+    try { if (!navigator.sendBeacon?.(url, new Blob(["{}"], { type: "application/json" }))) fetch(url, { method: "POST", body: "{}", keepalive: true }).catch(() => {}); } catch { /* page is going away */ }
+  };
+  useEffect(() => {
+    const on = () => { if (connected.current) endCall(); };
+    addEventListener("pagehide", on); return () => removeEventListener("pagehide", on);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Each fact Rina hears goes to the engine at once; the design re-runs and the call screen redraws in place.
+  const recordFact = async (p: { field?: string; value?: unknown }) => {
+    const id = leadIdRef.current, raw = String(p?.field ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+    const f = FACT_FIELDS.has(raw) ? raw : FIELD_ALIAS[raw] ?? raw;
+    const val = FACT_FIELDS.has(f) ? factValue(f, p?.value) : undefined;
+    console.info("record_fact", { raw: p, field: f, value: val });
+    const log = (outcome: string) => { try { navigator.sendBeacon?.("/start/log", new Blob([JSON.stringify({ lead_id: id, raw: p, field: f, value: val, outcome })], { type: "application/json" })); } catch { /* best effort */ } };
+    if (!id) { log("no lead"); return "error: no lead yet; carry on and ask again in a moment"; }
+    if (!FACT_FIELDS.has(f)) { log("unknown field"); return `error: unknown field "${p?.field}"; use one of ${[...FACT_FIELDS].join(", ")}`; }
+    if (val === undefined) { log("empty value"); return `error: no usable value for ${f} in "${p?.value ?? ""}"; ask the homeowner again`; }
+    const n = Date.now();
+    setHeard({ text: `${factLabel(f, val)}, from the call`, n });
+    setRedesigns((x) => x + 1);
+    const before = callLeadRef.current?.draft;
+    const r = await fetch("/api/intake/step", { method: "POST", headers: { "content-type": "application/json", "X-Client-Route": "start-call-fact" },
+      body: JSON.stringify({ lead_id: id, facts_so_far: { [f]: val }, source: "call" }) }).catch(() => null);
+    const b = r ? await r.json().catch(() => null) : null;
+    const dropped: string[] = Array.isArray(b?.dropped) ? b.dropped.map((d: unknown) => (typeof d === "string" ? d : String((d as { field?: string })?.field ?? "a fact"))) : [];
+    const ok = !!r?.ok && !dropped.length;
+    if (ok) {
+      // The step's own redesign goes on screen at once; the lead read after it brings the rest.
+      if (b?.draft?.design) setCallLead((c) => (c ? { ...c, draft: b.draft, ...(typeof b.version === "number" ? { version: b.version } : {}) } : c));
+      const after = b?.draft;
+      const same = before?.design && after?.design && (["pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"] as const).every((k) => (before.design[k] ?? null) === (after.design[k] ?? null));
+      const a0 = before?.economics?.autarky_share, a1 = after?.economics?.autarky_share;
+      const aut = a0 != null && a1 != null && Math.round(a0 * 100) !== Math.round(a1 * 100) ? `, autarky ${Math.round(a0 * 100)} % to ${Math.round(a1 * 100)} %` : "";
+      if (same) setHeard({ text: `${factLabel(f, val)}: kit unchanged${aut}`, n });
+      else if (aut) setHeard({ text: `${factLabel(f, val)}, from the call${aut}`, n });
+      await pull.current().catch(() => {});
+    }
+    else setHeard((h) => (h?.n === n ? null : h));   // the line goes if the engine did not take the fact
+    setRedesigns((x) => Math.max(0, x - 1));
+    log(ok ? "ok" : `failed ${r?.status ?? "offline"} ${dropped.join(",")}`);
+    if (dropped.length) return `error: the engine did not take ${dropped.join(", ")}; ask the homeowner again`;
+    return ok ? "ok" : `error: the fact was not saved (${b?.error ?? r?.status ?? "no connection"}); ask the homeowner again`;
+  };
+  // Claude reads each homeowner answer against Rina's question (/api/call/extract) and writes only the facts it is sure of.
+  const turns = useRef<{ role: string; text: string }[]>([]);
+  const extract = async (question: string, answer: string) => {
+    const id = leadIdRef.current;
+    if (!id || !answer.trim()) return null;
+    const before = callLeadRef.current?.draft, t0 = performance.now();
+    const r = await fetch("/api/call/extract", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ lead_id: id, question, answer, turns: turns.current.slice(-4) }) }).catch(() => null);
+    if (!r?.ok || !r.body) { console.info("call/extract", { status: r?.status }); return null; }
+    // Line one: the facts as Claude read them, shown at once. Line two: the engine's redesign.
+    const reader = r.body.getReader(), dec = new TextDecoder(), out: Record<string, unknown>[] = [];
+    let buf = "", n = 0, said = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      buf += dec.decode(value ?? new Uint8Array(), { stream: !done });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1);
+        let m: Record<string, unknown>; try { m = JSON.parse(line); } catch { continue; }
+        out.push(m);
+        if (m.facts) {
+          const facts = m.facts as Record<string, unknown>;
+          console.info("call/extract facts", { question, answer, facts, ms: Math.round(performance.now() - t0) });
+          if (Object.keys(facts).length) {
+            n = Date.now();
+            said = Object.entries(facts).map(([f, v]) => (f === "ev" ? (v === "planned" ? "A car planned" : v === "now" ? "An electric car" : "No electric car") : factLabel(f, v))).join(", ");
+            setHeard({ text: `${said}, from the call`, n }); setRedesigns((x) => x + 1);
+          }
+        } else if (n) {
+          setRedesigns((x) => Math.max(0, x - 1));
+          const dropped = (m.dropped as string[] | undefined) ?? [];
+          if (m.error || dropped.length) { console.info("call/extract engine", m); setHeard((h) => (h?.n === n ? null : h)); continue; }
+          const after = m.draft as Lead["draft"] | undefined;
+          if (after?.design) setCallLead((c) => (c ? { ...c, draft: after, ...(typeof m.version === "number" ? { version: m.version } : {}) } : c));
+          const same = before?.design && after?.design && (["pv_kwp", "battery_kwh", "heatpump_kw", "wallbox_kw"] as const).every((k) => (before.design[k] ?? null) === (after.design[k] ?? null));
+          const a0 = before?.economics?.autarky_share, a1 = after?.economics?.autarky_share;
+          const aut = a0 != null && a1 != null && Math.round(a0 * 100) !== Math.round(a1 * 100) ? `, autarky ${Math.round(a0 * 100)} % to ${Math.round(a1 * 100)} %` : "";
+          setHeard({ text: same ? `${said}: kit unchanged${aut}` : `${said}, from the call${aut}`, n });
+          console.info("call/extract redesign", { summary: m.summary, ms: Math.round(performance.now() - t0) });
+          void pull.current().catch(() => {});
+        }
+      }
+      if (done) break;
+    }
+    return out;
+  };
+  const onTurn = (m: { message: string; source?: string; role?: string }) => {
+    const role = m.role === "user" || m.source === "user" ? "user" : "agent";
+    const prevAgent = [...turns.current].reverse().find((t) => t.role === "agent")?.text ?? "";
+    turns.current = [...turns.current, { role, text: m.message }].slice(-12);
+    if (role === "user") void extract(prevAgent, m.message);
+  };
+  // "ok" only once the engine holds the fact; anything else tells Rina to ask again.
+  useConversationClientTool("record_fact", recordFact);
+  // Test leads only: the headless check calls the same handler the agent calls.
+  useEffect(() => { if (test) Object.assign(window, { __recordFact: recordFact, __extract: extract, __turn: onTurn }); });
   const conversation = useConversation({
     onConnect: ({ conversationId }) => {
-      connected.current = true; setSince(Date.now());
+      connected.current = true; ended.current = false; setSince(Date.now());
       // The planner preview embeds this page; it opens the lead when the call ends.
       try { window.parent?.postMessage({ type: "marquee:lead", conversation_id: conversationId }, location.origin); } catch {}
     },
-    onDisconnect: () => { if (connected.current) { endTone(); setStep("thanks"); } },
+    onDisconnect: () => { if (connected.current) { endTone(); setStep("thanks"); endCall(); } },
+    onMessage: (m) => onTurn(m as { message: string; source?: string; role?: string }),
     onError: (m) => setError(String(m)),   // stays on the call screen with the words and a retry
   });
   // The enquiry note goes in once the call is up, with the address lookup if it has arrived.
@@ -95,6 +259,7 @@ function Page({ agentId, installerId, test }: Props) {
     noted.current = true;
     conversation.sendContextualUpdate(homeNote(a, installerId, roof.current));
   }, [conversation.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const w = window as Window & { __marqueeBusy?: Record<string, boolean> }; w.__marqueeBusy = { ...w.__marqueeBusy, call: conversation.status === "connected" || conversation.status === "connecting" }; }, [conversation.status]); // AutoReload never reloads during a call
 
   useEffect(() => {
     if (since == null) return;
@@ -111,26 +276,38 @@ function Page({ agentId, installerId, test }: Props) {
   // Keeps polling after the first design: a planner's change shows up as a second notification.
   const [update, setUpdate] = useState<string | null>(null);
   const seen = useRef(0);
+  // The lead as it stands during the call: the scene and figures on the call screen follow it.
+  const [callLead, setCallLead] = useState<Lead | null>(null);
+  const callLeadRef = useRef<Lead | null>(null); callLeadRef.current = callLead;
+  const pull = useRef<() => Promise<void>>(async () => {});
+  // The last fact heard on the call, shown before the engine answers; the figures shimmer while a redesign is out.
+  const [heard, setHeard] = useState<{ text: string; n: number } | null>(null);
+  const [redesigns, setRedesigns] = useState(0);
   const leadSeen = useRef<Lead | null>(null);
   const updatedOnce = useRef(false);
   useEffect(() => {
     if (!leadId) return;
-    const t = setInterval(async () => {
+    const tick = async () => {
       const r = await fetch(`/api/leads/${leadId}`, { cache: "no-store" }).catch(() => null);
       if (!r?.ok) return;
       const l: Lead = await r.json();
+      // A poll that left before a fact landed never puts the older design back.
+      if (l.draft?.design) setCallLead((c) => (c && c.lead_id === l.lead_id && (c.version ?? -1) > (l.version ?? -1) ? c : l));
       // A declined call never moves the lead past "draft": its Submit draft is the design to show.
       if (CALLING.has(l.status) && !declinedRef.current) return;
       const prev = leadSeen.current;
       leadSeen.current = l; setLead(l);
-      if (l.status === "approved" && l.proposal_hash && l.proposal_hash !== shownHash.current) {
+      if ((l.status === "approved" || l.status === "sent") && l.proposal_hash && l.proposal_hash !== shownHash.current) {
         shownHash.current = l.proposal_hash;
         if (!openRef.current) setReady(l.proposal_hash);
       }
       if (l.status === "signed" && l.decision?.action === "sign") setSignedAt((s) => s ?? Date.parse(l.decision!.decided_at));
       if (!prev) { seen.current = steps(l); setDoneAt(Date.now()); return; }
       if (steps(l) > seen.current) { seen.current = steps(l); updatedOnce.current = true; setReady(null); if (!openRef.current) { setUpdate(whatsNew(prev.draft.design, l.draft.design)); setSummary(false); } }
-    }, 3000);
+    };
+    pull.current = tick;
+    void tick();
+    const t = setInterval(tick, 2000);
     return () => clearInterval(t);
   }, [leadId]);
 
@@ -140,7 +317,7 @@ function Page({ agentId, installerId, test }: Props) {
     if (!phoneOk(a.phone ?? "")) { setMiss("phone"); phoneRef.current?.focus(); return; }
     setMiss(null); setError(null);
     unlock();   // the submit tap allows every sound that follows
-    setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false);
+    setStartedAt(Date.now()); setDoneAt(null); setLead(null); leadSeen.current = null; updatedOnce.current = false; setUpdate(null); setLeadId(null); setSummary(false); setCallLead(null); setHeard(null); setRedesigns(0); turns.current = [];
     setOpen(false); setReady(null); shownHash.current = null; setSignedAt(null); declinedRef.current = false;
     setLeadError(null);
     setStep("waiting");
@@ -290,7 +467,7 @@ function Page({ agentId, installerId, test }: Props) {
         {pick("ev", "Electric car")}
         {pick("bill_band", "Electricity bill", "€ a month")}
         {pick("roof", "Roof faces")}
-        <button type="submit" className="h-go" disabled={step !== "form"}>{step === "waiting" ? "Sending" : "Submit"}</button>
+        <button type="submit" className="h-go" disabled={step !== "form"}>{step === "waiting" ? <span className="h-bar">Submit</span> : "Submit"}</button>
         {leadError && step === "form" && <p className="h-why" role="alert">{leadError} <button type="button" className="h-retry" onClick={submit}>Retry</button></p>}
         {error && <p className="h-why" role="alert">ElevenLabs said: {error}</p>}
       </form>
@@ -313,6 +490,7 @@ function Page({ agentId, installerId, test }: Props) {
             <p className="ios-time" aria-live="polite">{live ? clock(secs) : <span className="ios-sk" style={{ width: "3.2ch" }}><span className="h-vh">Connecting</span></span>}</p>
             <p className="ios-mode">{live ? (conversation.isSpeaking ? "Rina is speaking" : "Listening") : <span className="ios-sk" style={{ width: "9ch" }} />}</p>
           </div>
+          <CallScene lead={callLead} heard={heard} busy={redesigns > 0} />
           {/* The iOS grid: mute, speaker and end work; keypad, add call, FaceTime and contacts are shown, not active. */}
           <div className="ios-keys">
             <button type="button" className={conversation.isMuted ? "ios-key on" : "ios-key"} aria-pressed={conversation.isMuted} onClick={() => conversation.setMuted(!conversation.isMuted)}>
@@ -342,13 +520,13 @@ const Bar = ({ w }: { w: string }) => <span className="h-bar" style={{ width: w 
 
 function DesignCard({ lead, took, signedAt, signTook, brand, onOpen }: { lead: Lead | null; took: number; signedAt: number | null; signTook: number; brand: string; onOpen: () => void }) {
   const d = lead?.draft, e = d?.economics, v = d?.variants?.[0];
-  const say = d ? [
+  const say = d?.design ? [
     d.design.pv_kwp != null ? `${n2(d.design.pv_kwp)} kWp of solar panels on your roof.` : "No solar panels for now.",
     d.design.battery_kwh != null ? `A ${n2(d.design.battery_kwh)} kWh battery keeps daytime sun for the evening.` : "No battery for now.",
     d.design.heatpump_kw != null ? `A ${n2(d.design.heatpump_kw)} kW heat pump heats the house.` : "No heat pump for now.",
     d.design.wallbox_kw != null ? `A wallbox for the car, ${n2(d.design.wallbox_kw)} kW.` : "No car charger for now.",
   ] : null;
-  const released = lead && (lead.status === "approved" || lead.status === "signed" || lead.status === "question");
+  const released = lead && (lead.status === "approved" || lead.status === "sent" || lead.status === "signed" || lead.status === "question");
   return (
     <div className={lead ? "h-design h-arrive" : "h-design h-sk"} aria-busy={!lead} aria-hidden={!lead || undefined}>
       <dl className="h-nums">
@@ -399,4 +577,22 @@ function Mic() {
 }
 function Speaker() {
   return <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06a9 9 0 0 0 0-17.54z" /></svg>;
+}
+
+// The homeowner's home in 3D on the call screen: there from Submit, redrawn in place as each fact lands.
+function CallScene({ lead, heard, busy }: { lead: Lead | null; heard: { text: string; n: number } | null; busy: boolean }) {
+  const d = lead?.draft?.design, address = lead?.address_or_postcode ?? "";
+  const [ok, setOk] = useState<boolean | null>(null);
+  const figs = d ? [d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "No solar", d.battery_kwh ? `${n2(d.battery_kwh)} kWh battery` : "No battery", ...(d.heatpump_kw ? [`${n2(d.heatpump_kw)} kW heat pump`] : []), ...(d.wallbox_kw ? [`${n2(d.wallbox_kw)} kW wallbox`] : []), ...(lead?.draft?.economics?.capex_eur != null ? [`€${n0(lead.draft.economics.capex_eur)}`] : [])] : null;
+  return (
+    <div className="ios-scene" aria-label="Your design">
+      <div className={lead && d && ok !== false ? "ios-scene-3d" : "ios-scene-3d ios-sk"} aria-busy={!lead}>
+        {lead && d && ok !== false && (
+          <SpatialDemo leadId={lead.lead_id} inputs={lead.facts} design={d} address={address} response={lead.draft} bare homeowner system="panels" onAvailable={setOk} />
+        )}
+      </div>
+      <p className="ios-figs" aria-live="polite" aria-busy={busy}>{figs ? figs.map((f) => <span key={f} className={busy ? "ios-sk" : undefined}>{f}</span>) : <span className="ios-sk" style={{ width: "18ch" }} />}</p>
+      <p className="ios-heard" aria-live="polite">{heard && <span key={heard.n} className="ios-heard-t">{heard.text}</span>}</p>
+    </div>
+  );
 }

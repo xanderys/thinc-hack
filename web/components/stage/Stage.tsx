@@ -14,6 +14,8 @@ import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, OverrideValue, Overrides, ReadResponse, RefineResponse } from "@/lib/api";
 import { call, send } from "@/lib/client";
 import { serialWrite } from "@/lib/leadQueue";
+import { pushEdit, registerUndo, undoLast, useCanUndo } from "@/lib/edits";
+import { designOf, refineOf, seedDesign } from "@/lib/engineCache";
 import { breakEvenNote } from "@/lib/notes";
 import { approveLead, matches, offerOf } from "@/lib/proposal";
 import { HERO_LEAD } from "@/lib/demo";
@@ -190,6 +192,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   async function begin(data: ReadResponse, leadId?: string, draft: DesignResponse | null = null, approved: LeadT["approved"] = null, kit: Overrides | null = null) {
     if (leadId) leadRef.current = leadId; else if (data.source !== "call") leadRef.current = null;
+    frozen.current = false; frozenAt.current = null;
+    seedDraft.current = draft;   // the lead's stored draft answers the first design read (no call on open)
     const r = { data };
     setQuestion(undefined); setAnswer(undefined); setChanged({}); setOverrides({}); setRes(draft); setPrev(null); last.current = draft;
     setHistory([]); setMoved(null); setApprovedAt(null);
@@ -198,7 +202,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (approved?.design && draft) {
       const d = approved.design;
       setOverrides(approved.overrides && Object.keys(approved.overrides).length ? approved.overrides : { pv_kwp: d.pv_kwp, battery_kwh: d.battery_kwh, wallbox_kw: d.wallbox_kw, heatpump_kw: d.heatpump_kw });
-      const shown = { ...draft, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
+      // The frozen proposal, priced from its own figures (no live rates): the homeowner's page shows the same.
+      const shown = { ...draft, rates: undefined, frozen: true, design: d, economics: approved.economics ?? { ...draft.economics, capex_eur: approved.investment_eur } };
+      frozen.current = true;
       setRes(shown); last.current = shown;
     } else if (kit && Object.keys(kit).length) setOverrides(kit);   // the planner's kit edits, as the lead stores them
     persisted.current = !approved?.design && kit ? kit : {};
@@ -235,6 +241,9 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   // Every design the card has seen, keyed by the facts and the fixed sizes (not the lead version: a kit write bumps the
   // version without changing any variant). A variant tab whose design is here switches at once, with no pending state.
   const designs = useRef(new Map<string, DesignResponse | RefineResponse>());
+  const seedDraft = useRef<DesignResponse | null>(null);
+  const frozen = useRef(false);   // a Complete lead opened as approved: no re-run until the planner changes something
+  const frozenAt = useRef<string | null>(null);   // the facts and sizes it was frozen at
   const keyOf = (i: HomeInputs, o: Overrides) => JSON.stringify([i, Object.fromEntries(Object.entries(o).sort(([x], [y]) => x.localeCompare(y)))]);
   const keep = (k: string, r: DesignResponse | RefineResponse) => { const m = designs.current; m.delete(k); m.set(k, r); if (m.size > 32) m.delete(m.keys().next().value!); };
 
@@ -244,15 +253,35 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const ctl = new AbortController();
     const asked = inputs, why = cause.current, fixed = Object.keys(overrides).length > 0;
     const k = keyOf(inputs, overrides);
+    // A Complete lead shows the proposal as it was approved and sent; the engine is asked again only after an edit.
+    // It stays frozen only while the facts and the fixed sizes are exactly what the card opened with: any override write,
+    // refine, size row, chooser or Apply moves them and unfreezes it to the live refine.
+    if (frozen.current) {
+      if (frozenAt.current == null) frozenAt.current = k;
+      if (frozenAt.current === k && !cause.current) return;
+    }
+    frozen.current = false; frozenAt.current = null;
     const hit = designs.current.get(k);
     if (hit) { land({ ok: true, data: hit }, asked, why, fixed, null); return; }
-    if (cause.current) setPending((p) => p ?? Date.now());
+    // A lead that opens on stored kit edits: its first figures come from the refine, so they shimmer until it lands
+    // (a lead without overrides shows its design at once, those figures are final).
+    if (cause.current || fixed) setPending((p) => p ?? Date.now());
+    // A stored draft from before the engine named products (no skus) is read again once, so the rows can name them.
+    // Only a full draft answers the design read: a slim one (the board list sends drafts without derivations) stays on
+    // screen until the one design call brings the rule results the popovers show.
+    if (seedDraft.current) { const sd = seedDraft.current as DesignResponse; if ("skus" in sd && sd.components?.pv?.derivation) seedDesign(inputs, sd); seedDraft.current = null; }   // the plain draft for these facts, also when opening on kit edits
     const t = setTimeout(async () => {
       setBusy(true);
       try {
         const lid = leadRef.current;
         const refine = () => call<RefineResponse>("/api/refine", { inputs, overrides, ...(lid && baseVersion.current != null ? { lead_id: lid, base_version: baseVersion.current } : {}) }, ctl.signal);
-        const r = fixed ? await (lid ? serialWrite(lid, "refine", async () => { let x = await refine(); if (!x.ok && x.status === 409) { const g = await call<LeadT>(`/api/leads/${lid}`); if (g.ok && g.data.version != null) { baseVersion.current = g.data.version; x = await refine(); } } return x; }) : refine()) : await call<DesignResponse>("/api/design", { inputs }, ctl.signal);
+        // Opening on stored kit edits reads them like the board does (no lead id, one shared call); a refine that carries
+        // the lead id and its version follows an actual edit only.
+        // A kit edit (a tap on the model, the chooser) prices at once: its refine is one light call outside the lead's
+        // write queue (on the engine a lead id only adds a staleness check, it stores nothing); the lead write that
+        // persists the edit runs in the queue beside it, so the price no longer waits for it.
+        const kitEdit = !!why?.startsWith("Changed by hand");
+        const r = fixed ? await (lid && why && !kitEdit ? serialWrite(lid, "refine", async () => { let x = await refine(); if (!x.ok && x.status === 409) { const g = await call<LeadT>(`/api/leads/${lid}`); if (g.ok && g.data.version != null) { baseVersion.current = g.data.version; x = await refine(); } } return x; }) : refineOf(inputs, overrides, ctl.signal)) : await designOf(inputs, ctl.signal);
         if (r.ok) keep(k, r.data);
         land(r, asked, why, fixed, lid);
         setBusy(false);
@@ -261,8 +290,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     return () => { clearTimeout(t); ctl.abort(); };
   }, [ready, inputs, overrides, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Each offer of the agent's draft is fetched once in the background after the draft lands, so a tab switch reads
-  // from memory. Runs one request at a time and stops when the facts change.
+  // Each offer of the agent's draft is held in memory once the draft lands, so a tab switch never calls the engine.
   // A lead that opens on stored kit edits starts from a refine, so the plain draft is fetched here first.
   useEffect(() => {
     if (!ready) return;
@@ -273,25 +301,29 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         const k0 = keyOf(i, {});
         base = (designs.current.get(k0) as DesignResponse | undefined) ?? null;
         if (!base) {
-          try { const r = await call<DesignResponse>("/api/design", { inputs: i }, ctl.signal); if (!r.ok) return; keep(k0, r.data); base = r.data; } catch { return; }
+          try { const r = await designOf(i, ctl.signal); if (!r.ok) return; keep(k0, r.data); base = r.data; } catch { return; }
         }
         if (ctl.signal.aborted) return;
         setDrafted(base);
       }
+      // The engine sends every offer complete (design, economics, hash) inside the draft: each tab is built from it here,
+      // with no call. Its layout, when the engine sends one (variant.layout), rides along; until then the layers grid lays it out.
       for (const v of base.variants ?? []) {
-        if (ctl.signal.aborted) return;
         const o: Overrides = v.key === "expert" ? {} : { pv_kwp: v.design.pv_kwp, battery_kwh: v.design.battery_kwh, wallbox_kw: v.design.wallbox_kw, heatpump_kw: v.design.heatpump_kw };
         const k = keyOf(i, o);
         if (designs.current.has(k)) continue;
-        try {
-          const r = Object.keys(o).length ? await call<RefineResponse>("/api/refine", { inputs: i, overrides: o }, ctl.signal) : await call<DesignResponse>("/api/design", { inputs: i }, ctl.signal);
-          if (r.ok) keep(k, r.data);
-        } catch { return; }
+        keep(k, v.key === "expert" ? base : { ...base, design: v.design, economics: v.economics, ...("layout" in v ? { layout: (v as { layout?: unknown }).layout } : {}), skus: (v as { skus?: unknown }).skus ?? sameSize((base as { skus?: Record<string, { size?: number; unit?: string }> }).skus, v.design) } as DesignResponse);
       }
     }, 300);   // after first paint
     return () => { clearTimeout(t); ctl.abort(); };
   }, [ready, drafted === null, inputs]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The draft's products that fit a variant's sizes (a variant without its own skus keeps only those).
+  const sameSize = (skus: Record<string, { size?: number; unit?: string }> | undefined, d: Design) => {
+    if (!skus) return undefined;
+    const want: Record<string, number | null | undefined> = { inverter: d.inverter_kw, battery: d.battery_kwh, wallbox: d.wallbox_kw, heatpump: d.heatpump_kw };
+    return Object.fromEntries(Object.entries(skus).filter(([k, s]) => k === "module" ? !!d.pv_kwp : want[k] != null && s.size === want[k]));
+  };
   // One path for a design that arrived, from the engine or from memory.
   function land(r: { ok: true; data: DesignResponse | RefineResponse } | { ok: false; error: string; status?: number }, asked: HomeInputs, why: string | null, fixed: boolean, lid: string | null) {
         if (r.ok) {
@@ -308,8 +340,17 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
             setMoved({ cause: cause.current, lines });
           }
           cause.current = null; liveWhy.current = null;
-          setPrev(before); last.current = r.data; setRes(r.data); setResIn(asked); setResCause(why); setErr(null); setPending(null);
-          if (!fixed) setDrafted(r.data);
+          // A refine answers without derivations; the rule's own result depends on the facts, not on kit edits, so the
+          // last design that carried them lends them (the popovers lead with the rule result, then the catalogue snap).
+          const src = [before, drafted].find((x) => x?.components?.pv?.derivation);
+          let data = r.data;
+          if (src && data.components && !data.components.pv?.derivation) {
+            const comps = { ...data.components } as DesignResponse["components"];
+            (Object.keys(comps) as (keyof typeof comps)[]).forEach((k) => { if (comps[k] && !comps[k].derivation && src.components[k]?.derivation) comps[k] = { ...comps[k], derivation: src.components[k].derivation }; });
+            data = { ...data, components: comps };
+          }
+          setPrev(before); last.current = data; setRes(data); setResIn(asked); setResCause(why); setErr(null); setPending(null);
+          if (!fixed) setDrafted(data);
         } else if (r.status === 409 && lid && fixed) stale(lid); else { setErr(r.error); setPending(null); }
   }
 
@@ -324,7 +365,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setPvOnly(null);
     if (!res || res.design.battery_kwh == null || res.variants?.length) return;
     const ctl = new AbortController();
-    call<RefineResponse>("/api/refine", { inputs, overrides: { ...overrides, battery_kwh: null } }, ctl.signal)
+    refineOf(inputs, { ...overrides, battery_kwh: null }, ctl.signal)
       .then((r) => { if (r.ok) setPvOnly(r.data); }).catch(() => {});
     return () => ctl.abort();
   }, [res]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -334,7 +375,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     // Engine v1.7: four offers the homeowner can choose between; the preference only reorders them.
     // The variants of the design on screen: refine returns them for the current facts and overrides (an EV sentence's
     // wallbox included), so the agent's earlier draft is only the fallback for an engine that sends none.
-    const ev = res.variants ?? drafted?.variants;
+    // An offer still loading can come without its design: only offers with one are listed.
+    const ev = (res.variants ?? drafted?.variants)?.filter((v) => !!v?.design);
     if (ev?.length) {
       const order = [...ev].sort((a, b) => (b.key === pref ? 1 : 0) - (a.key === pref ? 1 : 0));
       // After a sentence or a hand change the design on screen may match none of the offers: list it first as Current.
@@ -379,15 +421,39 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     void writeLead("hand-change", { [f]: v, ...(f === "has_ev" && v === true && !inputs.ev_annual_km ? { ev_annual_km: 15000 } : {}) } as Partial<HomeInputs>);
   }
 
+  // Several kit fields as one edit (one history step, one lead write): the on-model layout sends pv_kwp with
+  // layout_slots, the chosen slot ids the engine stores as they are.
+  const setKit = useCallback((patch: Record<string, OverrideValue | string[] | undefined>) => {
+    frozen.current = false; frozenAt.current = null;   // an edit always shows the live design
+    if (leadRef.current) pushEdit(leadRef.current, overrides as Record<string, unknown>);
+    cause.current = "Changed by hand:"; setApprovedAt(null);
+    const n: Record<string, unknown> = { ...overrides };
+    Object.entries(patch).forEach(([k, v]) => { if (v === undefined) delete n[k]; else n[k] = v; });
+    setOverrides(n as Overrides); void writeKit("kit-edit", n as Overrides);
+  }, [changed, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
   const setOverride = useCallback((f: keyof Design, v: OverrideValue | undefined) => {
-    setHistory((h) => [...h, { changed, overrides }]); cause.current = "Changed by hand:"; setApprovedAt(null);
+    frozen.current = false; frozenAt.current = null;   // an edit always shows the live design
+    if (leadRef.current) pushEdit(leadRef.current, overrides as Record<string, unknown>);
+    cause.current = "Changed by hand:"; setApprovedAt(null);
     const n = { ...overrides }; if (v === undefined) delete n[f]; else n[f] = v;
     setOverrides(n); void writeKit("kit-edit", n);
   }, [changed, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // One edit at a time: this session's history, else a single stored kit edit (several stored ones are never undone at once).
-  const canUndo = history.length > 0 || Object.keys(overrides).length === 1;
+  // Kit edits (on-model, chooser, offer tabs) undo one at a time from the lead's edit stack (lib/edits.ts); fact
+  // changes (answers, chips) keep their own history below.
+  const editsCan = useCanUndo(leadRef.current ?? seed?.leadId ?? null);
+  useEffect(() => {
+    const id = leadRef.current ?? seed?.leadId;
+    if (!id) return;
+    return registerUndo(id, (prev) => {
+      cause.current = "Undone:"; setApprovedAt(null); setOverrides(prev as Overrides);
+      if (JSON.stringify(prev) !== JSON.stringify(persisted.current)) void writeKit("kit-undo", prev as Overrides);
+    });
+  }, [seed?.leadId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Else this session's fact history, else a single stored kit edit (several stored ones are never undone at once).
+  const canUndo = editsCan || history.length > 0 || Object.keys(overrides).length === 1;
   function onUndo() {
+    if (leadRef.current && undoLast(leadRef.current)) return;
     const h = history[history.length - 1];
     // Opened on stored kit edits with nothing undone yet in this session: Undo reverts the stored edit.
     if (!h) {
@@ -437,11 +503,12 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     const id = leadRef.current;
     if (!id) { done(); return null; }
     const screen = { design: res.design, capex: res.economics.capex_eur };
-    const before = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
-    if (!before.ok) return before.error;
-    const offer = offerOf(before.data, screen, typeof want === "string" ? want : null);
+    // The draft the card holds carries every offer's design_hash: no read of the lead before saving (read only when it is missing).
+    let held: { lead: LeadT; version: number | null } | null = drafted?.variants?.some((v) => v.design_hash) ? { lead: { draft: drafted } as unknown as LeadT, version: baseVersion.current } : null;
+    if (!held) { const before = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`); if (!before.ok) return before.error; held = { lead: before.data, version: before.data.version ?? baseVersion.current }; }
+    const offer = offerOf(held.lead, screen, typeof want === "string" ? want : null);
     const body = offer ? { variant: offer.key, design_hash: offer.hash } : { variant: "edit" as const, design: res.design, overrides };
-    const r = await approveLead(id, body, before.data.version ?? baseVersion.current);
+    const r = await approveLead(id, body, held.version);
     if (!r.ok) { if (r.status === 409) stale(id); return r.status === 409 ? `${MISMATCH} (${r.error})` : r.error; }
     const v = (r.data as { version?: number }).version; if (v != null) baseVersion.current = v;
     const after = await call<LeadT>(`/api/leads/${encodeURIComponent(id)}`);
@@ -454,7 +521,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
 
   const onVariant = useCallback((v: Variant) => {
     if (!v.overrides) return;
-    setHistory((h) => [...h, { changed, overrides }]); cause.current = `Switched to ${v.name}:`; setApprovedAt(null);
+    if (leadRef.current) pushEdit(leadRef.current, overrides as Record<string, unknown>);
+    cause.current = `Switched to ${v.name}:`; setApprovedAt(null);
     setOverrides(v.overrides);   // a tab is a view: nothing is written to the lead (the chooser, Undo and Approve write)
   }, [changed, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
   const openRef = useRef<HTMLDivElement>(null);
@@ -468,10 +536,8 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
         canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-      {slow && !roof?.pending && !err && <p className="s-roof" role="status">Measuring the roof</p>}
-      {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
       {!res && <OpenSkeleton />}
-      {res && <Chain res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={canUndo} onUndo={onUndo} answered={answer != null} redraft={moved}
+      {res?.design && <Chain setKit={setKit} res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={canUndo} onUndo={onUndo} answered={answer != null} redraft={moved}
         decide={<Decide slim pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />} />}
     </div>
   );
@@ -485,7 +551,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
           call={VOICE && !read && !seed ? <Calls installer={installer} onLead={onCall} /> : null} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-          {res && <Plan res={res} prev={prev} inputs={inputs} write={null} writeBusy={false} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? "Measuring the roof from Bavarian 3D data, about 10 s" : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} />}
+          {res?.design && <Plan res={res} prev={prev} inputs={inputs} write={null} writeBusy={false} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? <span className="b-skel b-skel-line" aria-hidden="true" style={{ display: "inline-block", width: 180, height: 12 }} /> : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} />}
           {res && <Refine res={res} moved={moved} canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} />}
         </div>
       </div>

@@ -26,8 +26,8 @@ const plural = (k: number, one: string, many: string) => `${k} ${k === 1 ? one :
 
 // Every component that differs from the planners' pick, in Angebot order (modules, storage, wallbox, heat pump),
 // capped at the two with the largest price effect; the first word of each later item in lower case.
-export function differs(d: Partial<Design>, ref: Partial<Design> | null): string | null {
-  if (!ref) return null;
+export function differs(d: Partial<Design> | null | undefined, ref: Partial<Design> | null): string | null {
+  if (!ref || !d) return null;
   const out: { text: string; cost: number }[] = [];
   const m = modulesOf(d.pv_kwp) - modulesOf(ref.pv_kwp);
   if (m) out.push({ cost: Math.abs(m) * WEIGHT.module, text: !d.pv_kwp ? "No solar" : !ref.pv_kwp ? `+${plural(m, "module", "modules")}` : m > 0 ? `${plural(m, "more module", "more modules")}` : `${plural(-m, "fewer module", "fewer modules")}` });
@@ -49,7 +49,8 @@ export const breakEvenOf = (e: Economics | null | undefined): number | null =>
 
 export type Fact = { label: string; value: string; note?: string };
 // Price, break-even, and the difference from the planners' pick (for the pick itself, none). Same shape everywhere.
-export function variantFacts(e: Economics | null | undefined, d: Partial<Design>, ref: Partial<Design> | null): Fact[] {
+export function variantFacts(e: Economics | null | undefined, d0: Partial<Design> | null | undefined, ref: Partial<Design> | null): Fact[] {
+  const d = d0 ?? {};
   const out: Fact[] = [];
   if (e) {
     out.push({ label: "Price", value: eur(e.capex_eur), note: "estimate" });
@@ -74,25 +75,67 @@ export function checkLine(c: Check): { label: string; value: string } | null {
 }
 export const findCheck = (checks: Check[] | null | undefined, name: RegExp) => (checks ?? []).find((c) => name.test(c.name)) ?? null;
 
-// The rate card behind every total: the data pack carries no prices, so each euro is the engine's market model. Rates
-// come from the engine's own assumption sentence ("PV €2,333 plus €883 per kWp ...; battery €315 per kWh"); a component
-// the sentence does not price (wallbox, heat pump) shows the remainder of the engine's total as an effective rate.
-export type RateLine = { label: string; calc: string; eur: number };
 const euros = (x: string) => Number(x.replace(/,/g, ""));
-export function rateCard(d: Partial<Design>, total: number, assumptions: string[] | null | undefined, modules?: number | null): { lines: RateLine[]; total: number } | null {
-  const text = (assumptions ?? []).join(" ");
-  const pv = /PV €([\d,]+) plus €([\d,]+) per kWp/i.exec(text), bat = /battery €([\d,]+) per kWh/i.exec(text);
-  if (!pv && !bat) return null;
-  const lines: RateLine[] = [];
-  if (d.pv_kwp && pv) {
-    const fixed = euros(pv[1]), per = euros(pv[2]), n = modules && modules > 0 ? modules : Math.round(d.pv_kwp / 0.45);
-    lines.push({ label: "Solar modules and inverter", calc: `${n} modules, ${n2(d.pv_kwp)} kWp × €${n0(per)}/kWp`, eur: Math.round(d.pv_kwp * per) });
-    lines.push({ label: "Fixed cost per system", calc: "", eur: fixed });
-  }
-  if (d.battery_kwh && bat) { const per = euros(bat[1]); lines.push({ label: "Battery storage", calc: `${n1(d.battery_kwh)} kWh × €${n0(per)}/kWh`, eur: Math.round(d.battery_kwh * per) }); }
-  const rest = Math.round(total - lines.reduce((x, l) => x + l.eur, 0));
-  const loads = [d.wallbox_kw ? `Wallbox ${n1(d.wallbox_kw)} kW` : null, d.heatpump_kw ? `Heat pump ${n1(d.heatpump_kw)} kW` : null].filter((x): x is string => !!x);
-  if (loads.length && rest > 0) lines.push({ label: loads.join(" and "), calc: "", eur: rest });
-  else if (rest !== 0) lines.push({ label: "Rounding", calc: "to the nearest €10", eur: rest });
-  return { lines, total };
+
+// SKUs (engine v2.15): the product behind each part, read from the design response wherever the engine puts it
+// (skus.<part>, design.skus.<part> or components.<c>.sku). Absent on an older engine: the rows keep their generic names.
+export type SkuPart = "module" | "inverter" | "battery" | "wallbox" | "heatpump";
+export type Sku = { brand: string; name: string; size?: number; unit?: string; share?: number; modules?: number; brands?: ({ brand: string; share?: number } | string)[] };
+const COMP_OF: Record<SkuPart, string[]> = { module: ["pv", "module"], inverter: ["inverter"], battery: ["battery"], wallbox: ["wallbox"], heatpump: ["heatpump"] };
+export function skusOf(r: unknown): Partial<Record<SkuPart, Sku>> {
+  const o = (r ?? {}) as { skus?: Record<string, Sku>; design?: { skus?: Record<string, Sku> }; components?: Record<string, { sku?: Sku } | undefined> };
+  const out: Partial<Record<SkuPart, Sku>> = {};
+  (Object.keys(COMP_OF) as SkuPart[]).forEach((p) => {
+    const top = o.skus ?? o.design?.skus;   // when the engine sends skus, they are the whole answer
+    const s = top ? top[p] : COMP_OF[p].map((c) => o.components?.[c]?.sku).find(Boolean);
+    if (s && typeof s.brand === "string" && typeof s.name === "string") out[p] = s;
+  });
+  return out;
 }
+// "Huawei Battery 10kWh" -> "Huawei Battery": the size is shown beside it in the lighter colour.
+// Modules read short on a row ("Sunpro TOPCon"); the full product name stays in the rate card.
+const TECH = /\b(TOPCon|PERC|HJT|IBC|Bifacial)\b/i;
+export const skuShort = (s: Sku, part: SkuPart) => part === "module" ? `${s.brand}${TECH.exec(s.name) ? ` ${TECH.exec(s.name)![1]}` : ""}` : skuName(s);
+export const skuName = (s: Sku) => { const n = s.name.replace(/\s*\d+(?:[.,]\d+)?\s*(?:x\s*\d+\s*)?(?:kWh|kWp|kW|Wp|W)\b/gi, "").replace(/\s{2,}/g, " ").trim(); return n.toLowerCase().startsWith(s.brand.toLowerCase()) ? n : `${s.brand} ${n}`; };
+// The brands the data has for this part and size, most common first.
+export const brandsOf = (s: Sku | undefined): string[] => {
+  if (!s?.brands?.length) return [];
+  const xs = s.brands.map((b) => (typeof b === "string" ? { brand: b, share: 0 } : { brand: b.brand, share: b.share ?? 0 }));
+  return [...new Map(xs.sort((a, b) => b.share - a.share).map((x) => [x.brand, x])).keys()];
+};
+export const years = (n: number) => `${n0(n)} ${Math.round(n) === 1 ? "year" : "years"}`;
+
+// The kit sheet as an invoice: one price per row, the total the exact sum of the rows. Rates come from the engine's
+// own rates block (v2.15: per kWp, per kWh, fixed costs) or, on an older response, its assumption sentence. The data
+// has no prices: every figure is the engine's market model, shown as an estimate.
+export type Rates = { pv_fixed_eur?: number; pv_eur_per_kwp?: number; battery_eur_per_kwh?: number; wallbox_fixed_eur?: number; heatpump_net_eur?: number; lines?: { item: string; eur: number }[]; total_eur?: number };
+export type RowKey2 = "pv" | "inv" | "bat" | "wb" | "hp" | "inst";
+export type Invoice = { price: Partial<Record<RowKey2, number | "included">>; calc: string[]; total: number };
+export function invoiceOf(d: Partial<Design>, rates: Rates | null | undefined, assumptions: string[] | null | undefined, capex: number | null | undefined, modules?: number | null, names: { pv?: string; bat?: string } = {}): Invoice | null {
+  const text = (assumptions ?? []).join(" ");
+  const pvM = /PV €([\d,]+) plus €([\d,]+) per kWp/i.exec(text), batM = /battery €([\d,]+) per kWh/i.exec(text);
+  const fixed = rates?.pv_fixed_eur ?? (pvM ? euros(pvM[1]) : null), perKwp = rates?.pv_eur_per_kwp ?? (pvM ? euros(pvM[2]) : null);
+  const perKwh = rates?.battery_eur_per_kwh ?? (batM ? euros(batM[1]) : null);
+  if (perKwp == null && perKwh == null) return null;
+  const price: Invoice["price"] = {}, calc: string[] = [];
+  if (d.pv_kwp && perKwp != null) {
+    const eur = Math.round(d.pv_kwp * perKwp), n = modules && modules > 0 ? modules : null;
+    price.pv = eur; calc.push(`${names.pv ? `${names.pv}: ` : ""}${n ? `${n} modules, ` : ""}${n2(d.pv_kwp)} kWp × €${n0(perKwp)}/kWp = €${n0(eur)}`);
+  }
+  if (d.inverter_kw) price.inv = "included";
+  if (d.battery_kwh && perKwh != null) { const eur = Math.round(d.battery_kwh * perKwh); price.bat = eur; calc.push(`${names.bat ? `${names.bat}: ` : ""}${n1(d.battery_kwh)} kWh × €${n0(perKwh)}/kWh = €${n0(eur)}`); }
+  const line = (k: string) => rates?.lines?.find((l) => l.item === k)?.eur;
+  if (d.wallbox_kw) { const eur = line("wallbox") ?? rates?.wallbox_fixed_eur; if (eur != null) { price.wb = Math.round(eur); calc.push(`wallbox €${n0(eur)}`); } }
+  if (d.heatpump_kw) { const eur = line("heatpump") ?? rates?.heatpump_net_eur; if (eur != null) { price.hp = Math.round(eur); calc.push(`heat pump €${n0(eur)} after subsidy`); } }
+  if (d.pv_kwp && fixed != null) { price.inst = Math.round(fixed); calc.push(`fixed per system €${n0(fixed)}`); }
+  let total = Object.values(price).reduce<number>((x, v) => x + (typeof v === "number" ? v : 0), 0);
+  // An older response without prices for a wallbox or heat pump: their share of the engine's total, so nothing is left out.
+  const missing = (["wb", "hp"] as const).filter((k) => (k === "wb" ? d.wallbox_kw : d.heatpump_kw) && price[k] == null);
+  if (missing.length === 1 && capex != null && capex > total) { const eur = Math.round(capex - total); price[missing[0]] = eur; calc.push(`${missing[0] === "wb" ? "wallbox" : "heat pump"} €${n0(eur)}`); total += eur; }
+  return { price, calc, total };
+}
+// The investment as one number everywhere (tiles, pass, total): the sum of the rows where the engine sends rates.
+// The investment as one number everywhere (tiles, pass, kit total): the invoice total for the design on screen, from the
+// engine's unit rates (so a chooser edit moves every figure together); the engine's capex where it sends no rates.
+export const investmentOf = (r: { design?: Partial<Design>; rates?: Rates | null; economics: { capex_eur: number; assumptions?: string[] } } | null | undefined) =>
+  !r ? 0 : (r.design ? invoiceOf(r.design, r.rates, r.economics.assumptions, r.economics.capex_eur)?.total : undefined) ?? r.economics.capex_eur;

@@ -126,8 +126,7 @@
 .undoBtn { all: unset; box-sizing: border-box; cursor: pointer; flex: none; min-height: 44px; padding: 0 14px; display: grid; place-items: center; border: 1px solid var(--rule-2, var(--rule)); border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--accent); }
 .undoBtn:disabled { color: var(--ink-3); cursor: default; opacity: 0.6; }
 .undoBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Desktop: Undo lives in the card header; beside Complete only on a phone. */
-@media (min-width: 761px) { .undoBtn { display: none; } }
+/* Undo lives in the open card's header (Board.tsx); none beside Complete. */
 
 /* The "i" on a figure: the calculation cards' button (.sc-i, global) and popover look, anchored to the figure. */
 .info { position: relative; display: inline-flex; vertical-align: middle; }
@@ -179,3 +178,23 @@
 .rate dd { margin: 0; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rate dd em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--ink-3); }
 .rateT { border-top: 1px solid var(--rule); padding-top: 6px; }
+.brandRow { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+/* Variant selector: short rows under the tiles; the chosen one filled like a chip. */
+.vrows { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.vrow { all: unset; box-sizing: border-box; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 0 10px; align-items: center; min-height: 44px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--rule); background: #fff; cursor: pointer; transition: background-color 200ms ease-out, border-color 200ms ease-out, color 200ms ease-out; }
+li.vrow { cursor: default; }
+.vrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vrow[aria-checked="true"] { background: var(--navy); border-color: var(--navy); cursor: default; }
+.vrow[aria-checked="true"] .vtName, .vrow[aria-checked="true"] .vtGlyph { color: #fff; }
+.vrow[aria-checked="true"] .vtLine { color: rgba(255, 255, 255, 0.72); }
+.vrow[data-k="edit"] { border-style: dashed; }
+.vrows[data-pending] { opacity: 0.6; }
+@media (hover: hover) { button.vrow[aria-checked="false"]:hover { border-color: var(--rule-2); } }
+@media (prefers-reduced-motion: reduce) { .vrow { transition: none; } }
+.rateCalc { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* A busy button keeps its label and shimmers (no caption text for pending states). */
+.approve :global(.btn)[aria-busy="true"], .sheetGo :global(.btn)[aria-busy="true"] {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.28) 50%, transparent 100%); background-size: 200% 100%; animation: busyShimmer 1.2s linear infinite;
+}
+@keyframes busyShimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .approve :global(.btn)[aria-busy="true"], .sheetGo :global(.btn)[aria-busy="true"] { animation: none; opacity: 0.7; } }

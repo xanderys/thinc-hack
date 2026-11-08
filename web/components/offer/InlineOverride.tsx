@@ -9,12 +9,13 @@ import s from "./offer.module.css";
 
 export type LineField = Exclude<keyof Design, never>;
 
-export default function InlineOverride({ field, text, content, unit, sizes, current, set, fixed, canNone, onChoose, glyph }: {
+export default function InlineOverride({ field, text, content, unit, sizes, current, set, fixed, canNone, onChoose, glyph, brands, brand, onBrand }: {
   // content: what the line shows (else text); text names the menu.
   field: LineField; text: string; content?: ReactNode; unit: string; sizes: number[]; current: number | null;
   set: OverrideValue | undefined;   // what the planner chose here by hand (lock and "set by you")
   fixed: boolean;                   // any override on this field, a variant's included
-  canNone: boolean; glyph?: string;   // omitted inside the kit sheet, where the row already shows the part
+  canNone: boolean; glyph?: string;
+  brands?: string[]; brand?: string | null; onBrand?: (b: string) => void;   // the data's brands for this part, most common first   // omitted inside the kit sheet, where the row already shows the part
   onChoose: (f: LineField, v: OverrideValue | undefined) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -51,6 +52,11 @@ export default function InlineOverride({ field, text, content, unit, sizes, curr
           {sizes.map((v) => (
             <button key={v} type="button" role="menuitemradio" aria-checked={locked && set === v} data-now={!locked && v === current ? "" : undefined} onClick={() => pick(v)}>{fmt(v)}</button>
           ))}
+        {brands && brands.length > 1 && onBrand && (
+            <span className={s.brandRow} role="group" aria-label="Brand">
+              {brands.map((b) => <button key={b} type="button" role="menuitemradio" aria-checked={b === brand} onClick={() => { setOpen(false); if (b !== brand) onBrand(b); }}>{b}</button>)}
+            </span>
+          )}
         </div>
       )}
     </div>

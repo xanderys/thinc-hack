@@ -11,6 +11,7 @@ import type { Variant as StageVariant } from "@/components/stage/Plan";
 import { COLOUR, n1, n2 } from "./format";
 import { sentence, variantFacts, type Fact } from "./facts";
 import Glyph from "./Glyph";
+import { VARIANT_LINE } from "@/lib/variants";
 import s from "./offer.module.css";
 
 export type RowKey = "expert" | "independence" | "payback" | "upfront" | "edit";
@@ -24,6 +25,7 @@ export function rowsOf(variants: StageVariant[]): Row[] {
   if (!variants.some((v) => [v.name, ...(v.also ?? [])].some((n) => BY_NAME[n]))) return [];
   const rows: Row[] = [];
   for (const v of variants) {
+    if (!v?.design) continue;   // an offer still loading has no sizes to show yet
     for (const name of [v.name, ...(v.also ?? [])]) {
       if (name === "Best value") continue;
       const key: RowKey = name === "Current" ? "edit" : BY_NAME[name] ?? "expert";
@@ -34,20 +36,18 @@ export function rowsOf(variants: StageVariant[]): Row[] {
   const price = (r: Row) => r.e?.capex_eur ?? Infinity;
   const caps = rows.filter((r) => r.key !== "edit").map(price), auts = rows.filter((r) => r.key !== "edit").map((r) => r.e?.autarky_share ?? 0);
   for (const r of rows) {
-    r.line = {
-      expert: "what planners here fit to homes like this",
-      independence: price(r) >= Math.max(...caps) ? "most of your own power, highest cost" : "most of your own power",
-      payback: "earns its cost back soonest",
-      upfront: (r.e?.autarky_share ?? 0) <= Math.min(...auts) ? "smallest outlay, least of your own power" : "smallest outlay",
-      edit: "as you changed it",
-    }[r.key];
+    // The shared line (lib/variants.ts), plus the planner-only comparison where it holds.
+    const suffix = r.key === "independence" && price(r) >= Math.max(...caps) ? ", highest cost"
+      : r.key === "upfront" && (r.e?.autarky_share ?? 0) <= Math.min(...auts) ? ", least of your own power" : "";
+    r.line = VARIANT_LINE[r.key] + suffix;
     r.line = sentence(r.line);
   }
-  const four = rows.filter((r) => r.key !== "edit");
-  return [...four.filter((r) => r.key === "expert"), ...four.filter((r) => r.key !== "expert").sort((a, b) => price(a) - price(b)), ...rows.filter((r) => r.key === "edit")];
+  const ORDER: RowKey[] = ["expert", "payback", "upfront", "independence", "edit"];
+  return ORDER.flatMap((k) => rows.filter((r) => r.key === k));
 }
 
-export function SizeChips({ d }: { d: Partial<Design> }) {
+export function SizeChips({ d: d0 }: { d: Partial<Design> | null | undefined }) {
+  const d = d0 ?? {};
   const chips: { k: "pv" | "battery" | "wallbox" | "heatpump"; label: string; v: string }[] = [
     ...(d.pv_kwp ? [{ k: "pv" as const, label: "Solar", v: `${n2(d.pv_kwp)} kWp` }] : []),
     ...(d.battery_kwh ? [{ k: "battery" as const, label: "Battery", v: `${n1(d.battery_kwh)} kWh` }] : []),
@@ -74,22 +74,35 @@ export function Facts({ items, className }: { items: Fact[]; className?: string 
   );
 }
 
-export default function VariantTabs({ rows, onPick, pending }: { rows: Row[]; onPick: (r: Row) => void; pending?: boolean }) {
+// The variant selector: one short row per offer (glyph, name, one line), the chosen one filled like a chip. Picking a
+// row changes everything else on the card. Without onPick the rows are a read-only list (the homeowner's alternatives).
+export const LINE: Record<RowKey, string> = VARIANT_LINE;
+export function VariantRows({ rows, onPick, pending, label = "Offers" }: { rows: Pick<Row, "key" | "name" | "line" | "selected">[]; onPick?: (k: RowKey) => void; pending?: boolean; label?: string }) {
   if (!rows.length) return null;
-  const ref = rows.find((r) => r.key === "expert")?.design ?? null;
+  if (!onPick) return (
+    <ul className={s.vrows} aria-label={label}>
+      {rows.map((r) => <li key={r.key} className={s.vrow} data-k={r.key}><span className={s.vtGlyph}><Glyph k={r.key} size={18} /></span><span className={s.vtBody}><span className={s.vtName}>{r.name}</span><span className={s.vtLine}>{r.line}</span></span></li>)}
+    </ul>
+  );
   return (
-    <div className={s.vtabs} role="radiogroup" aria-label="Offers" data-pending={pending || undefined}>
+    <div className={s.vrows} role="radiogroup" aria-label={label} data-pending={pending || undefined}>
       {rows.map((r) => (
-        <button key={r.key} type="button" role="radio" aria-checked={r.selected} className={s.vtab} data-k={r.key}
-          onClick={() => { if (r.selected || !r.pick) return; dispatchEvent(new CustomEvent("marquee:variant", { detail: { id: r.key, design: r.design } })); onPick(r); }}>
+        <button key={r.key} type="button" role="radio" aria-checked={r.selected} className={s.vrow} data-k={r.key} onClick={() => { if (!r.selected) onPick(r.key); }}>
           <span className={s.vtGlyph}><Glyph k={r.key} size={18} /></span>
-          <span className={s.vtBody}>
-            <span className={s.vtName}>{r.name}{r.approved && <span className={s.vtMark}>Complete</span>}</span>
-            <span className={s.vtLine}>{r.line}</span>
-            <Facts items={variantFacts(r.e, r.design, r.key === "expert" ? null : ref)} />
-          </span>
+          <span className={s.vtBody}><span className={s.vtName}>{r.name}</span><span className={s.vtLine}>{r.line}</span></span>
         </button>
       ))}
     </div>
+  );
+}
+
+export default function VariantTabs({ rows, onPick, pending }: { rows: Row[]; onPick: (r: Row) => void; pending?: boolean }) {
+  return (
+    <VariantRows rows={rows} pending={pending} onPick={(k) => {
+      const r = rows.find((x) => x.key === k);
+      if (!r || !r.pick) return;
+      dispatchEvent(new CustomEvent("marquee:variant", { detail: { id: r.key, design: r.design } }));
+      onPick(r);
+    }} />
   );
 }

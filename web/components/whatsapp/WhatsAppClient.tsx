@@ -74,22 +74,25 @@ export default function WhatsAppClient({ leadId, phone }: { leadId: string | nul
 
   const wa = lead.whatsapp;
   const thread = (wa?.messages ?? []).filter((m) => dry || m.kind !== "dry");
-  const dryRun = dry && thread.some((m) => m.kind === "dry") && state !== "open";
+  // "dry" (engine) is a composed, unsent message: a dry page shows it, any other page treats the lead as not asked yet.
+  const dryRun = dry && (state === "dry" || thread.some((m) => m.kind === "dry")) && state !== "open";
+  const idle = !dryRun && (state === "none" || state === "dry" || state === "superseded" || state === "expired");
   const filled = whatsappFields(lead).map((f) => LABEL[f] ?? f.replace(/_/g, " "));
   const who = lead.customer_name?.split(" ")[0] || "Client";
   let chip;
-  if (state === "none" && !dryRun) {
-    const noPhone = !tel;
-    chip = (
-      <span className={s.wrap} title={noPhone ? "No phone number on this lead" : undefined}>
-        <button type="button" className={s.chip} aria-disabled={noPhone || busy} aria-busy={busy} onClick={ask}>
-          <Glyph />{busy ? "Sending" : "WhatsApp client"}
-        </button>
-      </span>
-    );
+  const noPhone = !tel;
+  const askBtn = (
+    <span className={s.wrap} title={noPhone ? "No phone number on this lead" : undefined}>
+      <button type="button" className={s.chip} aria-disabled={noPhone || busy || state === "open"} aria-busy={busy} onClick={ask}>
+        <Glyph />{busy ? <span className="b-skel" aria-label="Sending" style={{ display: "inline-block", width: 96, height: 12 }} /> : "WhatsApp client"}
+      </button>
+    </span>
+  );
+  if (idle) {
+    chip = askBtn;
   } else {
     const label = state === "open" ? "Asking on WhatsApp" : dryRun ? "Dry run" : "Answered on WhatsApp";
-    chip = (
+    chip = (<>{askBtn}
       <details className={s.wrap}>
         <summary className={`${s.chip} ${state === "open" ? s.on : ""}`}>
           {state === "open" && <span className={s.dot} aria-hidden />}
@@ -108,7 +111,7 @@ export default function WhatsAppClient({ leadId, phone }: { leadId: string | nul
           {filled.length > 0 && <p className={s.filled}>Filled: {filled.join(", ")}</p>}
           {dryRun && <button type="button" className="btn ghost" onClick={ask} disabled={busy}>Dry run again</button>}
         </div>
-      </details>
+      </details></>
     );
   }
   return <>{chip}{err && <Err err={err} />}</>;

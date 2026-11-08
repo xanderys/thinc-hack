@@ -22,8 +22,15 @@ log = logging.getLogger("whatsapp")
 LOCK = threading.RLock()
 POLL_S = 5
 MAX_ROUNDS = 3
-IDLE_EXPIRE_S = 30 * 60
+IDLE_EXPIRE_S = 2 * 60 * 60     # a conversation with no reply for 2 hours shows as expired
+REOPEN_S = 24 * 60 * 60         # an expired conversation still reads replies for 24 hours and reopens on one
 WEB_URL = (os.environ.get("WEB_URL") or "https://marquee-reonic.vercel.app").rstrip("/")
+HOME_URL = (os.environ.get("HOME_URL") or "https://marquee-home.vercel.app").rstrip("/")  # the homeowner host
+INSTALLER = os.environ.get("INSTALLER_NAME") or "Isarwerk Solar"
+
+
+def installer(lead: dict) -> str:
+    return ((lead.get("meta") or {}).get("installer_name") or INSTALLER).strip()
 
 # how Rina asks for each fact inside a sentence (lower case, no question mark: they are joined)
 ASK = {
@@ -33,9 +40,10 @@ ASK = {
     "heating_demand_kwh": "roughly how much gas or oil does the heating use a year",
     "has_solar": "are there already solar panels on the roof",
     "num_inhabitants": "how many people live in the house",
+    "boiler_age_years": "roughly how old is the boiler",
 }
 LABEL = {"annual_demand_kwh": "yearly electricity use", "heating_type": "heating", "has_ev": "electric car",
-         "heating_demand_kwh": "heating use", "has_solar": "existing solar", "num_inhabitants": "household size"}
+         "heating_demand_kwh": "heating use", "has_solar": "existing solar", "num_inhabitants": "household size", "boiler_age_years": "boiler age"}
 
 _order = None   # (lead) -> fields missing or estimated, highest design impact first
 _step = None    # (lead_id, facts) -> intake step result (writes with source "whatsapp")
@@ -59,9 +67,16 @@ def e164(phone) -> str | None:
     return f"+{d}" if 8 <= len(d) <= 15 else None
 
 
+NOT_A_NAME = {"test", "smoke", "offer", "lane", "scene", "team", "red", "demo", "check", "kit", "layout", "rebase", "accept",
+              "motion", "approved", "audit", "p0", "slow", "undo", "north", "postcode", "lead", "new", "unknown"}
+
+
 def first_name(lead: dict) -> str:
-    n = (lead.get("customer_name") or "").strip()
-    return n.split()[0] if n else "there"
+    """The homeowner's first name from the lead name; "there" when the name is a test label or not a person's name."""
+    words = [w.strip(".,") for w in (lead.get("customer_name") or "").split()]
+    if not words or any(w.lower() in NOT_A_NAME for w in words) or not words[0].isalpha() or len(words[0]) < 2:
+        return "there"
+    return words[0][:1].upper() + words[0][1:]
 
 
 def _join(parts: list[str]) -> str:
@@ -71,7 +86,7 @@ def _join(parts: list[str]) -> str:
 def compose_ask(lead: dict, fields: list[str]) -> str:
     qs = [ASK.get(f, LABEL.get(f, f)) for f in fields[:2]]
     lead_in = "Two quick things" if len(qs) == 2 else "One quick thing"
-    return f"Hi {first_name(lead)}, Rina here from the installer. {lead_in} so I can finish your design: {_join(qs)}?"
+    return f"Hi {first_name(lead)}, Rina here from {installer(lead)}. {lead_in} so I can finish your design: {_join(qs)}?"
 
 
 def compose_next(fields: list[str]) -> str:
@@ -84,19 +99,17 @@ def compose_follow_up(fields: list[str]) -> str:
     return f"Sorry, I did not quite catch that. Just to be sure: {_join(qs)}?"
 
 
-def proposal_link(lead: dict) -> str:
-    return f"{WEB_URL}/start/proposal/{lead['lead_id']}"
+def proposal_link(lead: dict, origin: str | None = None) -> str:
+    base = (origin or "").rstrip("/") if (origin or "").startswith(("https://", "http://")) else HOME_URL
+    return f"{base}/start/proposal/{lead['lead_id']}"
 
 
 def compose_closing(lead: dict) -> str:
-    text = "Thanks, that's everything, your design is ready."
-    if lead.get("status") in ("approved", "sent", "signed"):
-        text += f" You can see it here: {proposal_link(lead)}"
-    return text
+    return "Thanks, that's everything, your design is ready."  # the proposal link travels only in the send
 
 
-def compose_proposal(lead: dict) -> str:
-    return (f"Hi {first_name(lead)}, Rina here from the installer. Your solar proposal is ready: {proposal_link(lead)} "
+def compose_proposal(lead: dict, origin: str | None = None) -> str:
+    return (f"Hi {first_name(lead)}, Rina here from {installer(lead)}. Your solar proposal is ready: {proposal_link(lead, origin)} "
             "You can go through it, ask me anything, and sign there when you are happy.")
 
 
@@ -121,11 +134,23 @@ def _send(lead: dict, conv_id: str | None, kind: str, text: str) -> dict:
     return _log(lead, conv_id, "out", kind, text, provider_id=msg_id)
 
 
-def _drop_dry(w: dict):
-    w["messages"] = [m for m in w.get("messages") or [] if m.get("kind") != "dry"]
+def _drop_dry(w: dict, purpose: str):
+    """At most one dry entry per kind (question, proposal): a new dry run replaces the last one of its kind. Real messages
+    are never removed."""
+    w["messages"] = [m for m in w.get("messages") or [] if not (m.get("kind") == "dry" and m.get("purpose") == purpose)]
 
 
-def ask(lead: dict, facts: list[str] | None = None, dry: bool = False) -> dict:
+def preview(lead: dict, kind: str, origin: str | None = None, facts: list[str] | None = None) -> dict:
+    """Exactly the text ask or send would send now, from the same templates."""
+    if kind == "send":
+        return {"kind": "send", "text": compose_proposal(lead, origin), "link": proposal_link(lead, origin)}
+    open_facts = [f for f in (facts or _order(lead)) if f in ASK][:6]
+    if not open_facts:
+        raise ConversationError(409, "Nothing is missing or estimated on this lead; there is nothing to ask.")
+    return {"kind": "ask", "text": compose_ask(lead, open_facts[:2]), "open_facts": open_facts, "asking": open_facts[:2]}
+
+
+def ask(lead: dict, facts: list[str] | None = None, dry: bool = False, origin: str | None = None) -> dict:
     """Open one conversation on this lead and send the first message. Raises ConversationError.
     dry: compose and log the message as kind "dry" (state "dry"); nothing is sent and no poll starts."""
     if not lead.get("phone"):
@@ -142,19 +167,20 @@ def ask(lead: dict, facts: list[str] | None = None, dry: bool = False) -> dict:
             raise ConversationError(409, "Nothing is missing or estimated on this lead; nothing was sent.")
         asking = open_facts[:2]
         if dry:
-            _drop_dry(w)
+            _drop_dry(w, "question")
             conv = uuid.uuid4().hex[:10]
             _log(lead, conv, "out", "dry", compose_ask(lead, asking), purpose="question")
-            w.update(state="dry", conversation_id=conv, round=0, open_facts=open_facts, asking=asking, last_error=None)
+            if w.get("state") not in ("open", "expired"):  # a dry run never stops a real conversation from listening
+                w.update(state="dry", conversation_id=conv, round=0, open_facts=open_facts, asking=asking, last_error=None)
             lead["updated_at"] = leads.now()
             leads.save(lead)
-            return {"conversation_id": conv, "sent": False, "dry": True, "open_facts": open_facts, "asking": asking}
+            return {"conversation_id": conv, "sent": False, "dry": True, "open_facts": open_facts, "asking": asking, "text": compose_ask(lead, asking)}
         for other in leads.LEADS.values():  # one line per number: a newer ask on the same phone supersedes the older one
             ow = other.get("whatsapp") or {}
-            if other is not lead and ow.get("state") == "open" and P.digits(other.get("phone")) == P.digits(lead["phone"]):
+            if other is not lead and ow.get("state") in ("open", "expired") and P.digits(other.get("phone")) == P.digits(lead["phone"]):
                 ow.update(state="superseded", closed_at=leads.now())
                 leads.save(other)
-        _drop_dry(w)  # a real ask replaces any dry run
+        _drop_dry(w, "question")  # the real ask replaces its dry run
         cursor = prov.cursor()
         conv = uuid.uuid4().hex[:10]
         try:
@@ -163,23 +189,23 @@ def ask(lead: dict, facts: list[str] | None = None, dry: bool = False) -> dict:
             w.update(last_error=str(e))
             leads.save(lead)
             raise ConversationError(502, str(e))
-        w.update(state="open", conversation_id=conv, round=1, open_facts=open_facts, asking=asking, asked={f: 1 for f in asking},
+        w.update(state="open", origin=origin, conversation_id=conv, round=1, open_facts=open_facts, asking=asking, asked={f: 1 for f in asking},
                  cursor=cursor, opened_at=leads.now(), closed_at=None, updated_ts=time.time(), last_error=None)
         lead["updated_at"] = leads.now()
         leads.save(lead)
-        return {"conversation_id": conv, "sent": True, "open_facts": open_facts, "asking": asking}
+        return {"conversation_id": conv, "sent": True, "open_facts": open_facts, "asking": asking, "text": compose_ask(lead, asking)}
 
 
-def send_proposal(lead: dict, channel: str, dry: bool = False) -> dict:
-    text = compose_proposal(lead)
+def send_proposal(lead: dict, channel: str, dry: bool = False, text: str | None = None, origin: str | None = None) -> dict:
+    text = (text or "").strip() or compose_proposal(lead, origin)  # the planner's previewed text is sent exactly as shown
     if dry:  # compose and log only: nothing sent, status unchanged
         with LOCK:
             w = _wa(lead)
-            _drop_dry(w)
+            _drop_dry(w, "proposal")
             m = _log(lead, w.get("conversation_id"), "out", "dry", text, purpose="proposal", channel=channel)
         lead["updated_at"] = leads.now()
         leads.save(lead)
-        return {"channel": channel, "at": m["at"], "text": text, "link": proposal_link(lead), "dry": True}
+        return {"channel": channel, "at": m["at"], "text": text, "link": proposal_link(lead, origin), "dry": True}
     if channel == "whatsapp":
         if not lead.get("phone"):
             raise ConversationError(409, "This lead has no phone number; nothing was sent.")
@@ -190,8 +216,8 @@ def send_proposal(lead: dict, channel: str, dry: bool = False) -> dict:
             raise ConversationError(502, str(e))
     else:
         m = {"text": text, "at": leads.now()}
-    _drop_dry(_wa(lead))
-    lead["sent"] = {"channel": channel, "at": m["at"], "text": text, "link": proposal_link(lead)}
+    _drop_dry(_wa(lead), "proposal")  # the real send replaces its dry run
+    lead["sent"] = {"channel": channel, "at": m["at"], "text": text, "link": proposal_link(lead, origin)}
     lead["status"] = "sent"
     lead["updated_at"] = leads.now()
     leads.save(lead)
@@ -233,7 +259,7 @@ def transcribe(path: str, mime: str | None) -> str:
     raise RuntimeError("No speech to text available (ElevenLabs failed and no local Whisper).")
 
 
-UNIT = {"annual_demand_kwh": "kWh a year", "heating_demand_kwh": "kWh a year", "num_inhabitants": "people"}
+UNIT = {"annual_demand_kwh": "kWh a year", "heating_demand_kwh": "kWh a year", "num_inhabitants": "people", "boiler_age_years": "years"}
 OPTIONS = {"heating_type": ["Gas", "Oil", "Heat pump", "District", "Electric", "Wood or pellets"], "has_ev": ["Have one", "Planned", "No"],
            "has_solar": ["Yes", "No"]}
 
@@ -309,15 +335,25 @@ def _handle(lead: dict, entry: dict):
 
 def poll_once():
     with LOCK:
-        open_ = [l for l in leads.LEADS.values() if (l.get("whatsapp") or {}).get("state") == "open"]
+        now = time.time()
+        live = [l for l in leads.LEADS.values() if (l.get("whatsapp") or {}).get("state") == "open"]
+        busy = {P.digits(l.get("phone")) for l in live}
+        late = [l for l in leads.LEADS.values() if (l.get("whatsapp") or {}).get("state") == "expired"
+                and now - ((l.get("whatsapp") or {}).get("updated_ts") or 0) < REOPEN_S and P.digits(l.get("phone")) not in busy]
+        newest: dict = {}  # one expired conversation per phone listens: the most recent one
+        for l in late:
+            k = P.digits(l.get("phone"))
+            if k not in newest or (l["whatsapp"].get("updated_ts") or 0) > (newest[k]["whatsapp"].get("updated_ts") or 0):
+                newest[k] = l
+        open_ = live + list(newest.values())  # expired but recent: a late reply reopens the conversation and is read like any other
         if not open_:
             return
         for l in open_:
             w = l["whatsapp"]
-            if time.time() - (w.get("updated_ts") or 0) > IDLE_EXPIRE_S:
+            if w.get("state") == "open" and time.time() - (w.get("updated_ts") or 0) > IDLE_EXPIRE_S:
                 w.update(state="expired", closed_at=leads.now())
                 leads.save(l)
-        open_ = [l for l in open_ if l["whatsapp"]["state"] == "open"]
+        open_ = [l for l in open_ if l["whatsapp"]["state"] in ("open", "expired")]
         prov = P.get()
         for lead in open_:
             w = lead["whatsapp"]
@@ -326,6 +362,9 @@ def poll_once():
             except P.ProviderError as e:
                 w["last_error"] = str(e)
                 continue
+            if entries and lead["whatsapp"].get("state") == "expired":
+                lead["whatsapp"].update(state="open", reopened_at=leads.now(), closed_at=None)
+                leads.save(lead)
             for e in entries:
                 if lead["whatsapp"].get("state") != "open":
                     break
@@ -350,4 +389,7 @@ def loop():
 
 
 def start():
+    if os.environ.get("WA_POLL") == "0":  # a spare engine on the same lead files must never answer the live line's replies
+        log.warning("whatsapp poll off (WA_POLL=0)")
+        return
     threading.Thread(target=loop, daemon=True, name="whatsapp-poll").start()

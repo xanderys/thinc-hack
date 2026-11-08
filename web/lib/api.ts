@@ -32,6 +32,7 @@ export interface RoofResult {
   segments: { azimuth: number; pitch: number; area_m2: number }[];
   max_panels: number | null; max_kwp: number | null;
   confidence: "measured" | "footprint" | "estimate" | "none"; notes: string[];
+  capacity_source?: string;   // "layout" when the 3D model is built
   pending?: boolean;   // the LoD2 measurement is still running; ask again in a few seconds
   floor_area_m2?: number | null; storeys?: number | null; floor_area_confidence?: "estimate";   // v1.6.1, upper bound
   geometry?: { footprint_m2?: number | null; storeys?: number | null; height_m?: number | null; large_building?: boolean | null; source?: string; note?: string } | null; // v2.11: LoD2, outranks dwellings_class
@@ -183,7 +184,7 @@ export interface ReadFact { field: keyof HomeInputs | "wants" | "monthly_bill_eu
 export interface ReadResponse { inputs: Partial<HomeInputs>; found: ReadFact[]; unknown: (keyof HomeInputs)[]; cached?: boolean; source?: "call"; origin?: Record<string, "form" | "call" | "estimated" | "whatsapp">; postcode?: string; }
 export interface WriteResponse { text: string; grounded: boolean; lines: Partial<Record<ComponentKey, string | null>>; cached?: boolean; }
 
-export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Installer A", "23c108b7": "Installer B" };
+export const INSTALLER_NAME: Record<InstallerId, string> = { "2a8ba8e2": "Isarwerk Solar", "23c108b7": "Isarwerk Solar" };
 
 // v1.9: the engine runs the call, one rolling draft per lead.
 export interface LeadChange { component: string; from: number | null; to: number | null; why: string; }
@@ -203,10 +204,12 @@ export interface Lead {
   whatsapp?: LeadWhatsApp | null;   // v2.14
   sources?: Record<string, string>;   // v2.14 per fact: "stated" | "estimated" | "whatsapp"
   status_label?: string;
+  blockers?: LeadBlocker[];   // engine, ranked: the facts that move the design most
 }
+export interface LeadBlocker { field: string; label: string; state?: string; moves?: string; delta_eur?: number | null; delta_text?: string; asked_at?: string | null; answered_at?: string | null }
 // v2.14 WhatsApp copilot: one conversation per lead, both directions logged.
 export interface WhatsAppMessage { dir: "out" | "in"; kind?: "text" | "voice" | "dry" | string; text: string; at: string; facts?: Record<string, unknown>; stated?: string[]; unclear?: string[]; transcript?: string | null }
-export interface LeadWhatsApp { state: "open" | "closed" | "none"; round?: number; open_facts?: { field: string; label?: string; unit?: string }[]; last_error?: string | null; messages: WhatsAppMessage[] }
+export interface LeadWhatsApp { state: "open" | "closed" | "none" | "dry" | "superseded" | "expired"; round?: number; open_facts?: { field: string; label?: string; unit?: string }[]; last_error?: string | null; messages: WhatsAppMessage[] }
 export interface WhatsAppAsk { conversation_id: string; sent: unknown; open_facts: { field: string; label?: string; unit?: string }[]; asking?: unknown; version?: number; whatsapp?: LeadWhatsApp }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).
 export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "sent" | "signed" | "declined" | "question";   // sent: the Complete sheet sent the link

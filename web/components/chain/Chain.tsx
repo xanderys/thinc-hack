@@ -6,7 +6,7 @@ import { call } from "@/lib/client";
 import { isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import type { DesignResponse, HomeInputs, ComponentKey } from "@/lib/api";
-import { INSTALLER_NAME } from "@/lib/api";
+import { COMPONENT_DESIGN_FIELD, INSTALLER_NAME } from "@/lib/api";
 import type { Layers, Bar, Check, RoofModel } from "@/components/spatial/types";
 import LayersMenu from "@/components/spatial/LayersMenu";
 import { findRot, rotLine } from "@/lib/rot";
@@ -22,7 +22,9 @@ import ShadingPanel from "@/components/spatial/ShadingScrubber";
 import { EnvelopeBar, HeatPumpStep } from "@/components/spatial/EnvelopeBar";
 import SystemsChips from "@/components/systems/SystemsChips";
 import ProposedCard from "@/components/systems/ProposedCard";
+import { investmentOf } from "@/components/offer/facts";
 import SystemCard from "@/components/systems/SystemCard";
+import { BatteryDay, WallboxDay, HeatpumpDay } from "@/components/systems/strip/ComponentDay";
 import { elementsOf } from "@/lib/envelope";
 import { scrub } from "@/components/offer/facts";
 import { Chainline, Fig, Head, PairBars, SplitBar } from "@/components/systems/Figures";
@@ -49,7 +51,15 @@ const SYS = FIVE && process.env.NEXT_PUBLIC_SYSTEMS !== "0";
 const CHECK_AT = FIVE ? 5 : 7;
 const STEP_COLOUR = ["#ffc043", "#24a148", "#1c71ef", "#e3634f", "#071b71"];
 const stepStyle = (i: number) => ({ ["--step" as string]: STEP_COLOUR[i], ["--step-ink" as string]: i === 0 ? "#071b71" : "#fff" }) as CSSProperties;
-const TAG: Record<string, string> = { lead: "lead", rina: "Rina", address: "address", default: "assumed" };
+// "Reonic: south 98 to 100%, east 81%" as a sentence: "Reonic's planners rate south at 98 to 100 % and east at 81 %."
+const bandText = (b: string) => {
+  const m = b.match(/^Reonic:\s*(.*)$/);
+  if (!m) return b.replace(/(\d)%/g, "$1 %");
+  const items = m[1].split(/,\s*/).map((x) => x.replace(/\s+(\d+(?: to \d+)?)\s?%$/, " at $1 %"));
+  const last = items.pop();
+  return `Reonic's planners rate ${items.length ? `${items.join(", ")} and ${last}` : last}.`;
+};
+const TAG: Record<string, string> = { lead: "from the enquiry", rina: "stated by the homeowner", address: "from the address", default: "estimated" };
 // One muted palette for every bar, in Reonic's heat-load order; component colours where the segment is a component.
 const PALETTE = ["#f5c35a", "#5b8def", "#4fb477", "#a58bea", "#e3634f", "#f0924a", "#a1a1aa", "#71717b"];
 const SEG_COLOUR: Record<string, string> = {
@@ -61,6 +71,7 @@ type Props = {
   res: DesignResponse; prev: DesignResponse | null; inputs: HomeInputs; leadId?: string | null;
   pending?: number | null; cause?: string | null;   // an edit waiting on the engine (since); what made the design on screen
   variants: Variant[]; onVariant: (v: Variant) => void; canUndo: boolean; onUndo: () => void; decide?: ReactNode;
+  setKit?: (patch: Record<string, number | null | "include" | string[] | undefined>) => void;   // several kit fields as one edit (the on-model layout)
   redraft?: unknown;   // changes on every refinement (sentence, hand change, call step); a new design without one is not a redraft
   answered: boolean;
 };
@@ -78,12 +89,14 @@ function useReduce() {
   return r;
 }
 
-export default function Chain({ res, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, decide, redraft }: Props) {
+export default function Chain({ res, prev, inputs, leadId, pending = null, cause = null, variants, onVariant, canUndo, onUndo, answered, decide, redraft, setKit }: Props) {
   const reduce = useReduce();
   const causeRef = useRef(cause); causeRef.current = cause;
   // A change made from the Offer panel or Undo keeps the planner in the Offer: no stage or camera move on the re-run.
   const hold = useRef(0);
   const holdOffer = () => { hold.current = Date.now(); };
+  // An edit on the model keeps the chip it was made on: the redraft lights what changed but never moves the view.
+  const stayChip = useRef(0);
   // Draft first: the chain plays once, on the first open of a lead; after that the design is there at once and the
   // chain waits as a collapsed strip under the model.
   const [first] = useState(() => {
@@ -189,7 +202,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     // A refinement redrafts in place: the changed layers light up and the camera goes to the first; no replay.
     setMoved(m);
     // A variant switch stays on the Offer; the strip lights what changed, the view does not move.
-    if (!/^(Switched to|Undone)/.test(causeRef.current ?? "") && Date.now() - hold.current > 15000 && !(SYS && Math.min(...m) > 4)) setStage(Math.min(...m));
+    if (!/^(Switched to|Undone)/.test(causeRef.current ?? "") && Date.now() - hold.current > 15000 && Date.now() > stayChip.current && !(SYS && Math.min(...m) > 4)) setStage(Math.min(...m));
     setAuto(false);
     setUpdated(Date.now());
   }
@@ -214,19 +227,65 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   // The four numbers come from the same run as the bars and checks when it is in; the design's own until then.
   const d0 = res.design as unknown as Record<string, unknown>;
   const fresh = !layers?.chosen || (["pv_kwp", "battery_kwh", "wallbox_kw", "heatpump_kw"] as const).every((k) => (Number((layers.chosen as unknown as Record<string, unknown>)[k]) || 0) === (Number(d0[k]) || 0));
-  const le = fresh ? layers?.economics : undefined;
-  const e = le ? { ...res.economics, ...le, annual: { ...res.economics.annual!, ...(le.annual ?? {}) } } as typeof res.economics : res.economics, a = e.annual;
+  // A Complete lead shown as approved (Stage marks it frozen) keeps the approval's own economics, so autarky, yield and
+  // break-even match the homeowner's page; the live re-simulation applies again after an edit.
+  const le = fresh && !(res as { frozen?: boolean }).frozen ? layers?.economics : undefined;
+  // The price is the refine's own (it lands with the design); the layers run adds yields and shares, never a second price.
+  const e = le ? { ...res.economics, ...le, capex_eur: res.economics.capex_eur, annual: { ...res.economics.annual!, ...(le.annual ?? {}) } } as typeof res.economics : res.economics, a = e.annual;
   const breakEven = le?.break_even_year ?? (e as { break_even_year?: number | null }).break_even_year ?? null;
   // While an edit waits on the engine, the sizes the planner just chose show at once (on the model, the labels, the
   // cards and the pass, which tween on a design change); prices and yields follow when the engine answers.
+  // An edit from the model or a chooser is also held here from the tap until the engine's design matches it, so the
+  // roof, the cards, the tiles and the pass read one design from the same frame.
   const ovNow = ((isValidElement(decide) ? (decide.props as { overrides?: Record<string, unknown> }).overrides : null) ?? {});
   const ovKey = JSON.stringify(ovNow);
+  const [opt, setOpt] = useState<Record<string, unknown> | null>(null);
+  const optBase = useRef<unknown>(null);   // the design on screen when the edit was made
+  const sizeOf = (v: unknown) => (typeof v === "number" ? v : v === null ? 0 : undefined);
+  useEffect(() => {
+    if (!opt) return;
+    const rd = res.design as unknown as Record<string, unknown>;
+    if (Object.entries(opt).every(([k, v]) => sizeOf(v) === undefined || (Number(rd[k]) || 0) === sizeOf(v))) { setOpt(null); return; }
+    // Any design that lands after the edit answers it, also when the engine snapped the size (7 kWh to its package):
+    // the overlay goes and the card and the pass show the engine's own figures at once.
+    if (optBase.current && res !== optBase.current && !pending) { setOpt(null); return; }
+    const t = setTimeout(() => setOpt(null), 20000);
+    return () => clearTimeout(t);
+  }, [res, res.design, opt, pending]); // eslint-disable-line react-hooks/exhaustive-deps
   const d = useMemo(() => {
-    if (!pending) return res.design;
+    if (!pending && !opt) return res.design;
     const o: Record<string, unknown> = { ...res.design };
-    Object.entries(ovNow).forEach(([k, v]) => { if (typeof v === "number") o[k] = v; else if (v === null && k !== "pv_kwp") o[k] = 0; });
+    Object.entries({ ...(pending ? ovNow : {}), ...(opt ?? {}) }).forEach(([k, v]) => { const x = sizeOf(v); if (x !== undefined && !(x === 0 && k === "pv_kwp")) o[k] = x; });
     return o as unknown as typeof res.design;
-  }, [res.design, pending, ovKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [res.design, pending, ovKey, opt]); // eslint-disable-line react-hooks/exhaustive-deps
+  const waiting = !!pending || !!opt;   // prices and yields shimmer until the engine answers
+  // A "+" on a heat pump, wallbox or battery outline: the card reads "<part> pending" at once and the pill "sizing";
+  // the next design that lands either carries the part (its size shows) or not (the engine's reason shows).
+  type UnitPart = "heatpump" | "wallbox" | "battery";
+  const UNIT_FIELD = { heatpump: "heatpump_kw", wallbox: "wallbox_kw", battery: "battery_kwh" } as const;
+  const [adding, setAdding] = useState<{ part: UnitPart; res: unknown } | null>(null);
+  const [refused, setRefused] = useState<UnitPart | null>(null);
+  useEffect(() => {
+    if (!adding || pending || res === adding.res) return;
+    const got = Number((res.design as unknown as Record<string, unknown>)[UNIT_FIELD[adding.part]]) || 0;
+    setRefused(got > 0 ? null : adding.part); setAdding(null);
+  }, [res, pending, adding]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!adding) return; const t = setTimeout(() => setAdding(null), 20000); return () => clearTimeout(t); }, [adding]);
+  const markAdd = (f: string, v: unknown) => {
+    const part = (Object.keys(UNIT_FIELD) as UnitPart[]).find((k) => UNIT_FIELD[k] === f);
+    if (!part) return;
+    const was = Number((res.design as unknown as Record<string, unknown>)[f]) || 0;
+    if (!was && (v === "include" || (typeof v === "number" && v > 0))) { setRefused(null); setAdding({ part, res }); }
+  };
+  // The engine's reason for an absent part (components.<part>.none_reason, api v2.16: a phrase when the part is out,
+  // null when it is in); nothing when the engine does not send it.
+  const reasonOf = (k: ComponentKey) => {
+    const r = (res.components[k] as { none_reason?: string | null } | undefined)?.none_reason;
+    const f = scrub(r?.split(/(?<=\.)\s/)[0]?.trim() ?? null);
+    return f ? f.replace(/^./, (x) => x.toUpperCase()) : null;
+  };
+  const why0 = (k: ComponentKey) => { const r = reasonOf(k); return r ? <p className="sc-why">{r}</p> : null; };
+  const resShown = useMemo(() => (d === res.design ? res : { ...res, design: d }), [res, d]);   // kit rows read the same sizes
   const rot = rotLine(findRot(res.components.pv?.derivation, layers, res));
 
   const checkHead = (() => { const c = layers?.checks ?? []; const bad = c.filter(isFail).length, out = c.filter(refOut).length; return c.length ? (bad ? `${bad} of ${c.length} checks flag` : out ? "Checks pass; battery above Reonic’s guide" : `All ${c.length} checks pass`) : "Checks"; })();
@@ -323,8 +382,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   // Overrides and Approve come from the decide element Stage already passes, so Stage itself stays untouched.
   const dp = (isValidElement(decide) ? decide.props : null) as Partial<Pick<OfferProps, "overrides" | "setOverride" | "approvedAt" | "onApprove">> | null;
   const narrow = useNarrow();
-  const offer = (docked: boolean) => (
-    <OfferPanel docked={docked} res={res} economics={e} breakEven={breakEven} cause={cause} pending={!!pending}
+  const offer = (docked: boolean, inPass = false) => (
+    <OfferPanel docked={docked} inPass={inPass} res={resShown} economics={e} breakEven={breakEven} cause={cause} pending={waiting}
       variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={roofFitKnown(layers?.checks ?? null, inputs.address)} checksFresh={fresh} model={model} leadId={leadId} inputs={inputs}
       undo={{ can: canUndo, run: () => { holdOffer(); onUndo(); } }} overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
   );
@@ -340,16 +399,16 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
               <button type="button" className={s.ih} onClick={() => go(n)} aria-expanded={open}>
                 <span className={s.num}>{n}</span>
                 <span className={s.it}>{t}{multi && FIVE && (n <= 2 || n === N) && <span className={s.flatTag}>Single-family figure</span>}</span>
-                <span className={s.ihead} data-pending={!!pending || !fresh}>{head[i]}</span>
+                <span className={s.ihead} data-pending={waiting || !fresh}>{head[i]}</span>
               </button>
               {built && bar && !(FIVE && open && n <= 4) && !(FIVE && n === 3 && !d.wallbox_kw && !layers?.ev) && !(FIVE && n === 4 && (multi || (open && hasEnv))) && (open ? <BarView bar={FIVE && n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} /> : <BarStrip bar={bar} />)}
               {FIVE && open && n <= 4 && (
                 <div className={s.three}>
                   {multi && (n === 1 || n === 4) ? (
-                    <p className={s.l2}>{n === 1 ? "Shared roof, apartment building: the single-family design does not apply." : "The walls and roof are the whole building's, so no heat pump size for one flat."}</p>
+                    <p className={s.l2}>{n === 1 ? "Large building: this design assumes one household, confirm on the call." : "The walls and roof are the whole building's, so no heat pump size for one flat."}</p>
                   ) : (
                     <>
-                      {line2[n] && <p className={s.l2} data-pending={!!pending || !fresh}>{line2[n]}</p>}
+                      {line2[n] && <p className={s.l2} data-pending={waiting || !fresh}>{line2[n]}</p>}
                       {n <= 3 && bar && !(n === 3 && !d.wallbox_kw && !layers?.ev) && <BarView bar={n === 1 && shading ? { ...bar, segments: [...bar.segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address", citation: shading.source }] } : bar} bare />}
                       {n === 4 && hasEnv && <EnvelopeBar env={model!.envelope!} bare />}
                     </>
@@ -369,7 +428,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
                       {n === 4 && <>
                         <HeatPumpStep res={res} inputs={inputs} env={null} multi={multi} variants={variants} onVariant={onVariant} />
                       </>}
-                      {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />}
+                      {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} sku={(res.components[why.k] as { sku?: { size?: number | null; unit?: string | null; modules?: number | null } }).sku ?? null} />}
                     </div>
                   )}
                 </div>
@@ -384,7 +443,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
               )}
               {!(FIVE && n <= 4) && open && why && why.k === WHY_AT[n] && (
                 <div className={s.whyPanel}>
-                  <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />
+                  <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} sku={(res.components[why.k] as { sku?: { size?: number | null; unit?: string | null; modules?: number | null } }).sku ?? null} />
                 </div>
               )}
             </li>
@@ -400,7 +459,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const whyBlock = (n: number) => WHY_AT[n] && res.components[WHY_AT[n]!]?.derivation ? (
     <>
       <div className={s.whyrow}><button type="button" className={s.whyb} aria-expanded={why?.k === WHY_AT[n]} onClick={() => setWhy((w) => (w?.k === WHY_AT[n] ? null : { k: WHY_AT[n]!, level: 1 }))}>Why</button></div>
-      {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />}
+      {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} sku={(res.components[why.k] as { sku?: { size?: number | null; unit?: string | null; modules?: number | null } }).sku ?? null} />}
     </>
   ) : null;
   // The Checks figures, moved from the Proposed Design card: each sits behind the i of the card it belongs to.
@@ -408,7 +467,32 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const pvChecks = checksFor(/roof fit|orient|shad/i), batChecks = checksFor(/battery/i);
   const roofBar = bars[1] && shading ? { ...bars[1], segments: [...bars[1].segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address" as const, citation: shading.source }] } : bars[1];
   const useKwh = (inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0);
+  // The rule's own result and the catalogue snap, as one chain (payload: derivation.axiom_result and final, the part's
+  // sku): "Rule result 10.35 kWp, snapped to 23 × 463 W = 10.65 kWp". Nothing when the two agree.
+  const snapLine = (k: ComponentKey, unit: string) => {
+    // Always the first line of a part's popover, from the payload: the rule's result, then the catalogue snap to the
+    // design's own size (d, which is the snapped one; derivation.final can still be the pre-catalogue figure).
+    const field = COMPONENT_DESIGN_FIELD[k] as keyof typeof d, size = Number(d[field]) || 0;
+    if (!size) return null;
+    const dv = res.components[k]?.derivation, sku = (res.components[k] as { sku?: { size?: number | null; unit?: string | null; modules?: number | null } }).sku;
+    const rule = dv?.axiom_result ?? null;
+    const fmtU = (x: number) => `${k === "pv" ? n2(x) : n1(x)} ${unit}`;
+    if (rule == null) return <p className="sc-rule">Catalogue size, {fmtU(size)}.</p>;
+    if (Math.abs(size - rule) < 0.005) return <p className="sc-rule">Rule result {fmtU(rule)}, the catalogue size.</p>;
+    const to = sku?.size ? (k === "pv" && sku.modules ? `${sku.modules} × ${n0(sku.size)} ${sku.unit ?? "W"} = ${fmtU(size)}` : `the ${n1(sku.size)} ${sku.unit ?? unit} package`) : fmtU(size);
+    return <p className="sc-rule">Rule result {fmtU(rule)}, snapped to {to}.</p>;
+  };
+  // The inverter has no rule of its own in the payload: its catalogue size, from the module SKU's inverter.
+  const invLine = (() => {
+    const kw = Number((d as unknown as { inverter_kw?: number | null }).inverter_kw) || (res.components.pv as { inverter_sku?: { size?: number | null } }).inverter_sku?.size || 0;
+    return kw ? <p className="sc-rule">Catalogue size, {n1(kw)} kW inverter.</p> : null;
+  })();
   // No sentences on the cards: figures only; every derivation sentence moved behind the i.
+  // Battery, wallbox and heat pump bodies: the engine's typical day for these sizes (components/systems/strip), keyed
+  // by the facts so an edited household asks again. Pending sizes from the ladder show at once through d.
+  const daySizes = { battery_kwh: d.battery_kwh ?? null, wallbox_kw: d.wallbox_kw ?? null, heatpump_kw: d.heatpump_kw ?? null };
+  const dayVer = JSON.stringify(inputs);
+  const dayOn = SYS && !multi;
   const sysBody: Record<SystemName, { head: ReactNode; label: string; body: ReactNode; info: ReactNode }> = {
     panels: (() => {
       const nMod = fresh && placed ? placed : null;
@@ -416,9 +500,10 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       return {
         head: nMod ? <Head main={`${nMod} panels`} sub={`${n2(d.pv_kwp ?? 0)} kWp`} /> : <Head main={`${n2(d.pv_kwp ?? 0)} kWp`} />,
         label: `${nMod ? `${nMod} panels, ` : ""}${n2(d.pv_kwp ?? 0)} kWp`,
-        body: multi ? <p>Shared roof, apartment building: the single-family design does not apply.</p>
+        body: multi ? <p>Large building: this design assumes one household, confirm on the call.</p>
           : a ? <PairBars roof={a.pv_yield_kwh} share={e.autarky_share ?? null} parts={[{ k: "Household", v: inputs.annual_demand_kwh ?? 0 }, ...(layers?.ev ? [{ k: "Car", v: layers.ev.annual_kwh }] : [])]} /> : null,
         info: <>
+          {snapLine("pv", "kWp")}{invLine}
           {usePara}
           {roofBar && <BarView bar={roofBar} bare />}
           <BarView bar={useBar} bare />
@@ -433,11 +518,18 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     battery: (() => {
       const day = bars[2], roof = seg(day, /solar|roof/i), fromB = seg(day, /from the battery/i) ?? seg(day, /^battery$/i), grid = seg(day, /grid/i);
       const kwh = d.battery_kwh;
+      // The year's split from the refine itself (res.economics.annual), so it follows each refine the moment it lands;
+      // the spring-weekday day bar (layers) waits behind the i.
+      const ra = res.economics.annual, rDis = ra?.battery_discharged_kwh ?? 0;
+      const rRoof = ra ? (ra.home_from_pv_kwh ?? Math.max(0, ra.self_consumed_kwh - rDis)) : null;
+      const yearSplit = ra && rRoof != null ? <SplitBar label="A year" unit="kWh" total={ra.load_kwh} parts={[{ k: "Roof", v: rRoof }, { k: "Battery", v: rDis }, { k: "Grid", v: ra.grid_import_kwh }]} /> : null;
       return {
-        head: kwh ? <Head main={`${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
+        head: adding?.part === "battery" ? <Head main="Battery" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : kwh ? <Head main={`Battery ${n1(kwh)} kWh`} sub={ratio != null ? `${n2(ratio)} kWh per kWp` : null} /> : <Head main="No battery" />,
         label: kwh ? `${n1(kwh)} kWh battery` : "No battery",
-        body: day && roof != null ? <SplitBar label="A spring weekday" unit="kWh" total={day.total} parts={[{ k: "Roof", v: roof }, { k: "Battery", v: fromB ?? 0 }, { k: "Grid", v: grid ?? 0 }]} /> : null,
+        // Views' BatteryDay when the day is available; otherwise the year's split from the refine (follows each refine).
+        body: kwh && leadId && dayOn ? <BatteryDay leadId={leadId} sizes={daySizes} version={dayVer} /> : !kwh && adding?.part !== "battery" ? <>{why0("battery")}{yearSplit}</> : yearSplit,
         info: <>
+          {snapLine("battery", "kWh")}
           {day && roof != null && <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p>}
           {kwh && ratio != null ? <p>{n1(kwh)} kWh is {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0 kWh per kWp for {n2(d.pv_kwp ?? 0)} kWp.</p> : !kwh ? <p>No battery in this design.</p> : null}
           {day && <BarView bar={day} />}{batChecks.length > 0 && <Checks checks={batChecks} />}{whyBlock(2)}
@@ -453,10 +545,11 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       const night = segOf(/typical night/i)?.value ?? (ch && /night/i.test(ch.unit) ? ch.total : null) ?? layers?.ev?.kwh_per_night_typical;
       const wb = d.wallbox_kw;
       return {
-        head: wb ? <Head main={`${n1(wb)} kW`} sub="wallbox" /> : <Head main="No wallbox" />,
+        head: adding?.part === "wallbox" ? <Head main="Wallbox" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : wb ? <Head main={`Wallbox ${n1(wb)} kW`} /> : <Head main="No wallbox" />,
         label: wb ? `${n1(wb)} kW wallbox` : "No wallbox",
-        body: wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
+        body: wb && leadId && dayOn ? <WallboxDay leadId={leadId} sizes={daySizes} version={dayVer} /> : !wb && adding?.part !== "wallbox" ? why0("wallbox") : wb && km && kwh ? <Chainline steps={[{ v: n0(km), u: "km a year" }, { v: n0(kwh), u: "kWh a year" }, ...(night ? [{ v: n1(night), u: "kWh a night" }] : [])]} /> : null,
         info: <>
+          {snapLine("wallbox", "kW")}
           {wb && km && kwh ? <p>{n0(km)} km a year takes about {n0(kwh)} kWh{homeShare ?? (homeKwh && kwh ? homeKwh / kwh : null) ? `; ${pc((homeShare ?? homeKwh! / kwh)!)} of it is charged at home, ${n0(homeKwh ?? homeShare! * kwh)} kWh` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p> : <p>{line2[3]}</p>}
           {ch && (wb || layers?.ev) && <BarView bar={ch} />}{whyBlock(3)}
         </>,
@@ -471,14 +564,19 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         return list.filter((x) => x.share > 0).sort((p, q) => q.share - p.share);
       })() : [];
       const hp = d.heatpump_kw;
+      const hpBound = (res.components.heatpump as unknown as { heat_load_upper_bound_kw?: number | null }).heat_load_upper_bound_kw ?? null;
       return {
-        head: multi ? <Head main="No heat load" sub="for flats" /> : hp ? <Head main={`${n1(hp)} kW`} sub="heat pump" /> : <Head main="No heat pump" />,
+        head: multi ? <Head main="No heat load" sub="for flats" /> : adding?.part === "heatpump" ? <Head main="Heat pump" sub={<span className="b-skel sc-skel-fig" aria-label="Sizing" />} /> : hp ? <Head main={`Heat pump ${n1(hp)} kW`} /> : <Head main="No heat pump" />,
         label: multi ? "Heat load not estimated for flats" : hp ? `${n1(hp)} kW heat pump` : "No heat pump",
-        body: multi ? null : <>
+        body: multi ? null : hp && leadId && dayOn ? <HeatpumpDay leadId={leadId} sizes={daySizes} version={dayVer} fuel={inputs.heating_type} /> : <>
+          {!hp && adding?.part !== "heatpump" && why0("heatpump")}
           {shares.length > 0 && <SplitBar label="Heat loss" unit="" total={100} parts={shares.map((x) => ({ k: x.name, v: Math.round(x.share * 100), c: x.colour }))} />}
-          {bars[4] && <Fig v={`${n1(bars[4].total)} kW`} u={designT ? `heat loss at ${designT} °C` : "heat loss"} />}
+          {/* Sizing: the bill decides, the envelope is an upper bound (engine: components.heatpump.heat_load_upper_bound_kw). */}
+          {hp && hpBound != null ? <div className="fg-size"><p className="fg-fig"><span>Sized from the bill</span> <b>{n1(hp)} kW</b></p><p className="fg-fig"><span>Envelope upper bound</span> <b className="fg-light">{n1(hpBound)} kW</b></p></div>
+            : bars[4] && <Fig v={`${n1(bars[4].total)} kW`} u={designT ? `heat loss at ${designT} °C, an upper bound` : "heat loss, an upper bound"} />}
         </>,
         info: multi ? <p>The walls and roof are the whole building&rsquo;s, so no heat pump size for one flat.</p> : <>
+          {snapLine("heatpump", "kW")}
           {lossS && <p>{lossS}</p>}
           <p>{hp ? "Sized from the heating bill." : hpWhy ?? "Heating facts not asked yet."}</p>
           {hasEnv && <EnvelopeBar env={model!.envelope!} bare />}
@@ -491,13 +589,13 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   };
   const cardNow = sysNow ? sysBody[sysNow] : null;
   const sysCard = sysNow && cardNow && (
-    <SystemCard sys={sysNow} head={cardNow.head} label={cardNow.label} info={cardNow.info} pending={!!pending || !fresh}
+    <SystemCard sys={sysNow} head={cardNow.head} label={cardNow.label} info={cardNow.info} pending={waiting}
       extra={sysNow === "panels" && address && spatial !== false ? <ShadingPanel address={address} kwp={d.pv_kwp} solarStage start={{ m: 6, h: 11 }} compact /> : undefined}>
       {cardNow.body}
     </SystemCard>
   );
   // A flat in an apartment block: the engine's single-family design does not apply, so the pass shows none and Approve waits.
-  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending} none={multi ? "No design for this building yet" : null} undo={{ can: canUndo, run: () => { holdOffer(); onUndo(); } }}>{offer(false)}</ProposedCard>;
+  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={investmentOf(res as Parameters<typeof investmentOf>[0])} pending={waiting} none={multi ? "No design for this building yet" : null}>{offer(false, true)}</ProposedCard>;
   const overlays = (
     <>
       {!SYS && address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}
@@ -530,7 +628,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         {address && spatial !== false ? (
           <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatLayer ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && panelHeat}
-            edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); dp.setOverride?.(f, v); } } : undefined}>
+            edit={dp?.setOverride ? { adding: adding?.part ?? null, setOverride: (f, v) => { holdOffer(); stayChip.current = Date.now() + 60000; markAdd(f, v); optBase.current = res; setOpt({ [f]: v }); dp.setOverride?.(f, v); }, setKit: setKit ? (p) => { holdOffer(); stayChip.current = Date.now() + 60000; optBase.current = res; setOpt(p); setKit(p); } : undefined,
+              slots: Array.isArray((ovNow as { layout_slots?: unknown }).layout_slots) ? (ovNow as { layout_slots: string[] }).layout_slots : null } : undefined}>
             {overlays}
           </SpatialDemo>
         ) : (
@@ -625,13 +724,14 @@ function Checks({ checks }: { checks: Check[] }) {
       <ul>
         {checks.map((c) => {
           const tone = isInfo(c) ? "info" : isRef(c) ? (refOut(c) ? "ref" : "pass") : c.pass ? "pass" : "fail";
-          const pill = { info: c.class ? cap(c.class) : "Info", pass: isRef(c) ? "Inside guide" : "Pass", ref: "Above guide", fail: "Flag" }[tone];
+          // Plain words only: an informational row or a plain pass needs no label; the content stands on its own.
+          const pill = { info: c.class ? cap(c.class) : "", pass: isRef(c) ? "Inside guide" : "", ref: "Above guide", fail: "Flag" }[tone];
           return (
             <li key={c.name} className={tone === "fail" ? s.fail : tone === "ref" ? s.refRow : ""}>
               <span className={s.cn}>{cap(c.name)}</span>
               <b>{val(c)}</b>
-              <span className={{ info: s.info, pass: s.pass, ref: s.ref, fail: s.flag }[tone]}>{pill}</span>
-              <span className={s.band}>{c.band}</span>
+              {pill ? <span className={{ info: s.info, pass: s.pass, ref: s.ref, fail: s.flag }[tone]}>{pill}</span> : <span />}
+              <span className={s.band}>{c.band ? bandText(c.band) : null}</span>
               {(() => {
                 const num = typeof c.value === "number" ? n2(c.value) : String(c.value);
                 const m = c.message ?? (isRef(c) && /battery/i.test(c.name) ? (!refOut(c) ? `${num}, inside the guide` : `Battery ${num} kWh per kWh of daily use: above Reonic's 0.6 guide`) : null);

@@ -137,7 +137,7 @@ export function isMultiUnit(a: Partial<FormAnswers>, roof?: RoofInfo | null) {
 }
 
 // The installer the enquiry page belongs to. Placeholder names for the demo; never Reonic's brand.
-export const INSTALLER_BRAND: Record<InstallerId, string> = { "2a8ba8e2": "Isarwerk Solar", "23c108b7": "Würmtal Energie" };
+export const INSTALLER_BRAND: Record<InstallerId, string> = { "2a8ba8e2": "Isarwerk Solar", "23c108b7": "Isarwerk Solar" };
 
 /** The homeowner enquiry page (web/app/start). Only name and location are required; "unknown" is an explicit "don't know". */
 export const HOME_FORM = {

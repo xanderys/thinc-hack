@@ -14,7 +14,7 @@ LEADS: dict = {}
 _lock = threading.Lock()
 
 # fields the call can ask about; the order is only the starting point, /api/ask ranks them
-CANDIDATES = ["annual_demand_kwh", "heating_type", "has_ev", "heating_demand_kwh", "has_solar"]
+CANDIDATES = ["annual_demand_kwh", "heating_type", "has_ev", "heating_demand_kwh", "has_solar", "boiler_age_years"]
 QUESTION = {
     "annual_demand_kwh": ("Roughly how much electricity does the home use in a year?",
                           "Everything is sized from it: PV, battery and the payback."),
@@ -26,6 +26,8 @@ QUESTION = {
                            "It sizes the heat pump."),
     "has_solar": ("Is there already a solar system on the roof?",
                   "Existing panels change what the new system needs to cover."),
+    "boiler_age_years": ("How old is the current boiler?",
+                         "An old gas or oil boiler is the moment to switch to a heat pump."),
 }
 HEATING = {"gas": "Gas", "oil": "Oil", "heat pump": "Heatpump", "heatpump": "Heatpump", "waermepumpe": "Heatpump",
            "wärmepumpe": "Heatpump", "district": "OtherNonRenewable", "wood": "OtherRenewable", "pellets": "OtherRenewable",
@@ -155,7 +157,7 @@ def _num(v):
 
 
 BOOLS = {"has_ev", "ev_planned", "has_wallbox", "has_solar", "has_storage"}
-STRINGS = {"installer_id", "heating_stated", "load_profile", "address", "postcode", "preference", "roof_orientation", "offer_date"}
+STRINGS = {"installer_id", "heating_stated", "house_built_range", "load_profile", "address", "postcode", "preference", "roof_orientation", "offer_date"}
 
 
 def normalise(answers, dropped: list | None = None) -> dict:
@@ -176,6 +178,9 @@ def normalise(answers, dropped: list | None = None) -> dict:
             continue
         if v is None:
             out[k] = None
+        elif k == "house_built_year" and isinstance(v, str) and re.fullmatch(r"\s*\d{3}0s\s*", v):
+            d = int(v.strip()[:4])  # a decade from the Built chip: stored as stated, sized at its middle
+            out[k], out["house_built_range"] = float(d + 5), f"{d} to {d + 9}"
         elif k == "heating_type":
             t = str(v).strip().lower()
             hit = next((key for key in HEATING if key in t), None)

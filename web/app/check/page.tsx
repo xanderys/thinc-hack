@@ -1,18 +1,28 @@
 "use client";
+import { SeedDemo } from "@/components/autopilot/Autopilot"; // autopilot mount
+import { VERDICT_WORD } from "@/lib/qualify";
 import { useEffect, useMemo, useState } from "react";
 import StepHead from "@/components/stage/StepHead";
 import { CONST, human } from "@/components/stage/Rules";
-import { COMPONENT_DESIGN_FIELD, INSTALLER_NAME, type ComponentKey, type Design, type Eval, type HomeInputs, type InboxRow, type InstallerId, type ProjectDetail, type ProjectSummary, type RecommenderScore, type Rule, type ValidateFlag, type ValidateResponse } from "@/lib/api";
+import { COMPONENT_DESIGN_FIELD, type ComponentKey, type Design, type Eval, type HomeInputs, type InboxRow, type InstallerId, type ProjectDetail, type ProjectSummary, type RecommenderScore, type Rule, type ValidateFlag, type ValidateResponse } from "@/lib/api";
 import { call } from "@/lib/client";
 import { REALITY_MISS, REALITY_PROJECT } from "@/lib/demo";
-import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, named } from "@/lib/stage";
+import { designLine, HEATING_WORD, KEYS, n0, n2, NAME, unnamed as named } from "@/lib/stage";
 import s from "./check.module.css";
 
+// The population as the engine counts it (projects_total, engine restart 10:30): "1,619 projects in the data pack".
+// Without it, no project count at all (split.train + split.test is the older board's population).
+const projectCount = (ev: Eval) => {
+  const pt = (ev as unknown as { projects_total?: { in_pack?: number; exam_scored?: number } }).projects_total;
+  return pt?.in_pack != null ? `${n0(pt.in_pack)} projects in the data pack` : null;
+};
+const examScored = (ev: Eval, sealedN?: number) => (ev as unknown as { projects_total?: { exam_scored?: number } }).projects_total?.exam_scored ?? sealedN;
 // Fields /api/eval sends beyond lib/api.ts (docs/api.md v2.7).
 type Row4 = { population: string; ground_truth: string; band: string; engine: string; n: number; pv: number; battery: number; wallbox: number; heatpump?: number; all_four: number };
 type EvalX = Eval & {
   baselines?: Record<string, { rule: string }>;
   ceiling?: Eval["ceiling"] & { covered_test_share?: number };
+  qualification_backtest?: { priority: number; call_first: number; decline: number; n: number; priority_share: number; call_first_share: number; decline_share: number; population: string; method: string; source: string; recomputed_live: boolean };
   final_test?: { source: string; significance: string; production: string; rows: Row4[] };
   recommenders_labels?: Record<string, string>;
   recommenders_note?: string;
@@ -28,6 +38,10 @@ const pct1 = (x: number | null | undefined) => x == null ? "n/a" : `${(x * 100).
 // Rule names as the shared Rules disclosure labels them.
 const RULE: Record<string, string> = { bat_kwp: "Battery per kWp", bat_day: "Battery per daily use", inv: "Inverter", hp: "Heat pump", wb: "Wallbox", fill: "Roof fill", cap: "Roof capacity", orient: "Orientation", inverter: "Inverter" };
 const UNIT: Record<ComponentKey, string> = { pv: "kWp", battery: "kWh", heatpump: "kW", wallbox: "kW" };
+// One name per rule set: the engine's labels (reonic_rule, textbook) and the web's own baselines (floor_slope); the
+// engine's full wording rides along as the tooltip. Engine ids without a name here show as the engine sends them.
+const RULESET: Record<string, string> = { textbook: "Textbook rule", reonic_rule: "Reonic rule of thumb", floor_slope: "Median-fit rule", "black box": "Black box" };
+const rulesetTip = (ev: EvalX | null | undefined, k: string) => (ev?.recommenders_labels as Record<string, string> | undefined)?.[k] ?? ev?.baselines?.[k]?.rule;
 const sz = (x: number | null | undefined, u: string) => x == null ? "none" : `${n2(x)} ${u}`;
 const reduce = () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -52,7 +66,7 @@ const Doc = ({ path, branch }: { path: string; branch?: string }) => <a href={gh
 
 function Headline({ ev, err, retry }: { ev: EvalX | null; err: string | null; retry: () => void }) {
   if (err) return <section className={s.sec}><h2>Scoreboard</h2><Err src="Engine" msg={err} retry={retry} /></section>;
-  if (!ev) return <section className={s.head} aria-busy="true"><h2>Scoreboard</h2><p className={s.wait} style={{ color: "rgba(255,255,255,.7)" }}>Loading</p></section>;
+  if (!ev) return <section className={s.head} aria-busy="true"><h2>Scoreboard</h2><span className="b-skel" aria-hidden="true" style={{ width: "40%", height: 40, marginTop: 8, opacity: 0.25 }} /></section>;
   const o = ev.overall;
   // One named population: the sealed test half (633 homes), production engine, lowest option, our bands.
   const ft = ev.final_test, prod = ft?.production.replace(/-readout$/, "");
@@ -61,11 +75,13 @@ function Headline({ ev, err, retry }: { ev: EvalX | null; err: string | null; re
   return (
     <section className={s.head}>
       <h2>Whole design within tolerance on {n0(sealed?.n ?? ev.split.test)} {sealed ? "sealed held-out signed homes, scored once" : "held-out signed projects"}</h2>
+      {(() => { const pc = projectCount(ev), ex = examScored(ev, sealed?.n); const parts = [pc, ex != null ? `${n0(ex)} scored in the exam` : null].filter(Boolean); return parts.length ? <p className={s.src}>{parts.join(", ")}</p> : null; })()}
       <dl className={s.figs}>
         <div className={s.us}><dt>Marquee draft</dt><dd>{pct1(sealed?.all_four ?? o.design_match_share)}</dd></div>
         {!sealed && o.ceiling_design_match_share != null && <div className={s.them}><dt>Agreement with designs for similar recorded homes</dt><dd>{pct1(o.ceiling_design_match_share)}</dd></div>}
-        {sealed ? textbook && <div className={s.them}><dt>Textbook rule</dt><dd>{pct1(textbook.all_four)}</dd></div>
-          : <div className={s.them}><dt>Textbook rule</dt><dd>{pct1(o.textbook_design_match_share ?? o.baseline_design_match_share)}</dd></div>}
+        {/* The textbook rule only: the generic baseline share is a different rule and is not shown under this name. */}
+        {sealed ? textbook && <div className={s.them}><dt title={rulesetTip(ev, "textbook")}>{RULESET.textbook}</dt><dd>{pct1(textbook.all_four)}</dd></div>
+          : o.textbook_design_match_share != null && <div className={s.them}><dt title={rulesetTip(ev, "textbook")}>{RULESET.textbook}</dt><dd>{pct1(o.textbook_design_match_share)}</dd></div>}
       </dl>
       <p className={s.src}>{o.definition}{sealed ? `, on the test half the rules were not fitted on (${sealed.engine}, lowest offered option)` : ""}. Source: {sealed ? <><Doc path="engine/lab/reports/final_test_v2.md" />, </> : null}<a href="/api/eval" target="_blank" rel="noreferrer"><code>GET /api/eval</code></a></p>
     </section>
@@ -77,7 +93,7 @@ type Approved = { lead_id?: string | null; inputs: HomeInputs; draft: Design | n
 function rule(f: ValidateFlag, installer: HomeInputs["installer_id"]) {
   const k = f.component as ComponentKey, nb = f.neighbours, took = Math.round(nb.share_included * nb.n);
   const range = nb.p25 != null && nb.p75 != null ? `, between ${n2(nb.p25)} and ${n2(nb.p75)} ${UNIT[k] ?? ""}` : "";
-  return `Learned from ${nb.n} similar homes at ${INSTALLER_NAME[installer]}: ${took} took ${k === "pv" ? "solar" : `a ${(NAME[k] ?? k).toLowerCase()}`}${took ? range : ""}.`;
+  return `Learned from ${nb.n} similar homes: ${took} took ${k === "pv" ? "solar" : `a ${(NAME[k] ?? k).toLowerCase()}`}${took ? range : ""}.`;
 }
 
 function Validation() {
@@ -107,10 +123,10 @@ function Validation() {
   };
   const open = (res?.flags ?? []).map((f, i) => ({ f, i })).filter(({ f, i }) => f.level !== "ok" && !kept.includes(i));
   const fine = KEYS.filter((k) => !(res?.flags ?? []).some((f) => f.component === k && f.level !== "ok")).map((k, j) => j === 0 ? NAME[k] : NAME[k].toLowerCase());
-  const head = !res ? "Checking the approved offer" : open.length === 0 ? "Approved offer: nothing stands out against similar homes" : `Approved offer: ${open.length === 1 ? "one thing" : `${open.length} things`} to look at`;
+  const head = !res ? null : open.length === 0 ? "Approved offer: nothing stands out against similar homes" : `Approved offer: ${open.length === 1 ? "one thing" : `${open.length} things`} to look at`;
   return (
     <section className={s.sec}>
-      <h2>{head}</h2>
+      <h2 aria-busy={!head || undefined}>{head ?? <span className="b-skel b-skel-line" aria-hidden="true" style={{ width: "55%", height: 20 }} />}</h2>
       <p className={s.lede}><span className={s.mono}>{designLine(ap.approved)}</span></p>
       {err && <Err src="Engine" msg={err} retry={() => setTick((t) => t + 1)} />}
       {open.length > 0 && (
@@ -138,11 +154,11 @@ function Validation() {
   );
 }
 
-function RulesTable({ rules, installer }: { rules: Rule[]; installer: string }) {
+function RulesTable({ rules }: { rules: Rule[] }) {
   return (
     <div className={`${s.panel} ${s.scroll}`}>
       <table className={s.t}>
-        <thead><tr><th>Rule</th><th>Reonic textbook</th><th>Fitted rule ({installer})</th><th className={s.r}>This draft</th></tr></thead>
+        <thead><tr><th>Rule</th><th>Published guide</th><th>Fitted rule</th><th className={s.r}>This draft</th></tr></thead>
         <tbody>{rules.map((r) => (
           <tr key={r.name}>
             <td>{r.name in NAME ? NAME[r.name as ComponentKey] : human(r.name, RULE)}</td>
@@ -163,11 +179,11 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
   useEffect(() => { setP(null); call<ProjectDetail>(`/api/projects/${id}`).then((r) => { if (r.ok) { setP(r.data); setErr(null); } else setErr(r.error); }); }, [tick, id]);
   const title = <h2>One held-out home, draft against the senior planner</h2>;
   if (err) return <section className={s.sec}>{title}<Err src="Engine" msg={err} retry={() => setTick((t) => t + 1)} /></section>;
-  if (!p) return <section className={s.sec}>{title}<p className={s.wait}>Loading the held-out home</p></section>;
+  if (!p) return <section className={s.sec}>{title}<span className="b-skel" aria-hidden="true" style={{ width: "100%", height: 120, marginTop: 8 }} /></section>;
   const i = p.inputs, tol = (k: ComponentKey) => ev?.components[k]?.tolerance ?? "";
   const rows = KEYS.map((k) => { const f = COMPONENT_DESIGN_FIELD[k]; const o = p.ours.design[f], x = p.expert[f]; return { k, o, x, ok: within(o, x, tol(k)) }; });
   const misses = rows.filter((r) => !r.ok);
-  const what = [INSTALLER_NAME[p.installer_id], `${n0(i.annual_demand_kwh)} kWh a year`, i.heating_type !== "Unknown" ? `${HEATING_WORD[i.heating_type].toLowerCase()} heating${i.heating_cost_per_year_eur ? ` at €${n0(i.heating_cost_per_year_eur)} a year` : ""}` : null, i.has_ev ? "an electric car" : null].filter(Boolean).join(", ");
+  const what = [`${n0(i.annual_demand_kwh)} kWh a year`, i.heating_type !== "Unknown" ? `${HEATING_WORD[i.heating_type].toLowerCase()} heating${i.heating_cost_per_year_eur ? ` at €${n0(i.heating_cost_per_year_eur)} a year` : ""}` : null, i.has_ev ? "an electric car" : null].filter(Boolean).join(", ");
   return (
     <>
       <section className={s.sec}>
@@ -189,7 +205,7 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
         </div>
         {misses.map((m) => {
           const nb = p.ours.components[m.k].neighbours, took = Math.round(nb.share_included * nb.n);
-          const lead = m.o == null ? `Only ${took} of ${nb.n} similar homes from this installer added one, so the draft left it out.` : named(p.ours.components[m.k].reason);
+          const lead = m.o == null ? `Only ${took} of ${nb.n} similar homes added one, so the draft left it out.` : named(p.ours.components[m.k].reason);
           return <p className={`${s.note} ${s.miss}`} key={m.k}><b>{NAME[m.k]} missed.</b> {lead}</p>;
         })}
         <button className={s.link} onClick={onOther}>Another held-out home</button>
@@ -198,7 +214,7 @@ function Reality({ ev, id, onOther }: { ev: EvalX | null; id: string; onOther: (
       {!!p.ours.rules?.length && (
         <section className={s.sec}>
           <h2>Rules behind this draft</h2>
-          <RulesTable rules={p.ours.rules} installer={INSTALLER_NAME[p.installer_id]} />
+          <RulesTable rules={p.ours.rules} />
           <Src><Api path={`/api/projects/${p.project_id}`} /> (<code>ours.rules</code>), <Doc path="docs/rules-readout.md" /></Src>
         </section>
       )}
@@ -266,7 +282,7 @@ function Replay({ ev }: { ev: EvalX | null }) {
             const i = r.inputs, sub = [i.heating_type !== "Unknown" ? HEATING_WORD[i.heating_type] : "Heating not recorded", i.has_ev ? "Electric car" : null].filter(Boolean).join(", ");
             return (
               <div className={`${s.ir} s-in`} key={r.project_id} title={r.note || undefined}>
-                <span>{INSTALLER_NAME[r.installer_id]}, {n0(i.annual_demand_kwh)} kWh a year<small>{sub}</small></span>
+                <span>{n0(i.annual_demand_kwh)} kWh a year<small>{sub}</small></span>
                 <span className={s.d}>{designLine(r.draft)}</span>
                 <span className={r.within.all ? s.ok : s.rev}>{r.within.all ? "Matches" : "Review"}</span>
                 {!r.within.all && <span className={s.why}>{miss(r)}</span>}
@@ -294,7 +310,7 @@ function ByComponent({ ev }: { ev: EvalX }) {
       <p className={s.lede}>Share of the {n0(us.n)} sealed held-out homes within tolerance, per part.</p>
       <div className={`${s.panel} ${s.scroll}`}>
         <table className={s.t}>
-          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r}>Textbook</th><th>Tolerance</th></tr></thead>
+          <thead><tr><th>Part</th><th className={s.r}>Draft</th><th className={s.r} title={rulesetTip(ev, "textbook")}>{RULESET.textbook}</th><th>Tolerance</th></tr></thead>
           <tbody>
             <tr className={s.prod}><td>Whole design</td><td className={`${s.r} ${s.n}`}>{pct1(us.all_four)}</td><td className={`${s.r} ${s.n} ${s.dim}`}>{tb ? pct1(tb.all_four) : ""}</td><td className={s.dim}>all four at once</td></tr>
             {KEYS.map((k) => (
@@ -323,9 +339,9 @@ function Recommenders({ ev }: { ev: EvalX }) {
           <thead><tr><th>Engine</th><th className={s.r}>Homes</th><th className={s.r}>Whole design</th><th className={s.r}>Solar</th><th className={s.r}>Battery</th><th className={s.r}>Wallbox</th></tr></thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.engine} className={r.engine === prod ? s.prod : undefined}><td>{r.engine}</td><td className={`${s.r} ${s.n}`}>{n0(r.n)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.all_four)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.pv)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.battery)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.wallbox)}</td></tr>
+              <tr key={r.engine} className={r.engine === prod ? s.prod : undefined}><td title={rulesetTip(ev, r.engine)}>{RULESET[r.engine] ?? r.engine}</td><td className={`${s.r} ${s.n}`}>{n0(r.n)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.all_four)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.pv)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.battery)}</td><td className={`${s.r} ${s.n}`}>{pct1(r.wallbox)}</td></tr>
             ))}
-            {rr && <tr><td>Reonic rule of thumb</td><td className={`${s.r} ${s.n}`}>{rr.n != null ? n0(rr.n) : ""}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.pv_within)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.battery_within)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.wallbox_decision)}</td></tr>}
+            {rr && <tr><td title={rulesetTip(ev, "reonic_rule")}>{RULESET.reonic_rule}</td><td className={`${s.r} ${s.n}`}>{rr.n != null ? n0(rr.n) : ""}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.design_match_share)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.pv_within)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.battery_within)}</td><td className={`${s.r} ${s.n}`}>{pct1(rr.wallbox_decision)}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -400,6 +416,20 @@ function Synthetic({ ev }: { ev: EvalX }) {
   );
 }
 
+// The verifier's recorded qualification result, as the engine serves it; nothing here is typed in.
+function Backtest({ ev }: { ev: EvalX }) {
+  const q = ev.qualification_backtest;
+  if (!q) return null;
+  const pc = (x: number) => Math.round(x * 100);
+  return (
+    <section className={s.sec}>
+      <h2>{VERDICT_WORD.visit} / {VERDICT_WORD.call_first} / {VERDICT_WORD.decline}: {pc(q.priority_share)} / {pc(q.call_first_share)} / {pc(q.decline_share)} % on {n0(q.n)} unseen homes</h2>
+      <p className={s.src}>{q.population}. {q.source}</p>
+      <Src><Api path="/api/eval" /> (<code>qualification_backtest</code>)</Src>
+    </section>
+  );
+}
+
 function ResetDemo() {
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState<{ ok: boolean; line: string }[] | null>(null);
@@ -432,6 +462,7 @@ export default function Check() {
       <Validation />
       <Reality ev={ev} id={real} onOther={() => setReal((x) => x === REALITY_PROJECT ? REALITY_MISS : REALITY_PROJECT)} />
       <Replay ev={ev} />
+      {ev && <Backtest ev={ev} />}
       {ev && <>
         <ByComponent ev={ev} />
         <Recommenders ev={ev} />
@@ -439,6 +470,7 @@ export default function Check() {
       </>}
       {ev && <Synthetic ev={ev} />}
       <ResetDemo />
+      <SeedDemo /> {/* autopilot mount */}
     </div>
   );
 }

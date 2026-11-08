@@ -17,8 +17,9 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
   const [sent, setSent] = useState(false);
   const [lead, setLead] = useState<Read | null>(null);
   const go = async () => {
-    setBusy(true); setFail(null);
-    try { const e = await onApprove(want ?? undefined); setFail(e || null); if (!e && leadId) setSheet(true); } finally { setBusy(false); }
+    // The sheet opens at once; Send waits on the save. A failed save closes it and says why.
+    setBusy(true); setFail(null); if (leadId) setSheet(true);
+    try { const e = await onApprove(want ?? undefined); setFail(e || null); if (e) setSheet(false); } finally { setBusy(false); }
   };
   useEffect(() => {
     if (!leadId) return;
@@ -49,7 +50,7 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
     <div className={s.approve}>
       <div className={s.approveRow}>
       {/* Undo reverts the last edit to the design (moved here from the model toolbar, where it read as restart). */}
-      {undo && <button type="button" className={s.undoBtn} onClick={undo.run} disabled={!undo.can} title="Revert the last edit">Undo</button>}
+
       {signed ? (
         <span className={s.done} data-k="signed">Signed{dec?.name ? ` by ${dec.name}` : ""}</span>
       ) : complete ? (
@@ -58,12 +59,12 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
           {leadId && <button type="button" className="btn ghost" onClick={() => setSheet(true)}>Send</button>}
         </>
       ) : (
-        <button type="button" className={`btn ${s.approveBtn}`} onClick={go} disabled={busy}>{busy ? "Saving" : "Complete"}</button>
+        <button type="button" className={`btn ${s.approveBtn}`} onClick={go} disabled={busy} aria-busy={busy || undefined}>Complete</button>
       )}
       </div>
       {fail && !complete && !signed && <span className={s.failS} role="alert">{fail}</span>}
       {dec && dec.matches_current === false && <span className={s.warnS}>Signed a different version than the one on screen</span>}
-      {sheet && leadId && <SendSheet leadId={leadId} name={lead?.customer_name ?? ""} link={link} version={lead?.version} onClose={close} onSent={() => { setSent(true); void reread(); }} />}
+      {sheet && leadId && <SendSheet leadId={leadId} name={lead?.customer_name ?? ""} link={link} version={lead?.version} saving={busy} onClose={close} onSent={() => { setSent(true); void reread(); }} />}
     </div>
   );
 }

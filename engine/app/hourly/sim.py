@@ -243,7 +243,7 @@ def _flows(inputs, design, loc, year=None):
     ev = np.zeros(8760)
     if inputs.get("has_ev"):
         kw = design.get("wallbox_kw") or (11.0 if inputs.get("has_wallbox") else 3.7)
-        ev = ev_load((inputs.get("ev_annual_km") or 12_000) * EV_KWH_PER_100KM / 100 / 365, kw)
+        ev = ev_load((inputs.get("ev_annual_km") or 12_000) * EV_KWH_PER_100KM / 100 * EV_HOME_SHARE / 365, kw)
     hp_el = np.zeros(8760)
     heat = 0.0
     if design.get("heatpump_kw") or inputs.get("heating_type") == "Heatpump":
@@ -335,6 +335,32 @@ def battery_replacement_pv(kwh, life):
     return pv
 
 
+EV_HOME_SHARE = 0.8  # one share for the card and the simulation: 80% of the car's kWh charged at home (assumption; Fraunhofer ISI counts cars)
+
+
+def battery_replacement(kwh, life) -> dict | None:
+    """The undiscounted twin of battery_replacement_pv: {years, cost_eur, residual_eur}; the cash line, break-even and IRR
+    count it the same way the NPV does (pay at end of life, credit the straight-line residual at year 20)."""
+    if not kwh or not life or life >= YEARS:
+        return None
+    cost, t, years, resid = kwh * BAT_EUR_KWH, life, [], 0.0
+    while t < YEARS:
+        years.append(max(1, min(YEARS, int(round(t)))))
+        if t + life > YEARS:
+            resid += cost * (1 - min(life, YEARS - t) / life)
+        t += life
+    return {"years": years, "cost_eur": round(cost), "residual_eur": round(resid)}
+
+
+def replacement_flows(rep: dict | None) -> np.ndarray:
+    out = np.zeros(YEARS)
+    if rep:
+        for y in rep["years"]:
+            out[y - 1] -= rep["cost_eur"]
+        out[YEARS - 1] += rep["residual_eur"]
+    return out
+
+
 @lru_cache(maxsize=4)
 def _paid_hours(loc="Munich", year=None):
     """False in the NEG_PRICE_HOURS sunniest hours: proxy for negative spot prices, no feed-in pay (Solarspitzengesetz).
@@ -371,18 +397,19 @@ def _flows_by_year(energy_saving, income, opex):
     return energy_saving * (1 + PRICE_RISE) ** (t - 1) * deg + income * deg - opex
 
 
-def break_even_year(capex, energy_saving, income, opex):
-    """Reonic's convention: the first year cumulative savings exceed the investment, undiscounted; None beyond 20 years."""
+def break_even_year(capex, energy_saving, income, opex, rep=None):
+    """Reonic's convention: the first year cumulative savings exceed the investment, undiscounted; None beyond 20 years.
+    rep: the battery replacement, counted as the NPV counts it."""
     if not capex:
         return None
-    cum = np.cumsum(_flows_by_year(energy_saving, income, opex))
+    cum = np.cumsum(_flows_by_year(energy_saving, income, opex) + replacement_flows(rep))
     hit = np.where(cum >= capex)[0]
     return int(hit[0] + 1) if len(hit) else None
 
 
-def irr(capex, energy_saving, income, opex):
-    """Internal rate of return of the 20-year flows (bisection); None when the flows never repay the investment."""
-    f = _flows_by_year(energy_saving, income, opex)
+def irr(capex, energy_saving, income, opex, rep=None):
+    """Internal rate of return of the 20-year flows incl. the battery replacement (bisection); None when they never repay."""
+    f = _flows_by_year(energy_saving, income, opex) + replacement_flows(rep)
     if not capex or f.sum() <= capex:
         return None
     t = np.arange(1, YEARS + 1)
@@ -430,6 +457,7 @@ def economics(inputs, design, after, before, location="Munich", year=None) -> di
     bat_new = design.get("battery_kwh") or 0
     life = battery_life_years(after["bat"], after["discharge"].sum()) if bat_new else None
     repl = battery_replacement_pv(bat_new, life)
+    rep_cash = battery_replacement(bat_new, life)
     npv = _npv(capex, imp_b + fuel - imp_a, income - inc_b, opex) - repl if capex else None
 
     a = [f"Hourly simulation over one typical year ({location} PVGIS TMY, pvlib), household load BDEW H25 with single-home scatter."
@@ -441,7 +469,8 @@ def economics(inputs, design, after, before, location="Munich", year=None) -> di
              + ("" if inputs.get("roof_azimuth_deg") is not None else " (assumed south)") + ".")
     a.append(f"Battery {BAT_USABLE:.0%} usable, {BAT_RTE:.0%} round trip, greedy self-consumption.")
     if after["ev"].any():
-        a.append(f"EV {after['ev'].sum():,.0f} kWh a year at {EV_KWH_PER_100KM:g} kWh/100 km, charged from {EV_START_H}:00.")
+        a.append(f"EV {after['ev'].sum():,.0f} kWh a year charged at home: km x {EV_KWH_PER_100KM:g} kWh/100 km x {EV_HOME_SHARE:.0%} at home "
+                 f"(assumption from Fraunhofer ISI's about 80% of cars charging at home), from {EV_START_H}:00.")
     if after["hp"].any():
         _, src = heat_demand_kwh(inputs, design)
         if design.get("heatpump_kw"):
@@ -465,9 +494,10 @@ def economics(inputs, design, after, before, location="Munich", year=None) -> di
         "payback_years": float(round(capex / saving, 1)) if saving > 0 and capex else None,
         "self_consumption_share": round(float(sc), 3), "autarky_share": round(float(aut), 3),
         # Reonic's display conventions beside ours: break-even undiscounted (first year cumulative savings exceed the
-        # investment, battery replacement not counted, capped at 20 years) and the IRR of the same flows
-        "break_even_year": break_even_year(capex, imp_b + fuel - imp_a, income - inc_b, opex),
-        "irr": irr(capex, imp_b + fuel - imp_a, income - inc_b, opex),
+        # investment, capped at 20 years) and the IRR of the same flows; all three count the battery replacement as the NPV does
+        "break_even_year": break_even_year(capex, imp_b + fuel - imp_a, income - inc_b, opex, rep_cash),
+        "irr": irr(capex, imp_b + fuel - imp_a, income - inc_b, opex, rep_cash),
+        "battery_replacement": rep_cash,
         "assumptions": a, "method": "hourly-simulation",
         "annual": {
             "pv_yield_kwh": round(float(pv_y)), "load_kwh": round(float(load)), "self_consumed_kwh": round(float(sc_kwh)),

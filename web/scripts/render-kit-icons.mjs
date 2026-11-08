@@ -16,6 +16,8 @@ const pw = require(process.env.PLAYWRIGHT_CORE || "playwright-core");
 const out = path.join(web, "public", "kit");
 fs.mkdirSync(out, { recursive: true });
 
+const tx = (f) => ts.transpileModule(fs.readFileSync(path.join(web, f), "utf8"), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText;
+const bandsJs = tx("components/spatial/kitBands.ts");
 const kitJs = ts.transpileModule(fs.readFileSync(path.join(web, "components/spatial/kitMeshes.ts"), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 },
 }).outputText;
@@ -95,6 +97,7 @@ window.__icons = res;
 const files = {
   "/": ["text/html", page],
   "/kit.js": ["text/javascript", kitJs],
+  "/kitBands": ["text/javascript", bandsJs], // kitMeshes.ts imports "./kitBands"
   "/three.module.js": ["text/javascript", fs.readFileSync(path.join(web, "node_modules/three/build/three.module.js"))],
   "/three.core.js": ["text/javascript", fs.readFileSync(path.join(web, "node_modules/three/build/three.core.js"))],
 };

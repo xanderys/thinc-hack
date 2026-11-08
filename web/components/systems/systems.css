@@ -151,7 +151,7 @@
 .sc-top { display: flex; align-items: flex-start; gap: 8px; }
 .sc-h { flex: 1; margin: 0; font-family: var(--font-sans), sans-serif; font-size: 15.5px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.25; color: var(--navy); font-variant-numeric: tabular-nums; }
 .sc-i {
-  flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin: -4px -6px -4px 0; padding: 0; border: 0; border-radius: 50%;
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin: -4px 0; padding: 0; border: 0; border-radius: 50%;
   background: transparent; color: var(--accent); cursor: pointer;
 }
 .sc-i[aria-expanded="true"] { background: var(--accent); color: #fff; }
@@ -366,3 +366,42 @@
 .pc-undo:disabled { color: var(--ink-4); cursor: default; }
 .pc-undo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 @keyframes figFadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* Heat pump sizing: the bill's size bold, the envelope's upper bound lighter on the next line. */
+.fg-size { display: grid; gap: 1px; }
+.fg-size .fg-fig b { font-size: 14px; }
+.fg-light { color: var(--ink-3); font-size: 12.5px; }
+
+/* The card never scrolls sideways (8 Nov 2026): the scrubber fits the card's width at every size. Months share the
+   row and shrink, the slider takes its own line, the date line wraps. */
+.sc-card, .sc-anim, .sc-extra { overflow-x: hidden; }
+.sc-anim, .sc-extra > * { min-width: 0; max-width: 100%; }
+.sc-extra [class*="ShadingScrubber_stripRow__"] { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.sc-extra [class*="ShadingScrubber_monthsC__"] { display: flex; min-width: 0; }
+.sc-extra [class*="ShadingScrubber_monthsC__"] button { flex: 1 1 0; min-width: 0; }
+.sc-extra [class*="ShadingScrubber_monthsC__"] button:first-child { flex: 0 0 auto; }
+.sc-extra [class*="ShadingScrubber_stripRow__"] input { width: 100%; min-width: 0; }
+@media (min-width: 761px) { .sc-extra [class*="ShadingScrubber_whenC__"] { display: block; white-space: normal; overflow-wrap: anywhere; } }
+/* An absent part: the engine's reason, one short line under the title. */
+.sc-why { margin: 0; font-size: 12.5px; line-height: 1.35; color: var(--ink-2); }
+/* Tiles in the pass: Solar / Battery / Investment, label over value, the same tiles as the offer's; they stay put when
+   the card opens (no crossfade, no row collapse), and the open body starts at the second row. */
+.pc-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 0; font-size: 13px; }
+.pc-tile { display: grid; gap: 2px; background: var(--sheet-2); border-radius: 8px; padding: 6px 7px; min-width: 0; }
+.pc-tl { font-size: 11.5px; font-weight: 400; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-tile b { font-size: 13.5px; font-weight: 600; color: var(--ink); letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-has-tiles.pc-open .pc-pass { grid-template-rows: auto 1fr; row-gap: 6px; }
+.pc-has-tiles.pc-open .pc-figs { opacity: 1; }
+.pc-has-tiles .pc-pass { row-gap: 6px; }
+/* The homeowner's open body repeats those three as its first tiles: the pass already shows them. */
+.pc-has-tiles .pc-body .pp-open > dl:first-child > div:nth-child(-n+3) { display: none; }
+
+/* Facts row, one line: the WhatsApp control keeps its own width and comes last; it never takes the row (facts.css
+   gives it 100 % on a phone for the wrapping row, which in a scroller would push every fact out of view). */
+.st-open:has(.sys-on) .fc-row > .fc-slot { width: auto; margin-left: 0; order: 99; flex: none; }
+
+/* Loading is a shimmer on the figure, never a word: the card title's size while a unit is being sized, and the
+   on-model pill (EditLayer's pending pill, aria-live) the same way. */
+.sc-skel-fig { display: inline-block; vertical-align: -2px; width: 52px; height: 14px; border-radius: 4px; margin-left: 4px; }
+.b-skel-pill > .b-skel { display: inline-block; width: 44px; height: 12px; vertical-align: middle; }
+/* The rule result leads each popover. */
+.sc-pop .sc-rule { color: var(--ink); font-weight: 600; }

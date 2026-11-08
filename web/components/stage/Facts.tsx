@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { setClientCard, useClientCard } from "./clientCard";
 import type { HeatingType, HomeInputs, RoofResult } from "@/lib/api";
 import { n0 } from "@/lib/stage";
 import { maskPhone } from "@/lib/phone";
@@ -35,14 +36,16 @@ type Spec = {
   state: (i: HomeInputs, roof?: RoofResult | null) => "stated" | "estimated" | "missing";
   value: (i: HomeInputs, roof?: RoofResult | null) => string;
 };
+// The second line under an estimated value: the word is the mark, the tone alone is not.
+const MARK: Partial<Record<Field, string>> = { electricity_price_ct_kwh: "assumed", house_size_sqm: "estimated", house_built_year: "estimated" };
 const SPECS: Spec[] = [
   { f: "annual_demand_kwh", label: "Household use", glyph: "bolt", state: () => "stated", value: (i) => `${n0(i.annual_demand_kwh)} kWh` },
   { f: "heating_type", label: "Heating", glyph: "flame", state: (i) => i.heating_type === "Unknown" ? "missing" : "stated", value: (i) => heatWord(i.heating_type) },
-  { f: "electricity_price_ct_kwh", label: "Price", glyph: "tag", state: (i) => i.electricity_price_ct_kwh != null ? "stated" : "estimated", value: (i) => i.electricity_price_ct_kwh != null ? `${i.electricity_price_ct_kwh} ct/kWh` : "37 ct/kWh, assumed" },
+  { f: "electricity_price_ct_kwh", label: "Price", glyph: "tag", state: (i) => i.electricity_price_ct_kwh != null ? "stated" : "estimated", value: (i) => i.electricity_price_ct_kwh != null ? `${i.electricity_price_ct_kwh} ct/kWh` : "37 ct/kWh" },
   { f: "has_ev", label: "Electric car", glyph: "car", state: () => "stated", value: (i) => i.has_ev ? (i.ev_annual_km ? `${n0(i.ev_annual_km)} km a year` : "Yes") : "No" },
   { f: "num_inhabitants", label: "Household", glyph: "people", state: (i) => i.num_inhabitants ? "stated" : "missing", value: (i) => `${i.num_inhabitants ?? 0} people` },
-  { f: "house_size_sqm", label: "Floor area", glyph: "ruler", state: (i, r) => !i.house_size_sqm ? "missing" : near(i.house_size_sqm, r?.floor_area_m2) ? "estimated" : "stated", value: (i, r) => `${n0(i.house_size_sqm ?? 0)} m²${near(i.house_size_sqm ?? 0, r?.floor_area_m2) ? ", estimated from the building" : ""}` },
-  { f: "house_built_year", label: "Built", glyph: "calendar", state: (i, r) => !i.house_built_year ? "missing" : builtEstimated(i, r) ? "estimated" : "stated", value: (i, r) => builtEstimated(i, r) ? `estimated, ${r!.build_year_class}` : String(i.house_built_year) },
+  { f: "house_size_sqm", label: "Floor area", glyph: "ruler", state: (i, r) => !i.house_size_sqm ? "missing" : near(i.house_size_sqm, r?.floor_area_m2) ? "estimated" : "stated", value: (i, r) => `${n0(i.house_size_sqm ?? 0)} m²` },
+  { f: "house_built_year", label: "Built", glyph: "calendar", state: (i, r) => !i.house_built_year ? "missing" : builtEstimated(i, r) ? "estimated" : "stated", value: (i, r) => builtEstimated(i, r) ? `${r!.build_year_class}` : String(i.house_built_year) },
 ];
 const builtEstimated = (i: HomeInputs, r?: RoofResult | null) => !!i.house_built_year && !!r?.build_year_class && r.build_year_estimate != null && Math.abs(i.house_built_year - r.build_year_estimate) < 0.5;
 
@@ -117,39 +120,60 @@ function Panel({ spec, i, roof, onFact }: { spec: Spec; i: HomeInputs; roof?: Ro
 }
 
 /** The facts row. An explicit edit calls onFact (the existing intake-step path); opening a chip never writes. slot: room for a button at the row's end. */
-export default function Facts({ inputs, roof, onFact, hidden, slot, origin, phone, onPhone, sources }: { sources?: Record<string, string>; phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; slot?: ReactNode }) {
+export default function Facts({ inputs, roof, onFact, hidden, flash, slot, origin, phone, onPhone, sources }: { sources?: Record<string, string>; phone?: string | null; onPhone?: (v: string) => void; origin?: Record<string, string>; inputs: HomeInputs; roof?: RoofResult | null; onFact: (f: Field, v: unknown, label: string) => void; hidden?: Field | null; flash?: Field | null; slot?: ReactNode }) {
   const [open, setOpen] = useState<Field | "phone" | null>(null);
+  const card = useClientCard();
+  useEffect(() => () => setClientCard(false), []);
+  useEffect(() => { if (!card) setOpen(null); }, [card]);
   // A fact the planner sets here is stated from then on, whatever the lead said before.
   const [edited, setEdited] = useState<Set<string>>(new Set());
   const specs = SPECS.filter((s) => s.f !== hidden);
+  // A fact that changes while the card is up (a live call, a WhatsApp reply) gets one soft highlight.
+  const shown = specs.map((s) => { const b = s.state(inputs, roof); return [s.f, `${b === "missing" ? "" : s.value(inputs, roof)}|${sources?.[s.f] ?? b}`] as const; });
+  const last = useRef<Map<string, string> | null>(null);
+  const [live, setLive] = useState<{ fields: Set<string>; n: number }>({ fields: new Set(), n: 0 });
+  const sig = shown.map(([f, v]) => f + "=" + v).join(";");
+  useEffect(() => {
+    const prev = last.current; last.current = new Map(shown);
+    if (!prev) return;
+    const changed = new Set(shown.filter(([f, v]) => prev.has(f) && prev.get(f) !== v).map(([f]) => f));
+    if (!changed.size) return;
+    setLive((x) => ({ fields: changed, n: x.n + 1 }));
+    const t = setTimeout(() => setLive((x) => ({ ...x, fields: new Set() })), 1200);
+    return () => clearTimeout(t);
+  }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
   const cur = specs.find((s) => s.f === open);
   useEffect(() => {
     if (!open) return;
     const on = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(null); };
     addEventListener("keydown", on); return () => removeEventListener("keydown", on);
   }, [open]);
+  const cell = (key: string, g: Glyph, label: string, st: string, value: string | null, via: boolean, field: Field | "phone", mark?: string) => (
+    <button key={key} type="button" className="fq" data-flash={flash === field || live.fields.has(field) ? "" : undefined} data-state={st} aria-expanded={open === field} aria-controls="fc-panel" onClick={() => setOpen((o) => o === field ? null : field)}>
+      <Glyph g={g} />
+      {st === "missing"
+        ? <span className="fq-need">Needs: {label.toLowerCase()}</span>
+        : <span className="fq-t"><span className="k">{label}</span><span className="v">{value}</span>{mark && <span className="mk">{mark}</span>}{via && <span className="via">via WhatsApp</span>}</span>}
+    </button>
+  );
   return (
-    <div className="fc-wrap">
-      <div className="fc-row" data-facts-row="">
-        {specs.map((s) => {
-          const base = s.state(inputs, roof);
-          // The engine's own word for each fact (lead.sources) sets the tone; a missing value stays missing.
-          const st = base === "missing" ? base : edited.has(s.f) ? "stated" : sources?.[s.f] ? (sources[s.f] === "estimated" ? "estimated" : "stated") : base;
-          return (
-            <button key={s.f} type="button" className="fc" data-state={st} aria-expanded={open === s.f} aria-controls="fc-panel" onClick={() => setOpen((o) => o === s.f ? null : s.f)}>
-              <Glyph g={s.glyph} /><span className="k">{s.label}</span>{st !== "missing" && <span className="v">{s.value(inputs, roof)}</span>}{origin?.[s.f] === "whatsapp" && st !== "missing" && <span className="via">via WhatsApp</span>}
-            </button>
-          );
-        })}
-        {onPhone && (
-          <button type="button" className="fc" data-state={phone ? "stated" : "missing"} aria-expanded={open === "phone"} aria-controls="fc-panel" onClick={() => setOpen((o) => o === "phone" ? null : "phone")}>
-            <Glyph g="phone" /><span className="k">Phone</span>{phone && <span className="v">{maskPhone(phone)}</span>}
-          </button>
-        )}
-        {slot != null && <span className="fc-slot">{slot}</span>}
+    <div className="fq-wrap" data-open={card ? "" : undefined}>
+      <div className="fq-body" id="fq-body" inert={!card}>
+        <div className="fq-clip">
+          <div className="fq-grid" data-facts-row="">
+            {specs.map((s) => {
+              const base = s.state(inputs, roof);
+              // The engine's own word for each fact (lead.sources) sets the tone; a missing value stays missing.
+              const st = base === "missing" ? base : edited.has(s.f) ? "stated" : sources?.[s.f] ? (sources[s.f] === "estimated" ? "estimated" : "stated") : base;
+              return cell(s.f, s.glyph, s.label, st, st === "missing" ? null : s.value(inputs, roof), origin?.[s.f] === "whatsapp" && st !== "missing", s.f, st === "estimated" ? MARK[s.f] ?? "estimated" : undefined);
+            })}
+            {onPhone && cell("phone", "phone", "Phone", phone ? "stated" : "missing", phone ? maskPhone(phone) : null, false, "phone")}
+          </div>
+          {open === "phone" && onPhone && <div className="fc-panel" id="fc-panel" role="group" aria-label="Phone" key="phone"><PhoneField value={phone} onSet={(v) => { onPhone(v); setOpen(null); }} /></div>}
+          {cur && <div className="fc-panel" id="fc-panel" role="group" aria-label={cur.label} key={cur.f}><Panel spec={cur} i={inputs} roof={roof} onFact={(f, v, l) => { onFact(f, v, l); setEdited((x) => new Set(x).add(f === "ev_annual_km" ? "has_ev" : f)); if (f !== "ev_annual_km" && !(f === "has_ev" && v === true)) setOpen(null); }} /></div>}
+          {slot != null && <div className="fq-slot">{slot}</div>}
+        </div>
       </div>
-      {open === "phone" && onPhone && <div className="fc-panel" id="fc-panel" role="group" aria-label="Phone" key="phone"><PhoneField value={phone} onSet={(v) => { onPhone(v); setOpen(null); }} /></div>}
-      {cur && <div className="fc-panel" id="fc-panel" role="group" aria-label={cur.label} key={cur.f}><Panel spec={cur} i={inputs} roof={roof} onFact={(f, v, l) => { onFact(f, v, l); setEdited((x) => new Set(x).add(f === "ev_annual_km" ? "has_ev" : f)); if (f !== "ev_annual_km" && !(f === "has_ev" && v === true)) setOpen(null); }} /></div>}
     </div>
   );
 }

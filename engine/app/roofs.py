@@ -47,8 +47,58 @@ def to_contract(d: dict) -> dict:
             "zensus_confidence": d.get("zensus_confidence")}
 
 
+_CAP: dict = {}
+
+
+def _capacity(address: str, res: dict) -> dict:
+    """One roof capacity everywhere: when the 3D model is built, the modules its layout actually fits (every face in sun,
+    filled), else the area estimate, labelled as such."""
+    if not res or res.get("source") in ("none", "postcode"):
+        return res
+    n = _CAP.get(address)
+    if n is None:
+        try:
+            from . import shading
+            counts = shading.chosen_counts(address, None)
+            n = sum(counts.values()) if counts else None
+        except Exception:
+            n = None
+        if n is not None:
+            _CAP[address] = n
+    res = {**res, **_floor_from_model(address)}
+    if n:
+        return {**res, "max_panels": n, "max_kwp": round(n * PANEL_KW, 2), "capacity_source": "layout"}
+    return {**res, "capacity_source": "area estimate"}
+
+
+_FLOOR: dict = {}
+
+
+def _floor_from_model(address: str) -> dict:
+    """Floor area from the 3D model's eave height (full storeys below the eaves), the same heated area the envelope uses;
+    the LoD2 measured height runs to the ridge and overcounts a storey under a pitched roof."""
+    if address in _FLOOR:
+        return _FLOOR[address]
+    out = {}
+    try:
+        from . import shading
+        R, M, *_ = shading._mods()
+        g = json.loads((R.CACHE / "model" / f"{M.key(address)}.base.json").read_text()).get("envelope_geom") or {}
+        if g.get("eaves_m") and g.get("footprint_m2"):
+            st = max(1, min(3, round(g["eaves_m"] / 3.0)))
+            out = {"floor_area_m2": round(g["footprint_m2"] * st * 0.72, 1), "storeys": st,
+                   "floor_area_note": f"footprint {g['footprint_m2']:.0f} m2 x {st} storeys below the {g['eaves_m']:.1f} m eaves x 0.72"}
+            _FLOOR[address] = out
+    except Exception:
+        pass
+    return out
+
+
+PANEL_KW = 0.45
+
+
 def lookup(address: str) -> dict:
-    res = _lookup(address)
+    res = _capacity(address, _lookup(address))
     if res.get("source") not in ("none", "postcode") and model_available():
         res = {**res, "model_url": model_url(address)}  # v2.1: the 3D house, built on first request
     if res.get("source") not in ("none", "postcode"):
@@ -78,6 +128,7 @@ def cached(address: str):
     path = CACHE / f"{key}.json"
     if path.exists():
         r = json.loads(path.read_text())
+        r = _capacity(address, r)
         return {**r, "model_url": model_url(address)} if r.get("source") not in ("none", "postcode") and model_available() else r
     if key not in _warming:
         _warming.add(key)
@@ -220,7 +271,11 @@ def _safe_model(address, build_year):
 def envelope_cached(address: str, build_year=None):
     """envelope block (per-face heat loss, design heat load) from an already built model; never builds one."""
     m = model_json_cached(address, build_year)
-    return (m or {}).get("envelope")
+    env = (m or {}).get("envelope")
+    if env:
+        from . import envelope_view
+        envelope_view.correct(env)
+    return env
 
 
 def spatial_inputs() -> list:

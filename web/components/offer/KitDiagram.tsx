@@ -16,6 +16,7 @@ const X = { left: 2, mid: 127, right: 252 };
 
 export default function KitDiagram({ kit, changed, flash = 0, className }: { kit: Kit; changed?: Part[]; flash?: number; className?: string }) {
   const id = useId().replace(/:/g, "");
+  if (!kit) return null;   // the design is not in yet
   const pv = !!kit.pv_kwp, bat = !!kit.battery_kwh, wb = !!kit.wallbox_kw, hp = !!kit.heatpump_kw;
   const inv = pv || bat;   // the inverter is drawn whenever there is DC to convert
   const loads: { k: Part; label: string; value: string }[] = [

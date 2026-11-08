@@ -9,7 +9,7 @@ REONIC ENGINE adds the heat_loss bar and the checks.
 from ..hourly import sim as S
 from . import physics as P
 
-HOME_SHARE = 0.8  # Fraunhofer ISI, press release 21/2025
+HOME_SHARE = 0.8  # assumption: 80% of the car's kWh charged at home (Fraunhofer ISI, press release 21/2025, counts cars); same as the simulation
 WINDOW = (18, 6)  # local hours: the hourly simulation starts charging at 18:00 (sim.EV_START_H); 06:00 is first light in spring
 SOURCES = {
     "lod2": "LoD2 building model, Bayerische Vermessungsverwaltung; shade from the bDOM surface model",
@@ -89,14 +89,15 @@ def day_bar(inputs, design, pl, provenance, day_date=None):
             _seg("from the battery", round(from_bat, 1), "kWh", lead_tag, cite),
             _seg("from the grid", round(grid, 1), "kWh", lead_tag, cite)]
     pv, bat = float(design.get("pv_kwp") or 0), float(design.get("battery_kwh") or 0)
-    lo, hi = 0.7 * pv, 1.0 * pv
+    use_y = float(inputs.get("annual_demand_kwh") or 0)
+    cap = min(1.5 * use_y / 1000, 1.5 * pv) if use_y and pv else 1.5 * pv
     s = f"On a spring weekday the home uses {use:.1f} kWh, {solar:.1f} kWh straight from the roof; from sunset to midnight it needs {eve_use:.1f} kWh."
     if bat:
-        band = "inside" if lo - 0.5 <= bat <= hi + 0.5 else "outside"
+        band = "within" if bat <= cap + 0.05 else "above"
         s += (f" The {bat:g} kWh battery covers {eve_bat:.1f} kWh of that"
               + (f" and is empty by {empty:02d}:00" if empty is not None else " and carries on past midnight")
-              + f"; its size is {band} the usual 0.7 to 1.0 kWh "
-              f"per kWp ({lo:.1f} to {hi:.1f} kWh for {pv:g} kWp).")
+              + f"; its size is {band} HTW Berlin's upper guide of {cap:.1f} kWh (1.5 kWh per 1,000 kWh of use, at most 1.5 per kWp, "
+              f"the lower one); your planners' signed designs sit at a median 1.1 to 1.2 kWh per kWp.")
     elif pv:
         s += " No battery, so the evening comes from the grid."
     return {"key": "day", "title": "A spring weekday", "total": round(use, 1), "unit": "kWh", "segments": segs, "sentence": s,

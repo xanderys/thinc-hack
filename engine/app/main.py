@@ -105,8 +105,8 @@ def startup():
     leads.load_all()  # before anything can create or step a lead
     snapshot_untouched()
     for l in leads.LEADS.values():  # the pinned demo leads carry Xander's number for the WhatsApp copilot
-        if l.get("pinned") and not l.get("phone"):
-            l["phone"] = DEMO_PHONE
+        if DEMO_PHONE and l.get("pinned") and not l.get("phone"):
+            l["phone"] = wa.e164(DEMO_PHONE)
             leads.save(l)
     wa.configure(_wa_order, _wa_step)
     wa.start()
@@ -218,6 +218,7 @@ class HomeInputs(BaseModel):
     num_inhabitants: Optional[float] = None
     house_size_sqm: Optional[float] = None
     house_built_year: Optional[float] = None
+    house_built_range: Optional[str] = None  # v2.14: a stated decade ("1980 to 1989"); house_built_year is its middle
     has_ev: bool = False
     ev_planned: bool = False  # v2.14: the car is planned, not here yet; sized like has_ev
     ev_annual_km: Optional[float] = None
@@ -585,8 +586,18 @@ def roof_photo(address: str = ""):
 
 
 @app.get("/api/roof/model")
-def roof_model(address: str = "", build_year: Optional[int] = None, kwp: Optional[float] = None):
-    """v2.1: the planes of the actual house (LoD2, per-plane sun yield, panel layout) and a URL to its 3D model."""
+def roof_model(address: str = "", build_year: Optional[int] = None, kwp: Optional[float] = None, lead_id: str = ""):
+    """v2.1: the planes of the actual house (LoD2, per-plane sun yield, panel layout) and a URL to its 3D model.
+    v2.14: lead_id lays out the lead's own design (its kWp, address and build year) when kwp is not given."""
+    if lead_id:
+        lead = _find_lead(lead_id)
+        if not lead:
+            return err(404, f"No lead with id {lead_id}")
+        inp = lead.get("inputs") or {}
+        address = address or inp.get("address") or ""
+        build_year = build_year or inp.get("house_built_year")
+        if kwp is None:
+            kwp = ((lead.get("draft") or {}).get("design") or {}).get("pv_kwp")
     if not address.strip():
         return err(422, "address is missing.")
     try:
@@ -608,6 +619,11 @@ def roof_model(address: str = "", build_year: Optional[int] = None, kwp: Optiona
     if isinstance(planes, dict) and planes.get("envelope"):
         from . import envelope_view
         envelope_view.enrich(planes["envelope"])
+    if kwp:
+        from .layers import _slot_grid
+        _slot_grid(planes)  # placed marks exactly the modules this kWp lays out
+    if isinstance(planes, dict):
+        planes["layout_kwp"] = kwp  # null: the model's own default fill, not a design
     return {**(planes if isinstance(planes, dict) else {"planes": planes}), "glb_url": roofs.model_url(address),
             "textured": info.get("textured"), "licence": info.get("licence"), "source": info.get("source")}
 
@@ -841,14 +857,14 @@ def create_lead(req: LeadReq, request: Request, x_intake_secret: Optional[str] =
     eng = engine()
     if not _key_ok(x_intake_secret) and not _rate_ok(request.client.host if request.client else "?"):
         return err(429, "Too many new leads from this address; try again in a minute.")
+    if req.phone and not wa.e164(req.phone):  # checked before anything is saved: a refused lead leaves nothing behind
+        return err(422, f"phone {req.phone!r} is not a phone number (E.164, 8 to 15 digits).")
     mapped, meta = leads.map_intake(req.facts or {})
     raw = {"installer_id": req.installer_id or mapped.get("installer_id") or "2a8ba8e2",
            **leads.where(req.address_or_postcode), **mapped}
     raw["_given"] = [k for k in raw if k != "installer_id"] + (["installer_id"] if req.installer_id else [])
     lead = _new_lead(eng, raw, req.customer_name, req.address_or_postcode, req.source, block=False)
     if req.phone:
-        if not wa.e164(req.phone):
-            return err(422, f"phone {req.phone!r} is not a phone number (E.164, 8 to 15 digits).")
         lead["phone"] = wa.e164(req.phone)
     if req.test:
         lead["test"] = True
@@ -1127,6 +1143,21 @@ def pin_lead(lead_id: str, req: Optional[PinReq] = None, x_intake_secret: Option
     return {"version": int(lead.get("version") or 0), "lead_id": lead["lead_id"], "pinned": lead["pinned"]}
 
 
+@app.post("/api/leads/hide-unpinned")
+def hide_unpinned(x_intake_secret: Optional[str] = Header(None)):
+    """Board tidy for the demo: every lead that is not pinned and not already a test lead is marked test (hidden from the
+    board, still reachable by its URL). Nothing is deleted. Leads created after this call show as usual."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    hidden = []
+    for l in list(leads.LEADS.values()):
+        if not l.get("pinned") and not l.get("test"):
+            l["test"] = True
+            leads.save(l)
+            hidden.append({"lead_id": l["lead_id"], "customer_name": l.get("customer_name")})
+    return {"hidden": hidden, "count": len(hidden)}
+
+
 DEMO_KEYS = ("status", "inputs", "draft", "draft_stamp", "unknown", "next_question", "next_spread", "questions_asked", "history", "decision",
              "approved", "approved_at", "approved_variant", "approved_hash", "overrides", "sent", "meta", "fact_sources", "whatsapp")
 
@@ -1196,7 +1227,7 @@ def reset_lead(lead_id: str, x_intake_secret: Optional[str] = Header(None)):
             "pinned": bool(lead.get("pinned"))}
 
 
-DEMO_PHONE = "+6586936789"
+DEMO_PHONE = os.environ.get("MARQUEE_DEMO_PHONE") or None  # the demo homeowner's number, from ~/.config/marquee/engine.env only
 
 
 def _wa_order(lead: dict) -> list:
@@ -1253,6 +1284,7 @@ class WaAskReq(BaseModel):
     facts: Optional[list[str]] = None  # ask about these fields; default: missing or estimated facts by design impact
     base_version: Optional[int] = None
     dry: bool = False  # compose and log as kind "dry", send nothing
+    origin: Optional[str] = None  # the web's request origin: the proposal link is built on it
 
 
 @app.post("/api/leads/{lead_id}/whatsapp/ask")
@@ -1270,16 +1302,33 @@ def whatsapp_ask(lead_id: str, req: Optional[WaAskReq] = None, dry: bool = False
     if bad:
         return err(422, f"Cannot ask about {', '.join(bad)}. Askable: {', '.join(wa.ASK)}.")
     try:
-        out = wa.ask(lead, req.facts, dry=req.dry or dry)
+        out = wa.ask(lead, req.facts, dry=req.dry or dry, origin=req.origin)
     except wa.ConversationError as e:
         return err(e.code, str(e))
     return {**out, "version": int(lead.get("version") or 0), "whatsapp": wa.public(lead)}
+
+
+@app.get("/api/leads/{lead_id}/whatsapp/preview")
+def whatsapp_preview(lead_id: str, kind: Literal["ask", "send"] = "ask", origin: Optional[str] = None,
+                     x_intake_secret: Optional[str] = Header(None)):
+    """Exactly what ask or send would send now (same templates); nothing is logged or sent."""
+    if not _key_ok(x_intake_secret):
+        return err(401, "Missing or wrong X-Intake-Secret header.")
+    lead = _find_lead(lead_id)
+    if not lead:
+        return err(404, f"No lead with id {lead_id}")
+    try:
+        return wa.preview(lead, kind, origin)
+    except wa.ConversationError as e:
+        return err(e.code, str(e))
 
 
 class SendReq(BaseModel):
     channel: Literal["whatsapp", "copy"]
     base_version: Optional[int] = None
     dry: bool = False  # compose and log as kind "dry", send nothing, status unchanged
+    text: Optional[str] = None  # the planner's previewed message, sent exactly; default: Rina's template with the proposal link
+    origin: Optional[str] = None  # the web's request origin: the proposal link is built on it
 
 
 @app.post("/api/leads/{lead_id}/send")
@@ -1294,7 +1343,7 @@ def send_proposal(lead_id: str, req: SendReq, dry: bool = False, x_intake_secret
         return stale
     if req.dry or dry:
         try:
-            out = wa.send_proposal(lead, req.channel, dry=True)
+            out = wa.send_proposal(lead, req.channel, dry=True, text=req.text, origin=req.origin)
         except wa.ConversationError as e:
             return err(e.code, str(e))
         return {"version": int(lead.get("version") or 0), "status": lead["status"], "status_label": STATUS_LABEL.get(lead["status"], lead["status"]),
@@ -1302,7 +1351,9 @@ def send_proposal(lead_id: str, req: SendReq, dry: bool = False, x_intake_secret
     if lead.get("status") not in ("approved", "sent"):
         return err(409, "Complete the design before sending the proposal.")
     try:
-        sent = wa.send_proposal(lead, req.channel)
+        if req.text and len(req.text) > 4000:
+            return err(422, "text must be at most 4,000 characters.")
+        sent = wa.send_proposal(lead, req.channel, text=req.text, origin=req.origin)
     except wa.ConversationError as e:
         return err(e.code, str(e))
     return {"version": int(lead.get("version") or 0), "status": lead["status"], "status_label": STATUS_LABEL["sent"], "sent": sent}
@@ -1465,6 +1516,14 @@ def evaluation():
     engine()
     out = dict(STATE["eval"])
     out["synthetic"] = synthetic_report()  # v1.4: null until the suite has written a report
+    # the board's qualification backtest on the homes no fitted rule saw; a recorded result, not recomputed here
+    out["qualification_backtest"] = {
+        "priority": 101, "call_first": 23, "decline": 2, "n": 126,
+        "priority_share": round(101 / 126, 3), "call_first_share": round(23 / 126, 3), "decline_share": round(2 / 126, 3),
+        "population": "the 126 board homes in the planner rules' sealed half (planner_rules.split.test_ids()), none in the rules-4 fit",
+        "method": "web/lib/qualify.ts verdict rules applied to each home's engine design (payback and 4,500 kWh clauses; these homes carry no address)",
+        "source": "docs/audit/verification.md (audit-figures 51730d1): recomputed by the adversarial verifier; replaces 82 / 17 / 1, which included fit-half homes",
+        "recomputed_live": False}
     try:  # the lab's sealed test-half score, run once: these ARE the scoreboard's numbers (not recomputed)
         ft = json.loads((Path(__file__).parent / "final_test.json").read_text())
         out["final_test"] = ft

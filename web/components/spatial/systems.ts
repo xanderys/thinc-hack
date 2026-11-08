@@ -9,7 +9,7 @@
 // the scene's critically damped spring (0.6 s, bounce 0). Reduce Motion: a still frame at 13:00 (battery) or
 // 23:00 (wallbox), dots evenly spaced and still, the car already parked.
 import * as THREE from "three";
-import { POSES, springStep, type Pose } from "./camera";
+import { POSES, UNIT_POSES, springStep, type Pose } from "./camera";
 import type { ShadeAt } from "@/lib/shading";
 import type { Envelope } from "./types";
 import { CAR, CAR_PORT, WALLBOX, WALLBOX_OUTLET, cable, car } from "./kitMeshes";
@@ -25,7 +25,7 @@ const DOT_R = 0.32;      // metres: about 6 px at the storage pose
 type V = THREE.Vector3;
 type Host = {
   scene: THREE.Scene; box: THREE.Box3; anchors: { roof: V; home: V; batt: V; grid: V };
-  sunGroup: THREE.Group; sunDot: THREE.Mesh; kit: THREE.Group; batteryBox: THREE.Mesh; wallbox: THREE.Object3D | null; wbOn: boolean;
+  sunGroup: THREE.Group; sunDot: THREE.Mesh; kit: THREE.Group; batteryBox: THREE.Object3D; wallbox: THREE.Object3D | null; wbOn: boolean;
   panels: THREE.Group; opts: { reduce?: boolean }; shade: { at?: ShadeAt };
   sunPos: (h: number) => V; flyTo: (p: Pose) => void; xray: { set: (e: Envelope | null) => unknown };
   setLabels: (l: unknown[]) => void;
@@ -50,8 +50,9 @@ class Pipe {
   }
   // rate: 0 (nothing flows, dots hidden) to 1 (full flow, dots travel the pipe in about 2.5 s).
   step(dt: number, rate: number, still = false) {
-    if (!still) this.u = (this.u + (dt * rate) / 2.5) % 1;
-    const m = new THREE.Matrix4(), s = rate > 0.04 ? 0.55 + 0.45 * Math.min(1, rate) : 0;
+    // A negative rate runs the dots backwards (import on the grid line); the dot size follows the flow's size.
+    if (!still) this.u = (((this.u + (dt * rate) / 2.5) % 1) + 1) % 1;
+    const a = Math.abs(rate), m = new THREE.Matrix4(), s = a > 0.04 ? 0.55 + 0.45 * Math.min(1, a) : 0;
     for (let i = 0; i < DOTS; i++) {
       const p = this.curve.getPointAt((this.u + i / DOTS) % 1);
       m.makeScale(s, s, s).setPosition(p);
@@ -62,15 +63,6 @@ class Pipe {
   dispose() { this.line.geometry.dispose(); (this.line.material as THREE.Material).dispose(); this.dots.geometry.dispose(); (this.dots.material as THREE.Material).dispose(); }
 }
 
-// Down from the roof anchor to eave height on the nearest wall, then along the ground to the target.
-function route(a: V, b: V, box: THREE.Box3, lift = 0.35): THREE.CurvePath<V> {
-  const eave = Math.max(box.min.y + 2.5, a.y - 2);
-  const wallX = b.x > (box.min.x + box.max.x) / 2 ? box.max.x + 0.15 : box.min.x - 0.15;
-  const p = new THREE.CurvePath<V>();
-  const pts = [a.clone(), new THREE.Vector3(wallX, eave, a.z), new THREE.Vector3(wallX, lift, (a.z + b.z) / 2), new THREE.Vector3(b.x, lift, b.z), b.clone()];
-  for (let i = 0; i < pts.length - 1; i++) if (pts[i].distanceTo(pts[i + 1]) > 1e-3) p.add(new THREE.LineCurve3(pts[i], pts[i + 1]));
-  return p;
-}
 function straight(a: V, b: V, y = 0.35): THREE.CurvePath<V> {
   const p = new THREE.CurvePath<V>();
   const pts = [a.clone(), new THREE.Vector3(a.x, y, a.z), new THREE.Vector3(b.x, y, b.z), b.clone()];
@@ -78,14 +70,22 @@ function straight(a: V, b: V, y = 0.35): THREE.CurvePath<V> {
   return p;
 }
 
+
+export type Flow = { pv_kw?: number; battery_kw?: number; house_kw?: number; grid_kw?: number; car_kw?: number };
+
 export class Systems {
   sys: System | null = null;
   private g = new THREE.Group();
   private battery = new THREE.Group();
   private charge = new THREE.Group();
-  private pipes: Partial<Record<"pvHome" | "pvBatt" | "battHome" | "gridBox" | "boxCar", Pipe>> = {};
+  private pipes: Partial<Record<"pvHome" | "pvBatt" | "battHome" | "gridBox" | "boxCar" | "homeGrid" | "pvCar", Pipe>> = {};
+  // The strips' scrubbed hour (setFlow): when set, the flows follow it instead of the built-in day.
+  private flow: Flow | null = null;
+  setFlow(f: Flow | null) { this.flow = f; }
   private car = new THREE.Group();
   private plug: THREE.Mesh | null = null; // the charging cable from the wallbox to the parked car
+  private glyph: THREE.Group | null = null; // the car's charge, a small battery over its roof (setCharge)
+  private glyphFill: THREE.Mesh | null = null;
   private carAt = new THREE.Vector3(); private carV = new THREE.Vector3(); private carGoal = new THREE.Vector3();
   private carMoving = false;
   private h = 6; private soc = 0.2;
@@ -109,15 +109,27 @@ export class Systems {
     if (box.isEmpty()) return;
     const home = A.home.clone().setY(0.6);
     const mk = (k: keyof Systems["pipes"], c: THREE.Curve<V>, col: THREE.Color, into: THREE.Group, r = DOT_R) => { const p = new Pipe(c, col, r); this.pipes[k] = p; into.add(p.line, p.dots); return p; };
-    mk("pvHome", route(A.roof, home, box), SOLAR, this.battery);
-    mk("pvBatt", route(A.roof, A.batt.clone().setY(1.2), box, 0.55), SOLAR, this.battery);
-    mk("battHome", straight(A.batt.clone().setY(1.2), home, 0.75), BATT, this.battery);
+    // Inside the glass: the battery stands against the inner face of the south wall, so the flows run down inside
+    // the house at the battery's depth, beside it, and into the top of its tower; nothing runs outside at ground level.
+    const bb = this.host.batteryBox ? new THREE.Box3().setFromObject(this.host.batteryBox) : null;
+    const top = bb && !bb.isEmpty() ? bb.max.y : 1.5, zIn = A.batt.z, bx = A.batt.x;
+    const eave = Math.max(box.min.y + 2.5, A.roof.y - 2), side = bx - 0.75; // left of the tower: the inverter hangs on its right
+    const line = (pts: V[]) => { const c = new THREE.CurvePath<V>(); for (let i = 0; i < pts.length - 1; i++) if (pts[i].distanceTo(pts[i + 1]) > 1e-3) c.add(new THREE.LineCurve3(pts[i], pts[i + 1])); return c; };
+    const Q = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    const homeIn = Q(home.x, 0.6, zIn);
+    mk("pvHome", line([A.roof.clone(), Q(home.x, eave, zIn), homeIn]), SOLAR, this.battery);
+    mk("pvBatt", line([A.roof.clone(), Q(side, eave, zIn), Q(side, top + 0.45, zIn), Q(bx, top + 0.45, zIn), Q(bx, top + 0.1, zIn)]), SOLAR, this.battery);
+    mk("battHome", line([Q(side, 0.75, zIn), homeIn.clone().setY(0.75), homeIn]), BATT, this.battery);
+    // House to grid (setFlow only): out of the house at the meter and along the ground to the grid connection.
+    mk("homeGrid", line([homeIn.clone().setY(0.5), Q(box.max.x + 0.3, 0.5, zIn), Q(A.grid.x, 0.5, A.grid.z)]), GRID, this.battery, 0.12);
 
     // The car (kitMeshes.ts): a low-poly hatchback parked on the drive beside the wallbox, nose to the north, its
     // charging flap level with the wall unit. The cable runs from the unit down the wall and across to the flap.
+    if (this.glyph) this.car.remove(this.glyph); // kept across a rebuild, put back below
     this.car.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); (m.material as THREE.Material | undefined)?.dispose?.(); });
     this.car.clear();
     this.car.add(car());
+    if (this.glyph) this.car.add(this.glyph);
     const wbObj = this.host.wallbox;
     wbObj?.updateWorldMatrix(true, false);
     const out = wbObj ? WALLBOX_OUTLET.clone().applyMatrix4(wbObj.matrixWorld) : new THREE.Vector3(box.max.x + 0.1, 1.05, box.max.z - 1.5);
@@ -131,6 +143,8 @@ export class Systems {
     // The cable: from the holster's foot straight down the wall a hand's width out, along the drive, up to the flap.
     const path = [out, P(out.x + 0.06, out.y - 0.25, out.z), P(out.x + 0.08, 0.2, out.z), P(out.x + 0.3, 0.03, out.z), P(port.x - 0.4, 0.03, port.z), P(port.x - 0.12, 0.45, port.z), port];
     mk("boxCar", new THREE.CatmullRomCurve3(path.slice(2)), EV, this.charge, 0.09).line.visible = false;
+    // Roof to car (setFlow only, while the car charges from the sun).
+    mk("pvCar", straight(A.roof.clone(), port.clone().setY(port.y + 0.3), 3.2), SOLAR, this.charge, 0.12);
     if (this.plug) { this.plug.removeFromParent(); this.plug.geometry.dispose(); (this.plug.material as THREE.Material).dispose(); }
     this.plug = cable(path, 0.02);
     this.g.add(this.plug);
@@ -145,6 +159,25 @@ export class Systems {
     this.car.position.copy(this.carAt);
     this.plugged();
   }
+  // The car's charge 0..1: a small battery glyph floating over its roof, its green fill following the value.
+  setCharge(c: number) {
+    if (!this.glyph) {
+      const g = new THREE.Group(), W = 0.7, H = 0.3;
+      const frame = new THREE.Mesh(new THREE.PlaneGeometry(W + 0.08, H + 0.08), new THREE.MeshBasicMaterial({ color: "#151826", side: THREE.DoubleSide }));
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshBasicMaterial({ color: "#F4F1EA", side: THREE.DoubleSide }));
+      back.position.z = 0.002;
+      const fill = new THREE.Mesh(new THREE.PlaneGeometry(1, H), new THREE.MeshBasicMaterial({ color: "#24a148", side: THREE.DoubleSide }));
+      fill.position.z = 0.004;
+      const nub = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.14), frame.material);
+      nub.position.x = (W + 0.08) / 2 + 0.03;
+      g.add(frame, back, fill, nub);
+      g.position.set(0, 2.1, 0); g.rotation.y = Math.PI / 2; // over the roof, facing the house side
+      this.glyph = g; this.glyphFill = fill; this.car.add(g);
+    }
+    const W = 0.7, w = Math.max(0.001, c * W);
+    this.glyphFill!.scale.x = w; this.glyphFill!.position.x = -W / 2 + w / 2;
+  }
+
   // The cable reaches the car once it is parked in the Wallbox view; until then it hangs in its loop on the unit.
   private plugged() {
     const on = this.sys === "wallbox" && !this.carMoving && this.host.wbOn;
@@ -163,8 +196,7 @@ export class Systems {
     if (sys === "battery" && prev !== "battery") { this.h = 6; this.soc = 0.2; }
     this.override();
     if (sys === "heatpump") H.setLabels(H.xray.set(this.env) as unknown[]);
-    // Heat pump: the high angle from the south, so both roof faces and their modules read under the x-ray.
-    const pose = sys === "panels" ? POSES.solar : sys === "battery" ? POSES.storage : sys === "wallbox" ? POSES.extras : sys === "heatpump" ? POSES.heat : null;
+    const pose: Pose | null = sys === "panels" ? POSES.solar : sys ? UNIT_POSES[sys] : null;
     if (pose) H.flyTo(pose);
   }
 
@@ -207,6 +239,16 @@ export class Systems {
       const h = H.shade.at?.h ?? 13;
       H.sunDot.visible = h > 6 && h < 20;
       H.sunDot.position.copy(H.sunPos(h));
+    } else if (s === "battery" && this.flow) {
+      // The strip's hour: roof to house is the direct use, roof to battery the charging, battery to house the
+      // discharging, house to grid the export (backwards on import); each line's dots sized by its kW.
+      const f = this.flow, pv = Math.max(0, f.pv_kw ?? 0), bat = f.battery_kw ?? 0, grid = f.grid_kw ?? 0;
+      const charge = Math.max(0, bat), discharge = Math.max(0, -bat), exp = Math.max(0, -grid);
+      const norm = Math.max(1, pv, Math.abs(bat), Math.abs(grid), f.house_kw ?? 0) / 1.2;
+      this.pipes.pvHome?.step(dt, Math.max(0, pv - charge - exp) / norm, still);
+      this.pipes.pvBatt?.step(dt, charge / norm, still);
+      this.pipes.battHome?.step(dt, discharge / norm, still);
+      this.pipes.homeGrid?.step(dt, -grid / norm, still);
     } else if (s === "battery") {
       if (still) this.h = 13; else {
         this.h += (dt * 24) / DAY_S;
@@ -227,10 +269,13 @@ export class Systems {
         this.car.position.copy(this.carAt);
         if (!this.carMoving) this.plugged();
       }
-      // Charging runs once the car is in: overnight, from the house through the wallbox into the car.
-      const rate = this.carMoving ? 0 : 0.8;
+      // Charging runs once the car is in: overnight, from the house through the wallbox into the car; with the strip's
+      // hour set, at its car_kw, and the sun's share of it from the roof straight to the car.
+      const f = this.flow, car = f ? Math.max(0, f.car_kw ?? 0) : null;
+      const rate = this.carMoving ? 0 : car == null ? 0.8 : Math.min(1.2, car / 9);
       this.pipes.gridBox?.step(dt, rate, still);
       this.pipes.boxCar?.step(dt, rate, still);
+      this.pipes.pvCar?.step(dt, this.carMoving || car == null ? 0 : Math.min(1.2, Math.min(car, Math.max(0, f!.pv_kw ?? 0)) / 9), still);
     }
   }
 

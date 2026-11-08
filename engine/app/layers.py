@@ -110,13 +110,13 @@ def ev_block(inp: dict, design: dict):
     km = float(inp.get("ev_annual_km") or 12000)
     per100 = float(S.EV_KWH_PER_100KM)
     annual = km * per100 / 100
-    share = 0.8
+    share = S.EV_HOME_SHARE
     night = annual * share / 365
     window_h = 12  # 18:00 to 06:00
     wb = design.get("wallbox_kw") or 11.0
     return {"annual_km": km, "kwh_per_100km": per100, "annual_kwh": round(annual), "home_share": share,
             "annual_kwh_at_home": round(annual * share),
-            "simulated_at_home_kwh": round(annual),  # the hourly year charges every km at home: an upper bound for the home's load
+            "simulated_at_home_kwh": round(annual * share),  # the hourly year charges the same 80% at home
             "charging_window": "18:00 to 06:00", "kwh_per_night_typical": round(night, 1),
             "kw_needed": round(night / window_h, 2), "wallbox_kw": wb, "hours_per_night_at_wallbox": round(night / wb, 1),
             "km_per_hour_at_11kw": round(11 / (per100 / 100)), "note_22kw": "22 kW only with a 3-phase 32 A supply",
@@ -341,6 +341,10 @@ def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
                     + (f" if the {int(yr)} fabric is unrenovated" if yr else "") + "; Reonic's room scan refines this on site.")
         segs.append({"name": "Build year", "value": yr, "unit": "", "source_tag": yr_tag, "citation": "sets the IWU typology and U-values"})
         total = env.get("design_heat_load_kw")
+        loss = [x for x in segs if x.get("unit") == "kW"]
+        tot_kw = sum(x["value"] for x in loss)
+        for x in loss:  # the six shares (roof, walls, windows, floor, ventilation, bridges) sum to 1
+            x["share"] = round(x["value"] / tot_kw, 3) if tot_kw else 0.0
     else:
         sentence, total = "No building model for this address yet, so no heat-loss breakdown.", None
     res.append({"key": "heat_loss", "title": "Heat loss", "total": total, "unit": "kW", "segments": segs, "sentence": sentence,
@@ -361,7 +365,7 @@ def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
             {"name": "Evening use (after sunset)", "value": night.get("evening_kwh"), "unit": "kWh", "source_tag": tag("annual_demand_kwh"), "citation": "BDEW H25 load, this home's annual use"},
             {"name": "Night use (before sunrise)", "value": night.get("night_kwh"), "unit": "kWh", "source_tag": tag("annual_demand_kwh"), "citation": "BDEW H25 load, this home's annual use"},
             {"name": "Battery per kWp", "value": round(bat / pv, 2) if pv else None, "unit": "kWh/kWp", "source_tag": "default",
-             "citation": "0.7 to 1.0 kWh per kWp is the usual range; snapped to the installer's package"}]
+             "citation": "HTW Berlin: at most 1.5 kWh per 1,000 kWh of use and at most 1.5 kWh per kWp, the lower one; your planners' signed designs sit at a median 1.1 to 1.2 kWh per kWp"}]
     res.append({"key": "day", "title": "A day", "total": round(load, 1), "unit": "kWh", "segments": segs,
                 "sentence": (f"On {(out.get('day') or {}).get('date', 'a typical day').split(' (')[0]} the home uses {load:.1f} kWh: the panels cover "
                              f"{direct:.1f} directly, the battery {from_bat:.1f} after sunset and the grid {imp:.1f}; {exp:.1f} kWh go to the grid."),
@@ -389,7 +393,9 @@ def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
     pb, aut = econ.get("payback_years"), econ.get("autarky_share")
     inv = d.get("inverter_kw")
     c = out.get("consistency") or {}
-    checks = [{"name": "Payback", "value": pb, "unit": "years", "pass": bool(pb and 5 <= pb <= 15), "band": "5 to 15 years"},
+    be = econ.get("break_even_year")
+    checks = [{"name": "Break-even", "value": be, "unit": "year", "pass": bool(be and 5 <= be <= 15), "band": "year 5 to 15"} if be else
+              {"name": "Payback", "value": pb, "unit": "years", "pass": bool(pb and 5 <= pb <= 15), "band": "5 to 15 years"},
               {"name": "Autarky", "value": aut, "unit": "share", "pass": True, "level": "info",
                "inside_band": bool(aut is not None and 0.3 <= aut <= 0.9), "band": "30 to 90%"},
               {"name": "DC/AC ratio", "value": round(pv / inv, 2) if pv and inv else None, "unit": "", "pass": bool(pv and inv and 1.0 <= pv / inv <= 1.35),
@@ -446,7 +452,7 @@ def bars(out: dict, resp: dict, inp: dict, lead: dict | None = None) -> dict:
                 inside = v is not None and 0.2 <= v <= 0.6
                 c.update(level="reference", pass_=inside, **{"pass": True})
                 c["message"] = (f"Battery {v:.2f} kWh per kWh of daily use: inside Reonic's 0.2 to 0.6 guide." if inside else
-                                f"Battery {v:.2f} kWh per kWh of daily use: above Reonic's 0.6 guide, like 63% of your planners' signed designs.")
+                                f"Battery {v:.2f} kWh per kWh of daily use: above Reonic's 0.6 guide.")
                 c["inside_band"] = c.pop("pass_")
             elif "dc" in (c.get("name") or "").lower():
                 c["level"] = "ok" if c.get("pass") else "fail"

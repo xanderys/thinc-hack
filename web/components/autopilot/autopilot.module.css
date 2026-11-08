@@ -1,0 +1,48 @@
+.bar { display: flex; justify-content: flex-end; gap: 8px; margin: 0 0 16px; }
+.run { min-height: 40px; padding: 0 18px; }
+/* Pending is a shimmer, never a caption. */
+.busy { background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; opacity: 1 !important; }
+:global(.btn.ghost).busy { background-image: linear-gradient(90deg, #fff 0%, var(--sheet-2) 50%, #fff 100%); }
+
+/* Slides up from the composer, sits above it and the safe area. */
+.log {
+  position: fixed; z-index: 40; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--composer-h, 84px));
+  width: min(640px, calc(100% - 24px)); transform: translateX(-50%);
+  background: var(--sheet); border: 1px solid var(--rule); border-radius: 16px;
+  display: flex; flex-direction: column; max-height: min(46vh, 420px);
+}
+.head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 6px; min-height: 44px; }
+.head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.lines { list-style: none; margin: 0; padding: 0 6px 8px; overflow-y: auto; overscroll-behavior: contain; }
+.line { display: grid; grid-template-columns: 18px minmax(0, max-content) minmax(0, 1fr) auto; align-items: baseline; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 14px; line-height: 1.35; }
+.who { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9em; }
+.text { color: var(--ink-2); min-width: 0; }
+.at { color: var(--ink-4); font-size: 12px; }
+.glyph { width: 16px; height: 16px; align-self: center; fill: none; stroke: var(--ink-3); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.line[data-state="active"] .glyph { stroke: var(--accent); }
+.line[data-state="active"] .text { color: transparent; background: linear-gradient(90deg, var(--ink-3) 0%, var(--ink-4) 50%, var(--ink-3) 100%) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; animation: shimmer 1.2s linear infinite; }
+.line[data-state="needs_you"] .glyph, .line[data-state="error"] .glyph { stroke: var(--ink); stroke-width: 2; }
+.line[data-state="needs_you"] .text { color: var(--ink); }
+.sum { border-top: 1px solid var(--rule); border-radius: 0; margin-top: 4px; padding-top: 10px; grid-template-columns: 18px minmax(0, 1fr) auto; }
+.sum .text { color: var(--ink); font-weight: 600; }
+.sum .glyph { stroke: var(--accent); stroke-width: 2; }
+.skelG { width: 16px; height: 16px; border-radius: 4px; align-self: center; }
+.skelT { grid-column: 2 / -1; height: 14px; width: 60%; align-self: center; }
+.seed { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
+@media (max-width: 640px) { .line { grid-template-columns: 18px minmax(0, 1fr) auto; } .who { grid-column: 2; } .text { grid-column: 2 / -1; grid-row: 2; } .at { grid-column: 3; grid-row: 1; } .sum .text { grid-column: 2; grid-row: 1; } }
+
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+/* Smooth spring, bounce 0 (globals --spring-smooth); a crossfade under Reduce Motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .log { animation: up 520ms var(--spring-smooth) both; }
+  .line { animation: arrive 420ms var(--spring-smooth) both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .log, .line { animation: fade 200ms linear both; }
+  .busy, .line[data-state="active"] .text { animation: none; }
+}
+@keyframes up { from { transform: translate(-50%, 24px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+@keyframes arrive { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.confirm { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 14px 14px; font-size: 15px; color: var(--ink); }
+.confirm .skelT { width: 55%; height: 16px; }

@@ -8,8 +8,9 @@ export interface Shading {
   status: "ready"; address: string; modules: ShadeModule[]; planes: ShadePlane[];
   total: { shade_share: number; loss_kwh_year: number; modules?: number }; source: string;
 }
-// null: across the year; else the 15th of month m (1 to 12) at h:30.
-export type ShadeAt = { m: number; h: number } | null;
+// null: across the year; else the 15th of month m (1 to 12) at h:30. moment: the planner moved the hour slider, so the
+// module figures show that moment's shade instead of the month's loss.
+export type ShadeAt = { m: number; h: number; moment?: boolean } | null;
 
 type State = { data: Map<string, Shading | null>; on: boolean; at: ShadeAt };
 let state: State = { data: new Map(), on: false, at: null };
@@ -54,10 +55,11 @@ export function useShadeView(): { on: boolean; at: ShadeAt } {
 export const setShadeOn = (on: boolean) => emit({ on, ...(on ? {} : { at: null }) });
 export const setShadeAt = (at: ShadeAt) => emit({ at });
 
-// Green at full sun, amber at 80%, red at 60% or less.
-const STOPS: [number, [number, number, number]][] = [[0.6, [218, 30, 40]], [0.8, [245, 179, 66]], [1, [36, 161, 72]]];
+// By share of sun: green at full sun (0 % shaded), amber from 75 to 50 % sun (25 to 50 % shaded), deep red only at
+// no sun (100 % shaded); continuous in between.
+const STOPS: [number, [number, number, number]][] = [[0, [140, 16, 26]], [0.5, [236, 128, 40]], [0.75, [245, 179, 66]], [1, [36, 161, 72]]];
 export function shadeRgb(share: number): [number, number, number] {
-  const x = Math.max(0.6, Math.min(1, share));
+  const x = Math.max(0, Math.min(1, share));
   for (let i = 1; i < STOPS.length; i++) {
     const [a, ca] = STOPS[i - 1], [b, cb] = STOPS[i];
     if (x <= b) { const t = (x - a) / (b - a); return [0, 1, 2].map((j) => Math.round(ca[j] + (cb[j] - ca[j]) * t)) as [number, number, number]; }
@@ -65,9 +67,20 @@ export function shadeRgb(share: number): [number, number, number] {
   return STOPS[STOPS.length - 1][1];
 }
 export const shadeCss = (share: number) => `rgb(${shadeRgb(share).join(",")})`;
-export const SHADE_GRADIENT = "linear-gradient(90deg, rgb(218,30,40), rgb(245,179,66) 50%, rgb(36,161,72))";
+export const SHADE_GRADIENT = "linear-gradient(90deg, rgb(140,16,26), rgb(236,128,40) 50%, rgb(245,179,66) 75%, rgb(36,161,72))";
 
-// The share a module shows at this moment (null: no direct sun on it then).
+// A module's share of full sun over the selected period: the month when one is picked, else the year. The module's
+// figure is its loss over that period, 1 minus this.
+export const periodShare = (m: ShadeModule, at: ShadeAt): number | null =>
+  (at ? m.monthly_share?.[at.m - 1] : m.annual_share) ?? null;
+// The array's loss over the period: the year from the engine's total; a month as the plain average of the modules'
+// monthly losses (within a few tenths of the yield-weighted figure).
+export function periodLoss(d: Shading, at: ShadeAt): number {
+  if (!at) return d.total.shade_share;
+  const xs = d.modules.map((m) => m.monthly_share?.[at.m - 1]).filter((v): v is number => v != null);
+  return xs.length ? xs.reduce((a, v) => a + (1 - v), 0) / xs.length : d.total.shade_share;
+}
+// The share a module has at this moment (null: no direct sun on it then): its tint, never its figure.
 export const shareAt = (m: ShadeModule, at: ShadeAt): number | null => (at ? m.hourly[at.m - 1]?.[at.h] ?? null : m.annual_share);
 
 // Sunrise to sunset hours of a month, from the hours any module has the sun on it.
