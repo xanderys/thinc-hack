@@ -79,6 +79,9 @@ OBJECTIVE = {"name": "20-year value on this roof",
              "sources": ["lod2", "bdom", "pvgis", "pvlib", "bdew", "eeg"]}
 
 
+MAX_KWH_PER_KWP = 1.6
+
+
 def value_frontier(eng, inp: dict, design: dict) -> list:
     """Every (PV, battery) rules-2 sweeps, each simulated on its own laid-out planes with the design's heat pump and
     wallbox; labels value, payback, independence, upfront and chosen. Cached per inputs and design."""
@@ -100,6 +103,9 @@ def value_frontier(eng, inp: dict, design: dict) -> list:
         d = {"pv_kwp": pv, "inverter_kw": design.get("inverter_kw") if pv == design.get("pv_kwp") else rules.inverter_kw(pv),
              "battery_kwh": b or None, **keep}
         lo = layout(inp, pv)
+        chosen = pv == (design.get("pv_kwp") or 0) and (b or 0) == (design.get("battery_kwh") or 0)
+        if lo and lo["modules"] < modules_for(pv) and not chosen:
+            continue  # more PV than this roof's layout places: not a design for this house
         sim_in = {**base, "pv_planes": lo["pv_planes"]} if lo else base
         from . import cashflow
         e = cashflow.add(sim_in, d, hourly.simulate(sim_in, d).economics)
@@ -110,8 +116,12 @@ def value_frontier(eng, inp: dict, design: dict) -> list:
                      "_design": d, "_econ": e})
     if not rows:
         return []
-    best = max(rows, key=lambda r: (r["npv_20y_eur"] or -1e9, -r["capex_eur"]))
     mine = next((r for r in rows if r["chosen"]), None)
+    # a variant is a design a planner would sign: battery at most MAX_KWH_PER_KWP of the array (signed designs: median
+    # 1.1 to 1.2 kWh per kWp from 4 kWp up, Reonic about 1); the design itself always stays eligible
+    full = rows
+    rows = [r for r in rows if r["chosen"] or not r["kwh"] or r["kwh"] / r["kwp"] <= MAX_KWH_PER_KWP] or rows
+    best = max(rows, key=lambda r: (r["npv_20y_eur"] or -1e9, -r["capex_eur"]))
     if mine is not None and (mine["npv_20y_eur"] or -1e9) >= (best["npv_20y_eur"] or -1e9):
         best = mine  # a tie goes to the design: it is already the best value
     top_aut = max(r["autarky_share"] for r in rows)
@@ -122,6 +132,9 @@ def value_frontier(eng, inp: dict, design: dict) -> list:
     for key, r in (("value", best), ("payback", pay), ("independence", ind), ("upfront", up)):
         if r is not None:
             r.setdefault("labels", []).append(key)
+    rows = full
+    for r in rows:
+        r["plausible"] = r["chosen"] or not r["kwh"] or r["kwh"] / r["kwp"] <= MAX_KWH_PER_KWP
     # the hull in (capex, npv): points no cheaper option beats on value
     for r in rows:
         r["on_frontier"] = not any(o["capex_eur"] <= r["capex_eur"] and (o["npv_20y_eur"] or 0) > (r["npv_20y_eur"] or 0) and o is not r for o in rows)
