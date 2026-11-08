@@ -9,7 +9,7 @@ import type { Envelope, Layers, PanelRect, RoofModel, RoofPlane } from "./types"
 import { labelOf, p2, planesOf } from "./types";
 import type { SpatialScene } from "./scene";
 import type { System } from "./systems";
-import { POSES, type StageView } from "./camera";
+import { POSES, UNIT_POSES, type StageView } from "./camera";
 import { BatteryChart, FrontierChart } from "./charts";
 import { facing } from "./facing";
 import { usePhoto } from "./PhotoView";
@@ -322,7 +322,12 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   useEffect(() => { onScene?.(ready ? scene.current : null); }, [ready, modelGen, onScene]);
 
   // The camera follows the reasoning: each stage flies to its pose; the 2D/3D pill still overrides afterwards.
-  useEffect(() => { if (stage && ready) scene.current?.flyTo(POSES[stage]); }, [stage, ready, modelGen]);
+  // With a unit chip active the camera keeps that unit's wall (UNIT_POSES), not the stage's high view.
+  useEffect(() => {
+    if (!stage || !ready) return;
+    const u = editSys === "battery" || editSys === "wallbox" || editSys === "heatpump" ? editSys : null;
+    scene.current?.flyTo(u ? UNIT_POSES[u] : POSES[stage]);
+  }, [stage, ready, modelGen, editSys]);
 
   // On-model editing: a slot tap adds or takes off one module and sends pv_kwp through the chooser's path.
   const faces = useMemo(() => (editLead && model ? model.planes.filter((p) => p.is_target).map(slotsOf) : []), [editLead, model]);

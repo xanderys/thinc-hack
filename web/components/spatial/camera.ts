@@ -23,6 +23,14 @@ export const POSES: Record<StageView, Pose> = {
   offer: { focus: "house", az: 180, el: 52, dist: 1.1 },
 };
 
+// Battery, Wallbox and Heat pump chips frame the wall where their unit stands, low and near eye level, never the
+// top-down roof view: the battery (indoors) and the heat pump by the south wall, the wallbox on the east wall.
+export const UNIT_POSES: Record<"battery" | "wallbox" | "heatpump", Pose> = {
+  battery: { focus: "battery", az: 195, el: 26, dist: 0.75 },
+  wallbox: { focus: "wallbox", az: 105, el: 24, dist: 0.75 },
+  heatpump: { focus: "battery", az: 210, el: 26, dist: 0.85 },
+};
+
 // Chain stage (1 to 8) to its pose; EXTRAS shows the wallbox first, the heat pump wall on a second call.
 export const stageView = (stage: number): StageView =>
   (["site", "load", "future", "solar", "storage", "extras", "sanity", "offer"] as const)[Math.min(8, Math.max(1, stage)) - 1];
