@@ -128,3 +128,8 @@
   .pp-skt, .pp-skb, .pp-wait, .pp-sk .hk-slot { animation: pp-shimmer 1.4s linear infinite; }
   @keyframes pp-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 }
+
+/* api v2.12 roof.note: the stated roof face is not among the measured ones. */
+.pp-roofnote { margin: 8px 2px 0; font-size: 13px; line-height: 1.4; color: var(--pp-ink-2); }
+/* Homeowner pages: no loading captions over the house ("Fetching the aerial photo"); the house skeleton is enough. */
+.pp-spatial [class*="wait"] { display: none; }
