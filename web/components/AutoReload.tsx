@@ -37,9 +37,16 @@ export default function AutoReload() {
     const kept = Number(sessionStorage.getItem(key) ?? "NaN");
     if (Number.isFinite(kept)) {
       sessionStorage.removeItem(key);
+      // Hold it while cards load in and other parts settle (8 s), until the planner scrolls or types themselves.
+      history.scrollRestoration = "manual";
       const until = Date.now() + 8000;
+      let mine = false;
+      const own = () => { mine = true; };
+      const evs = ["wheel", "touchstart", "keydown", "mousedown"] as const;
+      evs.forEach((e) => addEventListener(e, own, { passive: true, once: true }));
       const step = () => {
-        if (document.documentElement.scrollHeight - innerHeight >= kept || Date.now() > until) { scrollTo(0, kept); return; }
+        if (mine || Date.now() > until) { evs.forEach((e) => removeEventListener(e, own)); return; }
+        if (Math.abs(scrollY - kept) > 2 && document.documentElement.scrollHeight - innerHeight >= kept) scrollTo(0, kept);
         requestAnimationFrame(step);
       };
       step();
