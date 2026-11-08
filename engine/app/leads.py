@@ -220,7 +220,7 @@ def map_intake(f: dict, dropped: list | None = None) -> tuple[dict, dict]:
             price = (out.get("electricity_price_ct_kwh") or 32.0) / 100
             # 90% of the bill is energy, 10% the standing charge (assumption); at the tariff
             out["annual_demand_kwh"] = round(_num(bill) * 12 * 0.9 / price, -1)
-            meta["annual_demand_from_bill"] = f"EUR {_num(bill):g} a month at {price * 100:.0f} ct/kWh, 10% standing charge"
+            meta["annual_demand_from_bill"] = f"€{_num(bill):g} a month at {price * 100:.0f} ct/kWh, 10% standing charge"
         except ValueError as e:
             if dropped is None:
                 raise

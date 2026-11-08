@@ -148,7 +148,7 @@ def heatpump_rule(inp, inst, cat, ask=False):
         eq = f"{heat:,.0f} kWh / {FULL_LOAD_H:,} h"
     elif inp.get("heating_cost_per_year_eur"):
         heat, src = inp["heating_cost_per_year_eur"] / (HEAT_CT / 100), "heating cost at 12 ct per kWh"
-        eq = f"EUR {inp['heating_cost_per_year_eur']:,.0f} / {HEAT_CT} ct / {FULL_LOAD_H:,} h"
+        eq = f"€{inp['heating_cost_per_year_eur']:,.0f} / {HEAT_CT} ct / {FULL_LOAD_H:,} h"
     else:
         heat, src = S.heat_demand_kwh(inp, {})
         eq = f"{heat:,.0f} kWh / {FULL_LOAD_H:,} h"

@@ -20,10 +20,10 @@ def hp_net_capex(inp) -> float:
 
 
 def hp_capex_note(inp) -> str:
-    s = f"Heat pump EUR {HP_COST:,} less the {HP_SUBSIDY:.0%} base subsidy"
+    s = f"Heat pump €{HP_COST:,} less the {HP_SUBSIDY:.0%} base subsidy"
     if inp.get("heating_type") in ("Gas", "Oil", "OtherNonRenewable"):
-        s += f", less EUR {BOILER_AVOIDED_EUR:,} for the boiler replacement it avoids"
-    return s + f": EUR {hp_net_capex(inp):,.0f} counted."
+        s += f", less €{BOILER_AVOIDED_EUR:,} for the boiler replacement it avoids"
+    return s + f": €{hp_net_capex(inp):,.0f} counted."
 # 4 to 20 kW are the sizes in the installers' parts; 0.6 to 3 kW are standard market sizes (micro and small string
 # inverters) so a small array keeps DC/AC inside Reonic's 70 to 130% band; the installers' own parts have none below 4 kW
 INVERTER_SIZES = np.array([0.6, 0.8, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30], float)
@@ -34,10 +34,10 @@ TOL_LABEL = {"pv": "±1 kWp or ±15%, whichever is larger", "battery": "±2 kWh"
 
 ASSUMPTIONS = [
     f"Yield {YIELD} kWh per kWp per year.",
-    "PV EUR 1,400 per kWp at 5 kWp falling to EUR 1,000 at 20 kWp, excl. battery.",
-    "Battery EUR 450 per kWh installed.",
+    "PV €1,400 per kWp at 5 kWp falling to €1,000 at 20 kWp, excl. battery.",
+    "Battery €450 per kWh installed.",
     "Heat pump replaces heating at seasonal COP 3.5.",
-    f"Wallbox EUR {WALLBOX_COST:,} installed; EV charging cost not counted as saving.",
+    f"Wallbox €{WALLBOX_COST:,} installed; EV charging cost not counted as saving.",
     f"Feed-in {FEEDIN_LOW} ct/kWh up to 10 kWp, {FEEDIN_HIGH} ct above (EEG, Aug 2026).",
     "Self-consumption and autarky from a simple ratio model, not a simulation.",
 ]
@@ -74,7 +74,7 @@ def heat_load_kw(inp):
         return inp["heating_demand_kwh"] / 2300, f"{inp['heating_demand_kwh']:,.0f} kWh heat a year over 2,300 full-load hours, the installer's median"
     if inp.get("heating_cost_per_year_eur"):
         heat = inp["heating_cost_per_year_eur"] / 0.12
-        return heat / 2300, f"EUR {inp['heating_cost_per_year_eur']:,.0f} heating cost at 12 ct per kWh of heat, over 2,300 full-load hours"
+        return heat / 2300, f"€{inp['heating_cost_per_year_eur']:,.0f} heating cost at 12 ct per kWh of heat, over 2,300 full-load hours"
     env = inp.get("envelope") or {}
     if env.get("design_heat_load_kw"):  # an upper bound (unrenovated fabric): only when no bill or heat figure exists
         return float(env["design_heat_load_kw"]), "design heat load from the envelope (LoD2, IWU), an upper bound for unrenovated fabric"

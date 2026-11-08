@@ -1,13 +1,15 @@
 // The three.js side of the spatial demonstration. Loaded with a dynamic import so three never
 // reaches the first paint. Local metres from the engine are x east, y north, z up; three uses
 // x east, y up, z south (the same as the glb), so a local point (x, y, z) becomes (x, z, -y).
+// Orbit momentum (camera.ts): scene.cancelMomentum() stops a flick; chips, Reset view, Face north and 2D/3D call it.
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { DayHour, Envelope, PanelRect, Plan, RoofModel, RoofPlane, V3 } from "./types";
 import { flowsOf, lerpHour, p2 } from "./types";
 import { facing } from "./facing";
-import { poseOffset, springStep, type Focus, type Pose } from "./camera";
+import { SYSTEM_EVENT } from "@/components/systems/system";
+import { poseOffset, springStep, type Focus, type Pose, releaseRate, startCoast, stepCoast, type Coast, type Sample } from "./camera";
 import { ShadeLayer } from "./shading";
 import { neighbourEdges, outlineMesh, registerGlb } from "./whiteContext";
 import { Xray } from "./xray";
@@ -86,7 +88,7 @@ function panelCorners(p: RoofPlane, r: PanelRect): THREE.Vector3[] {
   return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => c.clone().addScaledVector(u, (i * r.w) / 2).addScaledVector(v, (j * r.h) / 2));
 }
 
-export interface SceneOpts { reduce: boolean; onHour?: (h: number, playing: boolean) => void; compass?: HTMLElement | null; onView?: (mode: "3d" | "2d") => void }
+export interface SceneOpts { reduce: boolean; onZoom?: (can: { in: boolean; out: boolean }) => void; onHour?: (h: number, playing: boolean) => void; compass?: HTMLElement | null; onView?: (mode: "3d" | "2d") => void }
 
 export class SpatialScene {
   private renderer: THREE.WebGLRenderer;
@@ -190,17 +192,23 @@ export class SpatialScene {
     this.controls.minPolarAngle = Math.PI * 0.08;
     this.controls.autoRotate = false;
     // A drag takes the camera back from the reasoning chain at once.
-    this.controls.addEventListener("start", () => { this.fly = null; this.pose = null; this.spin = null; this.vPos.set(0, 0, 0); this.vTgt.set(0, 0, 0); this.controls.minPolarAngle = Math.PI * 0.08; });
+    this.controls.addEventListener("start", () => { this.coast = null; this.fly = null; this.pose = null; this.spin = null; this.vPos.set(0, 0, 0); this.vTgt.set(0, 0, 0); this.controls.minPolarAngle = Math.PI * 0.08; });
 
     this.ortho.up.set(0, 0, -1);
     this.controls2d = new OrbitControls(this.ortho, this.renderer.domElement);
     Object.assign(this.controls2d, { enableRotate: false, enablePan: true, screenSpacePanning: true, enableDamping: !opts.reduce, dampingFactor: 0.12, minZoom: 0.7, maxZoom: 5, enabled: false });
     this.controls2d.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
     this.controls2d.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
-    this.controls2d.addEventListener("start", () => { this.fly = null; this.pose = null; });
+    this.controls2d.addEventListener("start", () => { this.fly = null; this.pose = null; this.zoom2 = null; this.zoom2V = 0; });
     // Double tap or double click puts the house back in frame.
     this.renderer.domElement.addEventListener("pointerup", this.onTap);
     this.renderer.domElement.addEventListener("pointerdown", this.onDown);
+    // Orbit momentum (camera.ts): one-finger or left-button rotate drags are sampled; the release decides.
+    const el = this.renderer.domElement;
+    el.addEventListener("pointerdown", this.onFlickDown);
+    el.addEventListener("pointermove", this.onFlickMove);
+    el.addEventListener("pointerup", this.onFlickUp);
+    window.addEventListener(SYSTEM_EVENT, this.onSystemPick); // a Systems chip tap, even on the chip already showing
     this.shade.mount(overlay, this.renderer.domElement);
 
     this.ro = new ResizeObserver(() => this.resize());
@@ -263,6 +271,7 @@ export class SpatialScene {
 
   // 2D: straight down, north up, no rotation. 3D: drag to rotate.
   setView(mode: "3d" | "2d") {
+    this.cancelMomentum();
     this.mode = mode;
     this.camera = mode === "2d" ? this.ortho : this.persp;
     this.controls.enabled = mode === "3d";
@@ -313,7 +322,7 @@ export class SpatialScene {
   // Moves the camera to a stage's pose on one smooth spring (0.6 s, bounce 0) from wherever it is now, keeping
   // its velocity if a new stage arrives mid-flight. A top-down pose ends in the 2D plan. Reduce Motion: a cut.
   flyTo(p: Pose) {
-    this.pose = p; this.home = p; this.spin = null;
+    this.pose = p; this.home = p; this.spin = null; this.cancelMomentum();
     const { pos, tgt } = this.goalOf(p);
     if (this.mode === "2d" && !p.topDown) { this.setView("3d"); this.opts.onView?.("3d"); }
     this.controls.minPolarAngle = p.topDown ? 0 : Math.PI * 0.08;
@@ -864,6 +873,46 @@ export class SpatialScene {
     return { x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h, ok: p.z < 1 };
   }
 
+  // Orbit momentum: the gesture is a flick candidate only while one pointer rotates (no pan button or modifier).
+  private coast: Coast | null = null;
+  // Stops a flick's coast or turntable at once; every camera command (chip, Reset view, Face north, 2D/3D) calls it.
+  cancelMomentum() { this.coast = null; }
+  private onSystemPick = () => this.cancelMomentum();
+  private flick: { ok: boolean; s: Sample[] } | null = null;
+  private onFlickDown = (e: PointerEvent) => {
+    this.coast = null;
+    // A second finger turns the gesture into pinch or pan. A primary pointer always starts afresh: OrbitControls sends
+    // no "end" while it is disabled (the 2D plan), so state left over from there must not swallow the next flick.
+    if (!e.isPrimary) { if (this.flick) this.flick.ok = false; return; }
+    const rotate = this.mode === "3d" && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.metaKey;
+    this.flick = { ok: rotate, s: [{ t: e.timeStamp, x: e.clientX }] };
+  };
+  private onFlickMove = (e: PointerEvent) => {
+    const f = this.flick;
+    if (!f?.ok || !e.isPrimary) return;
+    // Browsers merge the moves of one frame into a single event; the merged ones keep their own stamps.
+    for (const m of e.getCoalescedEvents?.() ?? [e]) f.s.push({ t: m.timeStamp, x: m.clientX });
+    while (f.s.length > 2 && e.timeStamp - f.s[0].t > 200) f.s.shift();
+  };
+  // Timed by the events' own stamps, so a busy main thread that handles the lift late still reads the flick.
+  private onFlickUp = (e: PointerEvent) => {
+    const f = this.flick;
+    if (!e.isPrimary || !f) return;
+    this.flick = null;
+    if (!f.ok || this.mode !== "3d") return;
+    const w = releaseRate(f.s, e.timeStamp, this.renderer.domElement.clientHeight || 1);
+    this.coast = startCoast(w, !!this.opts.reduce);
+  };
+  // Drives the turn through OrbitControls' own pending rotation, so its damping tail is replaced, not added to.
+  private stepCoast(dt: number) {
+    const c = this.coast!;
+    if (this.mode !== "3d") { this.coast = null; return; }
+    const alive = stepCoast(c, dt);
+    const d = (this.controls as unknown as { _sphericalDelta: THREE.Spherical })._sphericalDelta;
+    d.theta = (c.w * dt) / (this.controls.enableDamping ? this.controls.dampingFactor : 1);
+    if (!alive) this.coast = null;
+  }
+
   private onDown = (e: PointerEvent) => { this.down = { x: e.clientX, y: e.clientY }; };
   private onTap = (e: PointerEvent) => {
     const now = performance.now(), near = Math.hypot(e.clientX - this.tap.x, e.clientY - this.tap.y) < 30;
@@ -881,6 +930,7 @@ export class SpatialScene {
 
   // Back to the stage's pose, or the opening view, on the same spring; the plan resets its pan and zoom.
   refit() {
+    this.cancelMomentum();
     if (this.mode === "2d") { this.setOrtho(this.persp.aspect); return; }
     if (this.home) { this.flyTo(this.home); return; }
     const d = this.fitD, dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
@@ -893,6 +943,7 @@ export class SpatialScene {
   // the tilt, the distance and the target; the shorter way round, one spring (0.5 s, bounce 0); Reduce Motion cuts.
   // The 2D plan is always north up.
   faceNorth() {
+    this.cancelMomentum();
     if (this.mode === "2d") return;
     this.fly = null; this.pose = null;
     const o = this.persp.position.clone().sub(this.controls.target);
@@ -901,6 +952,42 @@ export class SpatialScene {
     this.spin = { a: this.opts.reduce ? 0 : a, v: 0, h, y: o.y };
     if (this.opts.reduce) this.stepSpin(0);
   }
+  // Zoom buttons and keys: one step is 20 % of the camera distance (dir 1 in, -1 out), clamped to the limits pinch and
+  // wheel already use (the controls' min/max distance, the plan's min/max zoom). The 3D step rides the same fly spring
+  // as a stage change (0.6 s, bounce 0, velocity kept); a drag or a wheel cancels it. Reduce Motion: a cut.
+  zoomBy(dir: 1 | -1) {
+    if (this.mode === "2d") {
+      const c = this.controls2d, z = THREE.MathUtils.clamp((this.zoom2 ?? this.ortho.zoom) * (dir > 0 ? 1.25 : 0.8), c.minZoom, c.maxZoom);
+      this.zoom2 = z;
+      if (this.opts.reduce) { this.ortho.zoom = z; this.ortho.updateProjectionMatrix(); this.zoom2 = null; }
+      return;
+    }
+    this.spin = null; this.pose = null;
+    const tgt = this.fly?.tgt.clone() ?? this.controls.target.clone();
+    const from = (this.fly?.pos ?? this.persp.position).clone().sub(tgt);
+    const d = THREE.MathUtils.clamp(from.length() * (dir > 0 ? 0.8 : 1.25), this.controls.minDistance, this.controls.maxDistance);
+    const pos = tgt.clone().addScaledVector(from.normalize(), d);
+    if (this.opts.reduce) { this.persp.position.copy(pos); this.controls.target.copy(tgt); this.controls.update(); this.fly = null; return; }
+    this.fly = { pos, tgt, top: false };
+  }
+  private zoom2: number | null = null; private zoom2V = 0;
+  // Whether another step in or out is possible, for the buttons' disabled state (reported on change).
+  private zoomState = "";
+  private reportZoom() {
+    let cin: boolean, cout: boolean;
+    if (this.mode === "2d") { const z = this.zoom2 ?? this.ortho.zoom, c = this.controls2d; cin = z < c.maxZoom - 1e-3; cout = z > c.minZoom + 1e-3; }
+    else { const d = (this.fly?.pos ?? this.persp.position).distanceTo(this.fly?.tgt ?? this.controls.target); cin = d > this.controls.minDistance + 1e-2; cout = d < this.controls.maxDistance - 1e-2; }
+    const s = `${cin}${cout}`;
+    if (s !== this.zoomState) { this.zoomState = s; this.opts.onZoom?.({ in: cin, out: cout }); }
+  }
+  private stepZoom2(dt: number) {
+    if (this.zoom2 == null) return;
+    const g = this.zoom2, e0 = this.ortho.zoom - g, k = Math.exp(-OMEGA * dt), c = this.zoom2V + OMEGA * e0, et = e0 + c * dt;
+    this.zoom2V = (c - OMEGA * et) * k; this.ortho.zoom = g + et * k;
+    if (Math.abs(this.ortho.zoom - g) < 1e-3 && Math.abs(this.zoom2V) < 1e-3) { this.ortho.zoom = g; this.zoom2 = null; this.zoom2V = 0; }
+    this.ortho.updateProjectionMatrix();
+  }
+
   private stepSpin(dt: number) {
     const s = this.spin!;
     if (dt > 0) { const k = Math.exp(-OMEGA * dt), c = s.v + OMEGA * s.a, e = s.a + c * dt; s.v = (c - OMEGA * e) * k; s.a = e * k; }
@@ -924,6 +1011,9 @@ export class SpatialScene {
     this.lastTick = performance.now();
     const dt = Math.min(0.05, this.clock.getDelta());
     if (this.spin) this.stepSpin(dt);
+    if (this.coast && !document.hidden) this.stepCoast(dt);
+    if (this.zoom2 != null) this.stepZoom2(dt);
+    this.reportZoom();
     if (this.fly) {
       const a = springStep(this.persp.position, this.vPos, this.fly.pos, dt);
       const b = springStep(this.controls.target, this.vTgt, this.fly.tgt, dt);
@@ -1064,6 +1154,10 @@ export class SpatialScene {
     this.controls2d.dispose();
     this.renderer.domElement.removeEventListener("pointerup", this.onTap);
     this.renderer.domElement.removeEventListener("pointerdown", this.onDown);
+    this.renderer.domElement.removeEventListener("pointerdown", this.onFlickDown);
+    this.renderer.domElement.removeEventListener("pointermove", this.onFlickMove);
+    this.renderer.domElement.removeEventListener("pointerup", this.onFlickUp);
+    window.removeEventListener(SYSTEM_EVENT, this.onSystemPick);
     this.labelEls.forEach((el) => el.remove());
     Object.values(this.flowPaths).forEach((el) => el.remove());
     this.planG?.remove();

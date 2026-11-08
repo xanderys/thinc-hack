@@ -64,4 +64,4 @@ def _note(prop, opt, oe, pe):
     pts = round(abs(oe["autarky_share"] - pe["autarky_share"]) * 100)
     more = oe["autarky_share"] >= pe["autarky_share"]
     tail = "the same autarky" if pts == 0 else f"{pts} point{'s' if pts > 1 else ''} {'more' if more else 'less'} autarky"
-    return f"{_label(opt)} earns EUR {dn:,.0f} more over 20 years than the proposal ({_label(prop)}), at {tail}."
+    return f"{_label(opt)} earns €{dn:,.0f} more over 20 years than the proposal ({_label(prop)}), at {tail}."

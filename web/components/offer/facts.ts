@@ -1,7 +1,8 @@
 // Copy normalisers for the offer surfaces (planner card and homeowner page): engine sentences start with a capital,
 // case-context words never reach product copy, and each variant reduces to the figures that drive the choice.
 import type { Design, Economics } from "@/lib/api";
-import { eur, n0, n1 } from "./format";
+import type { Check } from "@/components/spatial/types";
+import { eur, n0, n1, pc } from "./format";
 
 export const sentence = (x: string) => { const t = x.trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
 
@@ -58,3 +59,17 @@ export function variantFacts(e: Economics | null | undefined, d: Partial<Design>
   out.push({ label: "Change", value: differs(d, ref) ?? "none, the planners' pick" });
   return out;
 }
+
+// Engine checks (sizing and economics) as product copy, for the "i" popovers on the offer and the calculation cards.
+// The value with its unit: "129 %", "23 modules", "9.6 years".
+export const checkValue = (c: Check): string => c.value == null ? "" : typeof c.value !== "number" ? String(c.value)
+  : c.unit === "share" ? pc(c.value) : c.unit === "%" ? `${n0(c.value)} %` : `${c.value >= 100 ? n0(c.value) : n1(c.value)}${c.unit && c.unit.length < 8 ? ` ${c.unit}` : ""}`;
+// One line, label then value, case words dropped; null when nothing is left to show. The battery sizing reference
+// reads "Battery 0.51 kWh per kWh of daily use".
+export function checkLine(c: Check): { label: string; value: string } | null {
+  const ref = c.level === "reference" || (!c.level && /battery per daily/i.test(c.name));
+  if (ref) { const m = scrub(c.message) ?? `Battery ${n1(Number(c.value))} kWh per kWh of daily use`; return { label: m, value: "" }; }
+  const label = scrub(c.name);
+  return label ? { label, value: checkValue(c) } : null;
+}
+export const findCheck = (checks: Check[] | null | undefined, name: RegExp) => (checks ?? []).find((c) => name.test(c.name)) ?? null;

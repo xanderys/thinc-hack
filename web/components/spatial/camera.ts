@@ -45,3 +45,40 @@ export function springStep(x: THREE.Vector3, v: THREE.Vector3, goal: THREE.Vecto
   x.copy(goal).add(et);
   return et.length() < 0.01 && v.length() < 0.02;
 }
+
+// Orbit momentum after a flick. The release velocity is kept (no jump, no bounce, capped at MAX) and then decays with
+// friction: below FLICK nothing happens, up to REVOLVE it coasts to a stop in about 1.5 s, above REVOLVE it eases into a
+// slow turntable (one turn in 12 s, the flick's direction). Reduce Motion: never the turntable, only the decay.
+export const FLICK = 1.2;                   // rad/s
+export const REVOLVE = 4;                   // rad/s
+export const MAX = 15;                      // rad/s: a hard flick turns about one more time before the turntable
+export const TURN = (2 * Math.PI) / 12;     // rad/s, turntable
+const TAU = 0.4;                            // s, friction time constant: 4 rad/s falls below 0.03 in about 2 s
+const STOP = 0.03;                          // rad/s
+export type Coast = { w: number; revolve: boolean };
+export type Sample = { t: number; x: number };
+
+// Azimuth rate (rad/s, the sign OrbitControls' theta takes) from the pointer samples of the last 100 ms, widened to the
+// one before when a slow device sent fewer (within 200 ms). OrbitControls turns 2 pi per canvas height of horizontal
+// drag. A finger that rested for 80 ms before lifting has no flick.
+export function releaseRate(s: Sample[], now: number, height: number): number {
+  const last = s[s.length - 1];
+  if (!last || now - last.t > 80) return 0;
+  let i = s.findIndex((p) => last.t - p.t <= 100);
+  if (i === s.length - 1 && i > 0 && last.t - s[i - 1].t <= 200) i--;
+  const first = s[i], dt = (last.t - first.t) / 1000;
+  if (dt < 0.016) return 0;
+  return (-2 * Math.PI * (last.x - first.x)) / height / dt;
+}
+
+export function startCoast(w: number, reduce: boolean): Coast | null {
+  if (!Number.isFinite(w) || Math.abs(w) < FLICK) return null;
+  return { w: Math.sign(w) * Math.min(Math.abs(w), MAX), revolve: !reduce && Math.abs(w) > REVOLVE };
+}
+
+// Exact exponential step towards 0, or towards the turntable rate; false once it has stopped.
+export function stepCoast(c: Coast, dt: number): boolean {
+  const goal = c.revolve ? Math.sign(c.w) * TURN : 0;
+  c.w = goal + (c.w - goal) * Math.exp(-dt / TAU);
+  return c.revolve || Math.abs(c.w) > STOP;
+}

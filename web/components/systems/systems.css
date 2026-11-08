@@ -44,6 +44,8 @@
 .pc-pass:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .pc-h { grid-area: h; font-family: var(--font-sans), sans-serif; font-size: 15px; font-weight: 600; color: var(--navy); letter-spacing: -0.01em; }
 .pc-figs { grid-area: figs; display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 15px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* Open: the figures move into the offer's tiles below; the tucked pass keeps them inline. */
+.pc-open .pc-figs { visibility: hidden; }
 .pc-none { grid-area: figs; font-size: 14px; font-weight: 500; color: var(--ink-2); }
 .pc-nobody { display: grid; gap: 12px; padding: 4px 12px 12px; font-size: 13.5px; color: var(--ink-2); }
 .pc-nobody p { margin: 0; }
@@ -96,44 +98,90 @@
 @media (prefers-reduced-motion: reduce) { .pc-skel, .pc-lit { animation: none; } .pc-lit { background-color: #fff0c2; } .pc-chev { transition: none; } }
 
 /* ---------- Layout with the Systems hero on (.sys-on on the chain root) ---------- */
-/* The info block is the open step card: its title is the chip's, so it goes. */
+/* Order on every width: facts row, the Systems chip row, then the model. */
 .sys-on [class*="chain_it__"] { display: none; }
-.sys-on [class*="chain_rail__"] { gap: 0; }
 
 @media (max-width: 760px) {
-  /* Facts row compact above the model: one scrolling line of small chips. */
-  .st-open:has(.sys-on) > .t-bar { gap: 6px; padding-bottom: 4px; }
   /* Facts wrap onto short lines: no sideways scroll, no clipped chip. */
+  .st-open:has(.sys-on) > .t-bar { gap: 6px; padding-bottom: 4px; }
   .st-open:has(.sys-on) .t-chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; gap: 4px; }
   .st-open:has(.sys-on) .t-chip { flex: none; max-width: 100%; }
   .st-open:has(.sys-on) .t-chip summary { min-height: 28px; font-size: 12px; padding: 0 8px; gap: 4px; white-space: nowrap; max-width: 100%; }
   .st-open:has(.sys-on) .t-mail { display: none; }
 
-  /* The last info block scrolls clear of the tucked pass and the sentence bar. */
-  .sys-on { padding-bottom: calc(var(--pc-peek, 76px) + env(safe-area-inset-bottom, 0px) + 24px); margin-top: 0; }
-  .sys-on [class*="chain_hero__"] { position: relative; top: auto; order: 1; height: 36vh; min-height: 250px; margin-bottom: 0; }
-  /* The chip row sits right under the model and never goes under the tucked pass. */
-  .sys-on .sys-under {
-    order: 2; position: sticky; z-index: 6; bottom: calc(var(--pc-peek, 76px) + env(safe-area-inset-bottom, 0px));
-    margin: 0 -16px; padding: 8px 16px; background: var(--paper);
+  /* The page ends where the tucked pass begins. */
+  .sys-on { padding-bottom: calc(var(--pc-peek, 76px) + env(safe-area-inset-bottom, 0px)); margin-top: 0; }
+  .sys-on .sys-under { order: 1; height: 46px; box-sizing: border-box; display: flex; align-items: center; margin: 0 -16px; padding: 0 16px; background: var(--paper); }
+  /* The model takes the whole height between the chip row and the tucked pass (at the top of the page). */
+  .sys-on [class*="chain_hero__"], .sys-on [class*="chain_hero__"][class*="chain_heroTall__"] {
+    order: 2; position: relative; top: auto; margin: 0 -16px;
+    height: var(--sys-hero-h, 52dvh); min-height: 320px;
   }
-  .sys-on [class*="chain_rail__"] { order: 3; }
-  .sys-on [class*="chain_shadeUnder__"] { order: 4; margin: 10px 0 0; }
-  .sys-on [class*="chain_item__"] { scroll-margin-top: 0; }
 }
 
 @media (min-width: 761px) {
-  /* The left column folds away: the model takes the full width, the chip row sits under it, one info block over it. */
-  .sys-on, .st-open > .sys-on[class*="chain_root__"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; row-gap: 8px; }
-  .sys-on [class*="chain_hero__"], .st-open > .sys-on [class*="chain_hero__"] { grid-column: 1; grid-row: 1; }
-  .sys-on .sys-under { grid-column: 1; grid-row: 2; }
-  .sys-info {
-    position: absolute; top: 12px; left: 12px; z-index: 4; width: 340px; max-height: calc(100% - 24px - var(--pc-peek, 76px) - 60px);
-    display: flex; flex-direction: column; background: #fff; border: 1px solid var(--rule); border-radius: 12px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
-  }
-  .sys-info [class*="chain_rail__"] { overflow: visible; padding: 0; flex: none; }
-  .sys-info [class*="chain_item__"] { border: 0; border-radius: 0; }
-  .sys-info .sys-shade { border-top: 1px solid var(--rule); padding: 8px 12px 10px; }
+  /* The left column folds away: the chip row on top, the model under it at full width. */
+  .sys-on, .st-open > .sys-on[class*="chain_root__"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); row-gap: 8px; }
+  .sys-on .sys-under { grid-column: 1; grid-row: 1; }
+  .sys-on [class*="chain_hero__"], .st-open > .sys-on [class*="chain_hero__"] { grid-column: 1; grid-row: 2; }
   /* The model toolbar moves to the top right: the bottom centre belongs to the pass. */
   .sys-on.sys-on [class*="chain_hero__"] [class*="chain_toolbar__"] { top: 12px; bottom: auto; left: auto; right: 12px; transform: none; }
 }
+
+/* ---------- The system card: glass, inside the canvas, at a corner, never over the house ---------- */
+.sc { display: contents; }
+.sc-card {
+  position: absolute; z-index: 4; top: 12px; left: 12px; width: 340px; max-width: calc(100% - 24px); box-sizing: border-box;
+  padding: 11px 13px 12px; border-radius: 14px; color: var(--ink);
+  background: rgba(250, 248, 243, 0.76); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.75); box-shadow: inset 0 0 0 0.5px rgba(7, 27, 113, 0.12);
+}
+.sc-anim { display: grid; gap: 6px; animation: sc-in 767ms var(--spring-smooth-500) both; }
+@keyframes sc-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.sc-top { display: flex; align-items: flex-start; gap: 8px; }
+.sc-h { flex: 1; margin: 0; font-family: var(--font-sans), sans-serif; font-size: 15.5px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.25; color: var(--navy); font-variant-numeric: tabular-nums; }
+.sc-i {
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin: -4px -6px -4px 0; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--accent); cursor: pointer;
+}
+.sc-i[aria-expanded="true"] { background: var(--accent); color: #fff; }
+.sc-i:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sc-body { display: grid; gap: 4px; font-size: 13px; line-height: 1.4; color: var(--ink-2); font-variant-numeric: tabular-nums; transition: opacity 200ms ease-out; }
+.sc-body p { margin: 0; }
+.sc-card[data-pending] .sc-body { opacity: 0.5; }
+.sc-extra { margin-top: 2px; padding-top: 6px; border-top: 1px solid rgba(7, 27, 113, 0.10); }
+/* The shading scrubber inside the card: no box of its own, one thin row. */
+.sc-extra [class*="ShadingScrubber_strip__"] { background: transparent; border: 0; padding: 0; gap: 2px; }
+.sc-extra [class*="ShadingScrubber_stripHead__"] [class*="ShadingScrubber_chip__"] { min-height: 28px; padding: 3px 9px; font-size: 12px; }
+.sc-extra [class*="ShadingScrubber_monthsC__"] button { height: 26px; }
+/* The derivation: hangs off the card (outside its measured box), scrolls inside itself. */
+.sc-pop {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px); max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior: contain;
+  display: grid; gap: 10px; padding: 12px; border-radius: 14px; font-size: 12.5px; color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.94); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border: 1px solid var(--rule); animation: sc-pop 500ms var(--spring-smooth) both;
+}
+.sc-pop p { margin: 0; }
+.sc-pop > * { min-width: 0; }
+@keyframes sc-pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 760px) {
+  /* Phone: the bottom edge, above the model toolbar; the derivation opens upwards. */
+  .sc-card { top: auto; left: 8px; right: 8px; bottom: 62px; width: auto; max-width: none; padding: 9px 11px 10px; }
+  .sc-h { font-size: 14.5px; }
+  .sc-extra [class*="ShadingScrubber_whenC__"] { display: none; }
+  .sc-body { font-size: 12.5px; line-height: 1.35; }
+  /* Up to the canvas top: 100% here is the card's own height (absolute box), 62 px its offset from the bottom. */
+  .sc-pop { top: auto; bottom: calc(100% + 6px); max-height: calc(var(--sys-hero-h, 400px) - 100% - 62px - 20px); background: rgba(255, 255, 255, 0.97); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-anim { animation: sc-fade 200ms ease-out both; }
+  .sc-pop { animation: sc-fade 200ms ease-out both; }
+}
+@keyframes sc-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* Heat pump: the x-ray's shares live in the card (one block), so its floating legend and leaders stay hidden here. */
+.sys-on .xr-card, .sys-on svg:has(+ .xr-card) { display: none !important; }
+.sc-shares i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 5px 0 1px; vertical-align: 0; }
+/* The scrubber in the Panels card is labelled once, by its Shading chip; its source sits behind the card's i. */
+.sc-extra [class*="ShadingScrubber_srcBtn__"] { display: none; }
