@@ -339,6 +339,11 @@ class Engine:
             stated_direction_check(inp, out)
         except Exception:
             pass
+        try:  # v2.14: the rate card behind the investment total
+            from .hourly import sim as _sim
+            out["rates"] = _sim.rates(inp, out["design"])
+        except Exception:
+            log.exception("rates")
         add_hashes(out, "edit" if overrides else "expert")
         return out
 

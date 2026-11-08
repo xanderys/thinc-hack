@@ -121,8 +121,13 @@ def _send(lead: dict, conv_id: str | None, kind: str, text: str) -> dict:
     return _log(lead, conv_id, "out", kind, text, provider_id=msg_id)
 
 
-def ask(lead: dict, facts: list[str] | None = None) -> dict:
-    """Open one conversation on this lead and send the first message. Raises ConversationError."""
+def _drop_dry(w: dict):
+    w["messages"] = [m for m in w.get("messages") or [] if m.get("kind") != "dry"]
+
+
+def ask(lead: dict, facts: list[str] | None = None, dry: bool = False) -> dict:
+    """Open one conversation on this lead and send the first message. Raises ConversationError.
+    dry: compose and log the message as kind "dry" (state "dry"); nothing is sent and no poll starts."""
     if not lead.get("phone"):
         raise ConversationError(409, "This lead has no phone number; nothing was sent.")
     prov = P.get()
@@ -135,14 +140,23 @@ def ask(lead: dict, facts: list[str] | None = None) -> dict:
         open_facts = [f for f in (facts or _order(lead)) if f in ASK][:6]
         if not open_facts:
             raise ConversationError(409, "Nothing is missing or estimated on this lead; nothing was sent.")
+        asking = open_facts[:2]
+        if dry:
+            _drop_dry(w)
+            conv = uuid.uuid4().hex[:10]
+            _log(lead, conv, "out", "dry", compose_ask(lead, asking), purpose="question")
+            w.update(state="dry", conversation_id=conv, round=0, open_facts=open_facts, asking=asking, last_error=None)
+            lead["updated_at"] = leads.now()
+            leads.save(lead)
+            return {"conversation_id": conv, "sent": False, "dry": True, "open_facts": open_facts, "asking": asking}
         for other in leads.LEADS.values():  # one line per number: a newer ask on the same phone supersedes the older one
             ow = other.get("whatsapp") or {}
             if other is not lead and ow.get("state") == "open" and P.digits(other.get("phone")) == P.digits(lead["phone"]):
                 ow.update(state="superseded", closed_at=leads.now())
                 leads.save(other)
+        _drop_dry(w)  # a real ask replaces any dry run
         cursor = prov.cursor()
         conv = uuid.uuid4().hex[:10]
-        asking = open_facts[:2]
         try:
             _send(lead, conv, "question", compose_ask(lead, asking))
         except P.ProviderError as e:
@@ -156,8 +170,16 @@ def ask(lead: dict, facts: list[str] | None = None) -> dict:
         return {"conversation_id": conv, "sent": True, "open_facts": open_facts, "asking": asking}
 
 
-def send_proposal(lead: dict, channel: str) -> dict:
+def send_proposal(lead: dict, channel: str, dry: bool = False) -> dict:
     text = compose_proposal(lead)
+    if dry:  # compose and log only: nothing sent, status unchanged
+        with LOCK:
+            w = _wa(lead)
+            _drop_dry(w)
+            m = _log(lead, w.get("conversation_id"), "out", "dry", text, purpose="proposal", channel=channel)
+        lead["updated_at"] = leads.now()
+        leads.save(lead)
+        return {"channel": channel, "at": m["at"], "text": text, "link": proposal_link(lead), "dry": True}
     if channel == "whatsapp":
         if not lead.get("phone"):
             raise ConversationError(409, "This lead has no phone number; nothing was sent.")
@@ -168,6 +190,7 @@ def send_proposal(lead: dict, channel: str) -> dict:
             raise ConversationError(502, str(e))
     else:
         m = {"text": text, "at": leads.now()}
+    _drop_dry(_wa(lead))
     lead["sent"] = {"channel": channel, "at": m["at"], "text": text, "link": proposal_link(lead)}
     lead["status"] = "sent"
     lead["updated_at"] = leads.now()
