@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import dynamic from "next/dynamic";
-import type { Design, DesignResponse, Health, Lead as LeadT, LeadRow, ReadResponse, RoofResult } from "@/lib/api";
+import type { Design, DesignResponse, Health, HomeInputs, Lead as LeadT, LeadRow, ReadResponse, RoofResult } from "@/lib/api";
 import { call } from "@/lib/client";
 import { HERO_LEAD } from "@/lib/demo";
 import House from "@/components/stage/House";
@@ -13,7 +13,7 @@ import HousePhoto from "./HousePhoto";
 import ModelThumb from "./ModelThumb";
 import { offerEur, qualify, VERDICT_ORDER, VERDICT_WORD, type Verdict } from "@/lib/qualify";
 import { keepVerdict, recallVerdict, useRoofs } from "@/components/qualify/roof";
-import { reasonOf, VerdictChip, VerdictLine } from "@/components/qualify/Verdict";
+import { reasonOf, VerdictChip } from "@/components/qualify/Verdict";
 
 // The facts count is the verdict chip's tooltip, never part of the line.
 const factsTip = (q: { facts?: { stated: number; total: number }; confidence_line?: string }) => q.facts ? `${q.facts.stated} of ${q.facts.total} facts stated` : q.confidence_line?.split(",")[0];
@@ -250,7 +250,22 @@ export default function Board({ openId: initial }: { openId?: string }) {
     }
     return qualify(ll, ll.draft, roof);
   })();
-  const openCard = listed ?? (offQ ? { q: offQ } as Partial<Card> as Card : undefined);
+  const [cardNow, setCardNow] = useState<{ leadId: string; res: DesignResponse; changed: Partial<HomeInputs> } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setCardNow((e as CustomEvent).detail);
+    addEventListener("marquee:card-design", on); return () => removeEventListener("marquee:card-design", on);
+  }, []);
+  useEffect(() => { setCardNow(null); }, [openId]);
+  // After an edit the header verdict comes from the design on screen and the lead's facts with the edits, not the list's cached draft.
+  const nowQ = (() => {
+    if (!ll || !cardNow || cardNow.leadId !== openId) return null;
+    const pc = isPc(ll.address_or_postcode);
+    const roof = pc ? null : roofs[ll.address_or_postcode!];
+    if (!pc && roof === undefined) return null;
+    return qualify({ ...ll, facts: { ...ll.facts, ...cardNow.changed } }, cardNow.res, roof);
+  })();
+  const baseCard = listed ?? (offQ ? { q: offQ } as Partial<Card> as Card : undefined);
+  const openCard = nowQ && baseCard ? { ...baseCard, q: nowQ } : baseCard;
 
   if (openId) return (
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
@@ -268,13 +283,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
             })()}
           </div>
           <p className="b-l2">{openCard?.place ?? ll?.address_or_postcode ?? <span className="b-skel b-skel-line" aria-hidden />}</p>
-          <p className={`${qs.head} b-l3`}>{openCard?.q
-            ? <span className="b-verdict"><VerdictChip verdict={openCard.q.verdict} tip={factsTip(openCard.q)} /><span className="b-offer">{reasonOf(openCard.q)}</span></span>
-            : <VerdictLine q={null} />}</p>
-          {openCard?.q && <p className="b-small">Every number is an estimate until the site visit.</p>}
-          {openCard?.q && !calling && liveLead?.lead_id === openId && liveLead.history.length > 0 && (
-            <p className={`${qs.rina} b-rina`}>Rina, after the call: {liveLead.history.length} {liveLead.history.length === 1 ? "answer" : "answers"}. {reasonOf(openCard.q)}{openCard.q.verdict === "call_first" && openCard.q.expected_offer_eur != null ? ` Expected offer about €${Math.round(openCard.q.expected_offer_eur).toLocaleString("en-GB")}.` : ""}</p>
-          )}
+          <p className={`${qs.head} b-l3`}><VerdictChip verdict={openCard?.q?.verdict ?? null} tip={openCard?.q ? `${reasonOf(openCard.q)} ${factsTip(openCard.q)}`.trim() : undefined} /></p>
           {shared && <p className="b-shared" title={shared.reason}>Shared roof, apartment building: single-family design does not apply</p>}
         </div>
         <HousePhoto address={openCard?.place ?? seed?.read.inputs.address} className="b-head-photo" />

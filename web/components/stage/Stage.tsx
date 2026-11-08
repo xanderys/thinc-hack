@@ -267,6 +267,12 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     return out.filter((v, k) => out.findIndex((w) => w.name === v.name) === k);
   }, [res, drafted, pvOnly, overrides, pref]);
 
+  // The card header's verdict follows the design on screen: after a kit change, an override or a fact edit it is read again from it.
+  useEffect(() => {
+    if (!res || !resIn || !leadRef.current) return;
+    dispatchEvent(new CustomEvent("marquee:card-design", { detail: { leadId: leadRef.current, res, changed } }));
+  }, [res]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const snap = (): Snap => ({ changed, overrides });
   const remember = (why: string) => { setHistory((h) => [...h, snap()]); cause.current = why; setApprovedAt(null); };
 
@@ -319,7 +325,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
   async function onApprove(want?: unknown): Promise<string | null> {
     if (!res) return null;
     const at = new Date();
-    try { sessionStorage.setItem("marquee.approved", JSON.stringify({ inputs: pref === "expert" ? inputs : { ...inputs, preference: pref }, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
+    try { sessionStorage.setItem("marquee.approved", JSON.stringify({ lead_id: leadRef.current, inputs: pref === "expert" ? inputs : { ...inputs, preference: pref }, draft: drafted?.design ?? null, approved: res.design, at: at.toISOString() })); } catch { /* storage blocked: the stage still works */ }
     const done = () => { setApprovedAt(at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })); if (leadRef.current) onApproved?.(leadRef.current); };
     const id = leadRef.current;
     if (!id) { done(); return null; }

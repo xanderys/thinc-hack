@@ -4,8 +4,6 @@
 .decline { background: #ececee; color: var(--ink-2); }
 .checking { background: transparent; color: var(--ink-3); border-color: var(--rule, #d4d4d8); }
 
-.line { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.sent { font-size: 13.5px; color: var(--ink-2); }
 
 .value { margin: 8px 0 0; padding: 8px 10px; max-width: 360px; border: 1px solid var(--rule, #e4e4e7); border-radius: 8px; background: #fff; }
 .vH { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; color: var(--ink-2); }
@@ -17,7 +15,6 @@
 .note b { color: var(--ink); font-weight: 600; }
 
 .head { margin: 6px 0 0; }
-.rina { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); }
 .group { margin-top: 22px; }
 .gH { display: flex; align-items: baseline; gap: 8px; margin: 0 0 10px; font-size: 15px; font-weight: 600; color: var(--navy); }
 .count { font-size: 13px; font-weight: 500; color: var(--ink-3); font-variant-numeric: tabular-nums; }
