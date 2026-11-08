@@ -5,9 +5,10 @@ import type { CopilotContext } from "./context";
 import { suggest, type Suggestion, type SuggestLead, type SuggestRow } from "./suggest";
 
 export type Op = { lead_id: string; name: string; action: string; overrides?: Record<string, unknown>; facts?: Record<string, unknown> };
-export type Row = { lead_id: string; name: string; what: string; price_from: number | null; price_to: number | null; autarky_from: number | null; autarky_to: number | null; verdict_from: string; verdict_to: string; kwp_from?: number | null; kwp_to?: number | null; kwh_from?: number | null; kwh_to?: number | null; payback_from?: number | null; payback_to?: number | null };
+export type Row = { lead_id: string; name: string; what: string; price_from: number | null; price_to: number | null; autarky_from: number | null; autarky_to: number | null; verdict_from: string; verdict_to: string; kwp_from?: number | null; kwp_to?: number | null; kwh_from?: number | null; kwh_to?: number | null; payback_from?: number | null; payback_to?: number | null; facts?: { label: string; from: unknown; to: unknown }[] };
 export type Proposal = { title: string; ops: Op[]; rows: Row[]; refused: string[]; unchanged?: string[]; said: string; state: "open" | "applying" | "applied" | "undoing" | "undone"; results: { lead_id: string; name: string; ok: boolean; msg?: string; what?: string }[]; undo?: Op[] };
-export type Item = { id: number; who: "you" | "agent" | "event"; text: string; pending?: boolean; err?: { src: string; msg: string }; proposals?: Proposal[] };
+export type Message = { lead_id: string; name: string; facts: string[]; text: string; state: "draft" | "sending" | "sent"; at?: string; err?: string };
+export type Item = { id: number; who: "you" | "agent" | "event"; text: string; messages?: Message[]; pending?: boolean; err?: { src: string; msg: string }; proposals?: Proposal[] };
 
 let items: Item[] = [], busy = false, seq = 0;
 export const isBusy = () => busy || items.some((i) => i.pending || i.proposals?.some((p) => p.state === "applying" || p.state === "undoing")); // AutoReload waits for it
@@ -122,6 +123,7 @@ export async function ask(q: string, ctx: CopilotContext) {
       if (e.t === "text") { turn += String(e.d); const t = turn; patchSoon(me.id, (x) => ({ ...x, text: t })); }
       else if (e.t === "tools") { turn = ""; patch(me.id, (x) => ({ ...x, text: "" })); }
       else if (e.t === "propose") patch(me.id, (x) => ({ ...x, proposals: [...(x.proposals ?? []), { ...(e as unknown as Proposal), said: q + (ctx.leadId ? ` [${ctx.leadId}]` : ""), state: "open", results: [] }] }));
+      else if (e.t === "message") patch(me.id, (x) => ({ ...x, messages: [...(x.messages ?? []), { ...(e as unknown as Message), state: "draft" }] }));
       else if (e.t === "created") { mine.add(String(e.lead_id)); dispatchEvent(new CustomEvent("marquee:lead-created", { detail: e.lead_id })); }
       else if (e.t === "error") patch(me.id, (x) => ({ ...x, err: { src: String(e.src), msg: String(e.msg) } }));
     }
@@ -129,6 +131,22 @@ export async function ask(q: string, ctx: CopilotContext) {
   patch(me.id, (x) => ({ ...x, pending: false, text: x.text.trim() }));
   const done = items.find((x) => x.id === me.id); if (done?.text) lastFirstLine = plain(done.text.split("\n").find((l) => l.trim()) ?? "");
   busy = false; emit();
+}
+
+// Send on WhatsApp: the engine's ask for these facts, on the planner's tap only.
+export async function sendMessage(id: number, mi: number, m: Message, said: string) {
+  const pm = (f: (x: Message) => Message) => patch(id, (x) => ({ ...x, messages: x.messages!.map((y, j) => (j === mi ? f(y) : y)) }));
+  pm((x) => ({ ...x, state: "sending", err: undefined }));
+  try {
+    const res = await fetch("/api/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ apply: [{ lead_id: m.lead_id, name: m.name, action: "ask", facts: m.facts }], said }) });
+    if (!res.ok || !res.body) throw new Error(`${res.status} ${res.statusText}`);
+    let ok = false, msg = "";
+    for await (const e of lines(res)) if (e.t === "result") { ok = !!e.ok; msg = String(e.msg ?? ""); }
+    if (!ok) throw new Error(msg || "The engine did not send it.");
+    const at = berlin(); pm((x) => ({ ...x, state: "sent", at }));
+    set((xs) => [...xs, { id: ++seq, who: "event", text: `Sent on WhatsApp at ${at} to [[lead: ${m.name}|${m.lead_id}]]: "${m.text}"` }]);
+    dispatchEvent(new CustomEvent("marquee:lead-stale", { detail: m.lead_id }));
+  } catch (e) { pm((x) => ({ ...x, state: "draft", err: (e as Error).message })); }
 }
 
 export async function run(id: number, pi: number, p: Proposal, undo: boolean) {

@@ -12,6 +12,11 @@ export function suggest(context: CopilotContext, lead?: SuggestLead | null, boar
   const out: Suggestion[] = [];
   if (context.leadId && lead) {
     const name = lead.customer_name.trim();   // the full name, as a planner says it
+    // Declined: nothing to send or ask, only why, or reopening it.
+    if (/declin/i.test(lead.status_label ?? "")) return [
+      { label: "Why declined", message: `Why did ${name} decline, and what would change it?` },
+      { label: "Reopen", message: `Reopen ${name}: what would a new offer need?` },
+    ];
     const open = (lead.blockers ?? []).filter((b) => !b.answered_at).slice(0, 2).map((b) => (b.label ?? b.field).toLowerCase());
     const busy = lead.whatsapp?.state === "open";
     const wantsSend = lead.status_label === "Ready" || (lead.status_label === "Complete" && !open.length);
