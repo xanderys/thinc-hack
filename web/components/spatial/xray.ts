@@ -37,6 +37,7 @@ export class Xray {
   private faces: Face[] = [];          // wall facades of this house, for the wall leader
   private roofAt: THREE.Vector3 | null = null;
   private floorAt: THREE.Vector3 | null = null;
+  private shellBox: THREE.Box3 | null = null;   // the glass shell's own bounds, tighter than the scene's box
   private card: HTMLDivElement | null = null;
   private lines: SVGSVGElement | null = null;
 
@@ -57,7 +58,7 @@ export class Xray {
     this.mats = [];
     if (this.wall) { this.wall.mesh.geometry = this.wall.orig; this.wall = null; }
     this.wallsDone = false;
-    this.faces = []; this.roofAt = null; this.floorAt = null;
+    this.faces = []; this.roofAt = null; this.floorAt = null; this.shellBox = null;
     this.card?.remove(); this.card = null;
     this.lines?.remove(); this.lines = null;
   }
@@ -140,6 +141,7 @@ export class Xray {
     const glass = FROST.clone();
     if (T.wall) glass.lerp(T.wall.col, 0.62);
     const geo = new THREE.BufferGeometry().setFromPoints(mine); geo.computeVertexNormals();
+    this.shellBox = new THREE.Box3().setFromPoints(mine);
     const shell = new THREE.Mesh(geo, this.mat(glass, 0.58, { lit: true })); shell.renderOrder = 4; this.g.add(shell);
     const lm = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0, depthWrite: false });
     this.mats.push({ m: lm, k: 0.38 });
@@ -208,11 +210,11 @@ export class Xray {
       display: "grid", gap: "4px", minWidth: "148px",
     });
     const pc = (s: number) => `${Math.round(s * 100)} %`;
-    card.innerHTML = `<div style="font-weight:600;margin-bottom:1px">Heat loss</div>` +
+    card.innerHTML = `<div data-x="head" style="font-weight:600;margin-bottom:1px">Heat loss</div>` +
       rows.map((e) => `<div data-k="${e.key === "ceiling" ? "roof" : e.key}" style="display:grid;grid-template-columns:8px 1fr auto;gap:7px;align-items:center;white-space:nowrap">` +
         `<i style="width:8px;height:8px;border-radius:50%;background:${e.colour}"></i><span>${e.name}</span>` +
         `<b style="font-weight:600;font-variant-numeric:tabular-nums">${pc(e.share)}</b></div>`).join("") +
-      `<div style="font-size:11px;color:var(--ink-3, #8a8d96);margin-top:2px">Estimated from address</div>`;
+      `<div data-x="foot" style="font-size:11px;color:var(--ink-3, #8a8d96);margin-top:2px">Estimated from address</div>`;
     ov.appendChild(svg); ov.appendChild(card);
     this.card = card; this.lines = svg;
   }
@@ -225,10 +227,14 @@ export class Xray {
     const fl = num("--free-l", 0), ft = num("--free-t", 0), fw = num("--free-w", ov.clientWidth), fh = num("--free-h", ov.clientHeight);
     const phone = ov.clientWidth < 560;
     card.style.fontSize = phone ? "11.5px" : "12.5px";
-    card.style.minWidth = phone ? "128px" : "148px";
+    card.style.minWidth = phone ? "0" : "148px";
+    card.style.gridTemplateColumns = phone ? "auto auto" : "";
+    card.style.columnGap = phone ? "14px" : "";
+    card.style.padding = phone ? "6px 9px 5px" : "8px 10px 7px";
+    card.querySelectorAll<HTMLElement>("[data-x]").forEach((el) => { el.style.display = phone && el.dataset.x === "head" ? "none" : ""; el.style.gridColumn = phone ? "1 / -1" : ""; });
     // Beside the house on screen, so the leaders stay short and cross no other building: to the right of the
     // building on a wide view (left if there is no room), below it on a phone; always inside the free area.
-    const bx = this.host.box, hs = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    const bx = this.shellBox ?? this.host.box, hs = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
     for (const cx of [bx.min.x, bx.max.x]) for (const cy of [bx.min.y, bx.max.y]) for (const cz of [bx.min.z, bx.max.z]) {
       const q = this.host.project(new THREE.Vector3(cx, cy, cz));
       hs.x0 = Math.min(hs.x0, q.x); hs.x1 = Math.max(hs.x1, q.x); hs.y0 = Math.min(hs.y0, q.y); hs.y1 = Math.max(hs.y1, q.y);
@@ -237,10 +243,14 @@ export class Xray {
     const clampX = (v: number) => Math.max(fl + 8, Math.min(fl + fw - cw - 8, v)), clampY = (v: number) => Math.max(ft + 8, Math.min(ft + fh - ch - 8, v));
     let x: number, y: number;
     if (phone) {
+      // Directly below the house, over its own garden (the camera looks from the street side), above the
+      // toolbar band at the bottom of the canvas; never over the house.
+      // The model toolbar's top edge, measured; 58 px when it is not on the page.
+      const tb = ov.parentElement?.parentElement?.querySelector<HTMLElement>('[class*="toolbar"]');
+      const ovr = ov.getBoundingClientRect(), tr = tb?.getBoundingClientRect();
+      const floor = (tr && tr.height && tr.top > ovr.top + ovr.height / 2 ? tr.top - ovr.top : ft + fh - 58 + 8) - ch - 8;
       x = clampX((hs.x0 + hs.x1) / 2 - cw / 2);
-      y = hs.y1 + G + ch <= ft + fh - 8 ? hs.y1 + G : ft + fh - ch - 8;
-      if (y < hs.y1 && x + cw > hs.x0 - 4) x = fl + 8;   // no room below: bottom left, off the house
-      y = clampY(y);
+      y = Math.max(ft + 8, Math.min(floor, hs.y1 + 10));
     } else {
       x = hs.x1 + G + cw <= fl + fw - 8 ? hs.x1 + G : hs.x0 - G - cw;
       x = clampX(x);
