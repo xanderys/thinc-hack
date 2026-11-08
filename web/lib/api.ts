@@ -200,12 +200,13 @@ export interface Lead {
   overrides?: Overrides;   // the planner's kit choices, written on each edit (intake step `overrides`)
   phone?: string | null;   // v2.14, E.164; no phone, no WhatsApp
   whatsapp?: LeadWhatsApp | null;   // v2.14
-  sources?: Record<string, string>;   // where each fact came from ("form", "call", "whatsapp", ...)
+  sources?: Record<string, string>;   // v2.14 per fact: "stated" | "estimated" | "whatsapp"
+  status_label?: string;
 }
 // v2.14 WhatsApp copilot: one conversation per lead, both directions logged.
-export interface WhatsAppMessage { dir: "out" | "in"; text: string; ts: string }
-export interface LeadWhatsApp { state: "open" | "closed" | "none"; conversation_id?: string | null; messages: WhatsAppMessage[] }
-export interface WhatsAppAsk { conversation_id: string; sent: string | WhatsAppMessage | boolean; open_facts: { field: string; label?: string; unit?: string }[] }
+export interface WhatsAppMessage { dir: "out" | "in"; kind?: "text" | "voice" | "dry" | string; text: string; at: string; facts?: Record<string, unknown>; stated?: string[]; unclear?: string[]; transcript?: string | null }
+export interface LeadWhatsApp { state: "open" | "closed" | "none"; round?: number; open_facts?: { field: string; label?: string; unit?: string }[]; last_error?: string | null; messages: WhatsAppMessage[] }
+export interface WhatsAppAsk { conversation_id: string; sent: unknown; open_facts: { field: string; label?: string; unit?: string }[]; asking?: unknown; version?: number; whatsapp?: LeadWhatsApp }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).
 export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "signed" | "declined" | "question";
 export type DecisionAction = "sign" | "decline" | "question";
