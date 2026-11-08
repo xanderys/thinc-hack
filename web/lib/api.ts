@@ -197,6 +197,7 @@ export interface Lead {
   version?: number;   // optimistic concurrency: writes carry it back as base_version
   proposal_hash?: string; approved_at?: string | null; approved_variant?: Variant["key"] | "edit" | null; decision?: LeadDecision | null;   // v2.5
   approved?: { variant: Variant["key"] | "edit"; design: Design; economics?: Economics; investment_eur: number; design_hash: string; overrides?: Overrides } | null;   // v2.11
+  overrides?: Overrides;   // the planner's kit choices, written on each edit (intake step `overrides`)
 }
 // v2.5: homeowner decision (demo acceptance, not a qualified e-signature).
 export type LeadStatus = "draft" | "in_call" | "done" | "approved" | "signed" | "declined" | "question";
