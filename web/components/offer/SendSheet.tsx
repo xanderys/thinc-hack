@@ -1,15 +1,15 @@
 // The sheet that opens once a proposal is Complete: who it goes to, the link, the channel, Rina's message, one Send.
 // WhatsApp goes through the engine (POST /api/leads/{id}/send {channel}); Email waits for a sender (none is set up);
-// SMS has no provider. Copy link copies and changes nothing on the lead. Opens with a spring, crossfades under Reduce Motion.
+// SMS has no provider. Copy link copies the link and tells the engine too, so the lead reads Sent. Opens with a spring, crossfades under Reduce Motion.
 import { useEffect, useRef, useState } from "react";
-import { send } from "@/lib/client";
+import { call, send } from "@/lib/client";
 import s from "./offer.module.css";
 
-type Channel = "whatsapp" | "email" | "link" | "sms";
+type Channel = "whatsapp" | "email" | "copy" | "sms";
 const CHANNELS: { k: Channel; label: string; off?: string }[] = [
   { k: "whatsapp", label: "WhatsApp" },
   { k: "email", label: "Email", off: "No email sender set up" },
-  { k: "link", label: "Copy link" },
+  { k: "copy", label: "Copy link" },
   { k: "sms", label: "SMS", off: "No SMS provider" },
 ];
 
@@ -18,8 +18,8 @@ export function rinaMessage(name: string, brand: string, link: string) {
   return `Hi ${first}, it's Rina from ${brand}. Your solar proposal is ready: ${link}\nIt shows the system, the price and what it saves you each year. You can sign it there, or reply here with any question.`;
 }
 
-export default function SendSheet({ leadId, name, brand, link, onClose, onSent }: {
-  leadId: string; name: string; brand: string; link: string; onClose: () => void; onSent: () => void;
+export default function SendSheet({ leadId, name, brand, link, version, onClose, onSent }: {
+  leadId: string; name: string; brand: string; link: string; version?: number | null; onClose: () => void; onSent: (version?: number) => void;
 }) {
   const [ch, setCh] = useState<Channel>("whatsapp");
   const [state, setState] = useState<"idle" | "busy" | "sent" | "copied">("idle");
@@ -33,16 +33,20 @@ export default function SendSheet({ leadId, name, brand, link, onClose, onSent }
     box.current?.focus();
     return () => removeEventListener("keydown", esc, true);
   }, [onClose]);
+  // Both WhatsApp and Copy link tell the engine (POST /send), so the lead reads Sent either way; a 409 means the lead
+  // is no longer Complete (a change after saving) and shows the engine's words.
   const go = async () => {
     setErr(null);
-    if (ch === "link") {
-      try { await navigator.clipboard.writeText(link); setState("copied"); } catch (e) { setErr(`Could not copy: ${(e as Error).message}`); }
-      return;
+    if (ch === "copy") {
+      try { await navigator.clipboard.writeText(link); } catch (e) { setErr(`Could not copy: ${(e as Error).message}`); return; }
     }
     setState("busy");
-    const r = await send<{ status?: string }>(`/api/leads/${encodeURIComponent(leadId)}/send`, { channel: ch }, `send-${ch}`);
-    if (!r.ok) { setState("idle"); setErr(r.error); return; }
-    setState("sent"); onSent();
+    // The version as the lead holds it now (saving Complete moved it), so base_version never trails a fresh save.
+    const cur = await call<{ version?: number }>(`/api/leads/${encodeURIComponent(leadId)}`);
+    const base = cur.ok && cur.data.version != null ? cur.data.version : version;
+    const r = await send<{ version?: number; status?: string }>(`/api/leads/${encodeURIComponent(leadId)}/send`, { channel: ch, ...(base != null ? { base_version: base } : {}) }, `send-${ch}`);
+    if (!r.ok) { setState(ch === "copy" ? "copied" : "idle"); setErr(r.error); return; }
+    setState(ch === "copy" ? "copied" : "sent"); onSent(r.data?.version);
   };
   return (
     <div className={s.sheetWrap} data-esc-first>
@@ -60,13 +64,13 @@ export default function SendSheet({ leadId, name, brand, link, onClose, onSent }
               ))}
             </div>
             <p className={s.sheetMsg}>{msg}</p>
-            {state === "copied" && <p className={s.sheetDone} role="status">Link copied</p>}
+            {state === "copied" && <p className={s.sheetDone} role="status">Link copied{err ? "" : ", waiting for the homeowner"}</p>}
             {err && <p className={s.failS} role="alert">{err}</p>}
           </>
         )}
         <div className={s.sheetGo}>
           <button type="button" className="btn ghost" onClick={onClose}>{state === "sent" ? "Done" : "Close"}</button>
-          {state !== "sent" && <button type="button" className="btn" onClick={go} disabled={state === "busy"}>{state === "busy" ? "Sending" : ch === "link" ? "Copy link" : "Send"}</button>}
+          {state !== "sent" && <button type="button" className="btn" onClick={go} disabled={state === "busy"}>{state === "busy" ? "Sending" : ch === "copy" ? "Copy link" : "Send"}</button>}
         </div>
       </div>
     </div>

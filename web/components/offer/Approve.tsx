@@ -8,7 +8,7 @@ import { INSTALLER_BRAND } from "@/app/start/intake";
 import SendSheet from "./SendSheet";
 import s from "./offer.module.css";
 
-type Read = Pick<Lead, "status" | "approved_at" | "decision" | "customer_name"> & { installer?: string };
+type Read = Pick<Lead, "status" | "status_label" | "approved_at" | "decision" | "customer_name" | "version"> & { installer?: string };
 
 export default function Approve({ leadId, approvedAt, onApprove, stale, want, onApproved, undo }: { undo?: { can: boolean; run: () => void }; leadId?: string | null; approvedAt: string | null; onApprove: (want?: unknown) => Promise<string | null> | void; stale?: boolean; want?: string | null; onApproved?: (a: Lead["approved"] | null) => void }) {
   const [busy, setBusy] = useState(false);
@@ -25,7 +25,7 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
     const ac = new AbortController();
     call<Lead>(`/api/leads/${encodeURIComponent(leadId)}`, undefined, ac.signal).then((r) => {
       if (!r.ok) return;
-      setLead({ status: r.data.status, approved_at: r.data.approved_at, decision: r.data.decision, customer_name: r.data.customer_name, installer: (r.data as { facts?: { installer_id?: string } }).facts?.installer_id });
+      setLead({ status: r.data.status, status_label: r.data.status_label, version: r.data.version, approved_at: r.data.approved_at, decision: r.data.decision, customer_name: r.data.customer_name, installer: (r.data as { facts?: { installer_id?: string } }).facts?.installer_id });
       setSent(r.data.status === "sent");
       onApproved?.(["approved", "sent", "signed"].includes(r.data.status) ? r.data.approved ?? null : null);
     }).catch(() => {});
@@ -47,7 +47,7 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
         <span className={s.done} data-k="signed">Signed{dec?.name ? ` by ${dec.name}` : ""}</span>
       ) : complete ? (
         <>
-          <span className={s.done}>{sent && !stale ? "Sent" : "Complete"}</span>
+          <span className={s.done}>{sent && !stale ? "Sent" : (!stale && lead?.status === "approved" && lead.status_label) || "Complete"}</span>
           {leadId && <button type="button" className="btn ghost" onClick={() => setSheet(true)}>Send</button>}
         </>
       ) : (
@@ -56,7 +56,7 @@ export default function Approve({ leadId, approvedAt, onApprove, stale, want, on
       </div>
       {fail && !complete && !signed && <span className={s.failS} role="alert">{fail}</span>}
       {dec && dec.matches_current === false && <span className={s.warnS}>Signed a different version than the one on screen</span>}
-      {sheet && leadId && <SendSheet leadId={leadId} name={lead?.customer_name ?? ""} brand={brand} link={link} onClose={close} onSent={() => setSent(true)} />}
+      {sheet && leadId && <SendSheet leadId={leadId} name={lead?.customer_name ?? ""} brand={brand} link={link} version={lead?.version} onClose={close} onSent={(v) => { setSent(true); if (v != null) setLead((x) => x && { ...x, version: v, status: "sent", status_label: "Sent" }); }} />}
     </div>
   );
 }
