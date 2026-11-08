@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { callEngine } from "@/lib/engine";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
