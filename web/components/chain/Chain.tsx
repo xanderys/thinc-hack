@@ -252,7 +252,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const narrow = useNarrow();
   const offer = (docked: boolean) => (
     <OfferPanel docked={docked} res={res} economics={e} breakEven={breakEven} cause={cause} pending={!!pending}
-      variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={layers?.checks ?? null} model={model} leadId={leadId} inputs={inputs}
+      variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={layers?.checks ?? null} checksFresh={fresh} model={model} leadId={leadId} inputs={inputs}
       overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
   );
   const overlays = (
