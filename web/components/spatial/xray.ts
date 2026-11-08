@@ -1,14 +1,17 @@
-// Envelope x-ray for the heat pump step. The real LoD2 model stays: the aerial-textured roof keeps its pitch and
-// texture under a light tint, and the house's own walls become a frosted glass shell, so the floor reads through
-// them. Each element (roof, outer walls, floor) takes a muted cool-to-warm tint by its share of the heat loss
-// (lib/envelope.ts), and a faint shell just outside each face breathes slowly where heat leaves. No windows are
-// drawn: the engine's window share is a typology figure, not measured facade data. The shares sit in one legend
-// card at the side of the view, with thin leader lines to their face. Numbers are the engine's envelope block.
-// Motion: one critically damped spring (0.5 s, bounce 0) fades it all in and out; the glow breathes over 5 s.
-// Reduce Motion: the same opacity fade (a crossfade) and a still glow.
+// The house's own walls as a frosted glass shell, the default look on every view: the aerial-textured roof and its
+// panels stay opaque, the neighbours keep their look, and the kit inside (battery, inverter, wallbox) reads through
+// the walls. "Solid walls" on the layers menu puts the plain walls back; the Photo 3D mesh has its own walls.
+// Heat pump step: the envelope x-ray on top of the shell. Each element (roof, outer walls, floor) takes a muted
+// cool-to-warm tint by its share of the heat loss (lib/envelope.ts), and a faint shell just outside each face
+// breathes slowly where heat leaves. No windows are drawn: the engine's window share is a typology figure, not
+// measured facade data. The shares sit in one legend card at the side of the view, with thin leader lines to their
+// face. Numbers are the engine's envelope block.
+// Motion: one critically damped spring (0.5 s, bounce 0) each for the shell and the x-ray; the glow breathes over
+// 5 s. Reduce Motion: the same opacity fade (a crossfade) and a still glow.
 import * as THREE from "three";
 import type { Envelope, RoofPlane, V3 } from "./types";
 import { elementsOf, type ElementKey } from "@/lib/envelope";
+import { viewOpts } from "./whiteMode";
 
 type P = { x: number; y: number; ok: boolean };
 export interface XrayHost {
@@ -21,6 +24,10 @@ const FROST = new THREE.Color("#F3F1EC");
 const INK = "#2A2C33";
 const OMEGA = (2 * Math.PI) / 0.5;
 const BREATH_S = 5;
+const SHELL_K = 0.4, EDGE_K = 0.38, FAR_K = 0.2, PATCH_K = 0.5;
+// A neutral wash over the aerial photo inside the footprint: the photo there is the house's own roof seen from
+// above, which through the glass reads as a solid block from the high poses. Translucent, so the ground stays.
+const PATCH = new THREE.Color("#6F6C66");
 // The four shares on the card, in this order; roof falls back to the top ceiling when the roof space is unheated.
 const CARD: ElementKey[] = ["roof", "wall", "window", "floor"];
 
@@ -28,27 +35,47 @@ const CARD: ElementKey[] = ["roof", "wall", "window", "floor"];
 // reaches its face at the near edge and never crosses the roof or another face.
 type Face = { c: THREE.Vector3; n: THREE.Vector3; area: number; cands: THREE.Vector3[]; poly?: THREE.Vector3[] };
 type Fade = { m: THREE.Material & { opacity: number }; k: number; glow?: number };
+type Facade = { n: THREE.Vector3; pts: THREE.Vector3[]; area: number };
+// The glass shell: the house's triangles, taken out of the shared wall mesh while it shows.
+type Shell = {
+  mesh: THREE.Mesh; orig: THREE.BufferGeometry; key: string; mine: THREE.Vector3[]; facades: Facade[]; box: THREE.Box3;
+  glass: THREE.MeshLambertMaterial; edge: THREE.LineBasicMaterial; depth: THREE.MeshBasicMaterial; far: THREE.LineBasicMaterial; patch: THREE.MeshBasicMaterial;
+};
+
+// One step of a critically damped spring towards goal.
+function spring(x: number, v: number, goal: number, dt: number): [number, number] {
+  const a = -OMEGA * OMEGA * (x - goal) - 2 * OMEGA * v;
+  v += a * dt;
+  return [Math.max(0, Math.min(1, x + v * dt)), v];
+}
+const still = (x: number, v: number, goal: number) => Math.abs(x - goal) < 0.002 && Math.abs(v) < 0.01;
 
 export class Xray {
   private env: Envelope | null = null;
-  private f = 0; private v = 0; private goal = 0; private t = 0;
-  private g = new THREE.Group();
+  private f = 0; private v = 0; private goal = 0; private t = 0;     // the heat x-ray
+  private gf = 0; private gv = 0; private gGoal = 0;                // the glass shell
+  private g = new THREE.Group();        // heat x-ray sheets
+  private sg = new THREE.Group();       // glass shell and its edge lines
   private mats: Fade[] = [];
-  private wall: { mesh: THREE.Mesh; orig: THREE.BufferGeometry } | null = null;
+  private shell: Shell | null = null;
+  private wallTint: THREE.Color | null = null;
   private wallsDone = false;
   private faces: Face[] = [];          // wall facades of this house, for the wall leader
   private roofs: Face[] = [];
   private floorCands: THREE.Vector3[] = [];
-  private shellBox: THREE.Box3 | null = null;   // the glass shell's own bounds, tighter than the scene's box
   private card: HTMLDivElement | null = null;
   private lines: SVGSVGElement | null = null;
 
-  constructor(private host: XrayHost) { this.g.visible = false; host.root.add(this.g); }
+  constructor(private host: XrayHost) { this.g.visible = false; this.sg.visible = false; host.root.add(this.g, this.sg); }
 
-  // env null: fade out, then put the plain walls back. Returns no on-model labels: the shares live in the card.
+  // The glass shell's mesh (world coordinates), for raycasts against the house's own walls while it stands in.
+  shellMesh(): THREE.Mesh | null { return this.shell ? (this.sg.children[1] as THREE.Mesh) : null; }
+
+  // env null: fade the x-ray out (the glass shell stays). Returns no on-model labels: the shares live in the card.
   set(env: Envelope | null): never[] {
     if (!env || !env.faces?.length) { this.goal = 0; return []; }
-    const same = this.env === env && this.g.children.length > 0;
+    // A variant switch hands in an equal envelope as a new object: keep what is drawn.
+    const same = (this.env === env || (!!this.env && JSON.stringify(this.env) === JSON.stringify(env))) && this.g.children.length > 0;
     this.env = env; this.goal = 1;
     if (!same) this.build();
     return [];
@@ -58,17 +85,24 @@ export class Xray {
     this.g.clear();
     this.mats.forEach(({ m }) => m.dispose());
     this.mats = [];
-    if (this.wall) { this.wall.mesh.geometry = this.wall.orig; this.wall = null; }
-    this.wallsDone = false;
-    this.faces = []; this.roofs = []; this.floorCands = []; this.shellBox = null;
+    this.wallsDone = false; this.wallTint = null;
+    this.faces = []; this.roofs = []; this.floorCands = [];
     this.card?.remove(); this.card = null;
     this.lines?.remove(); this.lines = null;
   }
 
-  private mat(colour: THREE.Color, k: number, opts: { lit?: boolean; glow?: number } = {}) {
-    const p = { color: colour, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false };
-    // Lit glass keeps the facets readable; the emissive share keeps it from going grey in shade.
-    const m = opts.lit ? new THREE.MeshLambertMaterial({ ...p, emissive: colour.clone().multiplyScalar(0.45) }) : new THREE.MeshBasicMaterial(p);
+  // Puts the plain walls back and drops the shell.
+  private clearShell() {
+    const s = this.shell;
+    if (!s) return;
+    s.mesh.geometry = s.orig;
+    this.sg.children.forEach((o) => (o as THREE.Mesh).geometry?.dispose());
+    this.sg.clear(); s.glass.dispose(); s.edge.dispose(); s.depth.dispose(); s.far.dispose(); s.patch.dispose();
+    this.shell = null; this.sg.visible = false;
+  }
+
+  private mat(colour: THREE.Color, k: number, opts: { glow?: number } = {}) {
+    const m = new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
     this.mats.push({ m, k, glow: opts.glow });
     return m;
   }
@@ -88,6 +122,7 @@ export class Xray {
   private build() {
     this.clear();
     const T = this.tints(this.env!);
+    this.wallTint = T.wall?.col ?? null;
     // Roof: the aerial texture stays readable under a light tint; a second sheet just above it carries the glow.
     if (T.roof) {
       this.host.planes().filter((p) => p.is_target).forEach((p) => {
@@ -110,16 +145,19 @@ export class Xray {
     this.buildWalls();
   }
 
-  // Walls need the glb; until it is in, frame() retries.
-  private buildWalls() {
-    const wm = this.host.walls(), env = this.env;
-    if (!wm || !env || this.wallsDone) return;
-    this.wallsDone = true;
-    const T = this.tints(env);
+  // The shell needs the glb and the roof model's box; until both are in, frame() retries. A new glb or a new
+  // house rebuilds it from the untouched wall geometry.
+  private ensureShell() {
+    const wm = this.host.walls(), box = this.host.box;
+    if (!wm || box.isEmpty()) return;
+    const key = `${wm.uuid}:${box.min.toArray().map((x) => x.toFixed(2))}:${box.max.toArray().map((x) => x.toFixed(2))}`;
+    if (this.shell && this.shell.key === key && this.shell.mesh === wm) return;
+    this.clearShell();
+    if (this.env) this.build();
     const src = wm.geometry.index ? wm.geometry.toNonIndexed() : wm.geometry;
     const pos = src.getAttribute("position");
     wm.updateWorldMatrix(true, false);
-    const inHouse = this.host.box.clone().expandByScalar(0.8);
+    const inHouse = box.clone().expandByScalar(0.8);
     const mine: THREE.Vector3[] = [], keep: number[] = [];
     const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), m = new THREE.Vector3();
     for (let i = 0; i < pos.count; i += 3) {
@@ -129,30 +167,44 @@ export class Xray {
       else keep.push(i, i + 1, i + 2);
     }
     if (!mine.length) return;
-    // The house's own walls leave the shared wall mesh while the x-ray is on (every attribute kept, so the
-    // neighbours keep their shading); the glass shell stands in their place. The massing's edge lines stay.
+    // The house's own walls leave the shared wall mesh (every attribute kept, so the neighbours keep their
+    // shading); the glass shell stands in their place.
     const rest = new THREE.BufferGeometry();
     for (const [name, attr] of Object.entries(src.attributes)) {
       const A = attr as THREE.BufferAttribute, out = new Float32Array(keep.length * A.itemSize);
       keep.forEach((j, o) => { for (let q = 0; q < A.itemSize; q++) out[o * A.itemSize + q] = A.getComponent(j, q); });
       rest.setAttribute(name, new THREE.BufferAttribute(out, A.itemSize));
     }
-    this.wall = { mesh: wm, orig: wm.geometry };
+    const orig = wm.geometry;
     wm.geometry = rest;
 
-    const glass = FROST.clone();
-    if (T.wall) glass.lerp(T.wall.col, 0.62);
+    // Lit glass keeps the facets readable; the emissive share keeps it from going grey in shade.
+    // One layer of glass from every angle: a depth-only pass first, so only the wall nearest the camera takes the
+    // tint (two blended layers read as nearly opaque). The kit inside is opaque, drawn before both, so it shows
+    // through. Both passes sit a hair behind the true surface, so the edge lines stay on top.
+    const off = { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 };
+    const depth = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true, side: THREE.DoubleSide, ...off });
+    const glass = new THREE.MeshLambertMaterial({ color: FROST.clone(), emissive: FROST.clone().multiplyScalar(0.45), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, ...off });
     const geo = new THREE.BufferGeometry().setFromPoints(mine); geo.computeVertexNormals();
-    this.shellBox = new THREE.Box3().setFromPoints(mine);
-    const shell = new THREE.Mesh(geo, this.mat(glass, 0.58, { lit: true })); shell.renderOrder = 4; this.g.add(shell);
-    const lm = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0, depthWrite: false });
-    this.mats.push({ m: lm, k: 0.38 });
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), lm);
-    edges.renderOrder = 6; this.g.add(edges);
-
-    // Facades (vertical faces grouped by plane): leader targets, and a glow sheet a little outside each one.
-    const ctr = this.host.box.getCenter(new THREE.Vector3());
-    const groups = new Map<string, { n: THREE.Vector3; pts: THREE.Vector3[]; area: number }>();
+    const pre = new THREE.Mesh(geo, depth); pre.renderOrder = 3.5; this.sg.add(pre);
+    const shell = new THREE.Mesh(geo, glass); shell.renderOrder = 4; this.sg.add(shell);
+    const edge = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0, depthWrite: false });
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), edge);
+    edges.renderOrder = 6; this.sg.add(edges);
+    // The same edges drawn before the depth pass: the far walls' edges show faintly through the near glass.
+    const far = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0, depthWrite: false });
+    const farEdges = new THREE.LineSegments(edges.geometry, far); farEdges.renderOrder = 3.4; this.sg.add(farEdges);
+    const patch = new THREE.MeshBasicMaterial({ color: PATCH, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+    const foot = convexHull(mine.filter((p) => p.y < box.min.y + 0.4).map((p) => new THREE.Vector2(p.x, p.z)));
+    if (foot.length >= 3) {
+      const py = box.min.y + 0.04;
+      const pg = new THREE.BufferGeometry().setFromPoints(foot.map((p) => new THREE.Vector3(p.x, py, p.y)));
+      pg.setIndex(THREE.ShapeUtils.triangulateShape(foot, []).flat());
+      const pm = new THREE.Mesh(pg, patch); pm.renderOrder = 1; this.sg.add(pm);
+    }
+    // Facades (vertical faces grouped by plane), for the x-ray's leader targets and glow sheets.
+    const ctr = box.getCenter(new THREE.Vector3());
+    const groups = new Map<string, Facade>();
     for (let i = 0; i < mine.length; i += 3) {
       const [p, q, r] = [mine[i], mine[i + 1], mine[i + 2]];
       const n = new THREE.Vector3().subVectors(q, p).cross(new THREE.Vector3().subVectors(r, p));
@@ -165,12 +217,21 @@ export class Xray {
       const gq = groups.get(k) ?? { n, pts: [], area: 0 };
       gq.pts.push(p, q, r); gq.area += area; groups.set(k, gq);
     }
+    this.shell = { mesh: wm, orig, key, mine, facades: [...groups.values()], box: new THREE.Box3().setFromPoints(mine), glass, edge, depth, far, patch };
+  }
+
+  // The x-ray's wall and floor sheets, on the shell's geometry.
+  private buildWalls() {
+    const s = this.shell, env = this.env;
+    if (!s || !env || this.wallsDone) return;
+    this.wallsDone = true;
+    const T = this.tints(env), mine = s.mine;
     if (T.wall) {
       const halo: THREE.Vector3[] = [];
-      groups.forEach(({ n, pts, area }) => {
+      s.facades.forEach(({ n, pts, area }) => {
         if (area < 3) return;
         pts.forEach((p) => halo.push(p.clone().addScaledVector(n, 0.4)));
-        const c0 = pts.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
+        const c0 = pts.reduce((acc, p) => acc.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
         // Both ends of the facade at ground-floor height, inset 0.4 m: always below the eaves.
         const u = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), n).normalize();
         const us = pts.map((q) => q.dot(u)), u0 = Math.min(...us), u1 = Math.max(...us), y0 = Math.min(...pts.map((q) => q.y));
@@ -189,7 +250,7 @@ export class Xray {
         const geoF = new THREE.BufferGeometry().setFromPoints(hull.map((p) => new THREE.Vector3(p.x, y, p.y)));
         geoF.setIndex(THREE.ShapeUtils.triangulateShape(hull, []).flat());
         const fm = new THREE.Mesh(geoF, this.mat(T.floor.col, 0.62)); fm.renderOrder = 3; this.g.add(fm);
-        const cx = hull.reduce((s, p) => s.add(p), new THREE.Vector2()).multiplyScalar(1 / hull.length);
+        const cx = hull.reduce((acc, p) => acc.add(p), new THREE.Vector2()).multiplyScalar(1 / hull.length);
         this.floorCands = inset(hull.map((p) => new THREE.Vector3(p.x, y, p.y)), new THREE.Vector3(cx.x, y, cx.y), 0.5);
       }
     }
@@ -241,7 +302,7 @@ export class Xray {
     card.querySelectorAll<HTMLElement>("[data-x]").forEach((el) => { el.style.display = phone && el.dataset.x === "head" ? "none" : ""; el.style.gridColumn = phone ? "1 / -1" : ""; });
     // Beside the house on screen, so the leaders stay short and cross no other building: to the right of the
     // building on a wide view (left if there is no room), below it on a phone; always inside the free area.
-    const bx = this.shellBox ?? this.host.box, hs = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    const bx = this.shell?.box ?? this.host.box, hs = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
     for (const cx of [bx.min.x, bx.max.x]) for (const cy of [bx.min.y, bx.max.y]) for (const cz of [bx.min.z, bx.max.z]) {
       const q = this.host.project(new THREE.Vector3(cx, cy, cz));
       hs.x0 = Math.min(hs.x0, q.x); hs.x1 = Math.max(hs.x1, q.x); hs.y0 = Math.min(hs.y0, q.y); hs.y1 = Math.max(hs.y1, q.y);
@@ -303,27 +364,41 @@ export class Xray {
   }
 
   private apply() {
-    const still = this.host.reduce();
-    const breath = still ? 0.75 : 0.55 + 0.45 * (0.5 - 0.5 * Math.cos((2 * Math.PI * this.t) / BREATH_S));
+    const quiet = this.host.reduce();
+    const breath = quiet ? 0.75 : 0.55 + 0.45 * (0.5 - 0.5 * Math.cos((2 * Math.PI * this.t) / BREATH_S));
     this.mats.forEach(({ m, k, glow }) => { m.opacity = glow != null ? this.f * glow * breath : this.f * k; m.visible = m.opacity > 0.003; });
     this.g.visible = this.f > 0.005;
+    const s = this.shell;
+    if (s) {
+      // The shell shows whenever the glass look or the x-ray does; the x-ray tints it towards the wall's share.
+      const o = Math.max(this.gf, this.f);
+      s.glass.color.copy(FROST); if (this.wallTint) s.glass.color.lerp(this.wallTint, 0.4 * this.f);   // a tint on the glass, same alpha
+      s.glass.emissive.copy(s.glass.color).multiplyScalar(0.45);
+      s.glass.opacity = SHELL_K * o; s.edge.opacity = EDGE_K * o; s.far.opacity = FAR_K * o; s.patch.opacity = PATCH_K * o;
+      this.sg.visible = o > 0.005;
+    }
   }
 
   frame(dt: number) {
+    const vo = viewOpts();
+    this.gGoal = vo.solid || vo.mesh ? 0 : 1;
+    const want = this.gGoal === 1 || this.goal === 1;
+    if (want) this.ensureShell();
     if (this.goal === 1 && !this.wallsDone) this.buildWalls();
     if (this.goal === 1) this.ensureCard();
     this.t += dt;
-    const settled = Math.abs(this.f - this.goal) < 0.002 && Math.abs(this.v) < 0.01;
-    if (settled) {
-      if (this.f !== this.goal) { this.f = this.goal; this.v = 0; if (this.goal === 0) { this.apply(); this.clear(); this.env = null; return; } }
-    } else {
-      const a = -OMEGA * OMEGA * (this.f - this.goal) - 2 * OMEGA * this.v;
-      this.v += a * dt; this.f = Math.max(0, Math.min(1, this.f + this.v * dt));
-    }
-    if (this.f > 0) { this.apply(); this.place(); }
+    if (still(this.f, this.v, this.goal)) {
+      if (this.f !== this.goal) { this.f = this.goal; this.v = 0; if (this.goal === 0) { this.clear(); this.env = null; } }
+    } else [this.f, this.v] = spring(this.f, this.v, this.goal, dt);
+    if (still(this.gf, this.gv, this.gGoal)) { this.gf = this.gGoal; this.gv = 0; }
+    else [this.gf, this.gv] = spring(this.gf, this.gv, this.gGoal, dt);
+    // Both looks gone: the plain walls come back.
+    if (!want && this.f === 0 && this.gf === 0 && this.shell) this.clearShell();
+    this.apply();
+    if (this.f > 0) this.place();
   }
 
-  dispose() { this.clear(); this.g.removeFromParent(); }
+  dispose() { this.clear(); this.clearShell(); this.g.removeFromParent(); this.sg.removeFromParent(); }
 }
 
 function convexHull(p: THREE.Vector2[]): THREE.Vector2[] {

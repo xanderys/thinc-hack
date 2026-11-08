@@ -57,9 +57,9 @@ function hull(pts: XZ[]): XZ[] {
   return lo.slice(0, -1).concat(up.slice(0, -1));
 }
 
-// Faint grey footprints of the neighbours, just above the ground and the 0.4 m slabs; buildings hide them.
+// Faint grey footprints of the neighbours, flat just above the ground and their flattened roofs; buildings hide them.
 // Shown only in the white look without the mesh (the mesh paints them in its shader).
-export function outlineMesh(edges: [XZ, XZ][], y = 0.42): THREE.LineSegments {
+export function outlineMesh(edges: [XZ, XZ][], y = 0.04): THREE.LineSegments {
   const g = new THREE.BufferGeometry().setFromPoints(edges.flatMap(([a, b]) => [new THREE.Vector3(a[0], y, a[1]), new THREE.Vector3(b[0], y, b[1])]));
   const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: OUTLINE, transparent: true, opacity: 0.8, depthWrite: false }));
   l.name = "white-outlines";
