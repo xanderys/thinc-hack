@@ -132,6 +132,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const [picksAll, setPicksAll] = useState<Record<string, Picks>>({});
   useEffect(() => { if (editLead) setPicksAll(loadPicks(editLead)); }, [editLead]);
   const [live, setLive] = useState<{ kwp: number; picks: Picks; until: number } | null>(null);
+  // The tap's own layout stands in only until the engine's design reaches its kWp; after that the lead's layout_slots
+  // lead (so an Undo, which lands on another kWp, shows the layout it restored).
+  useEffect(() => { if (live && kwpKey(design.pv_kwp) === kwpKey(live.kwp)) setLive(null); }, [design.pv_kwp, live]);
   const wantN = Math.round(((design.pv_kwp ?? 0) * 1000) / MODULE_WP);
   // Order: a tap still on its way to the engine, then the lead's layout_slots, then this browser's copy.
   const faceIds = useMemo(() => {
