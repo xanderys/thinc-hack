@@ -522,7 +522,7 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
           call={VOICE && !read && !seed ? <Calls installer={installer} onLead={onCall} /> : null} />
         <div className="s-main">
           {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
-          {res?.design && <Plan res={res} prev={prev} inputs={inputs} write={null} writeBusy={false} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? "Measuring the roof from Bavarian 3D data, about 10 s" : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} />}
+          {res?.design && <Plan res={res} prev={prev} inputs={inputs} write={null} writeBusy={false} flag={flag} variants={variants} onVariant={onVariant} busy={busy} answered={answer != null} roofNote={roof?.pending ? <span className="b-skel b-skel-line" aria-hidden="true" style={{ display: "inline-block", width: 180, height: 12 }} /> : read && !read.inputs.address ? "No street given, roof assumed standard face" : undefined} />}
           {res && <Refine res={res} moved={moved} canUndo={canUndo} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} />}
         </div>
       </div>
