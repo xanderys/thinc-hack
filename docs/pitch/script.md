@@ -19,7 +19,7 @@ Speakers: Zi Yuan opens and closes, Xander runs the demo and the exam, Jamon the
 If Reonic's AI chat comes up: "Your chat sizes from the catalogue when the planner asks, and the planner picks by hand. Marquee proposes unprompted, explains its rules, and publishes how often it matches the experts on homes it never saw."
 
 ## 2:00 to 2:25, slide 5, Xander
-"The rules come from 1,570 signed designs, read out per installer. Installer A fits 10.35 kilowatt peak to most homes between 3,550 and 9,100 kilowatt hours, and the 10 kilowatt hour pack above 4,100. Installer B fits 11.7 above 3,750. A heat pump only for an old gas or oil boiler. A wallbox when there is a car. A planner can read every rule and overrule it."
+"The rules come from Reonic's 1,619 projects, split in half before fitting, read out per installer. Installer A fits 10.35 kilowatt peak to most homes between 3,550 and 9,100 kilowatt hours, and the 10 kilowatt hour pack above 4,100. Installer B fits 11.7 above 3,750. A heat pump only for an old gas or oil boiler. A wallbox when there is a car. A planner can read every rule and overrule it."
 
 ## 2:25 to 3:00, slide 6, Xander
 "The exam. We sealed half the data: 633 new-system homes the rules never saw. All four decisions match the expert's within tolerance on 18.6 percent of them. The textbook rule reaches 6.8. Panels alone, 41 percent; battery, 50. A black box scored 19 percent on the 126 homes both were scored on, the rules 23, and the paired test says that is a tie. So the readable rules ship."
