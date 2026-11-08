@@ -96,7 +96,8 @@
 .cEv { background: #e5effe; color: #1c71ef; }
 .cHp { background: #fde6e2; color: #c2311b; }
 
-.toolbar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 2px; background: #fff; border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--shadow); padding: 5px; }
+/* Centred under the house in the area the overlays leave free, so the docked Offer panel never covers it. */
+.toolbar { position: absolute; left: calc(var(--free-l, 0px) + var(--free-w, 100%) / 2); bottom: 14px; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 2px; background: #fff; border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--shadow); padding: 5px; }
 .tb { all: unset; box-sizing: border-box; cursor: pointer; width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; color: var(--ink-2); }
 .tb:hover:not(:disabled):not(.inert) { background: var(--sheet-2); }
 .tb[aria-pressed="true"] { background: var(--accent); color: #fff; }

@@ -154,7 +154,7 @@ export class SpatialScene {
   private ctxOff: (() => void)[] = [];   // the white-context and ground subscriptions of this glb
 
   constructor(private host: HTMLElement, private overlay: HTMLElement, private svg: SVGSVGElement, private opts: SceneOpts) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
+    this.renderer = takeRenderer();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setClearColor(PAPER, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -809,6 +809,14 @@ export class SpatialScene {
   private loop = () => {
     if (!this.alive) return;
     this.raf = requestAnimationFrame(this.loop);
+    this.tick();
+  };
+  // Safari stops animation frames while its window is hidden or covered; a timer keeps drawing the house there
+  // (about four frames a second), so a model that lands meanwhile is on the canvas the moment the window shows.
+  private lastTick = 0;
+  private wd = window.setInterval(() => { if (this.alive && performance.now() - this.lastTick > 250) this.tick(); }, 250);
+  private tick() {
+    this.lastTick = performance.now();
     const dt = Math.min(0.05, this.clock.getDelta());
     if (this.spin) this.stepSpin(dt);
     if (this.fly) {
@@ -943,6 +951,7 @@ export class SpatialScene {
   dispose() {
     this.alive = false;
     cancelAnimationFrame(this.raf);
+    clearInterval(this.wd);
     this.ro.disconnect();
     this.controls.dispose();
     this.controls2d.dispose();
@@ -960,7 +969,26 @@ export class SpatialScene {
       const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
       mats.forEach((x) => { (x as THREE.MeshLambertMaterial).map?.dispose(); x.dispose(); });
     });
-    this.renderer.dispose();
-    this.renderer.domElement.remove();
+    giveRenderer(this.renderer);
   }
+}
+
+// One WebGL context per live view for the life of the page. Safari caps live contexts and a context that is
+// thrown away is not freed at once, so a view rebuilt on a data reload drew into a context that never painted
+// (blank white canvas). A disposed view hands its renderer back here and the next view takes the same canvas.
+const spare: THREE.WebGLRenderer[] = [];
+function takeRenderer(): THREE.WebGLRenderer {
+  const r = spare.pop();
+  if (r && !r.getContext().isContextLost()) return r;
+  r?.dispose();
+  return new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
+}
+function giveRenderer(r: THREE.WebGLRenderer) {
+  r.setRenderTarget(null);
+  r.renderLists.dispose();
+  const c = r.domElement;
+  c.remove();
+  c.removeAttribute("style");
+  if (spare.length < 2 && !r.getContext().isContextLost()) spare.push(r);
+  else { r.dispose(); r.forceContextLoss(); }
 }

@@ -338,6 +338,17 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     if (!h) return;
     setHistory(history.slice(0, -1)); cause.current = "Undone:"; setApprovedAt(null);
     setChanged(h.changed); setOverrides(h.overrides); setChips(h.chips); setOvChips(h.ovChips);
+    // The lead hears the undo too, so a reload shows what the screen shows: each fact the undone step moved goes back
+    // to its earlier value (the earlier change, else the lead's own fact or the default).
+    const base: Record<string, unknown> = { ...DEFAULTS, ...(read?.inputs ?? {}) };
+    if (question && answer !== undefined) base[question.field] = answer;
+    const now = changed as Record<string, unknown>, was = h.changed as Record<string, unknown>, back: Record<string, unknown> = {};
+    for (const k of new Set([...Object.keys(now), ...Object.keys(was)])) {
+      if (now[k] === was[k]) continue;
+      const v = k in was ? was[k] : base[k];
+      if (v !== undefined && v !== null) back[k] = v;
+    }
+    if (leadRef.current && Object.keys(back).length) void writeLead("undo", back as Partial<HomeInputs>).then((x) => { if (!x.ok && x.error) setSayErr(`Undone here; the lead did not update: ${x.error}`); });
   }
 
   function onApprove() {

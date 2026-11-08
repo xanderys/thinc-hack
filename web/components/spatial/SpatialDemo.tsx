@@ -115,9 +115,13 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
   const model = useMemo(() => (layers ? modelOf(layers.planes) : null), [layers]);
   modelRef.current = model;
   const hasModel = !!model;
+  // Once the view has a scene it keeps it while a reload briefly empties the layers: no teardown, no new canvas.
+  const everModel = useRef(false);
+  if (hasModel) everModel.current = true;
+  const wantScene = everModel.current;
   // three.js, loaded only once there is a model to show.
   useEffect(() => {
-    if (!hasModel || !host.current || !overlay.current || !svg.current) return;
+    if (!wantScene || !host.current || !overlay.current || !svg.current) return;
     let dead = false;
     import("./scene").then(({ SpatialScene }) => {
       if (dead || !host.current || !overlay.current || !svg.current) return;
@@ -132,7 +136,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
     });
     return () => { dead = true; scene.current?.dispose(); scene.current = null; setReady(false); setGlbOk(false); prevLayer.current = 0; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasModel, glbUrl, reduce, retryGlb]);
+  }, [wantScene, glbUrl, reduce, retryGlb]);
 
   // A new design re-reads the planes; the scene keeps its glb and camera.
   useEffect(() => { if (model && scene.current && ready) { scene.current.setModel(model); setModelGen((x) => x + 1); } }, [model, ready]);
