@@ -543,11 +543,13 @@ export function Chips({ d }: { d: { pv_kwp?: number | null; battery_kwh?: number
   );
 }
 
-const stackable = (b: Bar) => b.segments.filter((g) => g.unit === b.unit && g.value > 0);
+// The engine's bars as sent; a field missing on a fresh lead must not throw when the "i" first opens.
+const segsOf = (b: Bar) => (Array.isArray(b?.segments) ? b.segments : []).filter((g) => g && typeof g.name === "string");
+const stackable = (b: Bar) => segsOf(b).filter((g) => g.unit === b.unit && g.value > 0);
 
 function BarView({ bar, bare }: { bar: Bar; bare?: boolean }) {
   const segs = stackable(bar), sum = segs.reduce((x, g) => x + g.value, 0) || 1;
-  const extra = bar.segments.filter((g) => !segs.includes(g));
+  const all = segsOf(bar), extra = all.filter((g) => !segs.includes(g));
   const fmt = (v: number, u: string) => (!u ? String(v) : `${u === "kWp" || u === "kW" ? n2(v) : v >= 100 ? n0(v) : n1(v)} ${u}`);
   return (
     <div className={s.bar}>
@@ -562,11 +564,11 @@ function BarView({ bar, bare }: { bar: Bar; bare?: boolean }) {
         </>
       ) : (
         <ul className={s.steps}>
-          {bar.segments.map((g) => <li key={g.name} title={g.citation}><span>{cap(g.name)}</span><b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
+          {all.map((g) => <li key={g.name} title={g.citation}><span>{cap(g.name)}</span><b>{fmt(g.value, g.unit)}</b>{!bare && <em data-t={g.source_tag}>{TAG[g.source_tag] ?? g.source_tag}</em>}</li>)}
         </ul>
       )}
       {!bare && <p className={s.barS}>{bar.sentence}</p>}
-      {!bare && bar.sources.length > 0 && <p className={s.barSrc}>{bar.sources.join("; ")}</p>}
+      {!bare && Array.isArray(bar.sources) && bar.sources.length > 0 && <p className={s.barSrc}>{bar.sources.join("; ")}</p>}
     </div>
   );
 }
