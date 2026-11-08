@@ -313,3 +313,8 @@
 .fg-pair .fg-stack { justify-self: start; }
 .fg-under { grid-column: 2 / -1; margin-top: -2px; }
 .fg-cov { color: var(--ink-3); }
+/* The tucked pass as a cover for the framing: same width as the pass, its peek height, at the canvas foot. Desktop only. */
+.pc-cover { display: none; }
+@media (min-width: 761px) {
+  .pc-bottom .pc-cover { display: block; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: clamp(480px, 40vw, 540px); max-width: calc(100% - 24px); height: var(--pc-peek, 76px); pointer-events: none; visibility: hidden; }
+}
