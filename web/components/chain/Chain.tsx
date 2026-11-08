@@ -23,6 +23,7 @@ import SystemsChips from "@/components/systems/SystemsChips";
 import ProposedCard from "@/components/systems/ProposedCard";
 import SystemCard from "@/components/systems/SystemCard";
 import { elementsOf } from "@/lib/envelope";
+import { scrub } from "@/components/offer/facts";
 import { setSystem, stageOf, systemOf, type SystemName } from "@/components/systems/system";
 
 // While the 3D code loads, the hero shows the same house shimmer the view shows until its first frame.
@@ -278,7 +279,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const tools = ({ view: v, setView, recentre, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
     <div className={s.toolbar} role="toolbar" aria-label="Model" data-cover>
       <LayersMenu className={s.tb} up heatmap={{ on: heatmap, set: setHeatmap }} />
-      <button type="button" className={s.tb} onClick={recentre} title="Re-centre" aria-label="Re-centre"><Ico><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4" /></Ico></button>
+      {/* Reset view: back to the selected chip's pose (or the opening view) on the camera spring. View only: design Undo lives beside Approve. */}
+      <button type="button" className={s.tb} onClick={recentre} title="Reset view" aria-label="Reset view"><Ico><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></Ico></button>
       <button type="button" className={s.tb} aria-pressed={expanded} title="Reasoning" aria-label="Reasoning" onClick={() => { setAuto(false); setExpanded((x) => !x); }}>
         <Ico>{expanded ? <><path d="M1.5 10S5 4 10 4s8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z" /><circle cx="10" cy="10" r="2.5" /></> : <><path d="M1.5 10S5 4 10 4s8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z" /><circle cx="10" cy="10" r="2.5" /><path d="M3 17L17 3" /></>}</Ico>
       </button>
@@ -374,6 +376,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       {why && why.k === WHY_AT[n] && <Why k={why.k} d={res.components[why.k].derivation!} level={why.level} onMore={(lv) => setWhy({ k: why.k, level: lv })} answered={answered} installer={installer} closing={false} ox={0} evKwh={inputs.has_ev ? a?.ev_charge_kwh : null} rules={!!res.rules?.length} />}
     </>
   ) : null;
+  // The Checks figures, moved from the Proposed Design card: each sits behind the i of the card it belongs to.
+  const checksFor = (re: RegExp) => (roofFitKnown(layers?.checks ?? null, inputs.address) ?? []).filter((c) => re.test(c.name)).map((c) => ({ ...c, name: scrub(c.name) ?? c.name }));
+  const pvChecks = checksFor(/roof fit|orient|shad/i), batChecks = checksFor(/battery/i);
   const roofBar = bars[1] && shading ? { ...bars[1], segments: [...bars[1].segments, { name: "lost to shade", value: Math.round(shading.total.loss_kwh_year), unit: "kWh a year", source_tag: "address" as const, citation: shading.source }] } : bars[1];
   const useKwh = (inputs.annual_demand_kwh ?? 0) + (layers?.ev?.annual_kwh ?? 0);
   const sysBody: Record<SystemName, { head: string; body: ReactNode; info: ReactNode }> = {
@@ -386,6 +391,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         {roofBar && <BarView bar={roofBar} bare />}
         <BarView bar={useBar} bare />
         <p>{n2(d.pv_kwp ?? 0)} kWp{(d.pv_kwp ?? 0) <= capKwp ? `, inside the ${capKwp} kWp residential cap` : `, above the ${capKwp} kWp residential cap`}{shade && typeof shade.value === "number" ? `; shade ${n1(shade.value * 100)} %${shade.class ? `, ${shade.class}` : ""}` : ""}.</p>
+        {pvChecks.length > 0 && <Checks checks={pvChecks} />}
         {shading?.source && <p>Shading: {shading.source}</p>}
         {res.roof?.stated_direction_conflict && <p>{res.roof.note ?? "Roof measured from the building model; the stated direction was not found."}</p>}
         {whyBlock(1)}
@@ -399,23 +405,28 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
           {day && roof != null ? <p>On a spring weekday the home uses {n1(day.total)} kWh: {n1(roof)} kWh straight from the roof{fromB ? `, ${n1(fromB)} kWh from the battery` : ""}{grid != null ? ` and ${n1(grid)} kWh from the grid` : ""}.</p> : null}
           {d.battery_kwh && ratio != null ? <p>{n1(d.battery_kwh)} kWh is {ratio < 0.7 ? "below" : ratio > 1.0 ? "above" : "inside"} the usual 0.7 to 1.0 kWh per kWp for {n2(d.pv_kwp ?? 0)} kWp.</p> : !d.battery_kwh ? <p>No battery in this design.</p> : null}
         </>,
-        info: <>{day && <BarView bar={day} />}{whyBlock(2)}</>,
+        info: <>{day && <BarView bar={day} />}{batChecks.length > 0 && <Checks checks={batChecks} />}{whyBlock(2)}</>,
       };
     })(),
     wallbox: (() => {
-      const ch = bars[3], km = seg(ch, /^km\b/i) ?? layers?.ev?.annual_km, kwh = seg(ch, /^energy\b/i) ?? layers?.ev?.annual_kwh, home = seg(ch, /^charged at home/i);
-      const night = ch?.total ?? layers?.ev?.kwh_per_night_typical;
+      // Works with both engine bar shapes: "km a year"/"charged at home" in kWh, or "Driving"/"Charged at home" as a share.
+      const ch = bars[3], segOf = (re: RegExp) => ch?.segments.find((g) => re.test(g.name));
+      const km = segOf(/^km\b|^driving/i)?.value ?? layers?.ev?.annual_km, kwh = segOf(/^energy\b/i)?.value ?? layers?.ev?.annual_kwh;
+      const homeSeg = segOf(/^charged at home/i), homeKwh = homeSeg && /kwh/i.test(homeSeg.unit) ? homeSeg.value : null;
+      const homeShare = homeSeg && !homeKwh && homeSeg.value > 0 && homeSeg.value <= 1 ? homeSeg.value : !homeSeg ? layers?.ev?.home_share ?? null : null;
+      const night = segOf(/typical night/i)?.value ?? (ch && /night/i.test(ch.unit) ? ch.total : null) ?? layers?.ev?.kwh_per_night_typical;
+      const home = homeKwh;
       return {
         head: head5[2] === "None, no EV" ? "No wallbox" : head5[2] === "None" ? "No wallbox" : head5[2],
         body: d.wallbox_kw && km && kwh ? (
-          <p>{n0(km)} km a year takes about {n0(kwh)} kWh{home ? `; ${n0(home)} kWh of it is charged at home` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p>
+          <p>{n0(km)} km a year takes about {n0(kwh)} kWh{home ? `; ${n0(home)} kWh of it is charged at home` : homeShare ? `; ${pc(homeShare)} of it is charged at home` : ""}{night ? `, about ${n1(night)} kWh a night` : ""}.</p>
         ) : <p>{line2[3]}</p>,
         info: d.wallbox_kw || layers?.ev ? <>{ch && <BarView bar={ch} />}{whyBlock(3)}</> : null,
       };
     })(),
     heatpump: (() => {
       // The engine's heat-loss sentence, in product copy: degrees marked, the room-scan clause plain.
-      const loss = plain(bars[4]?.sentence)?.replace(/(-?\d+) C\b/g, "$1 °C").replace(/;\s*[^;]*room scan[^;]*\.$/i, ". A room scan on site refines this.") ?? null;
+      const loss = plain(bars[4]?.sentence)?.replace(/(-?\d+) C\b/g, "$1 °C").replace(/;\s*[^;]*room scan[^;]*\.$/i, ".") ?? null;
       // The x-ray's heat-loss shares, folded into the card as one sentence (same numbers and colours as the tint).
       const env = hasEnv ? model!.envelope! : null;
       const shares = env ? (() => {

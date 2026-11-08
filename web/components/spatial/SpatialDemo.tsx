@@ -453,10 +453,7 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
         {photo.under}
         {!ready && !absent && !layersErr && <>
           <svg className={s.houseSkel} viewBox="0 0 240 160" aria-hidden><defs><linearGradient id="hsk" x1="0" x2="1"><stop offset="0" stopColor="#e3e6ef" /><stop offset="0.5" stopColor="#f3f4f8" /><stop offset="1" stopColor="#e3e6ef" /><animate attributeName="x1" values="-1;1" dur="1.2s" repeatCount="indefinite" /><animate attributeName="x2" values="0;2" dur="1.2s" repeatCount="indefinite" /></linearGradient></defs><path d="M30 84 L120 24 L210 84 V148 H30 Z" fill="url(#hsk)" /></svg>
-          {!homeowner && <div className={s.wait}>Building the 3D model of the house</div>}
         </>}
-        {ready && busy && !homeowner && <div className={s.wait}>Updating for this design</div>}
-        {ready && !glbOk && !glbErr && !homeowner && <div className={s.wait}>Fetching the aerial photo</div>}
         {glbErr && <div className={s.err}>{glbErr}<button type="button" onClick={() => setRetryGlb((x) => x + 1)}>Retry</button></div>}
         {layersErr && <div className={s.err}>{layersErr}<button type="button" onClick={() => setTryN((x) => x + 1)}>Retry</button></div>}
 
@@ -479,6 +476,9 @@ export default function SpatialDemo({ inputs, design, address, layer: ctrl, onLa
             <button type="button" aria-pressed={L === 8 || view === "2d"} onClick={() => setView("2d")}>2D</button>
           </div>
           <LayersMenu className={s.layersBtn} />
+          <button type="button" className={s.compass} title="Reset view" aria-label="Reset view" onClick={() => scene.current?.refit()}>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 7H3V3M3.5 7A7 7 0 1110 17" /></svg>
+          </button>
           {zoomPair}
           <button type="button" className={s.compass} title="Face north" aria-label="Face north" onClick={() => scene.current?.faceNorth()}><div ref={compass} className={s.needle}><i />N</div></button>
         </div>}

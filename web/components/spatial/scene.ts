@@ -858,6 +858,7 @@ export class SpatialScene {
 
   // Back to the stage's pose, or the opening view, on the same spring; the plan resets its pan and zoom.
   refit() {
+    this.spin = null; this.zoom2 = null; this.zoom2V = 0;
     if (this.mode === "2d") { this.setOrtho(this.persp.aspect); return; }
     if (this.home) { this.flyTo(this.home); return; }
     const d = this.fitD, dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
