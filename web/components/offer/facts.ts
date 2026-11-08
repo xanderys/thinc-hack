@@ -25,7 +25,7 @@ export function differs(d: Partial<Design>, ref: Partial<Design> | null): string
   const b = d.battery_kwh ?? 0, rb = ref.battery_kwh ?? 0;
   if (Math.abs(b - rb) >= 0.5) return !b ? "No battery" : !rb ? `+${n1(b)} kWh battery` : b > rb ? `+${n1(b - rb)} kWh battery` : `${n1(rb - b)} kWh less battery`;
   const m = modulesOf(d.pv_kwp) - modulesOf(ref.pv_kwp);
-  if (m) return !d.pv_kwp ? "No solar" : m > 0 ? `${m} more modules` : `${-m} fewer modules`;
+  if (m) { const k = Math.abs(m), u = k === 1 ? "module" : "modules"; return !d.pv_kwp ? "No solar" : m > 0 ? `${k} more ${u}` : `${k} fewer ${u}`; }
   if (!!d.wallbox_kw !== !!ref.wallbox_kw) return d.wallbox_kw ? "Adds a wallbox" : "No wallbox";
   if (!!d.heatpump_kw !== !!ref.heatpump_kw) return d.heatpump_kw ? "Adds a heat pump" : "No heat pump";
   return "Same kit";
@@ -35,7 +35,7 @@ export const breakEvenOf = (e: Economics | null | undefined): number | null =>
   e ? ((e as { break_even_year?: number | null }).break_even_year ?? e.payback_years ?? null) : null;
 
 export type Fact = { label: string; value: string; note?: string };
-// Price, break-even, and the difference from the planners' pick (left out for the pick itself). Same order everywhere.
+// Price, break-even, and the difference from the planners' pick (for the pick itself, none). Same shape everywhere.
 export function variantFacts(e: Economics | null | undefined, d: Partial<Design>, ref: Partial<Design> | null): Fact[] {
   const out: Fact[] = [];
   if (e) {
@@ -43,7 +43,6 @@ export function variantFacts(e: Economics | null | undefined, d: Partial<Design>
     const be = breakEvenOf(e);
     out.push({ label: "Break-even", value: be == null ? "20+ years" : `${n0(be)} years` });
   }
-  const diff = differs(d, ref);
-  if (diff) out.push({ label: "Change", value: diff });
+  out.push({ label: "Change", value: differs(d, ref) ?? "none, the planners' pick" });
   return out;
 }

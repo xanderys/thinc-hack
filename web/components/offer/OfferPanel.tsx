@@ -171,7 +171,6 @@ export default function OfferPanel(p: OfferProps) {
       <Tiles items={tiles} mode={reduce ? "fade" : mode} pending={pending} />
       <KitDiagram kit={{ ...d, modules }} changed={hl.parts} flash={hl.n} />
       <ul className={s.unpriced}>
-        {d.battery_kwh ? <li>Energy management and smart meter: included with the battery</li> : null}
         <li>Backup power: optional</li>
       </ul>
       <div className={s.lines}>

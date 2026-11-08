@@ -11,6 +11,7 @@ import { poseOffset, springStep, type Focus, type Pose } from "./camera";
 import { ShadeLayer } from "./shading";
 import { neighbourEdges, outlineMesh, registerGlb } from "./whiteContext";
 import { Xray } from "./xray";
+import { Systems, type System } from "./systems";
 import { googleGround, sharpen } from "./satGround";
 import type { ShadeAt, Shading } from "@/lib/shading";
 
@@ -151,6 +152,8 @@ export class SpatialScene {
   private shade = new ShadeLayer();
   private ctxLines = new THREE.Group(); // neighbours' footprints on the white ground
   private xray = new Xray({ walls: () => this.wallMesh, box: this.box, planes: () => this.targets.map((t) => t.p), root: this.scene });
+  // Per-system layers (systems.ts); it reads this scene's anchors, kit and sun lazily, so it can be made here.
+  private systems = new Systems(this as unknown as ConstructorParameters<typeof Systems>[0]);
   private ctxOff: (() => void)[] = [];   // the white-context and ground subscriptions of this glb
   private groundOrigin: [number, number, number] | null = null; // wanted satellite ground, applied once the glb is in
   private groundOff: (() => void) | null = null;
@@ -403,6 +406,8 @@ export class SpatialScene {
     this.fit(!this.modelSet); // keep the planner's camera when only the design changes
     this.modelSet = true;
     this.setOrtho(this.persp.aspect);
+    this.systems.rebuild();
+    this.systems.override();
   }
   private modelSet = false;
 
@@ -524,7 +529,19 @@ export class SpatialScene {
 
   setShading(d: Shading | null, on: boolean, at: ShadeAt) { this.shade.set(d, on, at); }
   // Heat pump step: envelope x-ray (xray.ts); null fades it out.
-  setXray(env: Envelope | null): Label[] { return this.xray.set(env); }
+  setXray(env: Envelope | null): Label[] {
+    if (!env && this.systems.sys === "heatpump") return []; // the Heat pump system keeps its x-ray
+    return this.xray.set(env);
+  }
+
+  // One call for the Systems chips: the system's layer on the model and its camera pose; null hands back to layers.
+  setSystem(s: System | null) {
+    this.systems.set(s);
+    if (!s) this.show(this.lastShow);
+  }
+  // The envelope for the Heat pump system's x-ray, kept whatever layer is showing.
+  setEnvelope(env: Envelope | null) { this.systems.setEnvelope(env); }
+  private lastShow: { outlines: boolean; panels: boolean; kit: boolean; sun: boolean; battery: "plain" | "lit" } = { outlines: true, panels: true, kit: false, sun: false, battery: "plain" };
 
   setTint(mode: "off" | "yield" | "sun") {
     this.tintMode = mode;
@@ -557,7 +574,7 @@ export class SpatialScene {
     this.groundOff = googleGround(this.glbRoot, this.renderer, o);
   }
 
-  setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on; }
+  setWallbox(on: boolean) { if (this.wallbox) this.wallbox.visible = on || this.systems.sys === "wallbox"; }
 
   show(o: { outlines: boolean; panels: boolean; kit: boolean; sun: boolean; battery: "plain" | "lit" }) {
     this.outlines.visible = o.outlines;
@@ -566,6 +583,8 @@ export class SpatialScene {
     this.sunGroup.visible = o.sun;
     if (this.batteryBox) (this.batteryBox.material as THREE.MeshLambertMaterial).color.set(o.battery === "lit" ? "#24a148" : "#FAF8F3");
     if (!o.sun) this.setFlows(null);
+    this.lastShow = o;
+    this.systems.override();
   }
 
   // Heat layer: walls tinted per triangle by the W/m2 of the envelope face with the nearest azimuth,
@@ -960,11 +979,13 @@ export class SpatialScene {
       const ang = Math.atan2(b.x - a.x, -(b.y - a.y));
       this.opts.compass.style.transform = `rotate(${ang.toFixed(3)}rad)`;
     }
+    this.systems.frame(dt);
     this.renderer.render(this.scene, this.camera);
   };
 
   dispose() {
     this.alive = false;
+    this.systems.dispose();
     cancelAnimationFrame(this.raf);
     clearInterval(this.wd);
     this.ro.disconnect();
