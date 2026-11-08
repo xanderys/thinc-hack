@@ -13,6 +13,7 @@ import KitDiagram from "./KitDiagram";
 import VariantTabs, { rowsOf, type Row } from "./VariantTabs";
 import InlineOverride, { type LineField } from "./InlineOverride";
 import Approve from "./Approve";
+import { scrub } from "./facts";
 import s from "./offer.module.css";
 
 export type OfferProps = {
@@ -35,7 +36,6 @@ const isRef = (c: Check) => c.level === "reference" || (!c.level && /battery per
 const isInfo = (c: Check) => c.level === "info" || !!c.informational;
 const isFail = (c: Check) => !c.pass && !isRef(c) && !isInfo(c);
 const refOut = (c: Check) => isRef(c) && (c.inside_band != null ? !c.inside_band : !c.pass);
-const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
 
 // Engine offers in Stage's variant shape, so a pick runs through Stage's onVariant like any other.
 function asStage(vs: EngineVariant[], d: Design): StageVariant[] {
@@ -161,17 +161,16 @@ export default function OfferPanel(p: OfferProps) {
     { k: "Break-even", v: breakEven == null ? "20+ years" : `${breakEven} years` },
   ];
 
-  const ticks = (checks ?? []).filter((c) => !isRef(c));
+  const ticks = (checks ?? []).filter((c) => !isRef(c) && scrub(c.name));
   const ref = (checks ?? []).find(isRef);
   const val = (c: Check) => c.value == null ? "" : typeof c.value !== "number" ? String(c.value) : c.unit === "share" ? pc(c.value) : c.unit === "%" ? `${n0(c.value)} %` : `${c.value >= 100 ? n0(c.value) : n2(c.value)}${c.unit && c.unit.length < 8 ? ` ${c.unit}` : ""}`;
-  const refMsg = ref && (ref.message ?? `Battery ${n2(Number(ref.value))} kWh per kWh of daily use: ${refOut(ref) ? "above" : "inside"} Reonic's guide`);
+  const refMsg = ref && (scrub(ref.message) ?? `Battery ${n2(Number(ref.value))} kWh per kWh of daily use`);
 
   return (
     <aside ref={box} className={`${s.panel} ${p.docked ? s.docked : s.under}`} aria-label="Offer" data-cover={p.docked ? "" : undefined}>
       <Tiles items={tiles} mode={reduce ? "fade" : mode} pending={pending} />
       <KitDiagram kit={{ ...d, modules }} changed={hl.parts} flash={hl.n} />
       <ul className={s.unpriced}>
-        {d.battery_kwh ? <li>Energy management and smart meter: included with the battery</li> : null}
         <li>Backup power: optional</li>
       </ul>
       <div className={s.lines}>
@@ -182,15 +181,16 @@ export default function OfferPanel(p: OfferProps) {
       </div>
       <VariantTabs rows={rows} pending={pending || offersPending} onPick={(r) => { if (!r.pick) return; setHand(new Set()); p.onVariant(r.pick); }} />
       {checks && checks.length > 0 && (
-        <div className={s.ticks} data-pending={pending || p.checksFresh === false || undefined}>
+        <details className={`${s.ticks} ${s.checks}`} data-pending={pending || p.checksFresh === false || undefined}>
+          <summary>Checks</summary>
           <ul>
             {ticks.map((c) => {
               const tone = isFail(c) ? "fail" : isInfo(c) ? "info" : "pass";
-              return <li key={c.name} data-tone={tone} title={c.band}><i aria-hidden="true">{tone === "fail" ? "!" : tone === "pass" ? "✓" : "i"}</i>{cap(c.name)} <b>{val(c)}</b></li>;
+              return <li key={c.name} data-tone={tone}><i aria-hidden="true">{tone === "fail" ? "!" : tone === "pass" ? "✓" : "i"}</i>{scrub(c.name)} <b>{val(c)}</b></li>;
             })}
           </ul>
           {refMsg && <p className={refOut(ref!) ? s.refS : s.passS}>{refMsg}</p>}
-        </div>
+        </details>
       )}
       <p className={s.confirm}>Confirm on site: roof condition and shade (estimated from the 3D model), meter and grid connection, battery location</p>
       <Approve leadId={p.leadId} approvedAt={p.approvedAt} onApprove={p.onApprove} stale={!!cause} want={rows.find((r) => r.selected && r.key !== "edit")?.key ?? null} onApproved={setApproved} />
