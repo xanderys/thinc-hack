@@ -25,7 +25,7 @@ type Props = {
   moved: Moved | null; canUndo: boolean; onUndo: () => void;
   approvedAt: string | null; onApprove: () => void;
   overrides: Overrides; setOverride: (f: keyof Design, v: OverrideValue | undefined) => void;
-  bare?: boolean;   // in the open card: locks, Undo and Approve live in the top bar
+  bare?: boolean;   // in the open card: one bar of sentence box, Apply, Undo and Listen; Approve lives with the offer
 };
 
 export default function Refine(p: Props) {
@@ -42,8 +42,17 @@ export default function Refine(p: Props) {
       <div>
         <h3 className="s-h3">Change it in a sentence</h3>
         {p.llm === false && <p className="s-quiet">Sentences are off: no ANTHROPIC_API_KEY in web/.env.local. Change by hand still works.</p>}
-        {form(p.bare ? "s-say" : "s-say desk")}
-        {p.llm !== false && <Listen busy={p.busy} onSentence={async (t) => { setS(t); return p.onSay(t, true, "sentence-apply-listening"); }} />}
+        {p.bare ? (
+          // The open card's bar: sentence box, Apply, Undo, Listen; nothing else.
+          <div className="s-bar">
+            {form("s-say")}
+            <button type="button" className="btn ghost s-undo" onClick={p.onUndo} disabled={!p.canUndo}>Undo</button>
+            {p.llm !== false && <Listen busy={p.busy} onSentence={async (t) => { setS(t); return p.onSay(t, true, "sentence-apply-listening"); }} />}
+          </div>
+        ) : <>
+          {form("s-say desk")}
+          {p.llm !== false && <Listen busy={p.busy} onSentence={async (t) => { setS(t); return p.onSay(t, true, "sentence-apply-listening"); }} />}
+        </>}
         {p.error && <div className="error" role="alert"><span><span className="src">Interpreter said</span>{p.error}</span></div>}
         {(p.chips.length > 0 || p.ovChips.length > 0) && (
           <div className="s-chips">

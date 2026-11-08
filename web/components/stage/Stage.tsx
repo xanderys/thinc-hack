@@ -9,6 +9,7 @@ import Plan, { type Variant } from "@/components/stage/Plan";
 import Chain from "@/components/chain/Chain";
 import Refine, { type Moved } from "@/components/stage/Refine";
 import TopBar, { Decide } from "@/components/stage/TopBar";
+import OpenSkeleton from "@/components/stage/Skeleton";
 import type { RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, InterpretChange, InterpretOverride, InterpretResponse, OverrideValue, Overrides, ReadResponse, RefineResponse, WriteResponse } from "@/lib/api";
 import { call, send } from "@/lib/client";
 import { approveLead } from "@/lib/proposal";
@@ -354,18 +355,28 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setHistory((h) => [...h, { changed, overrides, chips, ovChips }]); cause.current = `Switched to ${v.name}:`; setApprovedAt(null);
     setOverrides(v.overrides);
   }, [changed, overrides, chips, ovChips]);
+  // Desktop: the model toolbar rides just above the docked sentence bar, whatever the bar's height (chips, Listening lines).
+  const openRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = openRef.current, bar = el?.querySelector<HTMLElement>('[class*="chain_say__"]');
+    if (!el || !bar) return;
+    const ro = new ResizeObserver(() => el.style.setProperty("--say-h", `${Math.round(bar.getBoundingClientRect().height)}px`));
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [!!res]); // eslint-disable-line react-hooks/exhaustive-deps
   const flag = res ? pickFlag(res) : null;
 
   if (seed && read) return (
-    <div className="st b-card-in">
+    <div className="st st-open b-card-in" ref={openRef}>
       <TopBar lead={lead} read={read} inputs={inputs} roof={roof} onFact={onFact} setInstaller={setInstaller}
         question={question ?? null} answer={answer} onAnswer={onAnswer} askError={askErr} asking={question === undefined} liveAsking={live?.asking ?? null}
         pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride}
         canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} noDecide />
       {err && <div className="error" role="alert"><span><span className="src">Engine said</span>{err}</span><button className="btn ghost" onClick={() => setRetry((x) => x + 1)}>Retry</button></div>}
       {roof?.pending && <p className="s-roof">Measuring the roof from Bavarian 3D data, about 10 s</p>}
+      {!res && <OpenSkeleton />}
       {res && <Chain res={res} prev={prev} inputs={resIn ?? inputs} pending={pending} cause={resCause} leadId={leadRef.current} variants={variants} onVariant={onVariant} canUndo={history.length > 0} onUndo={onUndo} answered={answer != null} redraft={moved}
-        decide={<Decide pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />}
+        decide={<Decide slim pref={pref} setPref={setPref} res={res} overrides={overrides} setOverride={setOverride} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} />}
         refine={<Refine res={res} llm={llm} busy={sayBusy} error={sayErr} onSay={onSay} chips={chips} ovChips={ovChips} onUnchip={onUnchip}
           moved={moved} canUndo={history.length > 0} onUndo={onUndo} approvedAt={approvedAt} onApprove={onApprove} overrides={overrides} setOverride={setOverride} bare />} />}
     </div>
