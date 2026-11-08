@@ -153,10 +153,10 @@ def physics(homes, base, phys, all_homes, all_designs) -> list:
         gap = p["opt_npv"] - p["npv"]
         tol = max(NPV_TOL_EUR, NPV_TOL_SHARE * abs(p["opt_npv"]))
         case = {"inputs": show(h), "design": d, "optimum": p["opt_design"], "npv_eur": p["npv"], "optimum_npv_eur": p["opt_npv"],
-                "note": f"Optimum NPV EUR {p['opt_npv']:,.0f}, proposal EUR {p['npv']:,.0f}, gap EUR {gap:,.0f}."}
+                "note": f"Optimum NPV €{p['opt_npv']:,.0f}, proposal €{p['npv']:,.0f}, gap €{gap:,.0f}."}
         rows.append((gap <= tol, gap, case))
         beat.append((gap >= -1.0, -gap, case))
-    gap_inv = _inv("Proposal NPV within 10% or EUR 1,000 of the optimum", "optimum gap", rows, "Same catalogue, same simulator, 20-year NPV.")
+    gap_inv = _inv("Proposal NPV within 10% or €1,000 of the optimum", "optimum gap", rows, "Same catalogue, same simulator, 20-year NPV.")
     g = np.array([r[1] for r in rows]) if rows else np.zeros(1)
     gap_inv["distribution_eur"] = {f"p{q}": float(round(np.percentile(g, q), -1)) for q in (10, 25, 50, 75, 90, 99)}
     gap_inv["distribution_eur"]["max"] = float(round(g.max(), -1))

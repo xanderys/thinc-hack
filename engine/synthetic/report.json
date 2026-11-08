@@ -1195,7 +1195,7 @@
    ]
   },
   {
-   "name": "Proposal NPV within 10% or EUR 1,000 of the optimum",
+   "name": "Proposal NPV within 10% or €1,000 of the optimum",
    "group": "optimum gap",
    "description": "Same catalogue, same simulator, 20-year NPV.",
    "n_checked": 8882,
@@ -1230,7 +1230,7 @@
      },
      "npv_eur": 39760.0,
      "optimum_npv_eur": 53190.0,
-     "note": "Optimum NPV EUR 53,190, proposal EUR 39,760, gap EUR 13,430."
+     "note": "Optimum NPV €53,190, proposal €39,760, gap €13,430."
     },
     {
      "inputs": {
@@ -1260,7 +1260,7 @@
      },
      "npv_eur": 27500.0,
      "optimum_npv_eur": 40190.0,
-     "note": "Optimum NPV EUR 40,190, proposal EUR 27,500, gap EUR 12,690."
+     "note": "Optimum NPV €40,190, proposal €27,500, gap €12,690."
     },
     {
      "inputs": {
@@ -1290,7 +1290,7 @@
      },
      "npv_eur": 6500.0,
      "optimum_npv_eur": 18960.0,
-     "note": "Optimum NPV EUR 18,960, proposal EUR 6,500, gap EUR 12,460."
+     "note": "Optimum NPV €18,960, proposal €6,500, gap €12,460."
     },
     {
      "inputs": {
@@ -1320,7 +1320,7 @@
      },
      "npv_eur": 27300.0,
      "optimum_npv_eur": 39240.0,
-     "note": "Optimum NPV EUR 39,240, proposal EUR 27,300, gap EUR 11,940."
+     "note": "Optimum NPV €39,240, proposal €27,300, gap €11,940."
     },
     {
      "inputs": {
@@ -1350,7 +1350,7 @@
      },
      "npv_eur": 24330.0,
      "optimum_npv_eur": 36230.0,
-     "note": "Optimum NPV EUR 36,230, proposal EUR 24,330, gap EUR 11,900."
+     "note": "Optimum NPV €36,230, proposal €24,330, gap €11,900."
     }
    ],
    "distribution_eur": {

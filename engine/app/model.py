@@ -883,7 +883,7 @@ class Engine:
                 if not given:
                     ins.insert(0, {"name": "heating cost", "value": inp["heating_cost_per_year_eur"], "unit": "EUR a year", "source": "lead"})
                     ins.insert(1, {"name": "heat price", "value": 12, "unit": "ct per kWh of heat", "source": "default"})
-                    eq = f"EUR {inp['heating_cost_per_year_eur']:,.0f} / 12 ct = {heat:,.0f} kWh; " + eq
+                    eq = f"€{inp['heating_cost_per_year_eur']:,.0f} / 12 ct = {heat:,.0f} kWh; " + eq
                 ax = round(heat / 2300, 1)
             else:
                 ins = [{"name": "basis", "value": note, "unit": "", "source": "default"}]
@@ -1422,7 +1422,7 @@ def variant_note(d, e, d0, e0) -> str:
     parts = []
     dc = e["capex_eur"] - e0["capex_eur"]
     if abs(dc) >= 50:
-        parts.append(f"EUR {abs(dc):,.0f} {'more' if dc > 0 else 'less'} upfront")
+        parts.append(f"€{abs(dc):,.0f} {'more' if dc > 0 else 'less'} upfront")
     da = round((e["autarky_share"] - e0["autarky_share"]) * 100)
     if da:
         parts.append(f"{abs(da)} point{'s' if abs(da) > 1 else ''} {'more' if da > 0 else 'less'} independence")
