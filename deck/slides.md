@@ -40,9 +40,9 @@ footer: Marquee
 
 <div class="data">258 held-out sales replayed: Visit <b>82%</b>, Call first <b>17%</b>, Decline <b>1%</b></div>
 
-![w:1000](img/board-verdicts.png)
+![h:240](img/board-verdicts.png)
 
-[UNCONFIRMED: Decline shown is Markus Lindner (homeowner declined); Moser, the shed, left off; Xander's pick. Screenshot shows Lindner at 8.1 kWp; the recreated lead f6e838cd85 is 6.3 kWp, so the shot needs retaking]
+[UNCONFIRMED: Decline shown is Markus Lindner (homeowner declined); Moser, the shed, left off; Xander's pick. Screenshot retaken with Lindner f6e838cd85 at 6.3 kWp; the Decline count reads 2 while Moser stays on the board]
 
 [UNCONFIRMED: replay shares, engine/lab/qualification_backtest.md 1186795]
 
@@ -58,7 +58,7 @@ footer: Marquee
 
 <div class="data">roof measured from Bavarian LoD2 data, no site visit<br>offer <b>10.35 kWp</b> (<b>23</b> modules on the real roof), <b>10 kWh</b>, payback <b>10.3 years</b><br>the planners’ design is already the best 20-year value on this roof<br>the car adds an <b>11 kW</b> wallbox: independence <b>76%</b> to <b>60%</b>, payback <b>9.6 years</b></div>
 
-[UNCONFIRMED: final hero numbers. Final set from THINC HACK MASTER drops "Best value", and Best payback (3.6 kWp, 5 kWh, 9.1 y) beats the planners' 10.3 y, so "already the best 20-year value" is now false; EV: planners 9.6 y, 60%; Best payback 9.9/15, 9.4 y, 68%]
+[UNCONFIRMED: final hero numbers. Final set from THINC HACK MASTER drops "Best value", and Best payback (3.6 kWp, 5 kWh, 9.1 y) beats the planners' 10.3 y, so "already the best 20-year value" is now false; EV: planners 9.6 y, 60%; Best payback 9.9/15, 9.4 y, 68%. THINC HACK MASTER recommends: "the planners’ design pays back in 10.3 years; the smallest-payback option is 9.1 years at a third of the independence"]
 
 [UNCONFIRMED: screenshot of the house card opened into the full design, from the live build]
 
