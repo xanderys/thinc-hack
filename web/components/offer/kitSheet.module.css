@@ -1,0 +1,17 @@
+/* Parts list like a building-instruction sheet: large quantity, the part, its one spec. Hairline rules only. */
+.sheet { display: grid; gap: 0; }
+.rows { margin: 0; padding: 0; list-style: none; display: grid; }
+.row { position: relative; display: grid; grid-template-columns: 52px 36px minmax(0, 1fr); align-items: center; column-gap: 10px; min-height: 48px; padding: 4px 0; border-bottom: 1px solid var(--rule); }
+.qty { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; text-align: right; color: var(--ink); line-height: 1; }
+.icon { width: 36px; height: 36px; display: block; }
+.label { min-width: 0; font-size: 13.5px; color: var(--ink); }
+/* The planner's chooser inside a row: no glyph indent, the menu wraps under the label. */
+.label button[aria-expanded] { padding-left: 6px; margin-left: -6px; }
+.label [role="menu"] { padding-left: 0; }
+.ring { position: absolute; inset: 0 -6px; border-radius: 8px; border: 2px solid var(--accent); pointer-events: none; animation: ring 900ms linear(0, 0.0871, 0.2566, 0.4317, 0.5826, 0.7019, 0.7913, 0.8562, 0.9021, 0.934, 0.9559, 0.9707, 0.9807, 0.9873, 0.9917, 0.9946, 0.9965, 0.9977, 0.9985, 0.9991, 0.9994, 0.9996, 1) both; }
+@keyframes ring { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
+.total { margin: 0; display: flex; align-items: baseline; gap: 6px; padding: 10px 0 2px; font-size: 13.5px; }
+.total span { flex: 1; color: var(--ink-2); }
+.total b { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+.total em { font-style: normal; font-size: 11.5px; color: var(--ink-3); }
+@media (prefers-reduced-motion: reduce) { .ring { animation: none; opacity: 0; } }

@@ -13,7 +13,7 @@ export default function InlineOverride({ field, text, unit, sizes, current, set,
   field: LineField; text: string; unit: string; sizes: number[]; current: number | null;
   set: OverrideValue | undefined;   // what the planner chose here by hand (lock and "set by you")
   fixed: boolean;                   // any override on this field, a variant's included
-  canNone: boolean; glyph: string;
+  canNone: boolean; glyph?: string;   // omitted inside the kit sheet, where the row already shows the part
   onChoose: (f: LineField, v: OverrideValue | undefined) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -31,7 +31,7 @@ export default function InlineOverride({ field, text, unit, sizes, current, set,
   return (
     <div className={s.line} ref={ref} data-open={open || undefined}>
       <button type="button" className={s.lineBtn} aria-expanded={open} onClick={() => setOpen((x) => !x)}>
-        <Glyph k={glyph} size={15} />
+        {glyph && <Glyph k={glyph} size={15} />}
         <span className={s.lineText}>{text}</span>
         {locked && <span className={s.set}><Glyph k="lock" size={12} />set by you</span>}
       </button>
