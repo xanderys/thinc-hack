@@ -20,7 +20,7 @@ const kitJs = ts.transpileModule(fs.readFileSync(path.join(web, "components/spat
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 
-const page = `<!doctype html><script type="importmap">{"imports":{"three":"/three.module.js"}}</script>
+const page = `<!doctype html><script type="importmap">{"imports":{"three":"/three.module.js","three/examples/jsm/":"/jsm/"}}</script>
 <script type="module">
 import * as THREE from "three";
 import * as K from "/kit.js";
@@ -51,6 +51,9 @@ function shot(make, frameObj) {
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
   const obj = make();
   obj.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  // Stand every part on the ground: the wallbox's cable loop hangs below the unit's base.
+  const lift = (o) => { o.updateMatrixWorld(true); o.position.y -= new THREE.Box3().setFromObject(o).min.y; o.updateMatrixWorld(true); };
+  lift(obj); if (frameObj) lift(frameObj);
   scene.add(obj);
   // Frame: the largest variant of this part plus its shadow on the ground, squared, centred, a little air.
   const fo = frameObj ?? obj;
@@ -95,7 +98,13 @@ const files = {
   "/three.module.js": ["text/javascript", fs.readFileSync(path.join(web, "node_modules/three/build/three.module.js"))],
   "/three.core.js": ["text/javascript", fs.readFileSync(path.join(web, "node_modules/three/build/three.core.js"))],
 };
+const jsm = path.join(web, "node_modules/three/examples/jsm");
 const server = http.createServer((q, s) => {
+  if (q.url.startsWith("/jsm/")) {
+    const f = path.join(jsm, path.normalize(q.url.slice(5)));
+    if (!f.startsWith(jsm) || !fs.existsSync(f)) { s.writeHead(404); s.end(); return; }
+    s.writeHead(200, { "content-type": "text/javascript" }); s.end(fs.readFileSync(f)); return;
+  }
   const f = files[q.url];
   if (!f) { s.writeHead(404); s.end(); return; }
   s.writeHead(200, { "content-type": f[0] }); s.end(f[1]);
