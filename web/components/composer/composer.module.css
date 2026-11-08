@@ -30,3 +30,4 @@
 .newcard .b-skel + .b-skel { margin-top: 8px; }
 
 @media (prefers-reduced-motion: reduce) { .dock { transition: opacity 200ms linear; transform: translateX(-50%) !important; } }
+.field:focus, .field:focus-visible { outline: none !important; box-shadow: none !important; }
