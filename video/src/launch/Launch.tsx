@@ -35,7 +35,6 @@ import {
 
 const BLUE = "#0D1BFE";
 const GREY = "#4A4C55";
-const GREY_2 = "#8A8B92";
 const HAIR = "rgb(10 12 20 / .14)";
 
 // Springs with no bounce, about 300 ms.
@@ -190,15 +189,17 @@ const Intro: React.FC<{ p: LaunchProps }> = ({ p }) => {
   const h = p.hologram;
   const end = h.start + h.len;
   // Slow push into the hologram, then the room gives way to paper.
-  const push = interpolate(t, [end - 2.8, end + 0.3], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
+  const push = interpolate(t, [h.pushStart, end + 0.3], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
   const paper = interpolate(t, [end - 0.7, end + 0.2], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.quad) });
   const scale = 1 + 0.75 * push;
   return (
     <AbsoluteFill>
       <AbsoluteFill style={{ opacity: 1 - paper, transform: `scale(${scale})`, transformOrigin: `${h.focusX * 100}% ${h.focusY * 100}%` }}>
-        <Sequence durationInFrames={sec(p.introRawEnd)}>
-          <OffthreadVideo src={staticFile(p.intro)} muted style={{ width: W, height: H, objectFit: "cover" }} />
-        </Sequence>
+        {p.introRawEnd > 0 ? (
+          <Sequence durationInFrames={sec(p.introRawEnd)}>
+            <OffthreadVideo src={staticFile(p.intro)} muted style={{ width: W, height: H, objectFit: "cover" }} />
+          </Sequence>
+        ) : null}
         <Sequence from={sec(h.start)} durationInFrames={sec(h.len)}>
           <OffthreadVideo src={staticFile(h.src)} trimBefore={Math.round(h.from * FPS)} playbackRate={h.rate} muted style={{ width: W, height: H, objectFit: "cover" }} />
         </Sequence>
@@ -217,11 +218,10 @@ const CloseCard: React.FC = () => {
   };
   return (
     <AbsoluteFill style={{ background: PAPER, opacity: bg, padding: "0 90px", justifyContent: "center" }}>
-      <div style={{ ...item(0), fontFamily: SANS, fontWeight: 500, fontSize: 58, lineHeight: 1.2, color: INK, maxWidth: 860 }}>{CLOSE.line}</div>
-      <div style={{ height: 2, background: HAIR, margin: "64px 0 56px", ...item(1) }} />
-      <div style={{ ...item(1), fontFamily: SERIF, fontSize: 190, lineHeight: 1, color: INK }}>{CLOSE.name}</div>
-      <div style={{ ...item(2), fontFamily: MONO, fontSize: 38, color: BLUE, marginTop: 30 }}>{CLOSE.url}</div>
-      <div style={{ ...item(3), fontFamily: SANS, fontSize: 38, color: GREY_2, marginTop: 70 }}>{CLOSE.team}</div>
+      <div style={{ ...item(0), fontFamily: SERIF, fontSize: 210, lineHeight: 1, color: INK }}>{CLOSE.name}</div>
+      <div style={{ ...item(1), fontFamily: MONO, fontSize: 40, color: BLUE, marginTop: 34 }}>{CLOSE.url}</div>
+      <div style={{ height: 2, background: HAIR, margin: "72px 0 40px", ...item(2) }} />
+      <div style={{ ...item(2), fontFamily: SANS, fontSize: 40, color: GREY, marginTop: 0 }}>{CLOSE.team}</div>
     </AbsoluteFill>
   );
 };
@@ -265,9 +265,11 @@ export const Launch: React.FC<LaunchProps> = (p) => {
         <CloseCard />
       </Sequence>
 
+      {p.roomSound ? (
       <Sequence durationInFrames={sec(introEnd + 0.5)} name="room sound">
-        <Audio src={staticFile(p.intro)} volume={(f) => interpolate(f, [0, sec(introEnd - 1), sec(introEnd + 0.3)], [0.6, 0.6, 0], { extrapolateRight: "clamp" })} />
+        <Audio src={staticFile(p.roomSound.src)} trimBefore={Math.round(p.roomSound.from * FPS)} volume={(f) => interpolate(f, [0, sec(introEnd - 1), sec(introEnd + 0.3)], [0.6, 0.6, 0], { extrapolateRight: "clamp" })} />
       </Sequence>
+      ) : null}
       {p.musicSrc ? <Audio src={staticFile(p.musicSrc)} volume={p.musicVolume} /> : null}
       {p.voSrc ? <Audio src={staticFile(p.voSrc)} /> : null}
     </AbsoluteFill>

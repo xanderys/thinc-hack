@@ -21,11 +21,13 @@ export type Hologram = {
   rate: number; // playback rate, so the take fills `len`
   focusX: number; // push-in focus, 0 to 1 of the frame
   focusY: number;
+  pushStart: number; // film seconds where the push into the house begins
 };
 
 export type LaunchProps = {
-  intro: string; // raw room footage under public/
-  introRawEnd: number; // where the hologram take takes over
+  intro: string; // raw room footage under public/, shown before the hologram take
+  introRawEnd: number; // where the hologram take takes over (0: the take is the whole intro)
+  roomSound: { src: string; from: number } | null; // ambient sound under the intro
   hologram: Hologram;
   musicSrc: string | null; // path under public/, plays from frame 0; the file carries its own fade-out
   musicVolume: number; // 0 to 1, lower it to duck under the VO
@@ -34,15 +36,18 @@ export type LaunchProps = {
 
 export const defaultLaunchProps: LaunchProps = {
   intro: "footage/zy.mp4",
-  introRawEnd: 3.3,
+  introRawEnd: 0,
+  roomSound: { src: "footage/zy.mp4", from: 0.3 },
+  // Take 2 covers the whole intro; a take 3 with the same timing swaps in by path.
   hologram: {
-    src: "capture/holo-take1.mp4",
+    src: "capture/holo-take2.mp4",
     from: 0,
-    start: 3.3,
-    len: 7.2,
-    rate: 7.04 / 7.2,
-    focusX: 0.36,
-    focusY: 0.4,
+    start: 0,
+    len: 10.04,
+    rate: 1,
+    focusX: 0.32,
+    focusY: 0.72,
+    pushStart: 8.5,
   },
   musicSrc: "music/moon-cut.mp3",
   musicVolume: 1,
@@ -136,23 +141,23 @@ export const SHOTS: Shot[] = [
       { t: 2.0, x: 215, y: 480, z: 1.0 },
       { t: 3.2, x: 200, y: 650, z: 1.12 },
     ],
-    masks: [{ x: 40, y: 575.5, w: 19, h: 18, color: "#ffffff" }],
   },
   {
     id: "battery", from: 44, to: 48.5, still: "beat05-still-battery.png", enter: "fade",
     cam: [
-      { t: 0, x: 215, y: 300, z: 1.0 },
-      { t: 1.0, x: 215, y: 330, z: 1.1 },
+      // The capture cursor sits on the map at y 283 to 305: keep it out of frame.
+      { t: 0, x: 215, y: 580, z: 1.0 },
+      { t: 1.0, x: 215, y: 570, z: 1.1 },
     ],
-    taps: [{ t: 0.15, x: 226, y: 390 }],
+    taps: [{ t: 0.15, x: 188, y: 406 }],
   },
   {
     id: "wallbox", from: 48.5, to: 53.5, still: "beat05-still-wallbox.png", enter: "fade",
     cam: [
-      { t: 0, x: 215, y: 470, z: 1.0 },
-      { t: 1.0, x: 215, y: 500, z: 1.1 },
+      { t: 0, x: 215, y: 580, z: 1.0 },
+      { t: 1.0, x: 215, y: 560, z: 1.1 },
     ],
-    taps: [{ t: 0.15, x: 316, y: 342 }],
+    taps: [{ t: 0.15, x: 250, y: 358 }],
   },
   {
     id: "heatpump", from: 53.5, to: 58, still: "beat05-still-heatpump-390.png", cssW: 390, enter: "fade",
@@ -220,7 +225,7 @@ export const SHOTS: Shot[] = [
   },
   {
     id: "signed-home", from: 91.5, to: 94.3, still: "beat09-still-signed.png", enter: "fade", cam: [],
-    crops: [{ y: 712, h: 130, top: 480 }],
+    crops: [{ y: 712, h: 122, top: 480 }],
   },
   {
     id: "signed-planner", from: 94.3, to: 97, still: "beat09b-still-signed-kit.png", enter: "slide", cam: [],
@@ -241,8 +246,8 @@ export const SHOTS: Shot[] = [
   {
     id: "heldout", from: 106.2, to: 113, still: "beat10-still-heldout.png", enter: "slide",
     cam: [
-      { t: 0, x: 215, y: 330, z: 1.0 },
-      { t: 6.8, x: 215, y: 300, z: 1.08 },
+      { t: 0, x: 215, y: 280, z: 1.0 },
+      { t: 6.8, x: 215, y: 275, z: 1.08 },
     ],
   },
 ];
@@ -272,7 +277,7 @@ export const CAPTIONS: Caption[] = [
   { from: 87.7, to: 91.4, text: "The homeowner sees that design, as an estimate, and signs." },
   { from: 91.7, to: 94.2, text: "Enquiry to signature: 2 min 19 s." },
   { from: 94.5, to: 96.8, text: "The planner sees it Signed." },
-  { from: 97.3, to: 102.3, text: "Then the check: 633 signed homes the rules never saw, scored once." },
+  { from: 97.3, to: 102.3, text: "Then the check: 633 sealed signed homes the rules never saw, scored once." },
   { from: 102.6, to: 108.6, text: "All four parts within tolerance at once: Marquee's draft 18.6 %, the textbook rule 6.8 %." },
   { from: 109.0, to: 112.6, text: "One held-out home: three parts within, solar missed." },
 ];
@@ -282,11 +287,12 @@ export type Pop = { from: number; to: number; value: string; label: string };
 export const POPS: Pop[] = [
   { from: 21.6, to: 24.4, value: "10.35 kWp", label: "fits the roof" },
   { from: 34.2, to: 37.0, value: "0.6 %", label: "lost to shade, 59 kWh a year" },
+  { from: 40.6, to: 43.4, value: "23 modules", label: "10.35 kWp, her use plus the car" },
   { from: 44.6, to: 47.4, value: "10 kWh", label: "battery" },
   { from: 49.3, to: 52.1, value: "11 kW", label: "wallbox, 12,000 km a year" },
-  { from: 59.8, to: 62.6, value: "€15,820", label: "estimate, break-even 10 years" },
-  { from: 78.6, to: 81.2, value: "€11,050", label: "was €9,470" },
-  { from: 81.3, to: 83.9, value: "85 %", label: "autarky, was 78 %" },
+  { from: 59.8, to: 62.6, value: "€15,820", label: "estimate, autarky 64 %, break-even 10 years" },
+  { from: 78.6, to: 81.2, value: "€11,050", label: "estimate, was €9,470" },
+  { from: 81.3, to: 83.9, value: "85 %", label: "autarky, was 78 %. Break-even 13 years, was 12" },
   { from: 92.0, to: 94.3, value: "2 min 19 s", label: "enquiry to signature, this run" },
   { from: 98.4, to: 101.2, value: "633", label: "sealed held-out signed homes" },
   { from: 104.6, to: 107.4, value: "18.6 %", label: "Marquee draft, all four parts within. Textbook rule 6.8 %" },
@@ -294,7 +300,6 @@ export const POPS: Pop[] = [
 
 export const CLOSE_FROM = 113;
 export const CLOSE = {
-  line: "Offers go out faster, and more of them get signed.",
   name: "Marquee",
   url: "marquee-reonic.vercel.app",
   team: "Xander, Zi Yuan, Jamon",
