@@ -612,7 +612,7 @@ export default function Chain({ res: res0, prev, inputs, leadId, pending = null,
       body: <SharedBuilding roof={sh.roof} balcony={sh.balcony} part="panels" />, info: line(SHARED_LINES.model) };
     sysBody.battery = { head: <Head main="No battery" />, label: "No battery", body: line(comp("battery")?.none_reason ?? SHARED_LINES.battery), info: null };
     sysBody.heatpump = { head: <Head main="No heat pump" />, label: "No heat pump", body: line(comp("heatpump")?.none_reason ?? SHARED_LINES.heatpump), info: null };
-    sysBody.wallbox = wbKw ? { head: <Head main={`Wallbox ${n1(wbKw)} kW`} />, label: `${n1(wbKw)} kW wallbox`, body: line(comp("wallbox")?.note ?? SHARED_LINES.wallbox), info: null }
+    sysBody.wallbox = wbKw ? { head: <Head main={`Wallbox ${n1(wbKw)} kW`} />, label: `${n1(wbKw)} kW wallbox`, body: line(SHARED_LINES.wallbox), info: null }
       : { head: <Head main="No wallbox" />, label: "No wallbox", body: line(SHARED_LINES.wallbox), info: null };
   }
   const cardNow = sysNow ? sysBody[sysNow] : null;
