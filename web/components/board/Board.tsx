@@ -9,7 +9,6 @@ import { HERO_LEAD } from "@/lib/demo";
 import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Live, Seed } from "@/components/stage/Stage";
 import { LEAD_LIVE, whatsappOrigin } from "@/lib/whatsapp";
-import Agent from "@/components/agent/Agent";   // wraps the composer field (ComposerField) with the agent card
 import AddSheet from "./AddSheet";
 import HousePhoto from "./HousePhoto";
 import ModelThumb from "./ModelThumb";
@@ -428,7 +427,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
       {adding && <AddSheet onClose={() => setAdding(false)} sample={HERO_LEAD} voice={VOICE}
         onCreated={(id) => { setAdding(false); setTick((t) => t + 1); open(id); }} />}
       {/* composer mount */}
-      {/* agent mount */}<Agent />
+      {/* the copilot shell (app layout) carries the composer and the agent card */}
     </div>
   );
 }

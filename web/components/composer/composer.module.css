@@ -1,4 +1,4 @@
-.dock { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 50%; min-width: 520px; z-index: 40; padding: 8px 0 calc(12px + env(safe-area-inset-bottom)); background: var(--paper); }
+.dock { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%) translate(var(--cs-tx, 0px), var(--cs-ty, 0px)) scale(var(--cs-tsx, 1), var(--cs-tsy, 1)); transform-origin: 100% 100%; transition: transform 767ms var(--spring-smooth-500), opacity 250ms var(--spring-snappy-350); width: 50%; min-width: 520px; z-index: 40; padding: 8px 0 calc(12px + var(--line-h, 0px) + env(safe-area-inset-bottom)); background: var(--paper); }
 @media (max-width: 900px) { .dock { width: 100%; min-width: 0; padding-inline: 12px; box-sizing: border-box; } }
 .line { min-height: 22px; padding: 0 6px 6px; font-size: 14px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .line > span { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -29,3 +29,6 @@
 .newcard h3 { margin: 0; font-size: 20px; }
 .newcard p { margin: 4px 0 12px; color: var(--ink-2); font-size: 14px; }
 .newcard .b-skel + .b-skel { margin-top: 8px; }
+
+@media (prefers-reduced-motion: reduce) { .dock { transition: opacity 200ms linear; transform: translateX(-50%) !important; } }
+.field:focus, .field:focus-visible { outline: none !important; box-shadow: none !important; }
