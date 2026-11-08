@@ -50,10 +50,16 @@ const ROWS: { key: Variant["key"]; name: string }[] = [
   { key: "expert", name: "Planners' pick" }, { key: "independence", name: "Most independence" },
   { key: "payback", name: "Best payback" }, { key: "upfront", name: "Lowest upfront cost" },
 ];
-// The other offers, for the installer to talk through; the proposed one is the page itself.
-function rowsOf(variants: Variant[], key: Key) {
-  return ROWS.flatMap((r) => { const v = variants.find((x) => x.key === r.key); return v && r.key !== key ? [{ ...r, v }] : []; });
+// Every offer in the engine's order, the proposed one included and none marked, so the choice cannot be worked out.
+function rowsOf(variants: Variant[]) {
+  return variants.flatMap((v) => { const r = ROWS.find((x) => x.key === v.key); return r ? [{ ...r, v }] : []; });
 }
+// Sizes, price and break-even only: a "change against the proposal" line would mark the proposed row.
+const rowFacts = (v: Variant) => [
+  { label: "Solar", value: v.design.pv_kwp ? `${n2(v.design.pv_kwp)} kWp` : "none" },
+  { label: "Battery", value: v.design.battery_kwh ? `${n2(v.design.battery_kwh)} kWh` : "none" },
+  ...variantFacts(v.economics, v.design, null).filter((f) => f.label !== "Change"),
+];
 
 type Props = {
   lead: Lead; brand: string;
@@ -62,7 +68,7 @@ type Props = {
 };
 
 export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
-  const { key, design, economics: e } = offered(lead);
+  const { design, economics: e } = offered(lead);
   if (!design || !e) return <ProposalSkeleton />;   // a lead whose design is not in yet
   const variants = lead.draft.variants ?? [];
   const address = lead.address_or_postcode ?? "";
@@ -74,7 +80,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
   const yieldKwh = e.annual?.pv_yield_kwh;
   const be = e.break_even_year !== undefined ? e.break_even_year : e.payback_years == null ? null : Math.ceil(e.payback_years);
   const name = lead.customer_name?.trim();
-  const alts = rowsOf(variants, key);
+  const alts = rowsOf(variants);
   const own = e.annual ? Math.max(0, e.annual.load_kwh - e.annual.grid_import_kwh) : null;
 
   // The homeowner sees the installer and a neutral state only: never variant names or which one the planner chose.
@@ -118,7 +124,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
                 {alts.map(({ key: k, name: label, v }) => (
                   <li key={k}>
                     <span className="pp-vname">{label}</span>
-                    <Facts className="pp-facts" items={variantFacts(v.economics, v.design, design)} />
+                    <Facts className="pp-facts" items={rowFacts(v)} />
                   </li>
                 ))}
               </ul>
