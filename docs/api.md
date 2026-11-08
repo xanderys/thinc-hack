@@ -1,4 +1,4 @@
-# Engine API contract (v2.17)
+# Engine API contract (v2.19)
 
 Base URL: `ENGINE_URL` (local `http://localhost:8000`, demo `https://xanders-mac-mini.tail3f074b.ts.net:8443`). JSON in and out. All sizes in kWp, kW, kWh. Demand in kWh per year. Money in EUR. The web app never computes a design itself.
 
@@ -286,3 +286,11 @@ v2.14 additions (engine, restart C: heat loss on the heated rooms)
 - `ENGINE_AUTOPILOT_NIGHTLY=1` enables a nightly run at 04:30 Europe/Berlin; off by default.
 - Sabine Wagner (ed63af6035) is unpinned and `test: true`; the pinned demo set is Huber, Lindner, Moser.
 - Web only: `POST /api/interpret` gains `mode: "composer"` → `{name?, address?, postcode?, num_inhabitants?, heating_type?, heating_stated?, has_ev?, ev_planned?, annual_demand_kwh?, phone?, note?}`; the composer then creates the lead (`test: true`) and runs the intake step with `source: "email" | "voice" | "planner"`.
+
+## v2.18 (engine 67705a4 to b6b92f7, additive): typical day per component
+- `GET /api/leads/{id}/day?day=summer|winter&battery_kwh=&wallbox_kw=&heatpump_kw=` (secret) → `{day, date, hours: 24, solar_kwh[24], load_kwh[24], sunrise_h, sunset_h, lead_id, version, battery: {kwh, soc[24], charge_kwh[24], discharge_kwh[24], hours_after_sunset_covered, self_sufficiency_share, ladder, by_size}, wallbox: {kw, ev_kwh_year, charging_kwh[24], solar_share_of_charging (yearly), full_charge_hours, ladder, by_size, assumptions, solar_charging?: {charging_kwh[24], solar_share_of_charging}} | null, heatpump: {kw, heat_demand_kwh[24], outdoor_temp_c[24], heat_load_kw (envelope upper bound), heating_kwh_year, heating_source, electricity_kwh_year, cop, cost_eur_year, boiler_cost_eur_year, full_load_hours, heat_price_ct_kwh?, ladder, by_size: {"<kw>": {electricity_kwh_year, cost_eur_year, covers_heat_load, heat_covered_share, bivalent_temp_c | null}}} | null}`. Summer is 1 June, winter the coldest week's median day, from the same simulation the economics use; cached per lead version, day and sizes. The car charges the same kWh daily from 18:00; `solar_charging` is the midday alternative. No CO2 factor exists in the model. The heat pump price is one sourced whole-job figure for every size.
+- `GET /api/roof/shading`: `modules[].hourly[12][24]` is a continuous shade fraction (3 × 3 points per module, 3 sun positions per hour).
+- `POST /api/leads/{id}/call/end` (secret, idempotent) moves `in_call` to draft and redesigns; a sweep ends any call silent for 3 minutes. Addresses of the form "Street N 80331" are normalised before lookup.
+
+## v2.19 (engine, additive): blockers
+- `GET /api/leads/{id}` adds `blockers: {field, label, state: "missing" | "estimated", moves: "heat pump" | "battery" | "wallbox" | "PV size" | "price", delta_eur, delta_text, asked_at?, answered_at?}[]`, ranked by |delta_eur|, computed in the background from the next-question ranking (the first read of a new version may return the last list or []). `asked_at` comes from a real WhatsApp round only, never a dry one.
