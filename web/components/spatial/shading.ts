@@ -9,8 +9,8 @@ const toV = ([x, y, z]: V3) => new THREE.Vector3(x, z, -y);
 const NARROW = 520;   // px: at phone width the % shows on tap only
 const MIN_PX = 44;    // a module narrower than this on screen gets no %
 // Inline, so they win over the scene's boxed label style: plain figures on the drawing, like the plan's lengths.
-const PCT_CSS = "position:absolute;left:0;top:0;padding:0;border:0;background:none;box-shadow:none;font:600 10px/1 var(--font-mono),monospace;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.55);white-space:nowrap;";
-const EDGE_CSS = "position:absolute;left:0;top:0;padding:1px 4px;border:0;border-radius:4px;background:rgba(255,255,255,.88);box-shadow:none;font:500 10.5px/1.2 var(--font-mono),monospace;color:#0A0C14;white-space:nowrap;";
+const PCT_CSS = "position:absolute;left:0;top:0;padding:0;border:0;background:none;box-shadow:none;font:600 10px/1 var(--font-sans),sans-serif;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.55);white-space:nowrap;";
+const EDGE_CSS = "position:absolute;left:0;top:0;padding:1px 4px;border:0;border-radius:4px;background:rgba(255,255,255,.88);box-shadow:none;font:500 10.5px/1.2 var(--font-sans),sans-serif;font-variant-numeric:tabular-nums;color:#0A0C14;white-space:nowrap;";
 
 type Mod = { key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; centre: THREE.Vector3; a: THREE.Vector3; b: THREE.Vector3; el: HTMLDivElement; has?: boolean };
 type Edge = { at: THREE.Vector3; el: HTMLDivElement; len: number; w?: number; h?: number };

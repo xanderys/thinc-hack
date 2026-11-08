@@ -9,12 +9,14 @@ Every number here is an estimate until the site visit, and the card says so.
 One pure function, `qualify(lead, design, roof)` in `web/lib/qualify.ts`, over what the web already has: the lead's facts and status, the engine's draft (design and economics) and the roof lookup for the address (`GET /api/roof`). No model, no LLM. Rules run in this order and the first that fires decides.
 
 1. **Decline** when the homeowner declined the offer.
-2. **Call first** when the building is multi-unit (a flat in a block): "Call first: is this a house or a flat? Shared roof, single-family design does not apply." Multi-unit means Zensus 2022 shows 3 or more dwellings in the building, or the building's floor (footprint times storeys) is far larger than the floor area the lead states (`isMultiUnit` in `web/lib/building.ts`).
-3. **Decline** when the measured roof cannot carry a system: every face points north (within 60 degrees of north and steeper than 10 degrees), or the usable roof fits under 3 kWp (the engine's `max_kwp`, which already leaves north faces out). The sentence names the reason ("Decline: the roof fits only 2.4 kWp, under 3 kWp.").
-4. **Call first** when the roof is not measured: no street address ("Call first: roof not measured, ask the address."), the 3D lookup is still running ("roof being measured"), or the address finds no building.
+2. **Call first** when the building is multi-unit (a flat in a block): "One call first: is this a house or a flat? A shared roof needs a different design." Multi-unit means Zensus 2022 shows 3 or more dwellings in the building, a footprint over 300 m², a building 14 m or taller, or a building floor (footprint times storeys) far larger than the household's floor area (`isMultiUnit` in `web/lib/building.ts`).
+3. **Decline** when the measured roof cannot carry a system: every face points north (within 60 degrees of north and steeper than 10 degrees), or the usable roof fits under 3 kWp (the engine's `max_kwp`, which already leaves north faces out). The sentence quotes the laid-out design, which the engine caps at the modules the roof layout places ("Not worth a visit: the roof fits only one module, 0.45 kWp."); the area maximum only when there is no design.
+4. **Call first** when the roof is not measured: no street address ("One call first: the roof is not measured, ask for the address."), the 3D lookup is still running, or the address finds no building.
 5. **Decline** when nothing fits or the draft does not pay back within 20 years.
-6. **Call first** when one more fact would change the design: annual use is the 4,500 kWh default, or the heating type is unknown while a heating bill is given.
-7. **Visit** otherwise: "Visit: 10.35 kWp fits, payback 10 years, 7 of 9 facts stated."
+6. **Call first** when one more fact would change the design: annual use is the 4,500 kWh default ("One call first: annual use is the default, ask for the bill."), or the heating type is unknown while a heating bill is given.
+7. **Priority** otherwise: "Worth a visit: the roof fits 10.35 kWp and pays back in 10 years. Expected offer about €14,600."
+
+A homeowner's decline reads "Declined by the homeowner on 8 Nov." with the date of the decision. The card's header line is the verdict chip and that one sentence; the facts count ("7 of 9 facts stated") is the chip's tooltip.
 
 Nine facts are counted as stated or not: address, annual use, people, floor area, build year, heating type, heating bill, electric car, preference. A fact the engine filled from the address (floor area, build year from Zensus) counts as estimated, not stated. The roof is listed as measured or estimated beside them and never counted.
 
@@ -22,7 +24,7 @@ The card also carries:
 - **Expected offer value**: the draft's investment rounded to 100 EUR, labelled "estimate"; "No offer" on Decline.
 - **Confidence**: "7 of 9 facts stated, roof measured from the address, consumption from the bill".
 - **After a call**: Rina's summary line on the planner's card carries the verdict and the expected value.
-- **Board**: grouped Visit, Call first, Decline, a live call first in its group. A card shows "Checking" until its roof answers; the last verdict per lead is kept for the session so a reopen does not flicker.
+- **Board**: grouped Priority, Call first, Decline, a live call first in its group. A card shows "Checking" until its roof answers; the last verdict per lead is kept for the session so a reopen does not flicker.
 - **Confirm on site**: roof condition and shade (estimate from the surface model), meter and grid connection, and the location of each device the draft includes (battery, heat pump, wallbox).
 
 The engine stays frozen tonight, so the rule lives in the web. Porting it to the engine after the hackathon is an issue.

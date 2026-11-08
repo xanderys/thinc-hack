@@ -52,13 +52,13 @@ export function useRoofs(addresses: (string | null | undefined)[]): Record<strin
 }
 
 // The last verdict per lead, so a card reopened in the same session shows it at once instead of Checking.
-type Kept = Pick<Qualification, "verdict" | "sentence" | "expected_offer_eur" | "confidence_line">;
+type Kept = Pick<Qualification, "verdict" | "sentence" | "expected_offer_eur" | "confidence_line"> & { reason?: string };
 export function recallVerdict(id: string): Kept | null {
   try { return JSON.parse(sessionStorage.getItem(`marquee.verdict.${id}`) ?? "null"); } catch { return null; }
 }
 export function keepVerdict(id: string, q: Kept) {
   try {
-    const was = sessionStorage.getItem(`marquee.verdict.${id}`), now = JSON.stringify({ verdict: q.verdict, sentence: q.sentence, expected_offer_eur: q.expected_offer_eur, confidence_line: q.confidence_line });
+    const was = sessionStorage.getItem(`marquee.verdict.${id}`), now = JSON.stringify({ verdict: q.verdict, sentence: q.sentence, reason: q.reason, expected_offer_eur: q.expected_offer_eur, confidence_line: q.confidence_line });
     if (was !== now) sessionStorage.setItem(`marquee.verdict.${id}`, now);
   } catch { /* storage blocked: the verdict is computed again */ }
 }

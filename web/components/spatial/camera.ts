@@ -17,9 +17,10 @@ export const POSES: Record<StageView, Pose> = {
   storage: { focus: "battery", az: 200, el: 48, dist: 0.72 },     // pull back and tilt so the battery block reads
   extras: { focus: "wallbox", az: 120, el: 44, dist: 0.72 },     // the wallbox at the drive
   heatpump: { focus: "west", az: 250, el: 40, dist: 1.05 },       // the heat pump wall, pulled back so the envelope x-ray reads whole
-  heat: { focus: "house", az: 180, el: 88, dist: 1.1, topDown: true },
-  sanity: { focus: "house", az: 180, el: 88, dist: 1.1, topDown: true },
-  offer: { focus: "house", az: 180, el: 88, dist: 1.1, topDown: true },
+  // The view stays 3D on every stage: the old top-down pins are a high angle from the south, north up.
+  heat: { focus: "house", az: 180, el: 52, dist: 1.1 },
+  sanity: { focus: "house", az: 180, el: 52, dist: 1.1 },
+  offer: { focus: "house", az: 180, el: 52, dist: 1.1 },
 };
 
 // Chain stage (1 to 8) to its pose; EXTRAS shows the wallbox first, the heat pump wall on a second call.
@@ -33,7 +34,7 @@ export function poseOffset(p: Pose) {
 }
 
 // Critically damped spring, perceptual duration 0.6 s, bounce 0; keeps velocity when retargeted.
-const OMEGA = (2 * Math.PI) / 0.6;
+const OMEGA = (2 * Math.PI) / 0.5;   // 0.5 s, bounce 0
 export function springStep(x: THREE.Vector3, v: THREE.Vector3, goal: THREE.Vector3, dt: number) {
   // Exact step of x'' = -w^2 (x - g) - 2w x': e(t) = (e0 + c t) e^-wt, v(t) = (c - w (e0 + c t)) e^-wt, c = v0 + w e0.
   const e0 = x.clone().sub(goal), k = Math.exp(-OMEGA * dt);

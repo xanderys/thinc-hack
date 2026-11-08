@@ -124,6 +124,8 @@ export class SpatialScene {
   private wallbox: THREE.Mesh | null = null;
   private fly: { pos: THREE.Vector3; tgt: THREE.Vector3; top: boolean } | null = null;
   private pose: Pose | null = null;
+  private home: Pose | null = null;   // the current step's framing, kept when the planner drags away; Re-centre returns to it
+  private spin: { a: number; v: number; h: number; y: number } | null = null;   // compass turn to north
   private vPos = new THREE.Vector3();
   private vTgt = new THREE.Vector3();
   private batteryBox!: THREE.Mesh;
@@ -177,7 +179,7 @@ export class SpatialScene {
     this.controls.minPolarAngle = Math.PI * 0.08;
     this.controls.autoRotate = false;
     // A drag takes the camera back from the reasoning chain at once.
-    this.controls.addEventListener("start", () => { this.fly = null; this.pose = null; this.vPos.set(0, 0, 0); this.vTgt.set(0, 0, 0); this.controls.minPolarAngle = Math.PI * 0.08; });
+    this.controls.addEventListener("start", () => { this.fly = null; this.pose = null; this.spin = null; this.vPos.set(0, 0, 0); this.vTgt.set(0, 0, 0); this.controls.minPolarAngle = Math.PI * 0.08; });
 
     this.ortho.up.set(0, 0, -1);
     this.controls2d = new OrbitControls(this.ortho, this.renderer.domElement);
@@ -300,7 +302,7 @@ export class SpatialScene {
   // Moves the camera to a stage's pose on one smooth spring (0.6 s, bounce 0) from wherever it is now, keeping
   // its velocity if a new stage arrives mid-flight. A top-down pose ends in the 2D plan. Reduce Motion: a cut.
   flyTo(p: Pose) {
-    this.pose = p;
+    this.pose = p; this.home = p; this.spin = null;
     const { pos, tgt } = this.goalOf(p);
     if (this.mode === "2d" && !p.topDown) { this.setView("3d"); this.opts.onView?.("3d"); }
     this.controls.minPolarAngle = p.topDown ? 0 : Math.PI * 0.08;
@@ -775,17 +777,40 @@ export class SpatialScene {
   // Back to the stage's pose, or the opening view, on the same spring; the plan resets its pan and zoom.
   refit() {
     if (this.mode === "2d") { this.setOrtho(this.persp.aspect); return; }
-    if (this.pose) { this.flyTo(this.pose); return; }
+    if (this.home) { this.flyTo(this.home); return; }
     const d = this.fitD, dir = new THREE.Vector3(0.42, 0.62, 0.66).normalize();
     const pos = this.centre.clone().addScaledVector(dir, d), tgt = this.centre.clone();
     if (this.opts.reduce) { this.persp.position.copy(pos); this.controls.target.copy(tgt); this.controls.update(); return; }
     this.fly = { pos, tgt, top: false };
   }
 
+  // Compass: turn the camera to face north (it sits south of the target, north at the top of the screen), keeping
+  // the tilt, the distance and the target; the shorter way round, one spring (0.5 s, bounce 0); Reduce Motion cuts.
+  // The 2D plan is always north up.
+  faceNorth() {
+    if (this.mode === "2d") return;
+    this.fly = null; this.pose = null;
+    const o = this.persp.position.clone().sub(this.controls.target);
+    const h = Math.hypot(o.x, o.z), a = Math.atan2(o.x, o.z);
+    if (h < 1e-3) return;
+    this.spin = { a: this.opts.reduce ? 0 : a, v: 0, h, y: o.y };
+    if (this.opts.reduce) this.stepSpin(0);
+  }
+  private stepSpin(dt: number) {
+    const s = this.spin!;
+    if (dt > 0) { const k = Math.exp(-OMEGA * dt), c = s.v + OMEGA * s.a, e = s.a + c * dt; s.v = (c - OMEGA * e) * k; s.a = e * k; }
+    const done = Math.abs(s.a) < 1e-3 && Math.abs(s.v) < 1e-3;
+    if (done) s.a = 0;
+    const t = this.controls.target;
+    this.persp.position.set(t.x + s.h * Math.sin(s.a), t.y + s.y, t.z + s.h * Math.cos(s.a));
+    if (done) this.spin = null;
+  }
+
   private loop = () => {
     if (!this.alive) return;
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(0.05, this.clock.getDelta());
+    if (this.spin) this.stepSpin(dt);
     if (this.fly) {
       const a = springStep(this.persp.position, this.vPos, this.fly.pos, dt);
       const b = springStep(this.controls.target, this.vTgt, this.fly.tgt, dt);

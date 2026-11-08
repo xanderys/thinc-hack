@@ -397,11 +397,11 @@ const BACKTEST = [
 function Backtest() {
   return (
     <section className={s.sec}>
-      <h2>Visit verdict backtest</h2>
+      <h2>Priority verdict backtest</h2>
       <p className={s.lede}>The lead verdict rule replayed on held-out homes. Every project was a signed sale, so each Decline is a false decline.</p>
       <div className={`${s.panel} ${s.scroll}`}>
         <table className={s.t}>
-          <thead><tr><th>Set</th><th className={s.r}>Visit</th><th className={s.r}>Call first</th><th className={s.r}>Decline</th></tr></thead>
+          <thead><tr><th>Set</th><th className={s.r}>Priority</th><th className={s.r}>Call first</th><th className={s.r}>Decline</th></tr></thead>
           <tbody>{BACKTEST.map((b) => (
             <tr key={b.set}><td>{b.set}</td>{[b.visit, b.call, b.decline].map(([c, p], i) => <td key={i} className={`${s.r} ${s.n}`}>{c} ({pct1(p)})</td>)}</tr>
           ))}</tbody>
