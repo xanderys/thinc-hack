@@ -109,7 +109,10 @@ export async function propose(title: string, ops: Op[], said: string): Promise<P
     else if (op.action === "facts") { after = await refine(l, l.overrides ?? {}, op.values); what = Object.entries(op.values ?? {}).map(([k, v]) => `${FACT[k] ?? k}: ${v}`).join(", "); }
     else what = op.action === "complete" ? "Complete" : op.action === "send" ? `Send by ${op.channel ?? "whatsapp"}` : "Ask on WhatsApp";
     // A change that changes nothing offers no Apply.
-    if ((op.action === "kit" || op.action === "facts") && after && JSON.stringify(before.design) === JSON.stringify(after.design) && before.economics?.capex_eur === after.economics?.capex_eur) {
+    const F = l.facts as unknown as Record<string, unknown>;
+    const same = op.action === "facts" ? Object.entries(op.values ?? {}).every(([k, v]) => F[k] === v)
+      : op.action === "kit" && !!after && JSON.stringify(before.design) === JSON.stringify(after.design) && before.economics?.capex_eur === after.economics?.capex_eur;
+    if (same) {
       unchanged.push(`${l.customer_name} already has this: ${what.charAt(0).toLowerCase()}${what.slice(1)}, nothing to apply.`); return;
     }
     const [vf, vt] = await Promise.all([verdict(l, before), verdict(l, after)]);
