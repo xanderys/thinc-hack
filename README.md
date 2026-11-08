@@ -1,27 +1,34 @@
 # Marquee
 
-Marquee speeds up the installer's pipeline from enquiry to signed deal. A lead arrives by form, pasted email or a call with a voice agent. Marquee drafts the system an experienced planner would design (panels, battery, heat pump, wallbox, each possibly "none"), gives the reason for every size, and lets the planner change a fact and see the design re-sized. The approved design goes to the homeowner's page, where they sign or decline. The drafting rules are read out of real expert designs, and we publish how often they agree with the experts on homes they never saw.
+Marquee drafts a home's panels, battery, wallbox and heat pump with the rules it used, reports how often the experts agreed on homes it never saw, and hands the completed design to the homeowner to sign.
 
-Team Marquee, thinc! hack MUC, 7 to 8 Nov 2026, Reonic case. Team: Zi Yuan, Xander, Jamon.
+Team Marquee (Zi Yuan, Xander, Jamon), thinc! hack MUC, 7 to 8 Nov 2026, Reonic case. Deck: [deck/marquee-reonic.pdf](deck/marquee-reonic.pdf). Reonic's case brief, provided to participants.
 
 - Planner: https://marquee-reonic.vercel.app
 - Homeowner: https://marquee-home.vercel.app
 - Engine: runs on one machine behind a Tailscale Funnel; the web apps reach it through `ENGINE_URL`.
 
-## What is live
+## How it works
 
-Demo path, in order. The hero lead is 10.65 kWp = 23 × 463 W, a Sigenergy 10 kW inverter, an EcoFlow 10 kWh battery, €14,887.
+1. **Facts in.** A lead arrives by form, pasted email or a call with the voice agent. Claude reads pasted text and calls into typed facts; it sizes nothing.
+2. **Roof and shade.** Bavarian LoD2 gives the roof planes from the address, and a DOM20 surface-model ray-cast gives the shade on each panel.
+3. **Sizing.** Depth-3 decision trees, one per installer for PV and one for the battery, fitted on Reonic's 1,619 projects with half sealed before fitting. On the 633 sealed test homes the whole design (PV, battery, heat pump, wallbox) is within tolerance of the expert on 18.6% against 6.8% for the textbook rule. PV alone: 40.9% against 19.4%.
+4. **Economics.** An 8,760-hour PVGIS simulation of the year gives autarky, bill and payback.
+5. **Prices.** Rate-card prices, 2026 German averages, not the installer's prices.
 
-1. **Board.** Big lead cards with a verdict (Priority, Call first, Decline), the reason, and Needs pills for what is still missing. Leads arrive by form, pasted email, voice note or a call.
-2. **Composer and copilot.** One field takes typed, pasted or spoken enquiries and creates the lead. The copilot (Claude Sonnet 5.5 with tools over the engine) answers in short Sill-style replies with tappable lead chips and suggestion chips. Writes are proposed first, applied on Apply, and undone as one batch with Undo. It can also book a site visit.
-3. **Autopilot.** Run works through every open lead with a live SSE log, asks the homeowner for what is missing and sends the proposal. A confirm comes before any real WhatsApp send; `?dry=1` rehearses. Six seeded enquiries on real Munich addresses cover the cases.
-4. **Plan.** The real house from Bavarian LoD2, four decisions in a chain with the rule behind each size, and refine by sentence ("the family buys an EV next year").
-5. **SKU catalogue.** Every size snaps to products the installer sells. The kit sheet is an invoice with an exact total (hero €14,887), and the rate card names the SKU on each line.
-6. **Component views.** Battery, wallbox and heat pump each open a day strip with the engine's hourly figures.
-7. **3D scene.** Continuous per-module shading, a thermal camera, energy flow inside the glass, and unit pills you can add, resize or remove.
-8. **Homeowner page.** The same 3D scene, the approved design and the options to discuss with the installer, then Sign or Decline.
-9. **WhatsApp copilot and live call.** The same engine answers a homeowner on WhatsApp, and the voice agent takes a call and fills the lead as it goes.
-10. **Check.** Our design next to the expert's on a held-out home, then the scoreboard below.
+## Features
+
+- Board with a verdict per lead (Priority, Call first, Decline) and triage.
+- Copilot: Claude with tools over the engine; writes are proposed, applied on Apply and undone with Undo.
+- Autopilot: works through every open lead and asks for what is missing.
+- Live call: the voice agent fills the lead as the call goes.
+- Client card for each lead.
+- Four system views: PV, battery, heat pump, wallbox.
+- Homeowner sign flow: the approved design on the homeowner page, then Sign or Decline.
+
+## Stack
+
+Next.js and TypeScript (three.js for the 3D scene), FastAPI and Python (pandas, scikit-learn, pvlib), Claude, ElevenLabs, Vercel.
 
 ## Setup
 
