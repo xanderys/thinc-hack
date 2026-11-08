@@ -20,6 +20,7 @@ const STEPS: Record<Unit, number[]> = { battery: [5, 7, 10, 15], wallbox: [11, 2
 const ADD: Record<Unit, OverrideValue> = { battery: 5, wallbox: 11, heatpump: "include" };
 const UNIT: Record<Unit, string> = { battery: "kWh", wallbox: "kW", heatpump: "kW" };
 const NAME: Record<Unit, string> = { battery: "battery", wallbox: "wallbox", heatpump: "heat pump" };
+const LEAD = 10; // px of leader between a unit and its pill
 const fmt = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 
 type Props = {
@@ -75,14 +76,35 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet, 
       if (u && unit) {
         const b = scene.unitBox(unit);
         if (b) {
-          const c = b.getCenter(b.min.clone()), q = scene.screenOf(c);
-          u.style.visibility = q.ok ? "visible" : "hidden";
-          u.style.transform = `translate(${q.x.toFixed(1)}px, ${q.y.toFixed(1)}px)`;
-          const pop = root.querySelector<HTMLElement>("[data-pop]");
+          // Beside the unit, never over it: the pill sits a 10 px leader right of the unit's box on screen (left when
+          // the right runs out of room), centred on its height; the popover's chip row follows on the same side.
+          const W = root.clientWidth, H = root.clientHeight;
+          let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, ok = true;
+          for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
+            const q = scene.screenOf(b.min.clone().set(x, y, z));
+            ok = ok && q.ok; x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y);
+          }
+          const pw = u.offsetWidth, my = (y0 + y1) / 2, pop = root.querySelector<HTMLElement>("[data-pop]");
+          const popW = pop ? pop.offsetWidth + 6 : 0;
+          const right = x1 + LEAD + pw + popW <= W - 8;
+          const px = right ? x1 + LEAD : x0 - LEAD - pw;
+          u.dataset.side = right ? "r" : "l";
+          u.style.visibility = ok ? "visible" : "hidden";
+          u.style.transform = `translate(${px.toFixed(1)}px, ${my.toFixed(1)}px)`;
           if (pop) {
-            const w = pop.offsetWidth, h = pop.offsetHeight, W = root.clientWidth, H = root.clientHeight;
-            const x = Math.max(8, Math.min(W - w - 8, q.x - w / 2)), y = q.y - h - 34 > 8 ? q.y - h - 34 : Math.min(H - h - 8, q.y + 34);
-            pop.style.transform = `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px)`;
+            // Beside the pill when the row fits there; otherwise above the unit, centred on it, so it never covers it.
+            const h = pop.offsetHeight, pwid = pop.offsetWidth, x = right ? px + pw + 6 : px - popW;
+            const fits = x >= 8 && x + pwid <= W - 8;
+            const tx = fits ? x : Math.max(8, Math.min(W - pwid - 8, (x0 + x1) / 2 - pwid / 2));
+            const ty = fits ? Math.max(8, Math.min(H - h - 8, my - h / 2)) : Math.max(8, y0 - h - 10);
+            pop.style.transform = `translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px)`;
+          }
+          // The unit itself is a target too: a clear hit area over its box on screen opens the same size row.
+          const hit = root.querySelector<HTMLElement>("[data-unit-hit]");
+          if (hit) {
+            hit.style.visibility = ok ? "visible" : "hidden";
+            hit.style.transform = `translate(${x0.toFixed(0)}px, ${y0.toFixed(0)}px)`;
+            hit.style.width = `${Math.max(24, x1 - x0).toFixed(0)}px`; hit.style.height = `${Math.max(24, y1 - y0).toFixed(0)}px`;
           }
         }
       }
@@ -94,7 +116,7 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet, 
   // A tap elsewhere or Esc closes the size popover.
   useEffect(() => {
     if (!open) return;
-    const away = (e: PointerEvent) => { if (!box.current?.querySelector("[data-pop]")?.contains(e.target as Node) && !box.current?.querySelector("[data-unit]")?.contains(e.target as Node)) setOpen(false); };
+    const away = (e: PointerEvent) => { if (!box.current?.querySelector("[data-pop]")?.contains(e.target as Node) && !box.current?.querySelector("[data-unit]")?.contains(e.target as Node) && !box.current?.querySelector("[data-unit-hit]")?.contains(e.target as Node)) setOpen(false); };
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopImmediatePropagation(); setOpen(false); } };
     document.addEventListener("pointerdown", away); addEventListener("keydown", esc, true);
     return () => { document.removeEventListener("pointerdown", away); removeEventListener("keydown", esc, true); };
@@ -123,10 +145,13 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet, 
       {slots.filter((sl) => !sl.placed).map((sl) => (
         <span key={sl.id} className={s.mark} data-at={JSON.stringify(sl.c)} data-n={JSON.stringify(sl.n)} aria-hidden="true"><span>+</span></span>
       ))}
+      {unit && has && sizing !== unit && (
+        <button type="button" data-unit-hit="" className={s.unitHit} tabIndex={-1} aria-hidden="true" onClick={() => setOpen((x) => !x)} />
+      )}
       {unit && sizing === unit && !has ? (
         <span data-unit="" className={`${s.unit} b-skel-pill`} aria-busy="true" aria-label={`Sizing the ${NAME[unit]}`}><span className="b-skel" aria-hidden="true" /></span>
       ) : unit && (has ? (
-        <button type="button" data-unit="" className={s.unit} aria-haspopup="dialog" aria-expanded={open} aria-label={`Change the ${NAME[unit]} size`} onClick={() => setOpen((x) => !x)}>
+        <button type="button" data-unit="" className={s.unit} aria-haspopup="true" aria-expanded={open} aria-label={`Change the ${NAME[unit]} size`} onClick={() => setOpen((x) => !x)}>
           <span>{fmt(v)} {UNIT[unit]}</span>
         </button>
       ) : (
@@ -135,25 +160,12 @@ export default function EditLayer({ scene, sys, faces, design, onToggle, onSet, 
         </button>
       ))}
       {unit && open && has && (
-        <div data-pop="" className={s.pop} role="dialog" aria-label={`${NAME[unit][0].toUpperCase()}${NAME[unit].slice(1)} size`}>
-          {unit === "wallbox" ? (
-            <div className={s.seg} role="radiogroup" aria-label="Wallbox power">
-              {steps.map((x) => <button key={x} type="button" role="radio" aria-checked={x === v} onClick={() => set(x)}>{x} kW</button>)}
-            </div>
-          ) : (
-            <div className={s.step}>
-              <button type="button" aria-label="Smaller" disabled={at === 0 && unit !== "battery"} onClick={() => set(at === 0 ? null : steps[at - 1])}>−</button>
-              <b aria-live="polite">{fmt(v)} {UNIT[unit]}</b>
-              <button type="button" aria-label="Larger" disabled={at === steps.length - 1} onClick={() => set(steps[Math.min(steps.length - 1, at + 1)])}>+</button>
-            </div>
-          )}
-          {unit === "battery" && (
-            <div className={s.seg} role="radiogroup" aria-label="Battery size">
-              <button type="button" role="radio" aria-checked={!v} onClick={() => set(null)}>None</button>
-              {steps.map((x) => <button key={x} type="button" role="radio" aria-checked={x === v} onClick={() => set(x)}>{x} kWh</button>)}
-            </div>
-          )}
-          {unit !== "battery" && <button type="button" className={s.remove} onClick={() => set(null)}>Remove</button>}
+        // A compact glass chip row next to the pill: two other sizes and a small Remove, never a dialog over the house.
+        <div data-pop="" className={s.pop} role="group" aria-label={`${NAME[unit][0].toUpperCase()}${NAME[unit].slice(1)} size`}>
+          {(unit === "wallbox" ? steps : steps.filter((_, k) => k !== at).sort((x, y) => Math.abs(steps.indexOf(x) - at) - Math.abs(steps.indexOf(y) - at)).slice(0, 2).sort((x, y) => x - y)).map((x) => (
+            <button key={x} type="button" className={s.chip} aria-pressed={x === v} onClick={() => set(x)}>{fmt(x)} {UNIT[unit]}</button>
+          ))}
+          <button type="button" className={s.remove} onClick={() => set(null)}>Remove</button>
         </div>
       )}
     </div>
