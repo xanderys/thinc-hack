@@ -134,7 +134,9 @@ export default function Board({ openId: initial }: { openId?: string }) {
   }, []);
 
   // Verdicts: the roof per street address (4 in flight), the last verdict per lead kept for the session so a reopen does not flicker.
-  const roofs = useRoofs((rows ?? []).map((r) => isPc(r.address_or_postcode) ? null : r.address_or_postcode));
+  // The open lead's own address too: test leads and older leads are not on the list but their card still needs a verdict.
+  const openAddr = liveLead && liveLead.lead_id === openId && !isPc(liveLead.address_or_postcode) ? liveLead.address_or_postcode : null;
+  const roofs = useRoofs([...(rows ?? []).map((r) => isPc(r.address_or_postcode) ? null : r.address_or_postcode), openAddr]);
   useEffect(() => { setKept(Object.fromEntries((rows ?? []).map((r) => [r.lead_id, recallVerdict(r.lead_id)]).filter(([, v]) => v)) as Record<string, Kept>); }, [rows?.length]); // eslint-disable-line react-hooks/exhaustive-deps
   // A roof still being looked up after 10 s settles the verdict as Call first with its reason; it never stays on Checking.
   const firstSeen = useRef<Record<string, number>>({});
@@ -234,8 +236,21 @@ export default function Board({ openId: initial }: { openId?: string }) {
   }, []);
   useEffect(() => { setShared(null); }, [openId]);
 
-  const openCard = cards.find((c) => c.id === openId);
   const ll = liveLead?.lead_id === openId ? liveLead : null;   // test leads and old leads are not on the board list
+  const listed = cards.find((c) => c.id === openId);
+  // Off the list: the verdict from the lead's own facts, draft and roof (a roof unresolved after 10 s counts as pending).
+  const offQ = (() => {
+    if (listed || !ll) return null;
+    const pc = isPc(ll.address_or_postcode);
+    let roof = pc ? null : roofs[ll.address_or_postcode!];
+    firstSeen.current[ll.lead_id] ??= Date.now();
+    if (!pc && roof === undefined) {
+      if (Date.now() - firstSeen.current[ll.lead_id] < 10_000) return null;
+      roof = { pending: true } as RoofResult;
+    }
+    return qualify(ll, ll.draft, roof);
+  })();
+  const openCard = listed ?? (offQ ? { q: offQ } as Partial<Card> as Card : undefined);
 
   if (openId) return (
     <div className="b-open" style={{ viewTransitionName: `card-${openId}` }}>
