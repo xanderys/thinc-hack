@@ -1,6 +1,6 @@
 # Brief: WhatsApp copilot and facts chips (P1, Xander via Hack Chief-of-Staff, Sun 8 Nov 2026 05:20 Munich)
 
-Locked picks: sender is the bridge line on the mini; the demo client is Xander himself (SG number 6586936789); scope is ask, parse, fill chips; beyond the demo this is a general "WhatsApp copilot" tool call so installers get input data fast. Rule kept: no LLM inside the engine process; the engine composes from templates and calls the web's interpreter for parsing.
+Locked picks: sender is the bridge line on the mini; the demo client is Xander himself (SG number the demo phone (env)); scope is ask, parse, fill chips; beyond the demo this is a general "WhatsApp copilot" tool call so installers get input data fast. Rule kept: no LLM inside the engine process; the engine composes from templates and calls the web's interpreter for parsing.
 
 ## Bridge (live now)
 - Health: `GET http://127.0.0.1:8013/health` (status open).
