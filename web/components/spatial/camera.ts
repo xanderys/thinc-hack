@@ -4,7 +4,8 @@
 import * as THREE from "three";
 
 export type Focus = "roof" | "house" | "drive" | "battery" | "wallbox" | "west";
-export type Pose = { focus: Focus; az: number; el: number; dist: number; topDown?: boolean };
+// unit: a close view of that unit on its own wall (scene.ts unitGoal), not a bearing round the house.
+export type Pose = { focus: Focus; az: number; el: number; dist: number; topDown?: boolean; unit?: "battery" | "wallbox" | "heatpump" };
 
 export const STAGE_VIEWS = ["site", "load", "future", "solar", "storage", "extras", "heatpump", "heat", "sanity", "offer"] as const;
 export type StageView = (typeof STAGE_VIEWS)[number];
@@ -23,12 +24,13 @@ export const POSES: Record<StageView, Pose> = {
   offer: { focus: "house", az: 180, el: 52, dist: 1.1 },
 };
 
-// Battery, Wallbox and Heat pump chips frame the wall where their unit stands, low and near eye level, never the
-// top-down roof view: the battery (indoors) and the heat pump by the south wall, the wallbox on the east wall.
+// Battery, Wallbox and Heat pump chips move close to the wall where their unit stands, at eye height (scene.ts
+// unitGoal), never the top-down roof view: the battery (indoors) and the heat pump by the south wall, the wallbox on
+// the east wall. az, el and dist are the fallback before the unit exists.
 export const UNIT_POSES: Record<"battery" | "wallbox" | "heatpump", Pose> = {
-  battery: { focus: "battery", az: 195, el: 26, dist: 0.75 },
-  wallbox: { focus: "wallbox", az: 105, el: 24, dist: 0.75 },
-  heatpump: { focus: "battery", az: 210, el: 26, dist: 0.85 },
+  battery: { focus: "battery", az: 195, el: 26, dist: 0.75, unit: "battery" },
+  wallbox: { focus: "wallbox", az: 105, el: 24, dist: 0.75, unit: "wallbox" },
+  heatpump: { focus: "battery", az: 210, el: 26, dist: 0.85, unit: "heatpump" },
 };
 
 // Chain stage (1 to 8) to its pose; EXTRAS shows the wallbox first, the heat pump wall on a second call.

@@ -146,6 +146,8 @@ export class SpatialScene {
   // Live anchors for the size pills: the same vectors are re-projected every frame, so a pill follows its unit
   // when snapUnits moves it onto the wall after the building model loads.
   private wbAt = new THREE.Vector3();
+  private baseMinD = 0;   // the house-wide zoom limit (fit), lowered only while a unit's close view is on
+  private eaveY = 0;      // height of the target roof's lowest edge, for the unit close views
   private battAt = new THREE.Vector3();
   private occRay = new THREE.Raycaster();
   private gridPole = new THREE.Group(); // the grid connection, shown only with the day flow's "Grid" label
@@ -352,7 +354,8 @@ export class SpatialScene {
     this.fitD = d;
     // The opening view and every pose: the house box framed into the free rect (framed()); the zoom limits span both.
     const open = this.framed(new THREE.Vector3(0.42, 0.62, 0.66)), df = open.pos.distanceTo(open.tgt);
-    this.controls.minDistance = Math.min(d, df) * 0.55;
+    this.baseMinD = Math.min(d, df) * 0.55;
+    if (!this.pose?.unit) this.controls.minDistance = this.baseMinD;
     this.controls.maxDistance = Math.max(d, df) * 1.8;
     if (reset || !this.fitted) {
       this.persp.position.copy(open.pos);
@@ -375,7 +378,23 @@ export class SpatialScene {
   // A pose keeps its angle (azimuth, elevation); its target and distance come from the fit: the house's box centred in
   // the free rect (canvas minus the card, the tucked pass and the toolbar), all eight corners inside it with a margin.
   private goalOf(p: Pose) {
-    return this.framed(poseOffset(p));
+    return (p.unit && this.unitGoal(p.unit)) || this.framed(poseOffset(p));
+  }
+  // A close view of a unit on its wall: the camera stands out from that wall (south for the battery and the heat pump,
+  // east for the wallbox), turned 15 degrees for depth, at 1.7 m, far enough (7 to 12 m) that the frame runs from the
+  // ground to just above the eaves, so the wall fills it and the roof edge shows at the top; it looks at the unit.
+  private unitGoal(kind: "battery" | "wallbox" | "heatpump") {
+    const b = this.unitBox(kind);
+    if (!b || this.box.isEmpty()) return null;
+    const c = b.getCenter(new THREE.Vector3());
+    const eave = this.eaveY > 0 ? this.eaveY : Math.min(6, this.box.max.y);
+    const span = eave + 1.2, vfov = (this.persp.fov * Math.PI) / 180;
+    const d = THREE.MathUtils.clamp(span / (2 * Math.tan(vfov / 2)), 7, 12);
+    const n = kind === "wallbox" ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+    n.applyAxisAngle(new THREE.Vector3(0, 1, 0), (kind === "wallbox" ? 1 : -1) * (15 * Math.PI) / 180);
+    const tgt = new THREE.Vector3(c.x, span / 2, c.z);
+    const pos = tgt.clone().addScaledVector(n, d).setY(1.7);
+    return { tgt, pos };
   }
   private framed(dir: THREE.Vector3) {
     const tgt = this.box.isEmpty() ? this.centre.clone() : this.box.getCenter(new THREE.Vector3());
@@ -424,8 +443,11 @@ export class SpatialScene {
   // Moves the camera to a stage's pose on one smooth spring (0.6 s, bounce 0) from wherever it is now, keeping
   // its velocity if a new stage arrives mid-flight. A top-down pose ends in the 2D plan. Reduce Motion: a cut.
   flyTo(p: Pose) {
-    this.pose = p; this.home = p; this.spin = null; this.cancelMomentum();
+    // A unit's close view is not home: Re-centre goes back to the normal fit.
+    this.pose = p; if (!p.unit) this.home = p; this.spin = null; this.cancelMomentum();
     const { pos, tgt } = this.goalOf(p);
+    // The close view sits nearer than the house-wide zoom limit allows; any other pose puts the limit back.
+    this.controls.minDistance = p.unit ? Math.min(this.baseMinD, pos.distanceTo(tgt) * 0.7) : this.baseMinD;
     if (this.mode === "2d" && !p.topDown) { this.setView("3d"); this.opts.onView?.("3d"); }
     this.controls.minPolarAngle = p.topDown ? 0 : Math.PI * 0.08;
     if (this.opts.reduce) {
@@ -487,6 +509,7 @@ export class SpatialScene {
     if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(0, 4, 0), new THREE.Vector3(12, 8, 12));
     box.expandByPoint(new THREE.Vector3(box.min.x, 0, box.min.z));
     this.box.copy(box);
+    this.eaveY = target.length ? Math.min(...target.flatMap((p) => p.polygon.map((q) => toV(q).y))) : 0;
     if (this.glbRoot && !this.box.isEmpty()) this.flattenNeighbours(this.glbRoot);
     const size = box.getSize(new THREE.Vector3());
     // Battery: indoors against the south wall, seen through the glass walls (snapUnits puts it on the wall's inner
