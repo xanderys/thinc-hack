@@ -37,18 +37,18 @@ export type LaunchProps = {
 
 export const defaultLaunchProps: LaunchProps = {
   intro: "footage/zy.mp4",
-  // Raw room footage until the chair hides the desk (2.9 s), so no house shows before the pass.
-  // holo-take3-reveal.mp4 itself switches at 2.5 s, where the house is still visible.
+  // holo-composite.mp4 is source 0.3 to 10.3 s with a tracked house, clean from frame 0.
   introFrom: 0.3,
-  introRawEnd: 2.9,
+  introRawEnd: 0,
   roomSound: { src: "footage/zy.mp4", from: 0.3 },
   hologram: {
-    src: "capture/holo-take3-reveal.mp4",
-    from: 2.9,
-    start: 2.9,
-    len: 7.14,
+    src: "capture/holo-composite.mp4",
+    from: 0,
+    start: 0,
+    len: 10.0,
     rate: 1,
-    focusX: 0.32,
+    // The house sits between the can and the plant, at about (0.17, 0.72) of the frame from 8.5 s.
+    focusX: 0.17,
     focusY: 0.72,
     pushStart: 8.5,
   },

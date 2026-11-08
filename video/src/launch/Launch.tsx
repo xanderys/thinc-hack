@@ -194,9 +194,14 @@ const Intro: React.FC<{ p: LaunchProps }> = ({ p }) => {
   const push = interpolate(t, [h.pushStart, end + 0.3], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
   const paper = interpolate(t, [end - 0.7, end + 0.2], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.quad) });
   const scale = 1 + 0.75 * push;
+  // Scale from the top left and slide so the house drifts towards the centre,
+  // clamped so the footage always covers the frame.
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  const tx = clamp(h.focusX * W + (0.5 - h.focusX) * W * push - h.focusX * W * scale, W - W * scale, 0);
+  const ty = clamp(h.focusY * H + (0.5 - h.focusY) * H * push - h.focusY * H * scale, H - H * scale, 0);
   return (
     <AbsoluteFill>
-      <AbsoluteFill style={{ opacity: 1 - paper, transform: `scale(${scale})`, transformOrigin: `${h.focusX * 100}% ${h.focusY * 100}%` }}>
+      <AbsoluteFill style={{ opacity: 1 - paper, transform: `translate(${tx}px, ${ty}px) scale(${scale})`, transformOrigin: "0 0" }}>
         {p.introRawEnd > 0 ? (
           <Sequence durationInFrames={sec(p.introRawEnd)}>
             <OffthreadVideo src={staticFile(p.intro)} trimBefore={Math.round(p.introFrom * FPS)} muted style={{ width: W, height: H, objectFit: "cover" }} />
