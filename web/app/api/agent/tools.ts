@@ -209,7 +209,7 @@ async function siteVisit(id: string) {
   let questions: { fact: string; state: string; at_stake: string | null }[];
   if (Array.isArray(l.blockers) && l.blockers.length) {
     questions = [...l.blockers].sort((a, b) => Math.abs(b.delta_eur ?? 0) - Math.abs(a.delta_eur ?? 0))
-      .map((b) => ({ fact: b.label ?? FACT[b.field] ?? fieldLabel(b.field), state: b.state ?? "estimated", at_stake: b.delta_text ?? (b.delta_eur != null ? `€${Math.round(Math.abs(b.delta_eur)).toLocaleString("en-GB")}` : null) }));
+      .map((b) => ({ fact: b.label ?? FACT[b.field] ?? fieldLabel(b.field), state: b.state === "estimated" ? "unconfirmed" : b.state ?? "unconfirmed", at_stake: b.delta_text ?? (b.delta_eur != null ? `€${Math.round(Math.abs(b.delta_eur)).toLocaleString("en-GB")}` : null) }));
   } else {
     const src = l.sources ?? {}, first = l.next_question?.field, F = l.facts as unknown as Record<string, unknown>, ht = F.heating_type as string | undefined;
     const open = Object.keys(FACT).filter((k) => src[k] === "estimated" || src[k] === "missing" || (src[k] == null && F[k] == null));
@@ -221,7 +221,7 @@ async function siteVisit(id: string) {
       return true;
     });
     moving.sort((a, b) => (a === first ? -1 : b === first ? 1 : Object.keys(FACT).indexOf(a) - Object.keys(FACT).indexOf(b)));
-    questions = moving.slice(0, 5).map((k) => ({ fact: FACT[k], state: src[k] === "missing" || src[k] == null ? "missing" : "estimated", at_stake: k === first ? (l.next_question?.expected_swing ?? null) : null }));
+    questions = moving.slice(0, 5).map((k) => ({ fact: FACT[k], state: src[k] === "missing" || src[k] == null ? "missing" : "unconfirmed", at_stake: k === first ? (l.next_question?.expected_swing ?? null) : null }));
   }
   const checks = [
     "Meter cabinet and grid connection: space for the new meter and the feed-in",
@@ -293,10 +293,14 @@ export const TOOLS: Anthropic.Tool[] = [
   { name: "ask_whatsapp", description: "Draft a WhatsApp ask to one homeowner for the facts given. Facts already stated are skipped, and the open fact that moves the design most fills a free slot (two questions per message). The planner sees a message card with Send on WhatsApp; nothing is sent by you.", input_schema: obj({ lead_id: { type: "string" }, facts: { type: "array", items: { type: "string", enum: Object.keys(ASK) } } }, ["lead_id", "facts"]) },
   { name: "create_lead", description: "Create a lead from a scrap, an email or a voice transcript, exactly as the planner gave it. Returns the new lead with its design and verdict.", input_schema: obj({ text: { type: "string" } }, ["text"]) },
   { name: "site_visit", description: "Before a site visit: the open facts that move the design, ranked with the figure at stake, and the on-site checks for the systems in this design. Reads only.", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
-  { name: "propose_facts", description: "Propose changing facts the client gave (annual_demand_kwh, num_inhabitants, heating_type Gas|Oil|Heatpump|OtherNonRenewable|OtherRenewable, heating_demand_kwh, has_ev (true for a car now OR planned soon; it adds the wallbox at once, 12,000 km a year assumed unless given; never ask for mileage first), ev_planned, ev_annual_km, house_size_sqm, house_built_year, has_solar, preference) or the homeowner's phone (phone, E.164 such as +49 151 2345678; ask the planner for the number when none is given). Shown with before and after figures and Apply; Apply runs the intake step.", input_schema: obj({ lead_id: { type: "string" }, name: { type: "string" }, facts: { type: "object" } }, ["lead_id", "name", "facts"]) },
+  { name: "what_if", description: "One call for a what-if on one lead: the design before and after a fact change (facts, e.g. {has_ev: true} or {num_inhabitants: 5}) or a kit change (overrides, e.g. {battery_kwh: null}). Shows the planner the before and after card with Apply; nothing is written until the tap.", input_schema: obj({ lead_id: { type: "string" }, name: { type: "string" }, facts: { type: "object" }, overrides: KIT }, ["lead_id"]) },
+  { name: "propose_facts", description: "Propose changing facts the client gave (annual_demand_kwh, num_inhabitants, heating_type Gas|Oil|Heatpump|OtherNonRenewable|OtherRenewable, heating_demand_kwh, has_ev (true for a car now OR planned soon; it adds the wallbox at once, about 12,000 km a year unless given; never ask for mileage first), ev_planned, ev_annual_km, house_size_sqm, house_built_year, has_solar, preference) or the homeowner's phone (phone, E.164 such as +49 151 2345678; ask the planner for the number when none is given). Shown with before and after figures and Apply; Apply runs the intake step.", input_schema: obj({ lead_id: { type: "string" }, name: { type: "string" }, facts: { type: "object" } }, ["lead_id", "name", "facts"]) },
   { name: "whatsapp_draft", description: "The WhatsApp message Rina would send to ask this homeowner for missing facts, as a draft. Sends nothing; to send, call ask_whatsapp.", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
   { name: "stats", description: "How close the engine comes to the expert designs on unseen projects: the eval scoreboard.", input_schema: obj({}) },
 ];
+
+// The open lead, read before the model starts, so a one-lead question needs no get_lead round.
+export async function leadBrief(id: string) { try { const l = await lead(id); const d = await shown(l); return summary(l, d, await verdict(l, d)); } catch { return null; } }
 
 export async function runTool(name: string, input: Record<string, unknown>, said: string, emit: Emit, test = false): Promise<unknown> {
   const id = String(input.id ?? "");
@@ -307,6 +311,13 @@ export async function runTool(name: string, input: Record<string, unknown>, said
     case "refine": { const l = await lead(id); const d = await refine(l, { ...(l.overrides ?? {}), ...(input.overrides as Ov) }); return d ? { design: d.design, economics: d.economics } : { error: "The engine refused these overrides." }; }
     case "upsell": return upsell(input.part as "battery" | "heatpump", input.ids as string[] | undefined, !!input.include_test);
     case "create_lead": { const r = await createLead(String(input.text ?? ""), test); if ("lead_id" in r) emit({ t: "created", lead_id: r.lead_id }); return r; }
+    case "what_if": {
+      const facts = (input.facts ?? {}) as Record<string, unknown>, ov = (input.overrides ?? {}) as Ov;
+      const op: Op = Object.keys(facts).length ? { lead_id: String(input.lead_id), name: String(input.name ?? ""), action: "facts", values: facts } : { lead_id: String(input.lead_id), name: String(input.name ?? ""), action: "kit", overrides: ov };
+      const p = await propose("What if", [op], said);
+      if (p.ops.length || p.unchanged.length) emit({ t: "propose", ...p });
+      return { rows: p.rows, unchanged: p.unchanged, refused: p.refused, note: "The planner sees before and after with Apply. Answer in one or two sentences with the figures that move and your pick." };
+    }
     case "propose_facts": {
       const values = { ...((input.facts ?? {}) as Record<string, unknown>) };
       // An electric car now or soon sizes the wallbox and extra PV straight away: the engine needs has_ev, and assumes 12,000 km a year unless told.
