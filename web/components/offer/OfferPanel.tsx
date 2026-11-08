@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Design, DesignResponse, Economics, HomeInputs, Lead, OverrideValue, Overrides, Variant as EngineVariant } from "@/lib/api";
 import { call } from "@/lib/client";
+import { designOf } from "@/lib/engineCache";
 import type { Variant as StageVariant } from "@/components/stage/Plan";
 import type { Check, RoofModel } from "@/components/spatial/types";
 import { eur, n0, n2, pc, type Part } from "./format";
@@ -130,7 +131,7 @@ export default function OfferPanel(p: OfferProps) {
   useEffect(() => {
     if (!p.inputs) return;
     const ac = new AbortController();
-    call<DesignResponse>("/api/design", { inputs: p.inputs }, ac.signal).then((r) => {
+    designOf(p.inputs, ac.signal).then((r) => {
       if (r.ok && r.data.variants?.length) setOffers({ key: factsKey, rows: rowsOf(asStage(r.data.variants, r.data.design)).filter((x) => x.key !== "edit") });
     }).catch(() => {});
     return () => ac.abort();
