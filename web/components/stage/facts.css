@@ -1,15 +1,15 @@
 /* The facts row: one chip per fact, one control panel under the row for the open chip. Own file, own classes (fc-). */
 /* The client card: the board draws the face (name, status, address, verdict, chevron), this draws the facts under it. */
-.b-open:has(.fq-wrap) .b-open-h { border: 1px solid var(--rule-2); border-radius: 12px; background: var(--sheet-2); padding: 10px 6px 10px 14px; align-items: center; transition: border-radius 350ms var(--spring-snappy-350); }
+.b-open:has(.fq-wrap) .b-open-h { border: 1px solid var(--rule-2); border-radius: 12px; background: var(--sheet-2); padding: 10px 6px 10px 14px; align-items: center; transition: border-radius 600ms var(--spring-smooth); }
 .b-open:has(.fq-wrap[data-open]) .b-open-h { border-radius: 12px 12px 0 0; border-bottom-color: var(--rule); }
 .cc-chev { all: unset; box-sizing: border-box; flex: none; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 22px; cursor: pointer; color: var(--ink-2); }
 .cc-chev:hover { color: var(--ink); }
 .cc-chev:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.cc-chev svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform 500ms var(--spring-snappy-350); }
+.cc-chev svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform 600ms var(--spring-smooth); }
 .cc-chev[aria-expanded="true"] svg { transform: rotate(180deg); }
 .b-open-h .cc-chev { border-radius: 22px; }
 .fq-wrap[data-open] { border: 1px solid var(--rule-2); border-top: 0; border-radius: 0 0 12px 12px; background: var(--sheet-2); }
-.fq-body { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 500ms var(--spring-snappy-350), opacity 200ms ease-out; }
+.fq-body { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 600ms var(--spring-smooth), opacity 200ms ease-out; }
 .fq-wrap[data-open] .fq-body { grid-template-rows: 1fr; opacity: 1; }
 .fq-clip { min-height: 0; overflow: hidden; display: grid; gap: 10px; }
 .fq-wrap[data-open] .fq-clip { padding: 10px 14px 14px; }
@@ -37,9 +37,16 @@
      measures the root again as the card opens (its own observer), so the model gains or gives back the height. */
   .b-open:has(.sys-on):has(.fq-wrap) { display: block; }
   .b-open:has(.sys-on):has(.fq-wrap) > .st-open { display: block; }
-  .b-open:has(.sys-on):has(.fq-wrap) .b-open-lines { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; }
-  .b-open:has(.sys-on):has(.fq-wrap) .b-l1 { grid-column: 1 / -1; }
-  .b-open:has(.sys-on):has(.fq-wrap) .b-l3 { grid-column: 2; grid-row: 2; }
+  /* Row one: name, status, verdict, Undo. Row two: the address, wrapping. */
+  .b-open:has(.sys-on):has(.fq-wrap) .b-open-lines { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; column-gap: 10px; align-items: center; }
+  .b-open:has(.sys-on):has(.fq-wrap) .b-l1 { display: contents; }
+  .b-open:has(.sys-on):has(.fq-wrap) .b-l1 h1 { grid-column: 1; grid-row: 1; }
+  .b-open:has(.sys-on):has(.fq-wrap) .b-l1 .b-chip { grid-column: 2; grid-row: 1; margin: 0; }
+  .b-open:has(.sys-on):has(.fq-wrap) .b-l3 { grid-column: 3; grid-row: 1; margin: 0; }
+  .b-open:has(.sys-on):has(.fq-wrap) .b-l1 .b-undo { grid-column: 4; grid-row: 1; }
+  .b-open:has(.sys-on):has(.fq-wrap) .b-l2 { grid-column: 1 / -1; grid-row: 2; }
+  /* The open card never makes the page taller: the model takes what is left under it. */
+  .b-open:has(.fq-wrap) .sys-on[class*="chain_root__"] { height: var(--sys-root-h); min-height: 0; }
   .b-open:has(.sys-on):has(.fq-wrap) .b-open-h { padding-bottom: 10px; }
 }
 .fc-panel { margin-top: 8px; padding: 12px 14px; background: var(--paper); border: 1px solid var(--rule-2); border-radius: 12px; display: grid; gap: 12px; max-width: 520px; }
@@ -74,3 +81,6 @@
 .fc-phone input[aria-invalid="true"] { border-color: var(--bad); }
 .fc-phone .u { font-size: 13px; color: var(--ink-3); }
 .fc-phone .u.err { color: var(--bad); }
+
+/* The address wraps on the card face. */
+.b-open:has(.fq-wrap) .b-open-lines .b-l2 { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }

@@ -39,11 +39,11 @@ type Spec = {
 const SPECS: Spec[] = [
   { f: "annual_demand_kwh", label: "Household use", glyph: "bolt", state: () => "stated", value: (i) => `${n0(i.annual_demand_kwh)} kWh` },
   { f: "heating_type", label: "Heating", glyph: "flame", state: (i) => i.heating_type === "Unknown" ? "missing" : "stated", value: (i) => heatWord(i.heating_type) },
-  { f: "electricity_price_ct_kwh", label: "Price", glyph: "tag", state: (i) => i.electricity_price_ct_kwh != null ? "stated" : "estimated", value: (i) => i.electricity_price_ct_kwh != null ? `${i.electricity_price_ct_kwh} ct/kWh` : "37 ct/kWh, assumed" },
+  { f: "electricity_price_ct_kwh", label: "Price", glyph: "tag", state: (i) => i.electricity_price_ct_kwh != null ? "stated" : "estimated", value: (i) => i.electricity_price_ct_kwh != null ? `${i.electricity_price_ct_kwh} ct/kWh` : "37 ct/kWh" },
   { f: "has_ev", label: "Electric car", glyph: "car", state: () => "stated", value: (i) => i.has_ev ? (i.ev_annual_km ? `${n0(i.ev_annual_km)} km a year` : "Yes") : "No" },
   { f: "num_inhabitants", label: "Household", glyph: "people", state: (i) => i.num_inhabitants ? "stated" : "missing", value: (i) => `${i.num_inhabitants ?? 0} people` },
-  { f: "house_size_sqm", label: "Floor area", glyph: "ruler", state: (i, r) => !i.house_size_sqm ? "missing" : near(i.house_size_sqm, r?.floor_area_m2) ? "estimated" : "stated", value: (i, r) => `${n0(i.house_size_sqm ?? 0)} m²${near(i.house_size_sqm ?? 0, r?.floor_area_m2) ? ", estimated from the building" : ""}` },
-  { f: "house_built_year", label: "Built", glyph: "calendar", state: (i, r) => !i.house_built_year ? "missing" : builtEstimated(i, r) ? "estimated" : "stated", value: (i, r) => builtEstimated(i, r) ? `estimated, ${r!.build_year_class}` : String(i.house_built_year) },
+  { f: "house_size_sqm", label: "Floor area", glyph: "ruler", state: (i, r) => !i.house_size_sqm ? "missing" : near(i.house_size_sqm, r?.floor_area_m2) ? "estimated" : "stated", value: (i, r) => `${n0(i.house_size_sqm ?? 0)} m²` },
+  { f: "house_built_year", label: "Built", glyph: "calendar", state: (i, r) => !i.house_built_year ? "missing" : builtEstimated(i, r) ? "estimated" : "stated", value: (i, r) => builtEstimated(i, r) ? `${r!.build_year_class}` : String(i.house_built_year) },
 ];
 const builtEstimated = (i: HomeInputs, r?: RoofResult | null) => !!i.house_built_year && !!r?.build_year_class && r.build_year_estimate != null && Math.abs(i.house_built_year - r.build_year_estimate) < 0.5;
 
