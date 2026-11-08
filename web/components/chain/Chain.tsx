@@ -19,6 +19,9 @@ import s from "./chain.module.css";
 import OfferPanel, { type OfferProps } from "@/components/offer/OfferPanel";
 import ShadingPanel from "@/components/spatial/ShadingScrubber";
 import { EnvelopeBar, HeatPumpStep } from "@/components/spatial/EnvelopeBar";
+import SystemsChips from "@/components/systems/SystemsChips";
+import ProposedCard from "@/components/systems/ProposedCard";
+import { setSystem, stageOf, systemOf, type SystemName } from "@/components/systems/system";
 
 // While the 3D code loads, the hero shows the same house shimmer the view shows until its first frame.
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false, loading: () => <HouseSkel /> });
@@ -36,6 +39,8 @@ const VIEWS: StageView[] = FIVE ? ["solar", "storage", "extras", "heatpump", "of
 const BAR_AT: Record<Bar["key"], number> = FIVE ? { roof: 1, day: 2, charging: 3, heat_loss: 4 } : { roof: 1, heat_loss: 3, day: 5, charging: 6 };
 const WHY_AT: Partial<Record<number, ComponentKey>> = FIVE ? { 1: "pv", 2: "battery", 3: "wallbox", 4: "heatpump" } : { 4: "pv", 5: "battery", 6: "wallbox" };
 const N = TITLES.length;
+// Systems hero: four chips drive the model, the offer is a tucked pass; NEXT_PUBLIC_SYSTEMS=0 brings back the step rail.
+const SYS = FIVE && process.env.NEXT_PUBLIC_SYSTEMS !== "0";
 const CHECK_AT = FIVE ? 5 : 7;
 const STEP_COLOUR = ["#ffc043", "#24a148", "#1c71ef", "#e3634f", "#071b71"];
 const stepStyle = (i: number) => ({ ["--step" as string]: STEP_COLOUR[i], ["--step-ink" as string]: i === 0 ? "#071b71" : "#fff" }) as CSSProperties;
@@ -82,8 +87,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   });
   useEffect(() => { if (leadId) try { localStorage.setItem(`marquee.chain.seen.${leadId}`, "1"); } catch { /* storage blocked: the chain plays again next time */ } }, [leadId]);
   const [expanded, setExpanded] = useState(true);   // step cards always shown; the eye in the toolbar folds them
-  const [stage, setStage] = useState(first ? 1 : N);
-  const [auto, setAuto] = useState(first);
+  const [stage, setStage] = useState(SYS || first ? 1 : N);
+  const [auto, setAuto] = useState(first && !SYS);
   const [updated, setUpdated] = useState<number | null>(null);
   const [layers, setLayers] = useState<Layers | null>(null);
   const [moved, setMoved] = useState<Set<number>>(new Set());
@@ -159,7 +164,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     // A refinement redrafts in place: the changed layers light up and the camera goes to the first; no replay.
     setMoved(m);
     // A variant switch stays on the Offer; the strip lights what changed, the view does not move.
-    if (!/^(Switched to|Undone)/.test(causeRef.current ?? "") && Date.now() - hold.current > 15000) setStage(Math.min(...m));
+    if (!/^(Switched to|Undone)/.test(causeRef.current ?? "") && Date.now() - hold.current > 15000 && !(SYS && Math.min(...m) > 4)) setStage(Math.min(...m));
     setAuto(false);
     setUpdated(Date.now());
   }
@@ -236,6 +241,9 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
 
   const view = VIEWS[stage - 1];
 
+  // One call per chip: the scene frames the system and shows its layer (scene.setSystem on branch layers).
+  useEffect(() => { if (SYS) setSystem(systemOf(stage)); }, [stage]);
+
   const go = (n: number) => { setAuto(false); setStage(n); setWhy(null); setWhyStep(null); };
 
   const tools = ({ view: v, setView, recentre, photo }: { view: "3d" | "2d"; setView: (x: "3d" | "2d") => void; recentre: () => void; photo?: { on: boolean; set: (on: boolean) => void } }) => (
@@ -269,31 +277,12 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={roofFitKnown(layers?.checks ?? null, inputs.address)} checksFresh={fresh} model={model} leadId={leadId} inputs={inputs}
       overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
   );
-  const overlays = (
-    <>
-      {address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}
-      {!narrow && offer(true)}
-    </>
-  );
-
-  return (
-    <div className={`${s.root} ${expanded ? "" : s.isCollapsed}`} ref={rootRef}>
-      {/* The step strip: on a phone it is always there, pinned under the house; a tap moves the camera and scrolls
-          to that step's card. On desktop it stands in for the cards when the eye folds them. */}
-      {(!expanded || narrow) && (
-        <div className={`${s.collapsed} ${narrow ? s.stripPhone : ""}`}>
-          <div className={s.scrub} role="group" aria-label="Steps">
-            {TITLES.map((t, i) => (
-              <button key={t} type="button" aria-pressed={stage === i + 1} className={moved.has(i + 1) ? s.hot : undefined} onClick={() => { go(i + 1); if (narrow && expanded) requestAnimationFrame(() => rootRef.current?.querySelector(`[data-step="${i + 1}"]`)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" })); }} style={FIVE ? stepStyle(i) : undefined}>
-                <span className={s.num}>{i + 1}</span>{t}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {expanded && <ol className={s.rail} aria-label="How the design was reached">
+  // The step cards; with the Systems hero only the chosen system's card shows, as its info block.
+  const rail = expanded && (
+    <ol className={s.rail} aria-label="How the design was reached">
         {TITLES.map((t, i) => {
           const n = i + 1, open = n === stage, built = n <= stage || !auto;
+          if (SYS && n !== stage) return null;
           const bar = bars[n];
           return (
             <li data-step={n} key={moved.has(n) ? `${t}-m${updated}` : t} className={`${s.item} ${open ? s.open : ""} ${built ? "" : s.pending} ${moved.has(n) ? s.flash : ""}`} style={FIVE ? stepStyle(i) : undefined}>
@@ -350,7 +339,38 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
             </li>
           );
         })}
-      </ol>}
+      </ol>
+  );
+  const sysChips = <SystemsChips active={systemOf(stage)} onPick={(k: SystemName) => go(stageOf(k))} moved={new Set([...moved].map(systemOf).filter((x): x is SystemName => !!x))} />;
+  // Desktop: the chips, the info block and the shading strip lie over the model's left edge.
+  const sysCol = <div className="sys-col" data-cover>{sysChips}{rail}{address && spatial !== false && onPanels && <div className={s.shadeCard}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage /></div>}</div>;
+  const card = (side: "bottom" | "right") => <ProposedCard side={side} id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending}>{offer(false)}</ProposedCard>;
+  const overlays = (
+    <>
+      {!SYS && address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}
+      {!narrow && !SYS && offer(true)}
+      {!narrow && SYS && sysCol}
+      {!narrow && SYS && card("right")}
+    </>
+  );
+
+  return (
+    <div className={`${s.root} ${expanded ? "" : s.isCollapsed} ${SYS ? "sys-on" : ""}`} ref={rootRef}>
+      {/* The step strip: on a phone it is always there, pinned under the house; a tap moves the camera and scrolls
+          to that step's card. On desktop it stands in for the cards when the eye folds them. */}
+      {SYS && narrow && <div className="sys-under">{sysChips}</div>}
+      {!SYS && (!expanded || narrow) && (
+        <div className={`${s.collapsed} ${narrow ? s.stripPhone : ""}`}>
+          <div className={s.scrub} role="group" aria-label="Steps">
+            {TITLES.map((t, i) => (
+              <button key={t} type="button" aria-pressed={stage === i + 1} className={moved.has(i + 1) ? s.hot : undefined} onClick={() => { go(i + 1); if (narrow && expanded) requestAnimationFrame(() => rootRef.current?.querySelector(`[data-step="${i + 1}"]`)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" })); }} style={FIVE ? stepStyle(i) : undefined}>
+                <span className={s.num}>{i + 1}</span>{t}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {(!SYS || narrow) && rail}
 
       <div ref={heroRef} className={`${s.hero} ${onPanels && shading ? s.heroTall : ""}`}>
         {address && spatial !== false ? (
@@ -368,7 +388,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       </div>
 
       {FIVE && onPanels && address && spatial !== false && <div className={s.shadeUnder}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}
-      {narrow && <div className={s.offerUnder}>{offer(false)}</div>}
+      {narrow && !SYS && <div className={s.offerUnder}>{offer(false)}</div>}
+      {narrow && SYS && card("bottom")}
       <div className={s.say}>{refine}</div>
       {prev && JSON.stringify(prev.design) !== JSON.stringify(res.design) && <span className={s.srOnly} aria-live="polite">Draft updated.</span>}
     </div>

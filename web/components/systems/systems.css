@@ -74,8 +74,10 @@
   .st-open:has(.sys-on) .t-chip summary { min-height: 30px; font-size: 12.5px; padding: 0 10px; }
   .st-open:has(.sys-on) .t-mail { display: none; }
 
-  .sys-on { padding-bottom: 150px; }
-  .sys-on [class*="chain_hero__"] { position: relative; top: auto; order: 1; height: 50vh; min-height: 320px; margin-bottom: 12px; }
+  .sys-on { padding-bottom: 150px; margin-top: 0; }
+  .sys-on .sys-chips { margin: 0 -16px; padding: 0 16px; }
+  .st-open:has(.sys-on) > .t-bar { padding-bottom: 4px; }
+  .sys-on [class*="chain_hero__"] { position: relative; top: auto; order: 1; height: 40vh; min-height: 300px; margin-bottom: 10px; }
   .sys-on .sys-under { order: 2; margin-bottom: 10px; }
   .sys-on [class*="chain_rail__"] { order: 3; }
   .sys-on [class*="chain_shadeUnder__"] { order: 4; margin: 10px 0 0; }
@@ -88,10 +90,12 @@
   .sys-on [class*="chain_hero__"], .st-open > .sys-on [class*="chain_hero__"] { grid-column: 1; grid-row: 1; }
   .sys-on [class*="chain_say__"], .st-open > .sys-on [class*="chain_say__"] { grid-column: 1; grid-row: 1; }
   .sys-col {
-    position: absolute; top: 12px; left: 12px; bottom: max(64px, calc(var(--say-h, 0px) + 42px)); z-index: 4; width: 360px;
+    position: absolute; top: 12px; left: 12px; bottom: max(64px, calc(var(--say-h, 0px) + 42px)); z-index: 4; width: 372px;
     display: flex; flex-direction: column; gap: 8px; pointer-events: none;
   }
   .sys-col > * { pointer-events: auto; }
+  .sys-col .sys-chips { flex-wrap: wrap; gap: 4px; }
+  .sys-col .sys-chip { padding: 0 11px 0 9px; gap: 6px; font-size: 13px; }
   .sys-col .sys-head { background: #fff; border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--shadow); padding: 12px; flex: none; }
   .sys-col [class*="chain_rail__"] { overflow-y: auto; flex: 0 1 auto; min-height: 0; padding: 0; scrollbar-width: thin; }
   .sys-col [class*="chain_item__"] { box-shadow: var(--shadow); }

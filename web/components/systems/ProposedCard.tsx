@@ -9,10 +9,11 @@ import "./systems.css";
 type Fig = { k: "kwp" | "kwh" | "price"; v: string };
 type Props = {
   kwp: number | null | undefined; kwh: number | null | undefined; price: number;
-  pending: boolean; side: "bottom" | "right"; children: ReactNode;
+  pending: boolean; side: "bottom" | "right"; children: ReactNode; id?: string | null;
 };
 
 const n = (x: number, d: number) => (Math.round(x * 10 ** d) / 10 ** d).toLocaleString("en-GB");
+let shown: { id: string; figs: Record<string, string> } | null = null;   // the last settled figures, across remounts
 const OMEGA = (2 * Math.PI) / 0.5;   // Apple's smooth spring, 0.5 s, bounce 0 (critically damped)
 
 function useReduce() {
@@ -21,7 +22,7 @@ function useReduce() {
   return r;
 }
 
-export default function ProposedCard({ kwp, kwh, price, pending, side, children }: Props) {
+export default function ProposedCard({ kwp, kwh, price, pending, side, children, id }: Props) {
   const reduce = useReduce();
   const [open, setOpen] = useState(false);
   const figs: Fig[] = [
@@ -31,13 +32,14 @@ export default function ProposedCard({ kwp, kwh, price, pending, side, children 
   ];
 
   // The figures that moved since the last settled design light once; a counter restarts the highlight.
-  const last = useRef<Record<string, string> | null>(null);
+  // Kept outside the component: a remount mid-edit (the chain re-renders the canvas) must still see what moved.
+  const last = useRef<Record<string, string> | null>(shown && shown.id === (id ?? "") ? shown.figs : null);
   const [lit, setLit] = useState<{ ks: Set<string>; n: number }>({ ks: new Set(), n: 0 });
   const sig = figs.map((f) => f.v).join("|");
   useEffect(() => {
     if (pending) return;
     const now = Object.fromEntries(figs.map((f) => [f.k, f.v]));
-    const was = last.current; last.current = now;
+    const was = last.current; last.current = now; shown = { id: id ?? "", figs: now };
     if (!was) return;
     const ks = new Set(Object.keys(now).filter((k) => was[k] !== now[k]));
     if (ks.size) setLit((x) => ({ ks, n: x.n + 1 }));
