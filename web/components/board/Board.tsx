@@ -33,11 +33,11 @@ const Stage = dynamic(() => import("@/components/stage/Stage"), { ssr: false });
 const VOICE = process.env.NEXT_PUBLIC_VOICE === "1";
 
 type Kept = NonNullable<ReturnType<typeof recallVerdict>>;
-type Card = { id: string; name: string; place: string; status: LeadT["status"]; label?: string; updated: string; design?: Design; line: string; created?: string; decision?: LeadRow["decision"]; q: Kept | null };
+type Card = { id: string; name: string; place: string; status: LeadT["status"]; label?: string; updated: string; design?: Design; edited?: boolean; line: string; created?: string; decision?: LeadRow["decision"]; q: Kept | null };
 /** What the lead stands on: the approved design and its economics once approved or signed, else the stored draft. */
 const standing = (l: LeadT): DesignResponse => l.approved?.design ? { ...l.draft, design: l.approved.design, economics: l.approved.economics ?? l.draft.economics } : l.draft;
 
-type Got = { at: string; d: Design; lead?: LeadT; res?: DesignResponse };
+type Got = { at: string; d: Design; lead?: LeadT; res?: DesignResponse; edited?: boolean };
 const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
 const isPc = (x?: string | null) => !x || /^\s*\d{5}\s*$/.test(x);
 type LiveRow = { lead_id?: string | null; status: string; started_at: number | null; customer_name?: string | null; address_or_postcode?: string | null };
@@ -119,14 +119,22 @@ export default function Board({ openId: initial }: { openId?: string }) {
           let res = standing(g.data), d = res.design;
           // The stored draft first, so the verdict never waits on the redesign below.
           setDesigns((x) => { if (x[row.lead_id]?.lead) return x; const n = { ...x, [row.lead_id]: { at: "", d, lead: g.data, res } }; designsRef.current = n; return n; });
+          // Kit edits kept on the lead: the card shows the design the planner page shows, the engine's refine for the stored overrides.
+          const kit = g.data.overrides && Object.keys(g.data.overrides).length > 0 && !g.data.approved?.design ? g.data.overrides : null;
+          if (kit) {
+            // No lead_id in the body, so the call only reads: ask again when the engine is busy with the other cards.
+            let f = await call<DesignResponse>("/api/refine", { inputs: g.data.facts, overrides: kit });
+            for (let n = 0; !f.ok && n < 3; n++) { await new Promise((r) => setTimeout(r, 2000 * (n + 1))); f = await call<DesignResponse>("/api/refine", { inputs: g.data.facts, overrides: kit }); }
+            if (f.ok) { res = f.data; d = f.data.design; setDesigns((x) => { const n = { ...x, [row.lead_id]: { at: "", d, lead: g.data, res, edited: true } }; designsRef.current = n; return n; }); }
+          }
           const h = await health();
           const dv = g.data.draft as DesignResponse & { rules_version?: string | null };
           if (h && (dv.model_version !== h.model_version || (dv.rules_version != null && dv.rules_version !== h.rules_version))) {
             const f = await call<DesignResponse>("/api/design", { inputs: g.data.facts });
-            if (f.ok && !g.data.approved?.design) { d = f.data.design; res = f.data; }
+            if (f.ok && !g.data.approved?.design && !kit) { d = f.data.design; res = f.data; }
           }
           fetching.current.delete(row.lead_id);
-          setDesigns((x) => { const n = { ...x, [row.lead_id]: { at, d, lead: g.data, res } }; designsRef.current = n; return n; });
+          setDesigns((x) => { const n = { ...x, [row.lead_id]: { at, d, lead: g.data, res, edited: !!g.data.overrides && Object.keys(g.data.overrides).length > 0 && !g.data.approved?.design } }; designsRef.current = n; return n; });
         });
       }
     };
@@ -179,7 +187,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
     const out = (rows ?? []).map((r) => {
       const ext = r as LeadRow & { updated_at?: string };
       const d = designs[r.lead_id]?.d;
-      return { id: r.lead_id, name: r.customer_name ?? r.title.split(",")[0], place: r.address_or_postcode ?? "", status: r.status, label: r.status_label, updated: ext.updated_at ?? r.created_at ?? "", design: d, line: lineOf(d, r.title), created: r.created_at, decision: r.decision, q: verdicts[r.lead_id] ?? kept[r.lead_id] ?? null };
+      return { id: r.lead_id, name: r.customer_name ?? r.title.split(",")[0], place: r.address_or_postcode ?? "", status: r.status, label: r.status_label, updated: ext.updated_at ?? r.created_at ?? "", design: d, edited: designs[r.lead_id]?.edited, line: lineOf(d, r.title), created: r.created_at, decision: r.decision, q: verdicts[r.lead_id] ?? kept[r.lead_id] ?? null };
     });
     const isLive = (c: Card) => !!live[c.id] || c.status === "in_call";
     return [...out.filter(isLive), ...out.filter((c) => !isLive(c))];
@@ -354,6 +362,7 @@ export default function Board({ openId: initial }: { openId?: string }) {
                 <span className="b-place">{c.place}</span>
                 {c.design && !lv && <span className="b-house" aria-hidden><House design={c.design} /><ModelThumb lead={designs[c.id]?.lead} design={c.design} /></span>}
                 {!c.design && !lv && <span className="b-house b-skel b-skel-house" aria-hidden />}
+                {c.edited && <span className="b-edited">Edited</span>}
                 {c.design || lv ? <span className="b-line num">{c.line}</span> : <span className="b-skel b-skel-line" aria-hidden />}
                 {c.q ? <span className={`${qs.cardValue} num`}>{offerEur(c.q.expected_offer_eur)}</span> : !lv && <span className="b-skel b-skel-line short" aria-hidden />}
                 {c.q && c.q.verdict !== "visit" && !dec && <span className={qs.cardWhy}>{reasonOf(c.q)}</span>}
