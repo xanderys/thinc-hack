@@ -39,6 +39,10 @@ export async function middleware(req: NextRequest) {
     return new NextResponse("Not found", { status: 404 });
   }
   if (p === "/spatial-demo/glb" && req.method === "GET") return NextResponse.next();
+  // Satellite ground, photo mesh and house photo: read-only Google proxies (no engine calls, the key stays server side).
+  if ((/^\/api\/tiles\//.test(p) || p === "/api/photo") && req.method === "GET") return NextResponse.next();
+  // Read-only roof model and shading through the engine proxy, for the 3D strip.
+  if ((p === "/api/roof/model" || p === "/api/roof/model/file" || p === "/api/roof/shading") && req.method === "GET") return NextResponse.next();
   return new NextResponse("Not found", { status: 404 });
 }
 
