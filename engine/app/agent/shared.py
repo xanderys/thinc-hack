@@ -1,0 +1,56 @@
+"""Shared buildings (v2.20): a flat in a multi-unit building cannot take the single-family kit. The roof belongs to the
+owners together (WEG), so the draft shows what the whole roof could do, the balcony system a flat owner can fit alone, and
+why battery and heat pump are not a flat's decision. Single-family drafts are returned untouched."""
+import copy
+import re
+
+from ..hourly import sim as S
+
+BALCONY_W = 800              # plug-in solar limit per household in Germany (Solarpaket I, 2024: 800 W inverter output)
+BALCONY_KWP = 0.86           # two 430 W modules, the common balcony kit (assumption, stated in the payload)
+
+
+def multi_unit(roof: dict) -> bool:
+    m = re.match(r"\s*(\d+)", str((roof or {}).get("dwellings_class") or ""))
+    return bool(((roof or {}).get("geometry") or {}).get("large_building")) or bool(m and int(m.group(1)) >= 3)
+
+
+def apply(lead: dict, draft: dict, roof: dict) -> dict:
+    if not isinstance(draft, dict) or not multi_unit(roof):
+        if isinstance(draft, dict) and "kind" not in draft:
+            draft = {**draft, "kind": "single_family"}
+        return draft
+    d = copy.deepcopy(draft)
+    d["kind"] = "shared_building"
+    kwp = roof.get("max_kwp")
+    yield_whole = None
+    if kwp:
+        yield_whole = round(float(S.pv_per_kwp("Munich", 35.0, 180.0).sum() * kwp))
+    d["roof_potential"] = {"kwp": kwp, "modules": roof.get("max_panels"), "kwh_year": yield_whole,
+                           "label": "Whole roof: needs the owners' association vote (WEG)",
+                           "model": "Gemeinschaftliche Gebäudeversorgung, §42b EnWG",
+                           "basis": "LoD2 roof, every sunny face filled; yield at 35 degrees south, PVGIS typical year"}
+    bal = float(S.pv_per_kwp("Munich", 90.0, 180.0).sum() * BALCONY_KWP)
+    bal = min(bal, BALCONY_W / 1000 * 8760)
+    d["balcony"] = {"inverter_w": BALCONY_W, "kwp": BALCONY_KWP, "kwh_year": round(bal), "facade_azimuth_deg": 180,
+                    "source": "Solarpaket I (2024): balcony systems up to 800 W inverter output; two 430 W modules assumed, "
+                              "vertical, south (facade direction not known), PVGIS typical year"}
+    comps = d.setdefault("components", {})
+    for c, why in (("battery", "A home battery needs its own roof system behind the meter"),
+                   ("heatpump", "Heating is shared: a heat pump is sized for the whole building with the owners")):
+        comps.setdefault(c, {})
+        comps[c].update(decision="none", size=None, none_reason=why)
+    f = lead.get("inputs") or {}
+    des = dict(d.get("design") or {})
+    des.update(pv_kwp=None, inverter_kw=None, battery_kwh=None, heatpump_kw=None)
+    if f.get("has_ev") or f.get("ev_planned"):
+        des["wallbox_kw"] = 11.0
+        comps.setdefault("wallbox", {}).update(decision="include", size=11.0, none_reason=None,
+                                               note="Right to a wallbox at your own parking space: §20 WEG (2020)")
+    else:
+        des["wallbox_kw"] = None
+    d["design"] = des
+    d["verdict"] = {"label": "Shared building", "next_action": "Ask about parking and the owners' association"}
+    d["economics"] = None  # the flat-level kit has no economics; a balcony system's are not modelled here
+    d["variants"] = []
+    return d

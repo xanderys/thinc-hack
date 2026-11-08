@@ -1113,6 +1113,19 @@ def _blockers(lead: dict) -> list:
     return blockers.compute(engine(), lead, _sources(lead))
 
 
+def _shared_view(lead: dict):
+    """v2.20: a flat in a multi-unit building gets the shared-building view (agent/shared.py); a house is unchanged."""
+    try:
+        from .agent import shared
+        roof = dict((lead.get("inputs") or {}).get("roof") or {})
+        if roof:
+            roof["geometry"] = _geometry(roof)
+        return shared.apply(lead, lead.get("draft"), roof)
+    except Exception:
+        log.exception("shared view")
+        return lead.get("draft")
+
+
 STATUS_LABEL = {"draft": "Draft", "in_call": "On a call", "done": "Ready", "approved": "Complete", "sent": "Sent", "signed": "Signed",
                 "declined": "Declined", "question": "Question", "ended": "Ended"}
 
@@ -1134,7 +1147,7 @@ def _lead_out(lead: dict) -> dict:
             "status_label": STATUS_LABEL.get(lead["status"], lead["status"]), "sent": lead.get("sent"), "phone": lead.get("phone"),
             "whatsapp": wa.public(lead), "fact_sources": lead.get("fact_sources") or {}, "sources": _sources(lead),
             "blockers": _blockers(lead),
-            "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": lead["draft"],
+            "address_or_postcode": lead["address_or_postcode"], "facts": _public(lead["inputs"]), "draft": _shared_view(lead),
             "history": lead["history"], "next_question": lead["next_question"], "questions_asked": lead["questions_asked"], "pinned": bool(lead.get("pinned")),
             "created_at": lead["created_at"], "updated_at": lead["updated_at"]}
 
