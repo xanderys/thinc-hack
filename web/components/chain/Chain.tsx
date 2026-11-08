@@ -385,7 +385,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const offer = (docked: boolean, inPass = false) => (
     <OfferPanel docked={docked} inPass={inPass} res={resShown} economics={e} breakEven={breakEven} cause={cause} pending={waiting}
       variants={variants} onVariant={(v) => { holdOffer(); onVariant(v); }} checks={roofFitKnown(layers?.checks ?? null, inputs.address)} checksFresh={fresh} model={model} leadId={leadId} inputs={inputs}
-      undo={{ can: canUndo, run: () => { holdOffer(); onUndo(); } }} overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
+      undo={{ can: canUndo, run: () => { holdOffer(); onUndo(); } }} overrides={dp?.overrides ?? {}} setOverride={(f, v) => { holdOffer(); optBase.current = res; setOpt({ [f]: v }); dp?.setOverride?.(f, v); }} approvedAt={dp?.approvedAt ?? null} onApprove={dp?.onApprove ?? (() => {})} />
   );
   // The step cards; with the Systems hero only the chosen system's card shows, as its info block.
   const rail = expanded && (

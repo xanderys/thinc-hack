@@ -7,6 +7,9 @@ type Entry = { prev: Record<string, unknown>; at: number };
 const stacks = new Map<string, Entry[]>();
 const appliers = new Map<string, (prev: Record<string, unknown>) => void>();
 const subs = new Set<() => void>();
+// Overrides the lead already stores (a reload, another session): with no step left in this page's stack, Undo clears them.
+const stored = new Map<string, boolean>();
+export function setStoredEdits(lead: string, has: boolean) { if ((stored.get(lead) ?? false) !== has) { stored.set(lead, has); emit(); } }
 const emit = () => subs.forEach((f) => f());
 
 function get(lead: string): Entry[] {
@@ -22,11 +25,12 @@ export function pushEdit(lead: string, prev: Record<string, unknown>) {
   get(lead).push({ prev: JSON.parse(JSON.stringify(prev)), at: Date.now() });
   save(lead); emit();
 }
-export function canUndo(lead: string | null | undefined): boolean { return !!lead && get(lead).length > 0; }
+export function canUndo(lead: string | null | undefined): boolean { return !!lead && (get(lead).length > 0 || !!stored.get(lead)); }
 // Puts back the overrides the last edit replaced. False when there is nothing to undo or no open card to apply it.
 export function undoLast(lead: string): boolean {
   const s = get(lead), apply = appliers.get(lead);
-  if (!s.length || !apply) return false;
+  if (!apply) return false;
+  if (!s.length) { if (!stored.get(lead)) return false; apply({}); return true; }   // stored edits only: clear them all
   const e = s.pop()!;
   save(lead); emit();
   apply(e.prev);

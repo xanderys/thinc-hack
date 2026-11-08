@@ -14,7 +14,7 @@ import OpenSkeleton from "@/components/stage/Skeleton";
 import type { Lead as LeadT, RoofResult, AskQuestion, AskResponse, Design, DesignResponse, HomeInputs, InstallerId, OverrideValue, Overrides, ReadResponse, RefineResponse } from "@/lib/api";
 import { call, send } from "@/lib/client";
 import { serialWrite } from "@/lib/leadQueue";
-import { pushEdit, registerUndo, undoLast, useCanUndo } from "@/lib/edits";
+import { pushEdit, registerUndo, setStoredEdits, undoLast, useCanUndo } from "@/lib/edits";
 import { designOf, refineOf, seedDesign } from "@/lib/engineCache";
 import { breakEvenNote } from "@/lib/notes";
 import { approveLead, matches, offerOf } from "@/lib/proposal";
@@ -451,13 +451,15 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     });
   }, [seed?.leadId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Else this session's fact history, else a single stored kit edit (several stored ones are never undone at once).
-  const canUndo = editsCan || history.length > 0 || Object.keys(overrides).length === 1;
+  const storedEdits = Object.values(overrides).some((v) => v !== undefined);
+  useEffect(() => { if (leadRef.current) setStoredEdits(leadRef.current, storedEdits); }, [storedEdits, seed?.leadId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const canUndo = editsCan || history.length > 0 || storedEdits;
   function onUndo() {
     if (leadRef.current && undoLast(leadRef.current)) return;
     const h = history[history.length - 1];
     // Opened on stored kit edits with nothing undone yet in this session: Undo reverts the stored edit.
     if (!h) {
-      if (Object.keys(overrides).length !== 1) return;
+      if (!storedEdits) return;   // the lead's stored edits, from a reload: Undo clears them all
       cause.current = "Undone:"; setApprovedAt(null); setOverrides({});
       if (Object.keys(persisted.current).length) void writeKit("kit-undo", {});
       return;
