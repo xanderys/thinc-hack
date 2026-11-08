@@ -16,6 +16,7 @@ import type { Layers } from "@/components/spatial/types";
 import RoofNote from "@/components/home/RoofNote";
 import { pastLine } from "@/lib/past";
 import "./proposal.css";
+import { VARIANT_LINE, type VariantLineKey } from "@/lib/variants";
 import { berlinStamp } from "@/lib/time";
 
 const SpatialDemo = dynamic(() => import("@/components/spatial/SpatialDemo"), { ssr: false });
@@ -52,13 +53,6 @@ const ROWS: { key: Variant["key"]; name: string }[] = [
 function rowsOf(variants: Variant[]) {
   return variants.flatMap((v) => { const r = ROWS.find((x) => x.key === v.key); return r ? [{ ...r, v }] : []; });
 }
-// One line per offer, with no figures and no comparison against the proposed design.
-const LINE: Record<string, string> = {
-  expert: "The system planners at this installer fit to homes like this one.",
-  independence: "The most of your power from your own roof.",
-  payback: "The shortest time to earn back the cost.",
-  upfront: "The least to pay at the start.",
-};
 
 type Props = {
   lead: Lead; brand: string;
@@ -123,7 +117,7 @@ export default function Proposal({ lead, brand, startedAt, onDecided }: Props) {
                 {alts.map(({ key: k, name: label }) => (
                   <li key={k}>
                     <span className="pp-vname">{label}</span>
-                    <p className="pp-vline">{LINE[k]}</p>
+                    <p className="pp-vline">{VARIANT_LINE[k as VariantLineKey]}.</p>
                   </li>
                 ))}
               </ul>
