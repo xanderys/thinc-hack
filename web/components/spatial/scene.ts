@@ -147,7 +147,6 @@ export class SpatialScene {
   // when snapUnits moves it onto the wall after the building model loads.
   private wbAt = new THREE.Vector3();
   private baseMinD = 0;   // the house-wide zoom limit (fit), lowered only while a unit's close view is on
-  private eaveY = 0;      // height of the target roof's lowest edge, for the unit close views
   private battAt = new THREE.Vector3();
   private occRay = new THREE.Raycaster();
   private gridPole = new THREE.Group(); // the grid connection, shown only with the day flow's "Grid" label
@@ -381,18 +380,17 @@ export class SpatialScene {
     return (p.unit && this.unitGoal(p.unit)) || this.framed(poseOffset(p));
   }
   // A close view of a unit on its wall: the camera stands out from that wall (south for the battery and the heat pump,
-  // east for the wallbox), turned 15 degrees for depth, at 1.7 m, far enough (7 to 12 m) that the frame runs from the
-  // ground to just above the eaves, so the wall fills it and the roof edge shows at the top; it looks at the unit.
+  // east for the wallbox), turned 15 degrees for depth, at 1.7 m, and aims a little above the unit so the unit sits in
+  // the lower middle of the frame, clear of the Proposed Design bar. 12 m out for the 1.2 m battery and heat pump (the
+  // wall and the roof edge fill the frame), 8 m for the 0.4 m wallbox; at 1440 each unit draws about 80 px or taller.
   private unitGoal(kind: "battery" | "wallbox" | "heatpump") {
     const b = this.unitBox(kind);
     if (!b || this.box.isEmpty()) return null;
     const c = b.getCenter(new THREE.Vector3());
-    const eave = this.eaveY > 0 ? this.eaveY : Math.min(6, this.box.max.y);
-    const span = eave + 1.2, vfov = (this.persp.fov * Math.PI) / 180;
-    const d = THREE.MathUtils.clamp(span / (2 * Math.tan(vfov / 2)), 7, 12);
-    const n = kind === "wallbox" ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
-    n.applyAxisAngle(new THREE.Vector3(0, 1, 0), (kind === "wallbox" ? 1 : -1) * (15 * Math.PI) / 180);
-    const tgt = new THREE.Vector3(c.x, span / 2, c.z);
+    const small = kind === "wallbox", d = small ? 8 : 12;
+    const n = small ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+    n.applyAxisAngle(new THREE.Vector3(0, 1, 0), (small ? 1 : -1) * (15 * Math.PI) / 180);
+    const tgt = new THREE.Vector3(c.x, small ? 1.5 : 1.8, c.z);
     const pos = tgt.clone().addScaledVector(n, d).setY(1.7);
     return { tgt, pos };
   }
@@ -509,7 +507,6 @@ export class SpatialScene {
     if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(0, 4, 0), new THREE.Vector3(12, 8, 12));
     box.expandByPoint(new THREE.Vector3(box.min.x, 0, box.min.z));
     this.box.copy(box);
-    this.eaveY = target.length ? Math.min(...target.flatMap((p) => p.polygon.map((q) => toV(q).y))) : 0;
     if (this.glbRoot && !this.box.isEmpty()) this.flattenNeighbours(this.glbRoot);
     const size = box.getSize(new THREE.Vector3());
     // Battery: indoors against the south wall, seen through the glass walls (snapUnits puts it on the wall's inner
@@ -551,14 +548,14 @@ export class SpatialScene {
     this.wallbox.visible = false;
     this.kit.add(this.wallbox);
     // Inverter: indoors on the south wall beside the battery, at head height. Heat pump: the outdoor unit on the
-    // ground outside the south wall near its west corner, its fan facing out, where the Heat pump view looks.
+    // ground outside the south wall, 2 m east of the battery, its fan facing out, where the Heat pump view looks.
     // Each shows only when the design has one (setUnits).
     this.inverterUnit = inverter();
     this.inverterUnit.position.set(bx + BATTERY.w / 2 + 0.2 + INVERTER.w / 2, 1.0, bz);
     this.inverterUnit.visible = false;
     this.kit.add(this.inverterUnit);
     const hp = heatPump();
-    hp.position.set(box.min.x + 1.0 + HEATPUMP.w / 2, 0, box.max.z + HEATPUMP.d / 2 + 0.25);
+    hp.position.set(bx + BATTERY.w / 2 + 2.2 + HEATPUMP.w / 2, 0, box.max.z + HEATPUMP.d / 2 + 0.25); // clear of the battery behind the wall
     this.hpGroup.add(hp);
     this.hpGroup.visible = false;
     this.hpUnit = hp;
@@ -970,13 +967,13 @@ export class SpatialScene {
   }
 
   // inverter, heatpump: the design has one. layer: the stepper's layer shows the kit. In a System view the heat pump
-  // unit stands with the Heat pump and Battery systems instead.
+  // unit shows with the Heat pump system only (it would stand in front of the battery).
   private units = { inverter: false, heatpump: false, layer: false };
   setUnits(o: { inverter: boolean; heatpump: boolean; layer: boolean }) { this.units = o; this.applyUnits(); }
   private applyUnits() {
     const u = this.units, sys = this.systems.sys;
     if (this.inverterUnit) this.inverterUnit.visible = u.inverter;
-    this.hpGroup.visible = u.heatpump && (sys ? sys === "heatpump" || sys === "battery" : u.layer);
+    this.hpGroup.visible = u.heatpump && (sys ? sys === "heatpump" : u.layer);
   }
 
   show(o: { outlines: boolean; panels: boolean; kit: boolean; sun: boolean; battery: "plain" | "lit" }) {
