@@ -72,7 +72,7 @@ function Headline({ ev, err, retry }: { ev: EvalX | null; err: string | null; re
   );
 }
 
-type Approved = { inputs: HomeInputs; draft: Design | null; approved: Design; at: string };
+type Approved = { lead_id?: string | null; inputs: HomeInputs; draft: Design | null; approved: Design; at: string };
 
 function rule(f: ValidateFlag, installer: HomeInputs["installer_id"]) {
   const k = f.component as ComponentKey, nb = f.neighbours, took = Math.round(nb.share_included * nb.n);
@@ -86,7 +86,13 @@ function Validation() {
   const [err, setErr] = useState<string | null>(null);
   const [kept, setKept] = useState<number[]>([]);
   const [tick, setTick] = useState(0);
-  useEffect(() => { try { const raw = sessionStorage.getItem("marquee.approved"); setAp(raw ? JSON.parse(raw) : null); } catch { setAp(null); } }, []);
+  useEffect(() => {
+    let raw: Approved | null = null;
+    try { const t = sessionStorage.getItem("marquee.approved"); raw = t ? JSON.parse(t) : null; } catch { /* storage blocked */ }
+    if (!raw?.lead_id) { setAp(raw); return; }
+    // Test leads are hidden from the lead list: an approval on one never shows here.
+    call<{ lead_id: string }[]>("/api/leads").then((r) => setAp(r.ok && r.data.some((l) => l.lead_id === raw!.lead_id) ? raw : r.ok ? null : raw));
+  }, []);
   useEffect(() => {
     if (!ap) return;
     call<ValidateResponse>("/api/validate", { inputs: ap.inputs, design: ap.approved }).then((r) => { if (r.ok) { setRes(r.data); setErr(null); } else setErr(r.error); });
@@ -250,19 +256,19 @@ function Replay({ ev }: { ev: EvalX | null }) {
   return (
     <section className={s.sec}>
       <h2>{rows ? `Held-out replay: ${ok} of ${rows.length} drafts match the senior planner` : "Held-out replay"}</h2>
-      <p className={s.lede}>Twenty held-out signed projects run through the engine. Rows marked review say where the draft differs.</p>
+      <p className={s.lede}>Twenty held-out signed projects run through the engine. Rows marked Review say where the draft differs.</p>
       {err && <Err src="Engine" msg={err} retry={() => setTick((t) => t + 1)} />}
       {!rows && !err && <p className={s.wait}>Replaying</p>}
       {rows && (
         <div className={s.panel}>
           <div className={`${s.ir} ${s.th}`}><span>Home</span><span>Draft</span><span style={{ textAlign: "right" }}>Against the expert</span></div>
           {vis.map((r) => {
-            const i = r.inputs, sub = [i.heating_type !== "Unknown" ? HEATING_WORD[i.heating_type] : "Heating not recorded", i.has_ev ? "EV" : null].filter(Boolean).join(", ");
+            const i = r.inputs, sub = [i.heating_type !== "Unknown" ? HEATING_WORD[i.heating_type] : "Heating not recorded", i.has_ev ? "Electric car" : null].filter(Boolean).join(", ");
             return (
               <div className={`${s.ir} s-in`} key={r.project_id} title={r.note || undefined}>
-                <span>{INSTALLER_NAME[r.installer_id]}, {n0(i.annual_demand_kwh)} kWh<small>{sub}</small></span>
+                <span>{INSTALLER_NAME[r.installer_id]}, {n0(i.annual_demand_kwh)} kWh a year<small>{sub}</small></span>
                 <span className={s.d}>{designLine(r.draft)}</span>
-                <span className={r.within.all ? s.ok : s.rev}>{r.within.all ? "matches" : "review"}</span>
+                <span className={r.within.all ? s.ok : s.rev}>{r.within.all ? "Matches" : "Review"}</span>
                 {!r.within.all && <span className={s.why}>{miss(r)}</span>}
               </div>
             );

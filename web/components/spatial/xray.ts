@@ -259,7 +259,7 @@ export class Xray {
       rows.map((e) => `<div data-k="${e.key === "ceiling" ? "roof" : e.key}" data-c="${e.colour}" style="display:grid;grid-template-columns:8px 1fr auto;gap:7px;align-items:center;white-space:nowrap">` +
         `<i style="width:8px;height:8px;border-radius:50%;background:${e.colour}"></i><span>${e.name}</span>` +
         `<b style="font-weight:600;font-variant-numeric:tabular-nums">${pc(e.share)}</b></div>`).join("") +
-      `<div data-x="foot" style="font-size:11px;color:var(--ink-3, #8a8d96);margin-top:2px">Estimated from address</div>`;
+      `<div data-x="foot" style="font-size:11px;color:var(--ink-3, #8a8d96);margin-top:2px">Estimate</div>`;
     ov.appendChild(svg); ov.appendChild(card);
     this.card = card; this.lines = svg;
   }

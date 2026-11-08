@@ -204,7 +204,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     `${n2(d.pv_kwp ?? 0)} kWp${mods}${multi ? ", shared roof" : ""}`,
     d.battery_kwh ? `${n1(d.battery_kwh)} kWh` : "None",
     d.wallbox_kw ? `${n1(d.wallbox_kw)} kW` : inputs.has_ev ? "None" : "None, no EV",
-    multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : SYS ? "No heat pump in this design" : "None, not asked",
+    multi ? "Heat load not estimated for flats" : d.heatpump_kw ? `${n1(d.heatpump_kw)} kW` : SYS ? "No heat pump in this design" : "None",
     `${eur(e.capex_eur)}${breakEven ? `, break-even in ${breakEven} years` : ""}`,
   ];
   const head8: string[] = [
@@ -361,7 +361,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   const sysChips = <SystemsChips active={systemOf(stage)} onPick={(k: SystemName) => go(stageOf(k))} moved={new Set([...moved].map(systemOf).filter((x): x is SystemName => !!x))} />;
   // Desktop: one info block over the model, the chosen system's card; on Panels the shading strip folds into it.
   const sysInfo = <div className="sys-info" data-cover>{rail}{address && spatial !== false && onPanels && <div className="sys-shade"><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}</div>;
-  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending}>{offer(false)}</ProposedCard>;
+  // A flat in an apartment block: the engine's single-family design does not apply, so the pass shows none and Approve waits.
+  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending} none={multi ? "No design for this building yet" : null}>{offer(false)}</ProposedCard>;
   const overlays = (
     <>
       {!SYS && address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}
