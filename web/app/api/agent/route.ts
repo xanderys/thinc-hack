@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
   return stream(async (emit) => {
     const client = new Anthropic();
     const messages: Anthropic.MessageParam[] = history.map((m) => ({ role: m.role, content: m.content }));
+    let retried = false;
     for (let turn = 0; turn < 8; turn++) {
       const s = client.messages.stream({
         model: MODEL, max_tokens: 8000, system: SYSTEM, tools: TOOLS, messages,
@@ -54,6 +55,13 @@ export async function POST(req: NextRequest) {
       } as unknown as Anthropic.MessageStreamParams);
       s.on("text", (d) => emit({ t: "text", d }));
       const msg = await s.finalMessage();
+      const said_ = msg.content.some((c) => c.type === "text" && c.text.trim());
+      if (msg.stop_reason !== "tool_use" && !said_) {
+        // An empty answer: ask once more, then say why in the model's words.
+        if (!retried) { retried = true; turn--; continue; }
+        emit({ t: "error", src: "Claude stopped", msg: `${msg.stop_reason}${(msg as { stop_details?: { category?: string } }).stop_details?.category ? ` (${(msg as { stop_details?: { category?: string } }).stop_details!.category})` : ""}, with no answer. Ask again.` });
+        break;
+      }
       messages.push({ role: "assistant", content: msg.content });
       if (msg.stop_reason !== "tool_use") break;
       const uses = msg.content.filter((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
