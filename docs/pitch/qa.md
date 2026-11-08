@@ -32,7 +32,7 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
    The board says so instead of guessing: Call first when the roof is not measured or the use is the default, Decline when the roof fits under 3 kWp or nothing pays back in 20 years. Facts the engine estimated from the address are labelled estimates, apart from stated ones.
 
 10. **Can the homeowner trust that this is the design the planner approved?**
-    Approve stores the chosen variant and its design, and the homeowner page renders that record only. The red team found a mismatch early on 8 Nov; the fix landed on main at 02:37 (confirm it is deployed before saying so) and the acceptance check is: pick Lowest upfront, approve, reload both pages, same components and price.
+    Approve stores the chosen variant and its design, and the homeowner page renders that record only. The red team found a mismatch early on 8 Nov; the fix is in planner production and the acceptance check is: pick Lowest upfront, approve, reload both pages, same components and price.
 
 ## More
 
@@ -40,7 +40,7 @@ Numbers match deck/slides.md and engine/lab/reports/final_test.md. Never say: ei
 
 **Where is the AI?** No language model sizes anything. The engine is readable rules fitted on the data plus hourly physics. Claude only turns a planner's sentence into input changes in the web layer, and ElevenLabs carries Rina's voice.
 
-**Why does the Check page say 17.1% on 258 homes?** That is the earlier board population. The sealed figure is 18.6% on 633; the Check headline is being bound to the sealed report.
+**Why does the Check page say 17.1% on 258 homes?** That was the earlier board population. The Check page now shows the sealed figure, 18.6% on 633, and nothing else.
 
 **Would the verdict turn away real customers?** Replayed on 258 held-out signed sales: 82% Priority, 17% Call first, 1% Decline. Every one was sold, so each Decline is a miss: 2 of 258, both homes where the rules propose no panels. Call first fires almost only where the use was never recorded. The pack holds signed sales only, so this shows the rule is not trigger-happy; it cannot show that it catches bad leads.
 
