@@ -385,12 +385,13 @@ export default function Stage({ seed, onApproved, live }: { seed?: Seed; onAppro
     setOverrides(n); void writeKit("kit-edit", n);
   }, [changed, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const canUndo = history.length > 0 || Object.keys(overrides).length > 0;   // enabled whenever an edit exists
+  // One edit at a time: this session's history, else a single stored kit edit (several stored ones are never undone at once).
+  const canUndo = history.length > 0 || Object.keys(overrides).length === 1;
   function onUndo() {
     const h = history[history.length - 1];
     // Opened on stored kit edits with nothing undone yet in this session: Undo reverts the stored edit.
     if (!h) {
-      if (!Object.keys(overrides).length) return;
+      if (Object.keys(overrides).length !== 1) return;
       cause.current = "Undone:"; setApprovedAt(null); setOverrides({});
       if (Object.keys(persisted.current).length) void writeKit("kit-undo", {});
       return;
