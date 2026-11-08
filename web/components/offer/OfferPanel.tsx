@@ -1,4 +1,4 @@
-// The rolling offer: four numbers, the parts list (each line a chooser), the four offers, the sanity
+// The rolling offer: six numbers in two rows, the parts list (each line a chooser), the four offers, the sanity
 // ticks, what to confirm on site, Approve. Always visible: beside the house on desktop, under it on a phone.
 // It holds no design state of its own; every change goes through Stage (overrides, variants, Approve).
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -137,10 +137,13 @@ export default function OfferPanel(p: OfferProps) {
     if (!four.length || four.some((r) => r.selected)) return four.map(mark);
     return [...four, { key: "edit" as const, name: "Your edit", line: "as you changed it", design: d, e, pick: null, selected: true }].map(mark);
   }, [offers, d, e, approved, cause]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Two rows of three, no number twice: what is fitted and what it costs, then what it gives back.
   const tiles = [
+    { k: "Solar", v: d.pv_kwp ? `${n2(d.pv_kwp)} kWp` : "None" },
+    { k: "Battery", v: d.battery_kwh ? `${n2(d.battery_kwh)} kWh` : "None" },
+    { k: "Investment", v: eur(e.capex_eur) },
     { k: "Yield", v: a ? `${n0(a.pv_yield_kwh)} kWh` : "none" },
     { k: "Autarky", v: pc(e.autarky_share) },
-    { k: "Investment", v: eur(e.capex_eur) },
     { k: "Break-even", v: breakEven == null ? "20+ years" : `${breakEven} years` },
   ];
 

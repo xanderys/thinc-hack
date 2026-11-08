@@ -1,4 +1,4 @@
-// The four numbers that head the offer. Before and after happens inside each tile: after a sentence or a hand
+// The numbers that head the offer. Before and after happens inside each tile: after a sentence or a hand
 // edit the old figure takes the label's place with an arrow for 1.5 s (the tile keeps its height); a variant
 // switch is a plain crossfade. One spring, 0.35 s, bounce 0; under Reduce Motion the figure changes at once.
 import { useEffect, useState } from "react";

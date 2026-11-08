@@ -15,8 +15,8 @@
 /* Phone: docked under the model, in the page flow. */
 .under { margin: 0 0 10px; }
 
-/* Four numbers */
-.tiles { margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+/* Six numbers, two rows of three */
+.tiles { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .tiles div { background: var(--sheet-2); border-radius: 8px; padding: 6px 7px; min-width: 0; }
 .tiles dt { font-size: 11.5px; color: var(--ink-3); }
 .tiles dd { margin: 2px 0 0; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
