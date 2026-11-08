@@ -183,7 +183,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
   useEffect(() => { if (FIVE && !onPanels) setShadeOn(false); }, [onPanels]);
   // The planner's pick on the model (3D or Photo over the plan) holds until the stage changes.
   const [pick, setPick] = useState<{ stage: number; layer: number } | null>(null);
-  const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : (FIVE ? [3, 5, 5, hasEnv ? 7 : 1, 3] : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, 3, 3])[stage - 1];
+  const layer = heatmap ? 2 : pick && pick.stage === stage ? pick.layer : (SYS ? [3, 5, 5, hasEnv ? 7 : 3, 3] : FIVE ? [3, 5, 5, hasEnv ? 7 : 1, 3] : [1, 4, hasEnv ? 7 : 1, 3, 5, 5, 3, 3])[stage - 1];
   const bars = useMemo(() => Object.fromEntries((layers?.bars ?? []).map((b) => [BAR_AT[b.key], b])) as Record<number, Bar>, [layers]);
   // The four numbers come from the same run as the bars and checks when it is in; the design's own until then.
   const d0 = res.design as unknown as Record<string, unknown>;
@@ -351,15 +351,15 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       </ol>
   );
   const sysChips = <SystemsChips active={systemOf(stage)} onPick={(k: SystemName) => go(stageOf(k))} moved={new Set([...moved].map(systemOf).filter((x): x is SystemName => !!x))} />;
-  // Desktop: the chips, the info block and the shading strip lie over the model's left edge.
-  const sysCol = <div className="sys-col" data-cover>{sysChips}{rail}{address && spatial !== false && onPanels && <div className={s.shadeCard}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage /></div>}</div>;
-  const card = (side: "bottom" | "right") => <ProposedCard side={side} id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending}>{offer(false)}</ProposedCard>;
+  // Desktop: one info block over the model, the chosen system's card; on Panels the shading strip folds into it.
+  const sysInfo = <div className="sys-info" data-cover>{rail}{address && spatial !== false && onPanels && <div className="sys-shade"><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}</div>;
+  const card = <ProposedCard side="bottom" id={leadId} kwp={d.pv_kwp} kwh={d.battery_kwh} price={e.capex_eur} pending={!!pending}>{offer(false)}</ProposedCard>;
   const overlays = (
     <>
       {!SYS && address && spatial !== false && (!FIVE || onPanels) && <div className={s.shadeCard} data-cover><div className={s.shadeOver}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage={FIVE ? true : stage === 4} /></div></div>}
       {!narrow && !SYS && offer(true)}
-      {!narrow && SYS && sysCol}
-      {!narrow && SYS && card("right")}
+      {!narrow && SYS && expanded && sysInfo}
+      {!narrow && SYS && card}
     </>
   );
 
@@ -367,7 +367,7 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
     <div className={`${s.root} ${expanded ? "" : s.isCollapsed} ${SYS ? "sys-on" : ""}`} ref={rootRef}>
       {/* The step strip: on a phone it is always there, pinned under the house; a tap moves the camera and scrolls
           to that step's card. On desktop it stands in for the cards when the eye folds them. */}
-      {SYS && narrow && <div className="sys-under">{sysChips}</div>}
+
       {!SYS && (!expanded || narrow) && (
         <div className={`${s.collapsed} ${narrow ? s.stripPhone : ""}`}>
           <div className={s.scrub} role="group" aria-label="Steps">
@@ -379,11 +379,11 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
           </div>
         </div>
       )}
-      {(!SYS || narrow) && rail}
+      {!SYS && rail}
 
       <div ref={heroRef} className={`${s.hero} ${onPanels && shading ? s.heroTall : ""}`}>
         {address && spatial !== false ? (
-          <SpatialDemo inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatmap ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
+          <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatmap ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
             onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && !shading && !heatmap}>
             {overlays}
           </SpatialDemo>
@@ -396,9 +396,11 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
         )}
       </div>
 
-      {FIVE && onPanels && address && spatial !== false && <div className={s.shadeUnder}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}
+      {SYS && <div className="sys-under">{sysChips}</div>}
+      {SYS && narrow && rail}
+      {FIVE && onPanels && address && spatial !== false && (!SYS || narrow) && <div className={s.shadeUnder}><ShadingPanel address={address} kwp={d.pv_kwp} solarStage compact /></div>}
       {narrow && !SYS && <div className={s.offerUnder}>{offer(false)}</div>}
-      {narrow && SYS && card("bottom")}
+      {narrow && SYS && card}
       <div className={s.say}>{refine}</div>
       {prev && JSON.stringify(prev.design) !== JSON.stringify(res.design) && <span className={s.srOnly} aria-live="polite">Draft updated.</span>}
     </div>
