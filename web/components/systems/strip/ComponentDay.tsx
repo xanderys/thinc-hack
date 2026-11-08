@@ -37,6 +37,7 @@ export function BatteryDay({ leadId, sizes, version }: Props) {
   const at = atSize(b?.by_size, sizes.battery_kwh) ?? b;
   useEffect(() => { if (b?.soc?.[hour] != null) sceneDay("setBatteryFill", b.soc[hour]); if (data) sceneDay("setFlow", flowAt(data, hour)); }, [b, data, hour]);
   if (error && !data) return <Err error={error} retry={() => setTries((t) => t + 1)} />;
+  if (data && !b) return null;
   return (
     <div className="dv">
       <Figs loading={!at} items={[
@@ -54,7 +55,7 @@ export function BatteryDay({ leadId, sizes, version }: Props) {
 }
 
 export function WallboxDay({ leadId, sizes, version }: Props) {
-  const [season, setSeason] = useState<Season>("summer");
+  const season: Season = "summer";   // the car's evening charge and the yearly share are the same in winter (ENGINE)
   const [hour, setHour] = useState(18);
   const [tries, setTries] = useState(0);
   const { data, error } = useDay(leadId, season, sizes, version, tries);
@@ -74,6 +75,7 @@ export function WallboxDay({ leadId, sizes, version }: Props) {
     if (data) sceneDay("setFlow", flowAt(data, hour));
   }, [w, data, hour]);
   if (error && !data) return <Err error={error} retry={() => setTries((t) => t + 1)} />;
+  if (data && !w) return null;
   const kw = sizes.wallbox_kw ?? w?.kw ?? null;
   // ENGINE may send the same car charged at midday; shown only when present, never worked out here.
   const sc = w?.solar_charging && Array.isArray(w.solar_charging.charging_kwh) ? w.solar_charging : null;
@@ -85,7 +87,7 @@ export function WallboxDay({ leadId, sizes, version }: Props) {
         ...(sc ? [{ v: pc(sc.solar_share_of_charging), u: "of charging on solar" }] : []),
         { v: at ? `${n1(at.full_charge_hours)} h` : "0 h", u: kw ? `full charge at ${n0(kw)} kW` : "full charge" },
       ]} />
-      <DayStrip label="A typical day" loading={!data} hour={hour} onHour={(x) => { scrubbed.current = true; setHour(x); }} season={season} onSeason={setSeason}
+      <DayStrip label="A typical day" loading={!data} hour={hour} onHour={(x) => { scrubbed.current = true; setHour(x); }}
         sunrise={data?.sunrise_h} sunset={data?.sunset_h}
         series={data ? [{ k: "Solar", v: data.solar_kwh, tone: "solar" }, { k: "Home", v: data.load_kwh, tone: "load" }, ...(w ? [{ k: "Car", v: w.charging_kwh, tone: "accent" as const }] : []), ...(sc ? [{ k: "Charged on solar", v: sc.charging_kwh, tone: "soft" as const }] : [])] : []}
         readout={data ? <><b>{n1(data.solar_kwh[hour])}</b> kWh solar{w ? <>, car <b>{n1(w.charging_kwh[hour])}</b> kWh</> : null}</> : null} />
@@ -103,6 +105,7 @@ export function HeatpumpDay({ leadId, sizes, version, fuel }: Props) {
   useEffect(() => { if (!h) return; sceneDay("setXrayHour", hour); if (h.outdoor_temp_c[hour] != null) sceneDay("setOutdoorTemp", h.outdoor_temp_c[hour]); }, [h, hour]);
   useEffect(() => () => sceneDay("setXrayHour", null), []);
   if (error && !data) return <Err error={error} retry={() => setTries((t) => t + 1)} />;
+  if (data && !h) return null;
   const bill = fuel === "Gas" ? "gas" : fuel === "Oil" ? "oil" : "boiler";
   // Engine fields from the 11:45 restart, shown only when present: coverage and the bivalent point per size
   // (bivalent null when the unit never falls short), and the price of a kWh of heat including boiler losses.
