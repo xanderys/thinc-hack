@@ -147,12 +147,15 @@ export class Systems {
     if (pose) H.flyTo(pose);
   }
 
+  // The design has a wallbox: the car and its charging line come with it.
+  wb = true;
+  setWb(on: boolean) { this.wb = on; this.charge.visible = this.car.visible = this.sys === "wallbox" && on; }
   // Applied after the scene's own show(): what each system must have on screen. The panels are never touched.
   override() {
     const H = this.host, s = this.sys;
     this.battery.visible = s === "battery";
-    this.charge.visible = s === "wallbox";
-    this.car.visible = s === "wallbox";
+    this.charge.visible = s === "wallbox" && this.wb;
+    this.car.visible = s === "wallbox" && this.wb;
     if (H.batteryBox) H.batteryBox.visible = s !== "wallbox" && s !== "panels" && s !== "heatpump";
     if (!s) { this.panelsOnTop(false); return; }
     H.panels.visible = true; // the kit is the same in every system

@@ -514,7 +514,8 @@ export default function Chain({ res, prev, inputs, leadId, pending = null, cause
       <div ref={heroRef} className={`${s.hero} ${onPanels && shading ? s.heroTall : ""}`}>
         {address && spatial !== false ? (
           <SpatialDemo system={SYS ? systemOf(stage) : undefined} inputs={inputs} design={d} response={res} address={address} layer={layer} onLayerChange={(n) => setPick({ stage, layer: n })} view={heatmap ? undefined : pick && pick.stage === stage && pick.layer !== 8 && POSES[view]?.topDown ? "solar" : view} bare leadId={leadId ?? undefined}
-            onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && !shading && !heatmap}>
+            onAvailable={setSpatial} onLayers={onLayers} tools={tools} sunTint={onPanels && !shading && !heatmap}
+            edit={dp?.setOverride ? { setOverride: (f, v) => { holdOffer(); dp.setOverride?.(f, v); } } : undefined}>
             {overlays}
           </SpatialDemo>
         ) : (
