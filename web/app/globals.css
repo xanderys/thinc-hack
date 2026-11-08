@@ -48,7 +48,7 @@ button, input, select { font: inherit; color: inherit; }
   padding: 18px max(32px, calc((100% - 1360px) / 2 + 32px)) 14px;
   background: var(--navy); color: var(--paper);
 }
-.masthead .title { font-family: var(--font-sans), sans-serif; font-weight: 600; font-size: 19px; letter-spacing: 0.08em; }
+.masthead .title { font-family: var(--font-sans), sans-serif; font-weight: 700; font-size: 19px; letter-spacing: 0.07em; }
 .masthead nav { display: flex; gap: 20px; }
 .masthead nav a { text-decoration: none; color: rgba(244, 241, 234, 0.72); padding-bottom: 2px; border-bottom: 1.5px solid transparent; }
 .masthead nav a[aria-current="page"] { color: var(--paper); border-bottom-color: var(--paper); }
